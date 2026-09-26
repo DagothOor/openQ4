@@ -23,6 +23,9 @@ Version 1.2 adds the modern interface direction: viewing profiles, adaptive
 layout, controller and touch input, Android lifecycle and first-run setup, and
 a first-party touch gameplay overlay. [Register schema 2](../ui/product-requirements.md)
 records eight supersessions and appends 40 requirements for both versions.
+Version 1.3 measures the band motion, HUD and pop-up frames, and adds detailing
+rules, modern components and a HUD section with the weapon wheel; its new
+scope and five replaced values await a register revision.
 
 The [17 September implementation audit](../ui/masked-input-review.md) refreshes
 delivery priorities and repairs vector-mask pointer/focus eligibility. The
