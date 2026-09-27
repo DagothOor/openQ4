@@ -191,7 +191,7 @@ harness `.tmp/awakening/run_q4x.py` (local, untracked) used to boot each map.
   `useMasterRoll` / `useMasterPitch` is monster physics, and the content sets them on
   movers, dropships and static models. Nothing to do for any of them.
 
-### Phase 3 — multiplayer
+### Phase 3 — multiplayer (done)
 
 - `"TeamDM"` accepted as `"Team DM"` in `maps.def`, in the game and in the engine's
   create-server map list (done).
@@ -222,17 +222,27 @@ harness `.tmp/awakening/run_q4x.py` (local, untracked) used to boot each map.
   left unused and the goob gun takes 128. The expansion's own check for the spike gun
   scope looked for a `weapon_scope` that does not exist, so the scope never sold there;
   openQ4 reads a mod's weapon from its def, and it does.
-- Weapon groups (optional, not done). `g_weaponGroup0..7` (impulse lists a key cycles
-  through) and `g_weaponPickupPriority` (the auto-switch order on pickup) are player
-  preferences; the content only sets the priority in `default.cfg`, which is harmless
-  without them.
+- Weapon groups (nothing to do). The expansion registers `g_weaponGroup0..7` (impulse
+  lists a key would cycle through) and `g_weaponPickupPriority` (an auto-switch order on
+  pickup), but its code never reads them: the only references to those cvars are their
+  static registration and destruction. `default.cfg` sets the priority and the
+  developers' own configs leave every group empty, so neither changes play there.
 
-### Phase 4 — latent content
+### Phase 4 — latent content (nothing reaches it)
 
-Classes the expansion's code has but no shipped map or def reaches:
-`WeaponGrappleHook` (with a rope mode in `idPhysics_Player` and `_impulse27`),
-`rvWeaponConcussionGun`, `riVehiclePartSplineTether`, `rvVehicleGravGun`. The compass
-(`gui::objectiveYaw`) waits on content that is commented out.
+Classes the expansion's code has but nothing in its content reaches:
+
+- `WeaponGrappleHook`, with a rope mode in `idPhysics_Player`. No def gives it; the
+  player def carries its beam and crosshair keys, `func_grapplenode` exists but no map
+  places one, and `default.cfg` binds `g` to `_impulse27`, which openQ4 leaves unused.
+- `rvWeaponConcussionGun`. No def gives it; the player def only carries its animations.
+  The grenade launcher's concussion blast, which m02, m08 and m09 hand out, is unrelated:
+  an ordinary weapon mod whose `def_projectile` swaps in a grenade with a wider, harder
+  splash, applied by the same code as retail's mods.
+- `riVehiclePartSplineTether`. The speeder bike's def comments its part out.
+- `rvVehicleGravGun`. `vehicle_turret_gravgun` exists, but no map places it.
+
+The compass (`gui::objectiveYaw`) waits on content that is commented out.
 
 ## What the expansion's code taught us
 
@@ -250,7 +260,8 @@ Recorded because each one changed what "support" means here.
   in the expansion or here.
 - The Valkaryne's `requestDocking` function is parsed and never called; the m09 script
   docks her itself. She spawns with her ranged and melee attacks switched off.
-- `ai_valkaryneShots` is registered and never read.
+- `ai_valkaryneShots` is registered and never read, and so are the weapon-group and
+  pickup-priority cvars.
 
 ## Validation
 
