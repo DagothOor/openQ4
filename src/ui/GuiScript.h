@@ -35,9 +35,14 @@ struct idGSWinVar {
 	idGSWinVar() {
 		var = NULL;
 		own = false;
+		live = NULL;
 	}
 	idWinVar* var;
 	bool own;
+	// A transition operand written as a non-rect "$var" is read from this var
+	// when the transition starts; var still holds the parse-time copy, which
+	// keeps the saved script layout unchanged.
+	idWinVar* live;
 };
 
 class idGuiScriptList;

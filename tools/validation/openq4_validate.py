@@ -451,6 +451,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         root / "tools" / "tests" / "gamelibs_staging.py",
         root / "tools" / "tests" / "gamelibs_layer_staging.py",
         root / "tools" / "tests" / "gui_clipping_contract.py",
+        root / "tools" / "tests" / "gui_transition_operand_contract.py",
         root / "tools" / "tests" / "generated_animation_cache.py",
         root / "tools" / "tests" / "level_load_cache.py",
         root / "tools" / "tests" / "hdr_postprocess_math.py",

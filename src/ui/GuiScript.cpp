@@ -243,6 +243,36 @@ void Script_ResetCinematics(idWindow *window, idList<idGSWinVar> *src) {
 
 /*
 =========================
+GuiScript_ReadTransitionOperand
+
+Retail Quake 4 snapshots a "$var" transition operand at parse time only when it
+names a rect. Any other var is read here, when the transition starts, so a
+fade can begin from the current colour or end on one set after the gui loaded.
+=========================
+*/
+static bool GuiScript_ReadTransitionOperand( const idGSWinVar &parm, idVec4 &value ) {
+	if ( parm.live == NULL ) {
+		const idWinVec4 *literal = dynamic_cast<const idWinVec4 *>( parm.var );
+		if ( literal == NULL ) {
+			return false;
+		}
+		value = *literal;
+		return true;
+	}
+	const idWinVec4 *vec4 = dynamic_cast<const idWinVec4 *>( parm.live );
+	if ( vec4 != NULL ) {
+		value = *vec4;
+		return true;
+	}
+	// Other var types convert through their text, as the parse-time copy did.
+	idWinVec4 parsed;
+	parsed.Set( parm.live->c_str() );
+	value = parsed;
+	return true;
+}
+
+/*
+=========================
 Script_Transition
 =========================
 */
@@ -270,12 +300,14 @@ void Script_Transition(idWindow *window, idList<idGSWinVar> *src) {
 			valp = dynamic_cast<idWinFloatPtr*>((*src)[0].var);
 		}
 
-		idWinVec4 *from = dynamic_cast<idWinVec4*>((*src)[1].var);
-		idWinVec4 *to = dynamic_cast<idWinVec4*>((*src)[2].var);
+		idVec4 from = vec4_zero;
+		idVec4 to = vec4_zero;
+		const bool hasFrom = GuiScript_ReadTransitionOperand( (*src)[1], from );
+		const bool hasTo = GuiScript_ReadTransitionOperand( (*src)[2], to );
 		idWinStr *timeStr = dynamic_cast<idWinStr*>((*src)[3].var);
 		// 
 		//  added float variable					
-		if (!((vec4 || rect || val || valp) && from && to && timeStr)) {
+		if (!((vec4 || rect || val || valp) && hasFrom && hasTo && timeStr)) {
 			// 
 			common->Warning("Bad transition in gui %s in window %s\n", window->GetGui()->GetSourceFile(), window->GetName());
 			return;
@@ -293,12 +325,12 @@ void Script_Transition(idWindow *window, idList<idGSWinVar> *src) {
 				
 		if (vec4) {
 			vec4->SetEval(false);
-			window->AddTransition(vec4, *from, *to, time, ac, dc);
+			window->AddTransition(vec4, from, to, time, ac, dc);
 			// 
 			//  added float variable					
 		} else if ( val ) {
 			val->SetEval ( false );
-			window->AddTransition(val, *from, *to, time, ac, dc);
+			window->AddTransition(val, from, to, time, ac, dc);
 			// 
 		}
 		else if (valp) {
@@ -307,19 +339,19 @@ void Script_Transition(idWindow *window, idList<idGSWinVar> *src) {
 			if ( owner ) {
 				owner->SetEval( false );
 			}
-			window->AddTransition(valp, *from, *to, time, ac, dc);
+			window->AddTransition(valp, from, to, time, ac, dc);
 			// 
 		} else {
 			rect->SetEval(false);
-			window->AddTransition(rect, *from, *to, time, ac, dc);
+			window->AddTransition(rect, from, to, time, ac, dc);
 		}
 		window->StartTransition();
 		if ( gui_debugScript.GetInteger() > 2 ) {
 			const char *varName = (*src)[0].var ? (*src)[0].var->GetName() : "<null>";
 			common->Printf( "GUI: transition %s from=%s to=%s time=%d ac=%.3f dc=%.3f (caller=%s gui=%s)\n",
 				varName,
-				from ? from->c_str() : "<null>",
-				to ? to->c_str() : "<null>",
+				from.ToString(),
+				to.ToString(),
 				time, ac, dc,
 				window ? window->GetName() : "<null>",
 				window && window->GetGui() ? window->GetGui()->GetSourceFile() : "<null>" );
@@ -907,6 +939,11 @@ void idGuiScript::FixupParms(idWindow *win) {
 					}
 				} else {
 					v4->Set ( dest->c_str ( ) );
+				}
+				// Retail keeps this parse-time copy only for a rect. Any other var
+				// is read when the transition starts (GuiScript_ReadTransitionOperand).
+				if ( dynamic_cast<idWinRectangle*>( dest ) == NULL ) {
+					parms[c].live = dest;
 				}
 			} else {
 				v4->Set(*str);

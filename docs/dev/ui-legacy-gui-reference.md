@@ -257,6 +257,17 @@ it enabled.
   delete the file when you are done or it will shadow your next build.
 - Window names are resolved after the whole GUI is parsed, so a script may
   reference a window declared later in the file.
+- A `transition` operand written as `$window::var` is read when the
+  transition starts. `transition "x::forecolor" "$x::forecolor" "<to>" "300"`
+  therefore fades from whatever the colour is at that moment, and a
+  `$desktop::` colour picks up a `set` made after the GUI loaded. A
+  `$window::rect` operand is the exception: it is copied when the GUI is
+  parsed, in the parent space of the rect being animated, so a pulse can
+  return to its authored rect while that rect is still moving. This is
+  retail Quake 4's rule. Until 27 September 2026 openQ4 copied every `$`
+  operand at load, as Doom 3 does, so the multiplayer aim name vanished
+  instead of fading; `tools/tests/gui_transition_operand_contract.py` pins
+  the retail rule.
 
 Related: [`stock-asset-baseline.md`](stock-asset-baseline.md),
 [`renderer-validation-matrix.md`](renderer-validation-matrix.md).

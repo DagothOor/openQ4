@@ -364,6 +364,18 @@
   fast-staged `.install` as current. Across two reconfigures on Windows x64 neither pack
   was rebuilt and `FileSystem.cpp` did not recompile; only the pack checksum header was
   checked again, in about 1.5 seconds.
+- [x] GUI `transition` scripts now read a `$window::var` operand when the transition
+  starts, as retail Quake 4 does, instead of copying it when the GUI loads. Two stock
+  multiplayer HUD effects now play as they did in retail: the aimed player's name fades
+  out over half a second toward the last target's team colour instead of vanishing at
+  once, and the One-Flag CTF flag flashes toward the carrier's team colour instead of
+  white. A `$window::rect` operand is still copied at load, which the flag pulses need.
+  The demo menu's filter buttons now fade back on mouse exit as written. An audit of
+  every `$` operand in the 264 stock, 33 openQ4 and 60 Awakening GUIs found no other
+  change in behaviour, and the saved-game layout is unchanged: a checkpoint saved by the
+  25 September build still loads. The rule was confirmed in the 1.4.2 `Quake4.exe`;
+  `gui_transition_operand_contract.py` pins it, and a hidden client showed the stock aim
+  fade and flag colour with no input.
 
 ## Unreleased — Quake 4: The Awakening (`q4xbase`)
 
