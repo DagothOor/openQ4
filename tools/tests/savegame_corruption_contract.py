@@ -684,8 +684,6 @@ def validate_gamelibs_save_payload_contract() -> None:
             "OPENQ4_SAVEGAME_SYNC_MAGIC = 'O' | ( 'Q' << 8 ) | ( '4' << 16 ) | ( 'Y' << 24 )",
             "OPENQ4_SAVEGAME_FOOTER_MAGIC = 'O' | ( 'Q' << 8 ) | ( '4' << 16 ) | ( 'F' << 24 )",
             "OPENQ4_SAVEGAME_INTEGRITY_MAGIC = 'O' | ( 'Q' << 8 ) | ( '4' << 16 ) | ( 'I' << 24 )",
-            '__has_include( "openq4_savegame_compat_generated.h" )',
-            '#define OPENQ4_SAVEGAME_COMPAT_SOURCE_HASH "standalone-openq4-game"',
             "void\t\t\t\t\tWriteChecked( int bytesWritten, int expected, const char *detail, int offset );",
             "void\t\t\t\t\tWriteSaveGameFooter( int numObjects );",
             "void\t\t\t\t\tReadSyncId( const char *detail = \"unspecified\", const char *classname = NULL );",
@@ -701,8 +699,23 @@ def validate_gamelibs_save_payload_contract() -> None:
         ):
             require(save_header, token, f"{module} savegame compatibility header")
 
+        # The generated stamp hashes every save-relevant game source, so it changes
+        # whenever one of them does. Game_local.h brings the game headers into every
+        # game PCH, so a header that includes the stamp makes each such edit rebuild
+        # every game object. Only SaveGame.cpp reads it.
+        for header_path in sorted((GAME_LIBS_ROOT / "src" / module).rglob("*.h")):
+            if b"openq4_savegame_compat_generated.h" in header_path.read_bytes():
+                raise AssertionError(
+                    f"{header_path.relative_to(GAME_LIBS_ROOT).as_posix()} includes the generated "
+                    "savegame stamp; include it from gamesys/SaveGame.cpp so the game PCH does not depend on it"
+                )
+
         for token in (
             '#include "framework/BuildVersion.h"',
+            '__has_include( "openq4_savegame_compat_generated.h" )',
+            '#include "openq4_savegame_compat_generated.h"',
+            '#define OPENQ4_SAVEGAME_COMPAT_SOURCE_HASH "standalone-openq4-game"',
+            "#define OPENQ4_SAVEGAME_COMPAT_SOURCE_FILE_COUNT 0",
             "static bool SaveGame_IsValidRenderBounds( const idBounds &bounds )",
             "static int SaveGame_ObjectHashKey( const idClass *obj )",
             "static int SaveGame_FindObjectIndex( const idList<const idClass *> &objects, const idHashIndex &objectHash, const idClass *obj )",

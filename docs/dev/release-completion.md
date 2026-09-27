@@ -351,9 +351,11 @@
   one multiplayer game source recompiled only that game object and relinked both `game-mp`
   modules; the other 3,378 staged files kept their timestamps. Deleted sources leave the
   stage and its manifest, and a link inside the stage is removed rather than written
-  through. Edits to save-relevant sources still rebuild every game object through the
-  savegame source stamp, and each restage's Meson reconfigure still re-packs pak1; both
-  remain separate rebuild triggers.
+  through. Edits to save-relevant sources no longer rebuild every game object: the
+  savegame source stamp now stays out of the game precompiled headers, so adding a comment
+  to `src/mpgame/Item.cpp` recompiled only that file, both `SaveGame.cpp` files and the
+  engine's `Session.cpp` before relinking. Each restage's Meson reconfigure still re-packs
+  pak1, a separate rebuild trigger.
 
 ## Unreleased — Quake 4: The Awakening (`q4xbase`)
 
