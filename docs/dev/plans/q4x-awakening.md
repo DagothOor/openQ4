@@ -43,6 +43,12 @@ The Meson option `awakening` (`auto` by default) builds the layer when
 `builddir/q4xbase/` for direct runs and `.install/q4xbase/` for the staged package;
 `tools/build/meson_setup.ps1` re-stages whenever the layer's sources change.
 
+CI does not build the layer: `openQ4-game-awakening` is a private repository, which the
+public workflows cannot fetch. Local builds cover it instead (the `auto` option builds it
+whenever the checkout sits beside openQ4), with the headless runs under Validation and a
+Linux `g++ -fsyntax-only` pass over every layer source under WSL. An `openQ4-game` change
+to an extension point therefore needs a local build of both modules before it is pushed.
+
 A layer reaches the base in one of three ways, in order of preference:
 
 1. **A new class** (most of the roster), registered like any other: base
