@@ -9,14 +9,21 @@ sources are copied into src/game/<id>/ and src/mpgame/<id>/ beside the
 unchanged openQ4-game trees, so they include base headers exactly as base
 sources do. A layer never replaces an openQ4-game file. --check-fresh exits
 0 when a stage still matches its recorded sources and 3 when it is stale.
+
+Restaging updates an existing stage in place. A staged file whose bytes still
+match its source keeps its mtime, so ninja recompiles only what changed; new
+and changed files are copied with a fresh mtime, and anything else in the
+stage is deleted.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -81,25 +88,102 @@ def iter_regular_source_files(source_dir: Path) -> list[Path]:
     return files
 
 
-def copy_regular_tree(source_dir: Path, dest_dir: Path) -> list[Path]:
-    if dest_dir.exists():
-        shutil.rmtree(dest_dir)
-
-    copied: list[Path] = []
+def plan_regular_tree(source_dir: Path, dest_dir: Path) -> dict[Path, Path]:
+    """Map the staged path of every regular file under source_dir to its source."""
+    planned: dict[Path, Path] = {}
     for source_path in iter_regular_source_files(source_dir):
         rel = source_path.relative_to(source_dir)
         if any(part in ("", ".", "..") for part in rel.parts):
             raise RuntimeError(f"refusing to stage unsafe path: {source_path}")
+        planned[dest_dir / rel] = source_path
+    return planned
 
-        dest_path = dest_dir / rel
+
+def same_file_bytes(first: Path, second: Path) -> bool:
+    if first.stat().st_size != second.stat().st_size:
+        return False
+    with first.open("rb") as first_handle, second.open("rb") as second_handle:
+        while True:
+            chunk = first_handle.read(1024 * 1024)
+            if chunk != second_handle.read(1024 * 1024):
+                return False
+            if not chunk:
+                return True
+
+
+def is_link(entry: os.DirEntry) -> bool:
+    # DirEntry.is_symlink() misses Windows junctions, which otherwise read as
+    # plain directories, so check the reparse-point attribute as well
+    if entry.is_symlink():
+        return True
+    attributes = getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0)
+    return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def remove_link(entry: os.DirEntry) -> None:
+    # a junction goes with rmdir; neither call touches the link's target
+    if entry.is_dir(follow_symlinks=False):
+        os.rmdir(entry.path)
+    else:
+        os.unlink(entry.path)
+
+
+def sync_stage_tree(stage_root: Path, planned: dict[Path, Path], keep_dirs: list[Path] | None = None) -> list[Path]:
+    """Make stage_root hold exactly the planned files and return their paths.
+
+    planned maps each staged path to its source. A staged file that already
+    holds its source's bytes is left alone, mtime included, so ninja rebuilds
+    nothing that depends on it. Everything else under stage_root is deleted:
+    files nothing plans, directories left empty (other than keep_dirs), and
+    links, which are removed without being followed so that a restage never
+    writes through one into another tree.
+    """
+    keep_dirs = keep_dirs or []
+    wanted = {path.relative_to(stage_root).as_posix(): path for path in planned}
+    keep = {path.relative_to(stage_root).as_posix() for path in keep_dirs}
+    current: set[str] = set()
+
+    def prune(directory: str, prefix: str) -> bool:
+        """Delete everything unplanned in directory; True when it ends up empty."""
+        with os.scandir(directory) as iterator:
+            entries = list(iterator)
+        empty = True
+        for entry in entries:
+            rel = prefix + entry.name
+            if is_link(entry):
+                remove_link(entry)
+            elif entry.is_dir(follow_symlinks=False):
+                if prune(entry.path, rel + "/") and rel not in keep:
+                    os.rmdir(entry.path)
+                else:
+                    empty = False
+            elif rel in wanted and entry.is_file(follow_symlinks=False):
+                # names compare case-sensitively, so a case-only rename is
+                # deleted here and staged again under its new name
+                current.add(rel)
+                empty = False
+            else:
+                os.unlink(entry.path)
+        return empty
+
+    stage_root.mkdir(parents=True, exist_ok=True)
+    prune(str(stage_root), "")
+    for rel, dest_path in sorted(wanted.items()):
+        source_path = planned[dest_path]
+        if rel in current and same_file_bytes(source_path, dest_path):
+            # shutil.copy below also carries the permission bits
+            if stat.S_IMODE(source_path.stat().st_mode) != stat.S_IMODE(dest_path.stat().st_mode):
+                shutil.copymode(source_path, dest_path)
+            continue
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         # This is a generated compiler-input tree. A changed source may carry
         # a timestamp older than an existing PCH (checkout or a concurrent
         # companion edit), so the newly staged copy must get a fresh mtime.
         # Preserve permissions, but never backdate a replacement build input.
         shutil.copy(source_path, dest_path)
-        copied.append(dest_path)
-    return copied
+    for directory in keep_dirs:
+        directory.mkdir(parents=True, exist_ok=True)
+    return sorted(planned)
 
 
 def is_relative_to(path: Path, parent: Path) -> bool:
@@ -122,26 +206,19 @@ def validate_stage_root(project_root: Path, gamelibs_root: Path, stage_root: Pat
         raise RuntimeError(f"refusing to stage over source repository: {stage_root}")
 
 
-def copy_game_sources(source_game_dir: Path, dest_game_dir: Path) -> list[Path]:
-    return copy_regular_tree(source_game_dir, dest_game_dir)
+def plan_game_sources(source_game_dir: Path, dest_game_dir: Path) -> dict[Path, Path]:
+    return plan_regular_tree(source_game_dir, dest_game_dir)
 
 
-def mirror_support_dir(source_dir: Path, dest_dir: Path) -> list[Path]:
-    if dest_dir.exists():
-        shutil.rmtree(dest_dir)
-    if not source_dir.is_dir():
-        return []
-    return copy_regular_tree(source_dir, dest_dir)
-
-
-def mirror_project_support_dirs(project_root: Path, stage_root: Path) -> list[Path]:
+def plan_project_support_dirs(project_root: Path, stage_root: Path) -> dict[Path, Path]:
     source_root = project_root / "src"
     stage_src_root = stage_root / "src"
-    copied: list[Path] = []
+    planned: dict[Path, Path] = {}
 
     for dir_name in OPENQ4_SUPPORT_DIRS:
-        copied += mirror_support_dir(source_root / dir_name, stage_src_root / dir_name)
-    return copied
+        if (source_root / dir_name).is_dir():
+            planned.update(plan_regular_tree(source_root / dir_name, stage_src_root / dir_name))
+    return planned
 
 
 def staged_file_manifest(stage_root: Path, staged_files: list[Path]) -> list[dict[str, str]]:
@@ -194,42 +271,41 @@ def write_stage_manifest(
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def stage_layer_sources(layer: dict, stage_root: Path) -> tuple[list[Path], list[tuple[Path, Path]]]:
-    """Copy a layer's source trees into src/<module>/<id>/ of the stage.
+def plan_layer_sources(
+    layer: dict, stage_root: Path, base_files: dict[Path, Path]
+) -> tuple[dict[Path, Path], list[tuple[Path, Path]], list[Path]]:
+    """Plan a layer's source trees into src/<module>/<id>/ of the stage.
 
-    The destination directories must not exist in the staged openQ4-game trees:
-    a layer only ever adds files.
+    A layer only ever adds files, so no staged openQ4-game file may sit in its
+    directories. The stage persists between runs and its layer directories
+    exist from the last one, so the check runs against the openQ4-game files
+    being staged (base_files), never against the stage on disk. Returns the
+    layer's planned files, its source roots, and its two module directories,
+    which exist even when a layer only feeds one of them.
     """
     layer_id = layer["id"]
-    staged: list[Path] = []
+    planned: dict[Path, Path] = {}
     roots: list[tuple[Path, Path]] = []
     claimed: dict[Path, str] = {}
-    for module in ("game", "mpgame"):
-        dest_root = stage_root / "src" / module / layer_id
-        if dest_root.exists():
+    module_dirs = [stage_root / "src" / module / layer_id for module in ("game", "mpgame")]
+    for module, dest_root in zip(("game", "mpgame"), module_dirs):
+        if any(is_relative_to(path, dest_root) for path in base_files):
             raise RuntimeError(f"openQ4-game already has src/{module}/{layer_id}; layer '{layer_id}' would replace it")
-        # both module trees exist even when a layer only feeds one of them
-        dest_root.mkdir(parents=True)
 
     for tree, source_dir in layer["sources"].items():
         for module in game_layer.LAYER_TREE_MODULES[tree]:
             dest_root = stage_root / "src" / module / layer_id
-            for source_path in iter_regular_source_files(source_dir):
-                rel = source_path.relative_to(source_dir)
-                if any(part in ("", ".", "..") for part in rel.parts):
-                    raise RuntimeError(f"refusing to stage unsafe path: {source_path}")
-                dest_path = dest_root / rel
+            for dest_path, source_path in plan_regular_tree(source_dir, dest_root).items():
                 if dest_path in claimed:
+                    rel = dest_path.relative_to(dest_root).as_posix()
                     raise RuntimeError(
-                        f"layer '{layer_id}' provides src/{module}/{layer_id}/{rel.as_posix()} "
+                        f"layer '{layer_id}' provides src/{module}/{layer_id}/{rel} "
                         f"from both '{claimed[dest_path]}' and '{tree}'"
                     )
                 claimed[dest_path] = tree
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy(source_path, dest_path)
-                staged.append(dest_path)
+                planned[dest_path] = source_path
             roots.append((source_dir, dest_root))
-    return staged, roots
+    return planned, roots, module_dirs
 
 
 def check_stage_fresh(stage_root: Path) -> bool:
@@ -319,9 +395,14 @@ def validate_stage_manifest(stage_root: Path) -> None:
 
 
 def prepare_stage_root(stage_root: Path) -> None:
-    if stage_root.exists():
-        shutil.rmtree(stage_root)
+    if stage_root.exists() and not stage_root.is_dir():
+        raise RuntimeError(f"stage root is not a directory: {stage_root}")
     stage_root.mkdir(parents=True, exist_ok=True)
+    # The stage is updated in place, so drop the old manifest first: a restage
+    # that fails part way must not leave one vouching for a half-updated stage.
+    manifest_path = stage_root / MANIFEST_NAME
+    if manifest_path.is_symlink() or manifest_path.is_file():
+        manifest_path.unlink()
 
 
 def main(argv: list[str]) -> int:
@@ -375,20 +456,24 @@ def main(argv: list[str]) -> int:
         validate_stage_root(project_root, gamelibs_root, stage_root)
         if layer is not None and is_relative_to(layer["root"], stage_root):
             raise RuntimeError(f"refusing to stage over source repository: {stage_root}")
-        prepare_stage_root(stage_root)
-        staged_files = []
+        # plan the whole stage before touching it, so a refused source leaves
+        # the previous stage and its manifest as they were
+        planned: dict[Path, Path] = {}
         source_roots: list[tuple[Path, Path]] = []
         for module_name, source_game_dir in source_game_dirs.items():
-            staged_files += copy_game_sources(source_game_dir, stage_root / "src" / module_name)
+            planned.update(plan_game_sources(source_game_dir, stage_root / "src" / module_name))
             source_roots.append((source_game_dir, stage_root / "src" / module_name))
-        staged_files += mirror_project_support_dirs(project_root, stage_root)
+        planned.update(plan_project_support_dirs(project_root, stage_root))
         for dir_name in OPENQ4_SUPPORT_DIRS:
             if (project_root / "src" / dir_name).is_dir():
                 source_roots.append((project_root / "src" / dir_name, stage_root / "src" / dir_name))
+        keep_dirs: list[Path] = []
         if layer is not None:
-            layer_files, layer_roots = stage_layer_sources(layer, stage_root)
-            staged_files += layer_files
+            layer_files, layer_roots, keep_dirs = plan_layer_sources(layer, stage_root, planned)
+            planned.update(layer_files)
             source_roots += layer_roots
+        prepare_stage_root(stage_root)
+        staged_files = sync_stage_tree(stage_root, planned, keep_dirs)
         write_stage_manifest(project_root, gamelibs_root, stage_root, staged_files, source_roots, layer)
         validate_stage_manifest(stage_root)
     except (RuntimeError, game_layer.LayerError) as exc:

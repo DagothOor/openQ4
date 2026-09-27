@@ -345,6 +345,15 @@
 - [x] Multiplayer bots retain valid routes when a replacement is blocked, release stalled and no-longer-useful goals, and stop using unseen enemy positions for combat movement/weapon range. Explosion-aware threat filtering catches nearby resting explosives. Visibility and pickup shortlists avoid redundant collision queries; the native fixture reduces 80-item snap queries from 81 to 11 and checks 240 perception cases. Windows x64 build/staging, eight existing bot contracts, native regressions and live stock DM/CTF gameplay passed. CTF exercised fetch, defend, escort and capture goals. Details and reproduction: [Multiplayer bots](mp-bots.md).
 - [x] German is selectable as **Deutsch** in Game Options, with complete bundled menu, objective, terminal and gameplay-message translations. Retail German campaign dialogue remains supported; English-only installations retain English dialogue. Coverage, format arguments, choice ordering and German glyphs are checked alongside the existing localization contracts. Language changes force a deferred GUI reload so cached labels use the selected language. Player notes: [0.13.2](releases/v0.13.2.md).
 - [x] Windows x64 build/staging and German SP/OpenGL and MP/Vulkan gameplay checks passed. The runtime regression checks live language switching, visible menus and the translated Match Control view using engine screenshots. German retail voice playback still requires qualification with the complete retail pack; the available English dialogue fallback was exercised.
+- [x] Restaging openQ4-game sources is incremental. The stage is now synced in place, so
+  staged files whose bytes are unchanged keep their timestamps and ninja no longer
+  rebuilds every game object after a restage. On Windows x64, editing and then reverting
+  one multiplayer game source recompiled only that game object and relinked both `game-mp`
+  modules; the other 3,378 staged files kept their timestamps. Deleted sources leave the
+  stage and its manifest, and a link inside the stage is removed rather than written
+  through. Edits to save-relevant sources still rebuild every game object through the
+  savegame source stamp, and each restage's Meson reconfigure still re-packs pak1; both
+  remain separate rebuild triggers.
 
 ## Unreleased — Quake 4: The Awakening (`q4xbase`)
 

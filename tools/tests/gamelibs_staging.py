@@ -134,6 +134,97 @@ def validate_successful_stage(work: Path) -> None:
     validate_manifest(stage_root)
 
 
+def staged_mtimes(stage_root: Path) -> dict[str, int]:
+    return {
+        path.relative_to(stage_root).as_posix(): path.stat().st_mtime_ns
+        for path in stage_root.rglob("*")
+        if path.is_file() and path.name != MANIFEST_NAME
+    }
+
+
+def make_directory_link(target: Path, link: Path) -> bool:
+    # a junction on Windows: no privilege needed, and DirEntry.is_symlink()
+    # does not see it, which is the case the stager has to catch
+    if os.name == "nt":
+        import _winapi
+
+        try:
+            _winapi.CreateJunction(str(target), str(link))
+            return True
+        except OSError:
+            pass
+    try:
+        os.symlink(target, link, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        return False
+    return True
+
+
+def validate_incremental_restage(work: Path) -> None:
+    project_root, gamelibs_root, stage_root = make_minimal_workspace(work)
+
+    def restage() -> dict[str, str]:
+        completed = run_stage(project_root, gamelibs_root, stage_root)
+        if completed.returncode != 0:
+            raise AssertionError(f"GameLibs restage failed: {completed.stderr}")
+        manifest = json.loads((stage_root / MANIFEST_NAME).read_text(encoding="utf-8"))
+        hashes = {entry["path"]: entry["sha256"] for entry in manifest["files"]}
+        if manifest.get("fileCount") != len(hashes) or set(hashes) != set(staged_mtimes(stage_root)):
+            raise AssertionError("the stage manifest does not describe exactly the staged files")
+        return hashes
+
+    restage()
+    # Backdate the whole stage so that a rewritten file cannot hide inside
+    # the clock's resolution, then leave behind what a restage must shed.
+    old = 1_700_000_000_000_000_000
+    for path in stage_root.rglob("*"):
+        if path.is_file():
+            os.utime(path, ns=(old, old))
+    write_file(stage_root / "src" / "game" / "Stray.cpp", "// no source\n")
+    (stage_root / "src" / "stray" / "empty").mkdir(parents=True)
+
+    restage()
+    rewritten = sorted(rel for rel, mtime in staged_mtimes(stage_root).items() if mtime != old)
+    if rewritten:
+        raise AssertionError(f"restaging unchanged sources rewrote staged files: {rewritten}")
+    if (stage_root / "src" / "game" / "Stray.cpp").exists() or (stage_root / "src" / "stray").exists():
+        raise AssertionError("restaging kept a file or directory that no source provides")
+
+    edited = gamelibs_root / "src" / "game" / "Game_local.cpp"
+    write_file(edited, "// game, edited\n")
+    # older than the staged copy, so the fresh mtime cannot come from the source
+    os.utime(edited, ns=(old - 1_000_000_000, old - 1_000_000_000))
+    (gamelibs_root / "src" / "mpgame" / "gamesys" / "SysCvar.cpp").unlink()
+    hashes = restage()
+    mtimes = staged_mtimes(stage_root)
+    staged_edit = stage_root / "src" / "game" / "Game_local.cpp"
+    if staged_edit.read_text(encoding="utf-8") != "// game, edited\n" or mtimes["src/game/Game_local.cpp"] <= old:
+        raise AssertionError("an edited source was not restaged with a fresh mtime")
+    if hashes["src/game/Game_local.cpp"] != sha256(staged_edit):
+        raise AssertionError("the stage manifest kept the edited source's old hash")
+    rewritten = sorted(rel for rel, mtime in mtimes.items() if mtime != old and rel != "src/game/Game_local.cpp")
+    if rewritten:
+        raise AssertionError(f"restaging one edited source rewrote others: {rewritten}")
+    if "src/mpgame/gamesys/SysCvar.cpp" in hashes or (stage_root / "src" / "mpgame" / "gamesys").exists():
+        raise AssertionError("a deleted source stayed in the stage or its manifest")
+
+    # A link inside the stage is removed, never written through.
+    victim = work / "victim"
+    write_file(victim / "Game_local.cpp", "// victim\n")
+    shutil.rmtree(stage_root / "src" / "game")
+    if not make_directory_link(victim, stage_root / "src" / "game"):
+        return
+    restage()
+    victim_files = sorted(path.relative_to(victim).as_posix() for path in victim.rglob("*"))
+    if victim_files != ["Game_local.cpp"] or (victim / "Game_local.cpp").read_text(encoding="utf-8") != "// victim\n":
+        raise AssertionError("restaging wrote through a directory link in the stage")
+    staged_game = stage_root / "src" / "game"
+    if staged_game.resolve() != stage_root.resolve() / "src" / "game":
+        raise AssertionError("restaging kept a directory link in the stage")
+    if staged_edit.read_text(encoding="utf-8") != "// game, edited\n":
+        raise AssertionError("restaging did not replace a directory link with the staged tree")
+
+
 def validate_symlink_rejection(work: Path) -> None:
     project_root, gamelibs_root, stage_root = make_minimal_workspace(work)
     target = gamelibs_root / "src" / "game" / "Game_local.cpp"
@@ -754,16 +845,17 @@ def main() -> None:
     try:
         validate_target_stage_paths(work / "target-paths")
         validate_successful_stage(work / "success")
-        from stage_gamelibs import copy_regular_tree
+        validate_incremental_restage(work / "incremental")
+        from stage_gamelibs import plan_regular_tree, sync_stage_tree
         source = work / "timestamp-source" / "Game.h"
         write_file(source, "version 48\n")
         destination = work / "timestamp-stage"
-        copy_regular_tree(source.parent, destination)
+        sync_stage_tree(destination, plan_regular_tree(source.parent, destination))
         previous = (destination / source.name).stat().st_mtime_ns
         write_file(source, "version 49\n")
         old = 1_700_000_000_000_000_000
         os.utime(source, ns=(old, old))
-        copy_regular_tree(source.parent, destination)
+        sync_stage_tree(destination, plan_regular_tree(source.parent, destination))
         assert (destination / source.name).read_text() == "version 49\n"
         assert (destination / source.name).stat().st_mtime_ns >= previous
         assert (destination / source.name).stat().st_mtime_ns > old

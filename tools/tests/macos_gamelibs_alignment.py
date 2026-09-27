@@ -158,7 +158,7 @@ def validate_companion_boundary() -> None:
         require(meson, token, "openQ4 Meson GameLibs staging contract")
 
     for token in (
-        "copy_game_sources",
+        "plan_game_sources",
         "gameLibsGitCommit",
         "gameLibsGitDirty",
         "projectGitCommit",

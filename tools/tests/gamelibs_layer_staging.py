@@ -5,6 +5,7 @@ stage_gamelibs.py --layer), the mechanism the Awakening mod builds on."""
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -13,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "tests"))
-from gamelibs_staging import MANIFEST_NAME, STAGE_SCRIPT, make_minimal_workspace, write_file
+from gamelibs_staging import MANIFEST_NAME, STAGE_SCRIPT, make_minimal_workspace, staged_mtimes, write_file
 
 LAYER_SCRIPT = ROOT / "tools" / "build" / "game_layer.py"
 LAYER_ID = "testlayer"
@@ -156,6 +157,42 @@ def validate_layer_stage(work: Path) -> None:
         raise AssertionError("a stage without source roots read as fresh")
 
 
+def validate_layer_restage(work: Path) -> None:
+    project_root, gamelibs_root, stage_root = make_minimal_workspace(work)
+    layer = make_layer(work / "layer")
+    if stage(project_root, gamelibs_root, stage_root, layer).returncode != 0:
+        raise AssertionError("initial layer stage failed")
+    old = 1_700_000_000_000_000_000
+    for path in stage_root.rglob("*"):
+        if path.is_file():
+            os.utime(path, ns=(old, old))
+
+    # the layer sits inside the base trees: restaging both must touch only
+    # the edited layer file (in both modules) and drop the deleted one
+    write_file(layer / "src" / "shared" / "Shared.cpp", "// shared, edited\n")
+    (layer / "src" / "mpgame" / "MpOnly.cpp").unlink()
+    if stage(project_root, gamelibs_root, stage_root, layer).returncode != 0:
+        raise AssertionError("restaging an edited layer failed")
+    fresh = sorted(rel for rel, mtime in staged_mtimes(stage_root).items() if mtime != old)
+    if fresh != [f"src/game/{LAYER_ID}/Shared.cpp", f"src/mpgame/{LAYER_ID}/Shared.cpp"]:
+        raise AssertionError(f"restaging one edited layer source rewrote: {fresh}")
+    manifest = json.loads((stage_root / MANIFEST_NAME).read_text(encoding="utf-8"))
+    deleted = f"src/mpgame/{LAYER_ID}/MpOnly.cpp"
+    if (stage_root / deleted).exists() or deleted in {entry["path"] for entry in manifest["files"]}:
+        raise AssertionError("a deleted layer source stayed in the stage or its manifest")
+    if check_fresh(stage_root) != 0:
+        raise AssertionError("a restaged layer reads as stale")
+
+    # a layer that feeds one module still gets its directory in the other
+    single = make_layer(work / "single", layer_manifest(sources={"game": "src/game"}))
+    for _ in range(2):
+        if stage(project_root, gamelibs_root, stage_root, single).returncode != 0:
+            raise AssertionError("staging a single-module layer failed")
+        mp_dir = stage_root / "src" / "mpgame" / LAYER_ID
+        if not mp_dir.is_dir() or any(mp_dir.iterdir()):
+            raise AssertionError("a single-module layer lost its empty directory in the other module")
+
+
 def validate_layer_collisions(work: Path) -> None:
     project_root, gamelibs_root, stage_root = make_minimal_workspace(work)
 
@@ -183,6 +220,7 @@ def main() -> None:
     try:
         validate_manifest_reader(work / "manifest")
         validate_layer_stage(work / "stage")
+        validate_layer_restage(work / "restage")
         validate_layer_collisions(work / "collisions")
     finally:
         shutil.rmtree(work, ignore_errors=True)
