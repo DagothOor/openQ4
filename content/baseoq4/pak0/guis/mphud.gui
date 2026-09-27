@@ -308,6 +308,8 @@ windowDef Desktop
 		// 6 = arena CTF
 		// 7 = arena one flag CTF
 		// 8 = deadzone
+		// 9 = duel - keeps p_ffa: UpdateHud fills its leader/own rows for DM and Duel
+		// 10 = clan arena, 11 = freeze tag, 12 = red rover
 		
 		namedEvent "clearIGA" ;
 		
@@ -328,7 +330,11 @@ windowDef Desktop
 			set "p_tourney::visible" "0";
 			set "p_ffa::visible" "0";
 			set "p_tourntop::visible" "1";
-		} else if ( "gui::gametype" == 5 ) {
+		// 5 One Flag CTF and 7 Arena One Flag CTF - the team panels plus the
+		// neutral flag. Stock never reached 7 (si_gameType rejected it), so it had
+		// no branch here and fell through to the free-for-all rows, which UpdateHud
+		// leaves blank in a team mode: no team score showed anywhere.
+		} else if ( "gui::gametype" == 5 || "gui::gametype" == 7 ) {
 			set "p_ctf::visible" "1";
 			set "p_ctf_2::visible" "0";
 			set "p_onectf::visible" "1";
@@ -399,7 +405,9 @@ windowDef Desktop
 					set "ctf_clan1_flag::rect"	"86,11,28,28";
 					set "ctf_clan1_flag_status::text" "?" ;
 				} else {
-					set "d_ctf_flag2::notime" "1" ;
+					// Stock set d_ctf_flag2, which does not exist, so a dropped Strogg
+					// flag kept pulsing for a Marine viewer.
+					set "d_ctf_clan2_flag::notime" "1" ;
 					stoptransitions "d_ctf_clan2_flag" ;
 					set "ctf_clan2_flag::rect"	"86,55,28,28";
 					set "ctf_clan2_flag_status::text" "?" ;
@@ -417,7 +425,7 @@ windowDef Desktop
 					set "ctf_clan1_flag_status::text" "?" ;
 				}	
 			}
-		} else if ( "gui::gametype" == 5 ) {
+		} else if ( "gui::gametype" == 5 || "gui::gametype" == 7 ) {
 			set "d_ctfone_flag::notime" "1" ;
 			stoptransitions "d_ctfone_flag" ;
 			set "ctfone_flag::rect"	"97,33,28,28";
@@ -445,7 +453,10 @@ windowDef Desktop
 					set "ctf_clan1_flag_status::text" "!" ;
 				}	
 			}
-		} else if ( "gui::gametype" == 5 ) {
+		// One flag: gui::team is the team carrying the neutral flag. The pulse
+		// in d_ctfone_flag reads ctfoneflag_color when each transition starts,
+		// on the next redraw, so setting it after the resettime still counts.
+		} else if ( "gui::gametype" == 5 || "gui::gametype" == 7 ) {
 			resettime "d_ctfone_flag" "0" ;
 			set "ctfone_flag_status::text" "!" ;
 			if( "gui::team" == 0 ) {
@@ -483,7 +494,7 @@ windowDef Desktop
 					set "ctf_clan1_flag_status::text" "" ;
 				}	
 			}
-		} else if ( "gui::gametype" == 5 ) {
+		} else if ( "gui::gametype" == 5 || "gui::gametype" == 7 ) {
 			set "d_ctfone_flag::notime" "1" ;
 			stoptransitions "d_ctfone_flag" ;
 			set "ctfone_flag::rect"	"97,33,28,28";

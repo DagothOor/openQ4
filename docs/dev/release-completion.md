@@ -376,6 +376,21 @@
   25 September build still loads. The rule was confirmed in the 1.4.2 `Quake4.exe`;
   `gui_transition_operand_contract.py` pins it, and a hidden client showed the stock aim
   fade and flag colour with no input.
+- [x] Arena One Flag CTF now shows the One Flag CTF HUD: both team panels with their
+  scores and the neutral flag, instead of two empty deathmatch rows and no team score
+  anywhere. Retail Quake 4 never let the mode be selected, so its HUD had no layout for
+  it. In both One Flag modes the neutral flag now reports on the HUD: "!" and a flash
+  toward the carrier's team colour when it is taken, "?" when it is dropped, and neutral
+  again when it returns to base or is captured. The game had never sent the HUD those
+  events for the neutral flag, so the colour flash above could not appear in a match
+  until now. A player who spawns while the flag is carried or dropped sees its real
+  state. In CTF and Arena CTF, a Marine's HUD no longer keeps pulsing a dropped Strogg
+  flag; the retail HUD stopped a window that does not exist. Duel keeps the deathmatch
+  leader and own-score rows on purpose. A hidden client with no input checked Arena One
+  Flag CTF and One Flag CTF on stock `q4ctf1` (a Marine and a Strogg carrier, a drop,
+  the 30-second return, a respawn while the flag lay dropped, and a capture by each
+  team) and a CTF drop, through HUD event logs and screenshots, with no new warnings.
+  The game-side half is openQ4-game `de5ec71`.
 
 ## Unreleased — Quake 4: The Awakening (`q4xbase`)
 
