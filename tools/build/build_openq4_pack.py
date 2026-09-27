@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
-from openq4_pak import OPENQ4_PACK_NAMES, copy_file_if_changed, create_game_pk4
+from openq4_pak import OPENQ4_PACK_NAMES, advance_mtime_ns, copy_file_if_changed, create_game_pk4
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -65,6 +66,7 @@ def require_manifest_file(path: Path, pak_name: str) -> Path:
 
 
 def main(argv: list[str]) -> int:
+    started_ns = time.time_ns()
     args = parse_args(argv)
 
     pak_name = args.pak_name
@@ -96,6 +98,15 @@ def main(argv: list[str]) -> int:
         for relative_path in result.missing_required:
             print(f"  - {relative_path}", file=sys.stderr)
         return 1
+
+    # An identical pack is left unwritten, so it keeps the timestamp of the build
+    # that last changed it, which can predate a newer pack script or manifest.
+    # Ninja copes because Meson custom targets are restat edges: the log keeps
+    # this command's start time. But Meson runs `ninja -t restat` after every
+    # reconfigure, which swaps in the file's own time, and the next build would
+    # repack the unchanged archive (minutes for pak1). Stamp the time this run
+    # began, so an input edited during the run still reads as newer.
+    advance_mtime_ns(pak_out, started_ns)
 
     if args.stage_out:
         copy_if_changed(pak_out, Path(args.stage_out).resolve())

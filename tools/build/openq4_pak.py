@@ -157,6 +157,15 @@ def validate_pk4_arcname(name: str, pak_name: str, seen_names: set[str] | None =
     return canonical
 
 
+def advance_mtime_ns(path: Path, mtime_ns: int) -> bool:
+    """Move path's modification time forward to mtime_ns; never move it back."""
+    current = path.stat()
+    if current.st_mtime_ns >= mtime_ns:
+        return False
+    os.utime(path, ns=(current.st_atime_ns, mtime_ns))
+    return True
+
+
 def copy_file_if_changed(source: Path, destination: Path) -> bool:
     if source.is_symlink():
         raise RuntimeError(f"refusing to copy symlinked source file: {source}")
@@ -166,6 +175,10 @@ def copy_file_if_changed(source: Path, destination: Path) -> bool:
     if destination.is_symlink():
         destination.unlink()
     if destination.is_file() and filecmp.cmp(source, destination, shallow=False):
+        # Identical bytes still take a newer source timestamp, as a fresh copy2
+        # would, so a restamped pack never leaves its staged copies looking
+        # older than the build they came from.
+        advance_mtime_ns(destination, source.stat().st_mtime_ns)
         return False
 
     destination.parent.mkdir(parents=True, exist_ok=True)

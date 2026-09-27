@@ -11,6 +11,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import time
 import uuid
 from pathlib import Path
 from types import ModuleType
@@ -20,6 +21,9 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 ROOT = Path(__file__).resolve().parents[2]
 BUILD_DIR = ROOT / "tools" / "build"
 WORK_BASE = ROOT / ".tmp" / "packaging-safety-test"
+# 2000-01-01 UTC in whole seconds, so coarse-timestamp filesystems store it
+# exactly; older than anything a test run writes.
+OLD_MTIME_NS = 946_684_800 * 1_000_000_000
 
 
 def make_work_root() -> Path:
@@ -232,6 +236,30 @@ def validate_copy_helpers_do_not_follow_destination_symlinks() -> None:
             "symlinked source file",
             "copy_file_if_changed source symlink guard",
         )
+
+
+def validate_identical_copy_takes_newer_source_timestamp() -> None:
+    source = WORK / "copy-timestamps" / "pak1.pk4"
+    destination = WORK / "copy-timestamps" / "stage" / "pak1.pk4"
+    write_file(source, b"same\n")
+    write_file(destination, b"same\n")
+    source_ns = OLD_MTIME_NS + 3600 * 1_000_000_000
+    os.utime(destination, ns=(OLD_MTIME_NS, OLD_MTIME_NS))
+    os.utime(source, ns=(source_ns, source_ns))
+
+    if OPENQ4_PAK.copy_file_if_changed(source, destination):
+        raise AssertionError("copy_file_if_changed recopied an identical file")
+    if destination.stat().st_mtime_ns != source_ns:
+        raise AssertionError(
+            "an identical copy kept a timestamp older than its source, so staged runtime "
+            "checks would report it stale"
+        )
+
+    later_ns = source_ns + 3600 * 1_000_000_000
+    os.utime(destination, ns=(later_ns, later_ns))
+    OPENQ4_PAK.copy_file_if_changed(source, destination)
+    if destination.stat().st_mtime_ns != later_ns:
+        raise AssertionError("copy_file_if_changed moved an identical copy's timestamp backwards")
 
 
 def validate_pk4_replace_helper_does_not_preserve_destination_symlink() -> None:
@@ -901,6 +929,76 @@ def validate_build_pack_and_header_cli_guards() -> None:
             raise AssertionError(f"generate_pak_header.py accepted a symlinked PK4 input: {result.stderr}")
 
 
+def validate_unchanged_pack_rebuild_stays_current() -> None:
+    """An identical rebuild restamps the pack but leaves the checksum header alone.
+
+    Meson runs `ninja -t restat` after every reconfigure, which replaces each
+    logged timestamp with the output's own. A pack left unwritten with an mtime
+    older than its inputs was therefore repacked after every reconfigure. The
+    header must still stay untouched, or a restamped pack recompiles
+    FileSystem.cpp.
+    """
+    root = WORK / "unchanged-pack"
+    pack_args: dict[str, tuple[Path | str, ...]] = {}
+    for pak_name in OPENQ4_PAK.OPENQ4_PACK_NAMES:
+        source_dir = root / "source" / Path(pak_name).stem
+        for relative_path in sorted(OPENQ4_PAK.required_files_for_pack(pak_name)):
+            write_file(source_dir / relative_path, f"{relative_path}\n".encode("utf-8"))
+        pack_args[pak_name] = (
+            "--pak-name",
+            pak_name,
+            "--source-dir",
+            source_dir,
+            "--out",
+            root / "out" / pak_name,
+            "--stage-out",
+            root / "stage" / "baseoq4" / pak_name,
+        )
+        result = run_script(BUILD_DIR / "build_openq4_pack.py", *pack_args[pak_name])
+        if result.returncode != 0:
+            raise AssertionError(f"build_openq4_pack.py failed to build {pak_name}: {result.stderr}")
+
+    header_out = root / "out" / "openq4_paks_generated.h"
+    header_args = ("--pak0", root / "out" / "pak0.pk4", "--pak1", root / "out" / "pak1.pk4", "--header-out", header_out)
+    result = run_script(BUILD_DIR / "generate_pak_header.py", *header_args)
+    if result.returncode != 0:
+        raise AssertionError(f"generate_pak_header.py failed: {result.stderr}")
+    header_bytes = header_out.read_bytes()
+    os.utime(header_out, ns=(OLD_MTIME_NS, OLD_MTIME_NS))
+
+    for pak_name, args in pack_args.items():
+        pak_out = root / "out" / pak_name
+        stage_out = root / "stage" / "baseoq4" / pak_name
+        pak_bytes = pak_out.read_bytes()
+        for path in (pak_out, stage_out):
+            os.utime(path, ns=(OLD_MTIME_NS, OLD_MTIME_NS))
+
+        started_ns = time.time_ns()
+        result = run_script(BUILD_DIR / "build_openq4_pack.py", *args)
+        if result.returncode != 0:
+            raise AssertionError(f"build_openq4_pack.py failed to rebuild {pak_name}: {result.stderr}")
+        if pak_out.read_bytes() != pak_bytes or stage_out.read_bytes() != pak_bytes:
+            raise AssertionError(f"identical {pak_name} rebuild changed the pack bytes")
+        pak_mtime_ns = pak_out.stat().st_mtime_ns
+        # Two seconds of slack covers filesystems that store coarse timestamps.
+        if pak_mtime_ns < started_ns - 2_000_000_000:
+            raise AssertionError(
+                f"identical {pak_name} rebuild kept its old timestamp; the `ninja -t restat` "
+                "Meson runs after a reconfigure would make it repack again"
+            )
+        if stage_out.stat().st_mtime_ns < pak_mtime_ns:
+            raise AssertionError(f"identical {pak_name} stage copy kept a timestamp older than its pack")
+
+    result = run_script(BUILD_DIR / "generate_pak_header.py", *header_args)
+    if result.returncode != 0:
+        raise AssertionError(f"generate_pak_header.py failed to regenerate: {result.stderr}")
+    if header_out.read_bytes() != header_bytes or header_out.stat().st_mtime_ns != OLD_MTIME_NS:
+        raise AssertionError(
+            "generate_pak_header.py rewrote an unchanged header, so restamping a pack "
+            "would recompile FileSystem.cpp"
+        )
+
+
 def validate_version_manifest_integrity() -> None:
     expect_runtime_error(
         lambda: PACKAGE.parse_version_manifest_bytes(
@@ -1398,6 +1496,7 @@ def main() -> None:
         validate_pk4_source_containment()
         validate_pk4_archive_member_guards()
         validate_copy_helpers_do_not_follow_destination_symlinks()
+        validate_identical_copy_takes_newer_source_timestamp()
         validate_pk4_replace_helper_does_not_preserve_destination_symlink()
         validate_generated_text_writers_do_not_follow_symlinks()
         validate_legacy_build_pak0_copy_does_not_follow_symlink()
@@ -1409,6 +1508,7 @@ def main() -> None:
         validate_package_name_and_copy_guards()
         validate_renderer_module_staging()
         validate_build_pack_and_header_cli_guards()
+        validate_unchanged_pack_rebuild_stays_current()
         validate_version_manifest_integrity()
         validate_macos_signing_input_guards()
         validate_stage_manifest_rejects_unsafe_paths()

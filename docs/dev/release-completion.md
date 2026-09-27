@@ -354,8 +354,16 @@
   through. Edits to save-relevant sources no longer rebuild every game object: the
   savegame source stamp now stays out of the game precompiled headers, so adding a comment
   to `src/mpgame/Item.cpp` recompiled only that file, both `SaveGame.cpp` files and the
-  engine's `Session.cpp` before relinking. Each restage's Meson reconfigure still re-packs
-  pak1, a separate rebuild trigger.
+  engine's `Session.cpp` before relinking.
+- [x] A Meson reconfigure, which every restage triggers, no longer re-packs the unchanged
+  openQ4 packs. Meson follows each reconfigure with `ninja -t restat`, and a pack left
+  unwritten because its bytes had not changed kept a timestamp older than its pack
+  scripts, so ninja rebuilt the 800 MB `pak1.pk4` after every restage (two to five minutes
+  on Windows x64). An unchanged pack now takes the time its build step started, and
+  identical staged copies take that timestamp too, so the multiplayer smokes still see a
+  fast-staged `.install` as current. Across two reconfigures on Windows x64 neither pack
+  was rebuilt and `FileSystem.cpp` did not recompile; only the pack checksum header was
+  checked again, in about 1.5 seconds.
 
 ## Unreleased — Quake 4: The Awakening (`q4xbase`)
 
