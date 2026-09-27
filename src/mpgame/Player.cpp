@@ -15568,7 +15568,12 @@ void idPlayer::SetInitialHud ( void ) {
 	if( gameLocal.IsFlagGameType() ) {
 		mphud->SetStateFloat( "ap", gameLocal.mpGame.assaultPoints.Num() );
 
-		for( int i = 0; i < TEAM_MAX; i++ ) {
+		// openQ4: One Flag CTF's neutral flag has its own slot after the two team
+		// flags, and it is the only flag the one flag HUD draws.  The team flags
+		// never leave base in that mode, so their pass just resets the display
+		// before the neutral flag's real state is sent.
+		const int numFlags = ( gameLocal.gameType == GAME_1F_CTF || gameLocal.gameType == GAME_ARENA_1F_CTF ) ? MAX_CTF_FLAGS : TEAM_MAX;
+		for( int i = 0; i < numFlags; i++ ) {
 			mphud->SetStateInt( "team", i );
 			if( ((rvCTFGameState*)gameLocal.mpGame.GetGameState())->GetFlagState( i ) == FS_DROPPED ) {
 				mphud->HandleNamedEvent( "flagDrop" );

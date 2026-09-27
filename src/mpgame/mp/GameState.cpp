@@ -1502,10 +1502,10 @@ void rvCTFGameState::GameStateChanged( void ) {
 	// means "my flag"), while the one-flag remap at the top of the loop sets it
 	// to the team that HOLDS it - so feeding the neutral slot through here plays
 	// each announcement to exactly the wrong side, and FS_DROPPED/FS_AT_BASE are
-	// not remapped at all and would push team index 2 into the MP HUD.  Giving
-	// One Flag CTF real flag feedback means reworking the owner/holder sense of
-	// this whole loop; the widened storage below is what stops it corrupting
-	// apState in the meantime.
+	// not remapped at all and would push team index 2 into the MP HUD.  The
+	// neutral flag's HUD display is driven after this loop instead; announcer
+	// lines and notices for it still mean reworking the owner/holder sense of
+	// this whole loop.  The widened storage is what stops it corrupting apState.
 	for( int i = 0; i < TEAM_MAX; i++ ) {
 		if( flagStatus[ i ] == ((rvCTFGameState*)previousGameState)->flagStatus[ i ] ) {
 			continue;
@@ -1622,6 +1622,33 @@ void rvCTFGameState::GameStateChanged( void ) {
 				player->mphud->SetStateInt( "team", flagTeam );
 				player->mphud->HandleNamedEvent ( "flagTaken" );
 			}
+		}
+	}
+
+	// openQ4: One Flag CTF's neutral flag, which the loop above leaves out.  It
+	// has no owner, so only the MP HUD hears about it, and gui::team is the team
+	// holding it: the one flag display pulses toward that team's colour.  Unlike
+	// the loop, a change that lands with a match state change still reaches the
+	// HUD, so a restart or a capture that ends the match cannot leave it stale.
+	if ( ( gameLocal.gameType == GAME_1F_CTF || gameLocal.gameType == GAME_ARENA_1F_CTF ) && player->mphud &&
+		flagStatus[ TEAM_MAX ] != ((rvCTFGameState*)previousGameState)->flagStatus[ TEAM_MAX ] ) {
+		switch ( flagStatus[ TEAM_MAX ].state ) {
+			case FS_TAKEN_MARINE:
+				player->mphud->SetStateInt( "team", TEAM_MARINE );
+				player->mphud->HandleNamedEvent( "flagTaken" );
+				break;
+			case FS_TAKEN_STROGG:
+				player->mphud->SetStateInt( "team", TEAM_STROGG );
+				player->mphud->HandleNamedEvent( "flagTaken" );
+				break;
+			case FS_DROPPED:
+				player->mphud->HandleNamedEvent( "flagDrop" );
+				break;
+			case FS_AT_BASE:
+				player->mphud->HandleNamedEvent( "flagReturn" );
+				break;
+			default:
+				break;
 		}
 	}
 }
