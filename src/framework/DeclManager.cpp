@@ -206,8 +206,15 @@ public:
 	int							LoadAndParse( bool unique = false );
 	int							LoadAndParse( idFile *file );
 
+private:
+	int							ReadText( void **buffer, ID_TIME_T *fileTimestamp ) const;
+
 public:
 	idStr						fileName;
+	// Empty for the copy the search path resolves. Otherwise this is a shadowed
+	// copy of fileName read from that game directory only, layered beneath a
+	// mod's copy (see idDeclManagerLocal::LoadDeclFileLayers).
+	idStr						layerGameDir;
 	declType_t					defaultType;
 
 	ID_TIME_T						timestamp;
@@ -355,8 +362,9 @@ public:
 	idHashTable<rvDeclGuide *>	guideTable;
 private:
 	void						RegisterDeclFolder( const char *folder, const char *extension, declType_t defaultType, bool unique, bool norecurse );
-	idDeclFile *				FindLoadedDeclFile( const char *fileName );
-	idDeclFile *				FindOrCreateLoadedDeclFile( const char *fileName, declType_t defaultType );
+	void						LoadDeclFileLayers( const char *fileName, declType_t defaultType, bool unique );
+	idDeclFile *				FindLoadedDeclFile( const char *fileName, const char *layerGameDir = "" );
+	idDeclFile *				FindOrCreateLoadedDeclFile( const char *fileName, declType_t defaultType, const char *layerGameDir = "" );
 	idDeclFolder *				FindOrCreateDeclFolder( const char *folder, const char *extension, declType_t defaultType );
 	bool						TypeListContains( const idList<declType_t> &types, declType_t type ) const;
 	int							GetTotalTextMemory( declType_t type );
@@ -398,6 +406,7 @@ private:
 };
 
 idCVar idDeclManagerLocal::decl_show( "decl_show", "0", CVAR_SYSTEM, "set to 1 to print parses, 2 to also print references", 0, 2, idCmdSystem::ArgCompletion_Integer<0,2> );
+static idCVar decl_layerModFiles( "decl_layerModFiles", "1", CVAR_SYSTEM | CVAR_BOOL | CVAR_INIT, "when a mod ships a decl file under the same name as a file of the game beneath it, keep the game's decls the mod's copy does not define" );
 idCVar com_SingleDeclFile( "com_SingleDeclFile", "0", CVAR_SYSTEM | CVAR_BOOL, "load decls from a packed single .decls file instead of scanning loose decl folders" );
 static idCVar com_singleDeclFileName( "com_singleDeclFileName", "", CVAR_SYSTEM, "override packed decl file used by com_SingleDeclFile and writeDeclFile" );
 static idCVar com_singleDeclFileWriteMode( "com_singleDeclFileWriteMode", "0", CVAR_SYSTEM | CVAR_INTEGER, "packed .decls writer policy: 0 = openQ4 extended game types, 1 = exact retail game types", 0, 1, idCmdSystem::ArgCompletion_Integer<0,1> );
@@ -819,7 +828,7 @@ void idDeclFile::Reload( bool force ) {
 	// check for an unchanged timestamp
 	if ( !force && timestamp != 0 ) {
 		ID_TIME_T	testTimeStamp;
-		fileSystem->ReadFile( fileName, NULL, &testTimeStamp );
+		ReadText( NULL, &testTimeStamp );
 
 		if ( testTimeStamp == timestamp ) {
 			return;
@@ -828,6 +837,43 @@ void idDeclFile::Reload( bool force ) {
 
 	// parse the text
 	LoadAndParse();
+}
+
+/*
+================
+idDeclFile::ReadText
+
+Reads the copy of fileName this file stands for: whatever the search path
+resolves, or a layered copy from one game directory. With a NULL buffer only
+the timestamp is read. Returns the length, or -1.
+================
+*/
+int idDeclFile::ReadText( void **buffer, ID_TIME_T *fileTimestamp ) const {
+	if ( layerGameDir.IsEmpty() ) {
+		return fileSystem->ReadFile( fileName, buffer, fileTimestamp );
+	}
+
+	if ( buffer != NULL ) {
+		*buffer = NULL;
+	}
+	idFile *file = fileSystem->OpenFileRead( fileName, false, layerGameDir.c_str() );
+	if ( file == NULL ) {
+		if ( fileTimestamp != NULL ) {
+			*fileTimestamp = FILE_NOT_FOUND_TIMESTAMP;
+		}
+		return -1;
+	}
+	const int length = file->Length();
+	if ( fileTimestamp != NULL ) {
+		*fileTimestamp = file->Timestamp();
+	}
+	if ( buffer != NULL ) {
+		byte *text = (byte *)Mem_ClearedAlloc( length + 1 );
+		file->Read( text, length );
+		*buffer = text;
+	}
+	fileSystem->CloseFile( file );
+	return length;
 }
 /*
 ================
@@ -928,8 +974,8 @@ int idDeclFile::LoadAndParse( bool unique ) {
 	bool		referencedThisLevel;
 
 	// load the text
-	common->DPrintf( "...loading '%s'\n", fileName.c_str() );
-	length = fileSystem->ReadFile( fileName, (void **)&buffer, &timestamp );
+	common->DPrintf( "...loading '%s'%s%s\n", fileName.c_str(), layerGameDir.IsEmpty() ? "" : " from ", layerGameDir.c_str() );
+	length = ReadText( (void **)&buffer, &timestamp );
 	if ( length == -1 ) {
 		common->FatalError( "couldn't load %s", fileName.c_str() );
 		return 0;
@@ -1049,7 +1095,10 @@ int idDeclFile::LoadAndParse( bool unique ) {
 			if ( newDecl->sourceFile == this && !newDecl->redefinedInReload ) {
 				referencedThisLevel = newDecl->referencedThisLevel;
 			} else {
-				if ( !DeclManager_IsopenQ4OverrideDeclFile( newDecl->sourceFile ) &&
+				// a layered copy only fills in what the mod's copy above it left out
+				const bool shadowedByLayerAbove = !layerGameDir.IsEmpty() && newDecl->sourceFile != NULL &&
+					newDecl->sourceFile->fileName.Icmp( fileName ) == 0;
+				if ( !shadowedByLayerAbove && !DeclManager_IsopenQ4OverrideDeclFile( newDecl->sourceFile ) &&
 						!DeclManager_IsStockMaterialRedeclaration( identifiedType, name, newDecl->sourceFile, this ) ) {
 					src.Warning( "%s '%s' previously defined at %s:%i", declManagerLocal.GetDeclNameFromType( identifiedType ),
 									name.c_str(), newDecl->sourceFile->fileName.c_str(), newDecl->sourceLine );
@@ -2016,6 +2065,7 @@ void idDeclManagerLocal::RegisterDeclFolder( const char *folder, const char *ext
 			idStr fileName = declFolder->folder + "/" + fileList->GetFile( fileIndex );
 			idDeclFile *declFile = FindOrCreateLoadedDeclFile( fileName.c_str(), defaultType );
 			declFile->LoadAndParse( unique );
+			LoadDeclFileLayers( fileName.c_str(), defaultType, unique );
 		}
 		fileSystem->FreeFileList( fileList );
 	}
@@ -2041,6 +2091,66 @@ void idDeclManagerLocal::RegisterDeclFolder( const char *folder, const char *ext
 
 /*
 ===================
+idDeclManagerLocal::LoadDeclFileLayers
+
+A mod that ships a decl file under the same name as a file of the game beneath
+it replaces that whole file in the search path, and every decl the mod's copy
+leaves out disappears with it. The Awakening expansion does this to retail's
+player.def, debris.def, persona.def and music.sndshd, losing hundreds of decls
+its own content still uses. The mod's copy is parsed first, so its decls win;
+each shadowed copy below it (fs_game_base, the openQ4 runtime, then retail) is
+parsed afterwards from its own directory and adds only the decls still missing.
+Only copies the mod itself supplies are layered, so the openQ4 runtime's own
+replacements of retail files keep replacing them.
+===================
+*/
+void idDeclManagerLocal::LoadDeclFileLayers( const char *fileName, declType_t defaultType, bool unique ) {
+	if ( !decl_layerModFiles.GetBool() ) {
+		return;
+	}
+
+	const char *modDir = cvarSystem->GetCVarString( "fs_game" );
+	if ( modDir[0] == '\0' || !idStr::Icmp( modDir, BASE_GAMEDIR ) || !idStr::Icmp( modDir, OPENQ4_GAMEDIR ) ) {
+		return;
+	}
+
+	idFile *modCopy = fileSystem->OpenFileRead( fileName, false, modDir );
+	if ( modCopy == NULL ) {
+		return;
+	}
+	fileSystem->CloseFile( modCopy );
+
+	const char *modBaseDir = cvarSystem->GetCVarString( "fs_game_base" );
+	const char *lowerDirs[] = { modBaseDir, OPENQ4_GAMEDIR, BASE_GAMEDIR };
+	for ( int i = 0; i < (int)( sizeof( lowerDirs ) / sizeof( lowerDirs[0] ) ); i++ ) {
+		const char *gameDir = lowerDirs[i];
+		if ( gameDir[0] == '\0' || !idStr::Icmp( gameDir, modDir ) ) {
+			continue;
+		}
+		// fs_game_base may name the runtime or retail directory itself
+		bool alreadyLayered = false;
+		for ( int j = 0; j < i; j++ ) {
+			if ( !idStr::Icmp( lowerDirs[j], gameDir ) ) {
+				alreadyLayered = true;
+			}
+		}
+		if ( alreadyLayered ) {
+			continue;
+		}
+
+		idFile *shadowedCopy = fileSystem->OpenFileRead( fileName, false, gameDir );
+		if ( shadowedCopy == NULL ) {
+			continue;
+		}
+		fileSystem->CloseFile( shadowedCopy );
+
+		idDeclFile *layer = FindOrCreateLoadedDeclFile( fileName, defaultType, gameDir );
+		layer->LoadAndParse( unique );
+	}
+}
+
+/*
+===================
 idDeclManagerLocal::RegisterDeclFolderWrapper
 ===================
 */
@@ -2060,9 +2170,9 @@ void idDeclManagerLocal::RegisterDeclFolderWrapper( const char *folder, const ch
 idDeclManagerLocal::FindLoadedDeclFile
 ===================
 */
-idDeclFile *idDeclManagerLocal::FindLoadedDeclFile( const char *fileName ) {
+idDeclFile *idDeclManagerLocal::FindLoadedDeclFile( const char *fileName, const char *layerGameDir ) {
 	for ( int i = 0; i < loadedFiles.Num(); i++ ) {
-		if ( loadedFiles[i]->fileName.Icmp( fileName ) == 0 ) {
+		if ( loadedFiles[i]->fileName.Icmp( fileName ) == 0 && loadedFiles[i]->layerGameDir.Icmp( layerGameDir ) == 0 ) {
 			return loadedFiles[i];
 		}
 	}
@@ -2074,13 +2184,14 @@ idDeclFile *idDeclManagerLocal::FindLoadedDeclFile( const char *fileName ) {
 idDeclManagerLocal::FindOrCreateLoadedDeclFile
 ===================
 */
-idDeclFile *idDeclManagerLocal::FindOrCreateLoadedDeclFile( const char *fileName, declType_t defaultType ) {
-	idDeclFile *declFile = FindLoadedDeclFile( fileName );
+idDeclFile *idDeclManagerLocal::FindOrCreateLoadedDeclFile( const char *fileName, declType_t defaultType, const char *layerGameDir ) {
+	idDeclFile *declFile = FindLoadedDeclFile( fileName, layerGameDir );
 	if ( declFile != NULL ) {
 		return declFile;
 	}
 
 	declFile = new idDeclFile( fileName, defaultType );
+	declFile->layerGameDir = layerGameDir;
 	loadedFiles.Append( declFile );
 	return declFile;
 }
