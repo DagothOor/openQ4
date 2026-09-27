@@ -333,8 +333,12 @@ unresolved segment in debug output instead of relying on lowercase assumptions.
 
 "additional mod path search":
 fs_game_base can be used to set an additional search path
-in search order, fs_game, fs_game_base, BASEGAME
-for instance to base a mod of openQ4 + D3XP assets, fs_game mymod, fs_game_base baseoq4
+in search order, fs_game, fs_game_base, baseoq4, BASEGAME
+Any mod selected with fs_game runs on top of the openQ4 runtime directory
+(baseoq4), which carries the engine's own runtime content and the fallback
+game modules, so it is searched below the mod without being named. fs_game_base
+remains free for an intermediate base, for instance a mod built on the
+Awakening expansion: fs_game mymod, fs_game_base q4xbase
 
 =============================================================================
 */
@@ -1611,6 +1615,7 @@ private:
 	bool					FindMisplacedOfficialPaks( idStr &errors ) const;
 	bool					ValidateOpenQ4Paks( idStr &errors ) const;
 	bool					ValidateRequiredOfficialPaks( idStr &errors ) const;
+	bool					UsesOpenQ4RuntimeUnderlay( void ) const;
 	void					Startup( void );
 	void					SetRestrictions( void );
 							// some files can be obtained from directories without compromising si_pure
@@ -2431,14 +2436,16 @@ const char *idFileSystemLocal::OSPathToRelativePath( const char *OSPath ) {
 	}
 #endif
 	// fs_game and fs_game_base support - look for first complete name with a mod path
-	// ( fs_game searched before fs_game_base )
+	// ( fs_game searched before fs_game_base, then the openQ4 runtime under a mod )
 	const char *fsgame = NULL;
 	int igame = 0;
-	for ( igame = 0; igame < 2; igame++ ) {
+	for ( igame = 0; igame < 3; igame++ ) {
 		if ( igame == 0 ) {
 			fsgame = fs_game.GetString();
 		} else if ( igame == 1 ) {
 			fsgame = fs_game_base.GetString();
+		} else {
+			fsgame = UsesOpenQ4RuntimeUnderlay() ? OPENQ4_GAMEDIR : NULL;
 		}
 		if ( base == NULL && fsgame && strlen( fsgame ) ) {
 			base = (char *)strstr( OSPath, fsgame );
@@ -5355,7 +5362,8 @@ bool idFileSystemLocal::ValidateOpenQ4Paks( idStr &errors ) const {
 	errors.Clear();
 
 	if ( idStr::Icmp( fs_game.GetString(), OPENQ4_GAMEDIR ) &&
-		 idStr::Icmp( fs_game_base.GetString(), OPENQ4_GAMEDIR ) ) {
+		 idStr::Icmp( fs_game_base.GetString(), OPENQ4_GAMEDIR ) &&
+		 !UsesOpenQ4RuntimeUnderlay() ) {
 		return true;
 	}
 
@@ -5381,6 +5389,25 @@ bool idFileSystemLocal::ValidateOpenQ4Paks( idStr &errors ) const {
 	}
 
 	return ( errors.Length() == 0 );
+}
+
+/*
+================
+idFileSystemLocal::UsesOpenQ4RuntimeUnderlay
+
+A mod selected with fs_game runs on top of the openQ4 runtime directory.
+baseoq4 holds the engine's own runtime content (GLSL programs, fonts, strings,
+menus) and the fallback game modules, none of which a mod can be expected to
+carry, so it stays in the search path below the mod unless the mod already
+names it through fs_game_base.
+================
+*/
+bool idFileSystemLocal::UsesOpenQ4RuntimeUnderlay( void ) const {
+	const char *game = fs_game.GetString();
+	if ( game[ 0 ] == '\0' || !idStr::Icmp( game, BASE_GAMEDIR ) || !idStr::Icmp( game, OPENQ4_GAMEDIR ) ) {
+		return false;
+	}
+	return idStr::Icmp( fs_game_base.GetString(), OPENQ4_GAMEDIR ) != 0;
 }
 
 /*
@@ -5567,6 +5594,11 @@ void idFileSystemLocal::Startup( void ) {
 	}
 
 	SetupGameDirectories( BASE_GAMEDIR );
+
+	// the openQ4 runtime sits between the retail assets and any mod
+	if ( UsesOpenQ4RuntimeUnderlay() ) {
+		SetupGameDirectories( OPENQ4_GAMEDIR );
+	}
 
 	// fs_game_base override
 	if ( fs_game_base.GetString()[0] &&
@@ -6700,6 +6732,11 @@ idFile *idFileSystemLocal::OpenFileReadFlags( const char *relativePath, int sear
 		} else if ( search->pack && ( searchFlags & FSFLAG_SEARCH_PAKS ) ) {
 
 			if ( !search->pack->hashTable[hash] ) {
+				continue;
+			}
+
+			// a game directory restriction covers its paks as well as its loose files
+			if ( gamedir && gamedir[0] && !IsGameDirPack( search->pack, gamedir ) ) {
 				continue;
 			}
 
