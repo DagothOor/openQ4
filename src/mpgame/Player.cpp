@@ -9605,6 +9605,10 @@ GetItemCost
 ==============
 */
 int idPlayer::GetItemCost( const char* itemName ) {
+	int price;
+	if ( idBuyItemPrice::Find( itemName, price ) ) {
+		return price;
+	}
 	if ( !itemCosts ) {
 		assert( false );
 		return 99999;
@@ -9614,59 +9618,110 @@ int idPlayer::GetItemCost( const char* itemName ) {
 
 /*
 ==============
+idPlayer::HasItemPrice
+
+True when a layer or the content prices the item. Weapon mods and FC Armor
+Regen, which retail never sold, are for sale only where something does.
+==============
+*/
+bool idPlayer::HasItemPrice( const char* itemName ) {
+	int price;
+	return idBuyItemPrice::Find( itemName, price ) || ( itemCosts != NULL && itemCosts->dict.FindKey( itemName ) != NULL );
+}
+
+/*
+==============
+idBuyItemPrice
+==============
+*/
+idBuyItemPrice *idBuyItemPrice::list = NULL;
+
+idBuyItemPrice::idBuyItemPrice( const char *item, int price ) :
+	item( item ),
+	price( price ),
+	next( list ) {
+	list = this;
+}
+
+bool idBuyItemPrice::Find( const char *item, int &price ) {
+	for ( const idBuyItemPrice *entry = list; entry != NULL; entry = entry->next ) {
+		if ( !idStr::Icmp( entry->item, item ) ) {
+			price = entry->price;
+			return true;
+		}
+	}
+	return false;
+}
+
+/*
+==============
+Buy impulses
+
+A buy travels from client to server as impulse IMPULSE_100 + its index here
+(an 8-bit event, so the list may run past IMPULSE_127). Retail's items keep
+their numbers; the Awakening's fill the numbers retail left unused.
+==============
+*/
+static const char * const buyItemsByImpulse[] = {
+	"weapon_shotgun",					// IMPULSE_100
+	"weapon_machinegun",					// IMPULSE_101
+	"weapon_hyperblaster",				// IMPULSE_102
+	"weapon_grenadelauncher",			// IMPULSE_103
+	"weapon_nailgun",					// IMPULSE_104
+	"weapon_rocketlauncher",				// IMPULSE_105
+	"weapon_railgun",					// IMPULSE_106
+	"weapon_lightninggun",				// IMPULSE_107
+	"weapon_spikegun",					// IMPULSE_108
+	"weapon_napalmgun",					// IMPULSE_109
+	"weapon_dmg",						// IMPULSE_110
+	"wpmod_shotgun_ammo",				// IMPULSE_111
+	"wpmod_hyperblaster_bounce1",		// IMPULSE_112
+	"wpmod_nailgun_rof",					// IMPULSE_113
+	"wpmod_lightninggun_chain",			// IMPULSE_114
+	"wpmod_railgun_penetrate",			// IMPULSE_115
+	"wpmod_grenade_concussion_blast",	// IMPULSE_116
+	"wpmod_rocketlauncher_burst",		// IMPULSE_117
+	"item_armor_small",					// IMPULSE_118
+	"item_armor_large",					// IMPULSE_119
+	"ammorefill",						// IMPULSE_120
+	"wpmod_spikegun_scope",				// IMPULSE_121
+	"wpmod_goobgun_flamethrower",		// IMPULSE_122
+	"ammo_regen",						// IMPULSE_123
+	"health_regen",						// IMPULSE_124
+	"damage_boost",						// IMPULSE_125
+	"fc_armor_regen",					// IMPULSE_126
+	"weapon_freezegun",					// IMPULSE_127
+	"weapon_goobgun",					// IMPULSE_127 + 1
+};
+static const int numBuyItemsByImpulse = sizeof( buyItemsByImpulse ) / sizeof( buyItemsByImpulse[0] );
+static_assert( IMPULSE_100 + (int)( sizeof( buyItemsByImpulse ) / sizeof( buyItemsByImpulse[0] ) ) <= ( 1 << IMPULSE_NUMBER_OF_BITS ), "buy impulses must fit the impulse event" );
+
+/*
+==============
 GetItemBuyImpulse
 ==============
 */
 int GetItemBuyImpulse( const char* itemName )
 {
-	struct ItemBuyImpulse
-	{
-		const char*	itemName;
-		int			itemBuyImpulse;
-	};
-
-	ItemBuyImpulse itemBuyImpulseTable[] =
-	{
-		{ "weapon_shotgun",					IMPULSE_100, },
-		{ "weapon_machinegun",				IMPULSE_101, },
-		{ "weapon_hyperblaster",			IMPULSE_102, },
-		{ "weapon_grenadelauncher",			IMPULSE_103, },
-		{ "weapon_nailgun",					IMPULSE_104, },
-		{ "weapon_rocketlauncher",			IMPULSE_105, },
-		{ "weapon_railgun",					IMPULSE_106, },
-		{ "weapon_lightninggun",			IMPULSE_107, },
-		//									IMPULSE_108 - Unused
-		{ "weapon_napalmgun",				IMPULSE_109, },
-		//		{ "weapon_dmg",						IMPULSE_110, },
-		//									IMPULSE_111 - Unused
-		//									IMPULSE_112 - Unused
-		//									IMPULSE_113 - Unused
-		//									IMPULSE_114 - Unused
-		//									IMPULSE_115 - Unused
-		//									IMPULSE_116 - Unused
-		//									IMPULSE_117 - Unused
-		{ "item_armor_small",				IMPULSE_118, },
-		{ "item_armor_large",				IMPULSE_119, },
-		{ "ammorefill",						IMPULSE_120, },
-		//									IMPULSE_121 - Unused
-		//									IMPULSE_122 - Unused
-		{ "ammo_regen",						IMPULSE_123, },
-		{ "health_regen",					IMPULSE_124, },
-		{ "damage_boost",					IMPULSE_125, },
-		//									IMPULSE_126 - Unused
-		//									IMPULSE_127 - Unused
-	};
-	const int itemBuyImpulseTableSize = sizeof(itemBuyImpulseTable) / sizeof(itemBuyImpulseTable[0]);
-
-	for( int i = 0; i < itemBuyImpulseTableSize; ++ i )
-	{
-		if( !stricmp( itemBuyImpulseTable[ i ].itemName, itemName ) )
-		{
-			return itemBuyImpulseTable[ i ].itemBuyImpulse;
+	for ( int i = 0; i < numBuyItemsByImpulse; i++ ) {
+		if ( !idStr::Icmp( buyItemsByImpulse[ i ], itemName ) ) {
+			return IMPULSE_100 + i;
 		}
 	}
-
 	return 0;
+}
+
+/*
+==============
+GetBuyItemForImpulse
+==============
+*/
+static const char* GetBuyItemForImpulse( int impulse )
+{
+	if ( impulse < IMPULSE_100 || impulse >= IMPULSE_100 + numBuyItemsByImpulse ) {
+		return NULL;
+	}
+	return buyItemsByImpulse[ impulse - IMPULSE_100 ];
 }
 
 
@@ -9686,7 +9741,25 @@ itemBuyStatus_t idPlayer::ItemBuyStatus( const char* itemName )
 	}
 	else if( !idStr::Cmpn( itemName, "wpmod_", 6 ) )
 	{
-		return IBS_NOT_ALLOWED;
+		// a weapon mod is for sale only where something prices it (the Awakening),
+		// and only for a weapon the player carries
+		if ( !HasItemPrice( itemName ) )
+			return IBS_NOT_ALLOWED;
+
+		const idDict* modDict = gameLocal.FindEntityDefDict( itemName, false );
+		const char* weaponClass = modDict ? modDict->GetString( "weapon" ) : "";
+		const idDict* weaponDict = gameLocal.FindEntityDefDict( weaponClass, false );
+		const int weaponIndex = weaponDict ? SlotForWeapon( weaponClass ) : -1;
+		if ( weaponIndex < 0 || weaponIndex >= MAX_WEAPONS || !( inventory.weapons & ( 1 << weaponIndex ) ) )
+			return IBS_NOT_ALLOWED;
+
+		for ( int m = 0; m < MAX_WEAPONMODS; m++ ) {
+			if ( !idStr::Icmp( weaponDict->GetString( va( "def_mod%d", m + 1 ) ), itemName ) ) {
+				if ( inventory.weaponMods[ weaponIndex ] & ( 1 << m ) )
+					return IBS_ALREADY_HAVE;
+				break;
+			}
+		}
 	}
 	else if( itemNameStr == "item_armor_small" )
 	{
@@ -9727,7 +9800,9 @@ itemBuyStatus_t idPlayer::ItemBuyStatus( const char* itemName )
 	}
 	else if ( itemNameStr == "fc_armor_regen" )
 	{
-		return IBS_NOT_ALLOWED;
+		// the Awakening's fourth team special; retail never sold it
+		if ( !HasItemPrice( itemName ) )
+			return IBS_NOT_ALLOWED;
 	}
 
 	if ( gameLocal.gameType == GAME_DM || gameLocal.gameType == GAME_TOURNEY || gameLocal.gameType == GAME_ARENA_CTF || gameLocal.gameType == GAME_1F_CTF || gameLocal.gameType == GAME_ARENA_1F_CTF ) {
@@ -9736,6 +9811,8 @@ itemBuyStatus_t idPlayer::ItemBuyStatus( const char* itemName )
 		if ( itemNameStr == "health_regen" )
 			return IBS_NOT_ALLOWED;
 		if ( itemNameStr == "damage_boost" )
+			return IBS_NOT_ALLOWED;
+		if ( itemNameStr == "fc_armor_regen" )
 			return IBS_NOT_ALLOWED;
 	}
 
@@ -9821,6 +9898,11 @@ bool idPlayer::AttemptToBuyTeamPowerup( const char* itemName )
 		UpdateTeamPowerups( true );
 		return true;
 	}
+	else if ( itemNameStr == "fc_armor_regen" ) {
+		gameLocal.mpGame.AddTeamPowerup(POWERUP_FC_ARMOR_REGEN, SEC2MS(30), team);
+		UpdateTeamPowerups( true );
+		return true;
+	}
 
 	return false;
 }
@@ -9861,7 +9943,7 @@ bool idPlayer::AttemptToBuyItem( const char* itemName )
 	// Team-based effects
 	idStr itemNameStr = itemName;
 
-	if ( itemNameStr == "ammo_regen" || itemNameStr == "health_regen" || itemNameStr == "damage_boost" ) {
+	if ( itemNameStr == "ammo_regen" || itemNameStr == "health_regen" || itemNameStr == "damage_boost" || itemNameStr == "fc_armor_regen" ) {
 		return AttemptToBuyTeamPowerup(itemName);
 	}
 
@@ -9884,6 +9966,10 @@ void idPlayer::GenerateImpulseForBuyAttempt( const char* itemName ) {
 		return;
 
 	int itemBuyImpulse = GetItemBuyImpulse( itemName );
+	if ( itemBuyImpulse == 0 ) {
+		// not an item the buy menu sells; impulse 0 would select weapon 0
+		return;
+	}
 	PerformImpulse( itemBuyImpulse );
 }
 // RITUAL END
@@ -10005,37 +10091,14 @@ void idPlayer::PerformImpulse( int impulse ) {
 			break;
 		}
 
-// RITUAL BEGIN
-// squirrel: Mode-agnostic buymenus
-		case IMPULSE_100:	AttemptToBuyItem( "weapon_shotgun" );				break;
-		case IMPULSE_101:	AttemptToBuyItem( "weapon_machinegun" );			break;
-		case IMPULSE_102:	AttemptToBuyItem( "weapon_hyperblaster" );			break;
-		case IMPULSE_103:	AttemptToBuyItem( "weapon_grenadelauncher" );		break;
-		case IMPULSE_104:	AttemptToBuyItem( "weapon_nailgun" );				break;
-		case IMPULSE_105:	AttemptToBuyItem( "weapon_rocketlauncher" );		break;
-		case IMPULSE_106:	AttemptToBuyItem( "weapon_railgun" );				break;
-		case IMPULSE_107:	AttemptToBuyItem( "weapon_lightninggun" );			break;
-		case IMPULSE_108:	break; // Unused
-		case IMPULSE_109:	AttemptToBuyItem( "weapon_napalmgun" );				break;
-		case IMPULSE_110:	/* AttemptToBuyItem( "weapon_dmg" );*/				break;
-		case IMPULSE_111:	break; // Unused
-		case IMPULSE_112:	break; // Unused
-		case IMPULSE_113:	break; // Unused
-		case IMPULSE_114:	break; // Unused
-		case IMPULSE_115:	break; // Unused
-		case IMPULSE_116:	break; // Unused
-		case IMPULSE_117:	break; // Unused
-		case IMPULSE_118:	AttemptToBuyItem( "item_armor_small" );				break;
-		case IMPULSE_119:	AttemptToBuyItem( "item_armor_large" );				break;
-		case IMPULSE_120:	AttemptToBuyItem( "ammorefill" );					break;
-		case IMPULSE_121:	break; // Unused
-		case IMPULSE_122:	break; // Unused
-		case IMPULSE_123:	AttemptToBuyItem( "ammo_regen" );					break;
-		case IMPULSE_124:	AttemptToBuyItem( "health_regen" );					break;
-		case IMPULSE_125:	AttemptToBuyItem( "damage_boost" );					break;
-		case IMPULSE_126:	break; // Unused
-		case IMPULSE_127:	break; // Unused
-// RITUAL END
+		default: {
+			// the buy menu's impulses (see buyItemsByImpulse)
+			const char *buyItem = GetBuyItemForImpulse( impulse );
+			if ( buyItem != NULL ) {
+				AttemptToBuyItem( buyItem );
+			}
+			break;
+		}
 
 		case IMPULSE_50: {
 			// Flashlight is single-player only.

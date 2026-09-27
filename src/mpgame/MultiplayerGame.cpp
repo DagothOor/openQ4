@@ -15442,23 +15442,51 @@ void idMultiplayerGame::SetupBuyMenuItems()
 	if ( !player ) 
 		return;
 
-	buyMenu->SetStateInt( "buyStatus_shotgun", player->ItemBuyStatus( "weapon_shotgun" ) );
-	buyMenu->SetStateInt( "buyStatus_hyperblaster", player->ItemBuyStatus( "weapon_hyperblaster" ) );
-	buyMenu->SetStateInt( "buyStatus_grenadelauncher", player->ItemBuyStatus( "weapon_grenadelauncher" ) );
-	buyMenu->SetStateInt( "buyStatus_nailgun", player->ItemBuyStatus( "weapon_nailgun" ) );
-	buyMenu->SetStateInt( "buyStatus_rocketlauncher", player->ItemBuyStatus( "weapon_rocketlauncher" ) );
-	buyMenu->SetStateInt( "buyStatus_railgun", player->ItemBuyStatus( "weapon_railgun" ) );
-	buyMenu->SetStateInt( "buyStatus_lightninggun", player->ItemBuyStatus( "weapon_lightninggun" ) );
-	//	buyMenu->SetStateInt( "buyStatus_dmg", player->ItemBuyStatus( "weapon_dmg" ) );
-	buyMenu->SetStateInt( "buyStatus_napalmgun", player->ItemBuyStatus( "weapon_napalmgun" ) );
-
-	buyMenu->SetStateInt( "buyStatus_lightarmor", player->ItemBuyStatus( "item_armor_small" ) );
-	buyMenu->SetStateInt( "buyStatus_heavyarmor", player->ItemBuyStatus( "item_armor_large" ) );
-	buyMenu->SetStateInt( "buyStatus_ammorefill", player->ItemBuyStatus( "ammorefill" ) );
-
-	buyMenu->SetStateInt( "buyStatus_special0", player->ItemBuyStatus( "ammo_regen" ) );
-	buyMenu->SetStateInt( "buyStatus_special1", player->ItemBuyStatus( "health_regen" ) );
-	buyMenu->SetStateInt( "buyStatus_special2", player->ItemBuyStatus( "damage_boost" ) );
+	// each item's status for retail's buy menu (buyStatus_*) and whether it can be
+	// bought for the Awakening's (canbuy_*); a menu ignores the states it lacks
+	static const struct {
+		const char *	item;
+		const char *	retailStatus;
+		const char *	canBuy;
+	} buyMenuItems[] = {
+		{ "weapon_shotgun",					"buyStatus_shotgun",			"canbuy_shotgun" },
+		{ "weapon_hyperblaster",				"buyStatus_hyperblaster",		"canbuy_hyperblaster" },
+		{ "weapon_grenadelauncher",			"buyStatus_grenadelauncher",	"canbuy_grenadelauncher" },
+		{ "weapon_nailgun",					"buyStatus_nailgun",			"canbuy_nailgun" },
+		{ "weapon_rocketlauncher",			"buyStatus_rocketlauncher",		"canbuy_rocketlauncher" },
+		{ "weapon_railgun",					"buyStatus_railgun",			"canbuy_railgun" },
+		{ "weapon_lightninggun",				"buyStatus_lightninggun",		"canbuy_lightninggun" },
+		{ "weapon_napalmgun",					"buyStatus_napalmgun",			NULL },
+		{ "weapon_spikegun",					NULL,							"canbuy_corecannon" },
+		{ "weapon_goobgun",					NULL,							"canbuy_firecannon" },
+		{ "weapon_dmg",						NULL,							"canbuy_dmg" },
+		{ "weapon_freezegun",					NULL,							"canbuy_freezegun" },
+		{ "wpmod_shotgun_ammo",				NULL,							"canbuy_shotgunmod" },
+		{ "wpmod_hyperblaster_bounce1",			NULL,							"canbuy_hyperblastermod" },
+		{ "wpmod_nailgun_rof",					NULL,							"canbuy_nailgunmod" },
+		{ "wpmod_lightninggun_chain",			NULL,							"canbuy_lightininggunmod" },	// sic
+		{ "wpmod_railgun_penetrate",			NULL,							"canbuy_railgunmod" },
+		{ "wpmod_grenade_concussion_blast",	NULL,							"canbuy_grenadelaunchermod" },
+		{ "wpmod_rocketlauncher_burst",			NULL,							"canbuy_rocketlaunchermod" },
+		{ "wpmod_spikegun_scope",				NULL,							"canbuy_corecannonmod" },
+		{ "wpmod_goobgun_flamethrower",			NULL,							"canbuy_firecannonmod" },
+		{ "item_armor_small",					"buyStatus_lightarmor",			"canbuy_lightarmor" },
+		{ "item_armor_large",					"buyStatus_heavyarmor",			"canbuy_heavyarmor" },
+		{ "ammorefill",						"buyStatus_ammorefill",			"canbuy_ammorefill" },
+		{ "ammo_regen",						"buyStatus_special0",			"canbuy_special0" },
+		{ "health_regen",						"buyStatus_special1",			"canbuy_special1" },
+		{ "damage_boost",						"buyStatus_special2",			"canbuy_special2" },
+		{ "fc_armor_regen",					NULL,							"canbuy_special3" },
+	};
+	for ( int i = 0; i < (int)( sizeof( buyMenuItems ) / sizeof( buyMenuItems[0] ) ); i++ ) {
+		const itemBuyStatus_t status = player->ItemBuyStatus( buyMenuItems[ i ].item );
+		if ( buyMenuItems[ i ].retailStatus != NULL ) {
+			buyMenu->SetStateInt( buyMenuItems[ i ].retailStatus, status );
+		}
+		if ( buyMenuItems[ i ].canBuy != NULL ) {
+			buyMenu->SetStateBool( buyMenuItems[ i ].canBuy, status == IBS_CAN_BUY );
+		}
+	}
 
 	buyMenu->SetStateInt( "playerTeam", player->team );
 
@@ -16997,6 +17025,7 @@ bool idMultiplayerGame::Draw( int clientNum ) {
 			SetupBuyMenuItems();
 			player->UpdateHudStats( buyMenu );
 			buyMenu->HandleNamedEvent( "update_buymenu" );
+			buyMenu->HandleNamedEvent( "redraw" );
 			idPlayer* player = gameLocal.GetLocalPlayer();
 			buyMenu->SetStateString( "field_credits", va("%i", (int)player->buyMenuCash) );
 			buyMenu->Redraw(gameLocal.time);
@@ -22271,6 +22300,7 @@ void idMultiplayerGame::RedrawLocalBuyMenu( void )
 
 	SetupBuyMenuItems();
 	buyMenu->HandleNamedEvent( "update_buymenu" );
+	buyMenu->HandleNamedEvent( "redraw" );
 }
 
 
