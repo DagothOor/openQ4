@@ -359,7 +359,10 @@
   runs; a burning Strogg takes its damage once a second until it dies. The
   freeze gun slows and freezes enemies solid before they shatter, and the
   expansion's turrets track, tighten their aim and sweep as its maps expect.
-  Corpse pinning is still to come; see the [support plan](plans/q4x-awakening.md).
+  The spike gun's spikes stick where they land, stay in the enemies they kill
+  and pin the corpses to the wall behind them, and the scripted fights keep to
+  their intended targets. Games saved on every campaign map load.
+  See the [support plan](plans/q4x-awakening.md).
 - [x] The expansion's multiplayer: its buy menu works (`sq_buy`, bound to `b`),
   with its own prices and its new items: the core cannon (spike gun), fire
   cannon (goob gun), freeze gun, the nine weapon mods (each for the weapon you

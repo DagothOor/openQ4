@@ -72,6 +72,10 @@ Each is inert for stock content; the audit checked the retail defs for every key
 | `idBuyItemPrice` / `BUY_ITEM_PRICE`: prices a layer sets in code, ahead of `ItemCostConstants` | `src/mpgame/BuyPrices.cpp` |
 | `sq_buy` / `sq_buyMenu`, and the `canbuy_*` states on every buy-menu refresh | The expansion's `buymenu.gui` and `default.cfg` |
 | `openq4_reportMPWorld` also prints armor, credits and weapons (`MP_WORLD_INVENTORY`) | Headless multiplayer testing |
+| `idProjectile`: `sticky`, `passThroughActors`, `maxPinDistance` and the `STUCK` state; `canBePinned` on the corpse | The spike gun, the Pain Lord |
+| Transient AF constraints (`idAFConstraint::SetTransient`), left out of saves | Corpse pins |
+| `idAI`: `onlyTarget`, `onlyTarget2`, ... and `subStringOnlyTarget` | Scripted fights in m03, m04, m06, m07 and m09 |
+| `openq4_launchTestProjectile <def> <name> <target> [key value ...]` | Headless testing |
 
 ### Engine work in `openQ4`
 
@@ -107,7 +111,7 @@ Each is inert for stock content; the audit checked the retail defs for every key
 | `riMonsterTank` (breakable launcher and chest) | m02, m04, m08, m09 | Done |
 | `idTarget_ObjectiveBeacon` | m04, m05, m06, m06 invasion, m08 | Done (the compass that reads it is commented out of the shipped HUD) |
 | `WeaponGoobGun` + `DOTEntity` / `FireDOTEntity` | m02 on | Done |
-| `rvWeaponFreezeGun`, `WeaponSpikeGun` | player arsenal | Done, with freezing; corpse pinning is Phase 2 |
+| `rvWeaponFreezeGun`, `WeaponSpikeGun` | player arsenal | Done, with freezing, sticky spikes and corpse pinning |
 | `riMonsterTurret` (every turret spawn) | m01, m01 part 2, m04, m05 | Done |
 | `riMonsterPainLord` | m05 | Done |
 | `riMonsterValkaryne` | m08 (set piece), m09 | Done |
@@ -116,8 +120,13 @@ Each is inert for stock content; the audit checked the retail defs for every key
 
 ### Multiplayer
 
-`q4xdm1` runs as a listen server in DM, Team DM and DeadZone with the SP-shared classes;
-the expansion's powerup numbering, its two new powerups and its buy menu work (Phase 3).
+The expansion's own maps run as listen servers with a bot in a live match: `q4xctf1-6` in
+CTF, `q4xctf2` in Arena CTF, `q4xctf3` in DeadZone, `q4xctf5` in DM and `q4xtourney1` in
+Tourney and Team DM. (`q4xdm*` re-export the retail DM maps.) The expansion's powerup
+numbering, its two new powerups and its buy menu work (Phase 3). Its effects and materials
+name images that neither it nor retail ships (`gfx/effects/fire/p_fire2a`,
+`gfx/mp/ctf_neutral_flagstrip*`, `models/monsters/burn_misc_sm`); they load as the default
+image, as they would under retail.
 
 ## Phases
 
@@ -126,7 +135,7 @@ the expansion's powerup numbering, its two new powerups and its buy menu work (P
 Everything in the status table above, plus the engine work, the build, and the headless
 harness `.tmp/awakening/run_q4x.py` (local, untracked) used to boot each map.
 
-### Phase 2 — campaign polish
+### Phase 2 — campaign polish (done)
 
 - **Freezing** (done, in `openQ4-game`). Each `freezeEnemies` bolt adds 0.05 to an AI's
   freeze factor, capped at 0.9; the factor slows its animation (to a quarter at most),
@@ -139,15 +148,35 @@ harness `.tmp/awakening/run_q4x.py` (local, untracked) used to boot each map.
   `dynamicAccuracy` (spread tightens over `accuracyLerpTime` of firing),
   `delayedTracking` / `lockDelay` (turn sounds, and a pause before firing again),
   `scanAnim` (the security cameras sweep).
-- **Pinning** (to do). A spike that kills an AI pins its ragdoll: a ball-and-socket
-  constraint from the hit body to the surface within `maxPinDistance` behind it, with a
-  90 degree cone around the spike's line, unless the AI's def says `canBePinned 0`. It
-  needs the constraint to survive save and load, which a constraint added to the AF at
-  run time does not today.
+- **Sticky spikes and pinning** (done, in `openQ4-game`'s `idProjectile`). Retail's SDK
+  declares a `sticky` flag and never reads it; the expansion's spike and Pain Lord
+  projectiles set it. A sticky projectile that does not detonate on the world stays where
+  it hits it (bound to a mover it hits), and one that kills an actor stays in the corpse,
+  bound to the joint it hit, until its fuse runs out. `passThroughActors` spikes hurt a
+  living actor once and glance off it instead of detonating; the spike has no bounce, so
+  it drops away, as it did in the expansion's code. In single player a spike stuck in a
+  corpse pins it once its ragdoll is up: a ball-and-socket joint from the body it hit to
+  the first surface within `maxPinDistance` behind that body, free to swing 90 degrees
+  about the spike's line, unless the corpse's def says `canBePinned 0` (the Tank and the
+  Walker). The spike's `maxPinDistance` is 10, so a corpse is pinned only when it lands
+  against a wall. The joint is a *transient* AF constraint, which `idPhysics_AF::Save`
+  leaves out, so a game saved with a pinned corpse loads, with the corpse unpinned. None
+  of these keys appears in retail content.
+- **Scripted targets** (done, in `openQ4-game`'s `idAI`). `onlyTarget`, `onlyTarget2`, ...
+  name the only actors an AI may take as an enemy (`subStringOnlyTarget` lets a name match
+  by its start), and spawners pass them on as `spawn_onlyTarget*`. The set pieces rely on
+  them: m03's Strogg shoot at invisible targets on the dropship rather than at the player
+  inside it, m04's marine goes for one jumping grunt, m06's harvesters shoot at the
+  trucks, m07's bridge duel keeps to its two marines and a gladiator, and m09's Valkaryne
+  fights only the player.
+- **Savegames** (done). `idAI` saves one attack offset per animation of its model. Stock
+  models have at most 244 animations and openQ4's restore rejected more than 256; the
+  expansion's marines have 540 (its reference marine 1015), so a game saved on m04 never
+  loaded. The bound now follows the range of an animation number (32768).
 - **Dead keys.** `velScale`, `iff`, `spawn_iff`, `bindOrientied`, `canTurn` and
-  `ignoreAAS` have no reader in the expansion's own code either: nothing to do.
-  `onlyTarget` (an actor's allowed targets) and `useMasterRoll` / `useMasterPitch` (bind
-  orientation) do, and remain.
+  `ignoreAAS` have no reader in the expansion's own code either. Its only reader of
+  `useMasterRoll` / `useMasterPitch` is monster physics, and the content sets them on
+  movers, dropships and static models. Nothing to do for any of them.
 
 ### Phase 3 — multiplayer
 
@@ -219,6 +248,16 @@ Recorded because each one changed what "support" means here.
   once a second on an AI.
 - Every campaign map must load, spawn its entities without class errors and run to its
   after-load quit.
+- `.tmp/awakening/save_sweep.py` (local) saves every campaign map a few seconds in and
+  loads it in a second client. A load passes when nothing errors after the savegame
+  banner and the after-load cfg, which only runs once the restored map is live, echoes
+  its marker. `--game baseoq4` runs it on stock maps.
+- `.tmp/awakening/pin_test.py` (local) launches a spike at the world and at a fresh
+  Strogg marine on m04 with `openq4_launchTestProjectile`, and reads `g_debugDamage`'s
+  stick and pin reports; it then saves and loads the game with the corpse pinned.
+- `.tmp/awakening/onlytarget_test.py` (local) spawns a Strogg marine facing the player on
+  m04 with `noDamage 1` (so the level's marines cannot kill it first): with
+  `onlyTarget player1` it hurts the player, with `onlyTarget nobody` it never does.
 - `run_q4x.py mp/q4xdm1 --mp "Team DM"` starts a listen server; with `net_allowCheats`,
   `addbot` and `serverForceReady` the match goes live, and `openq4_reportMPWorld player1`
   reads the player back. `.tmp/awakening/mp_phase3_test.py` (local) picks up a spawned
@@ -226,3 +265,6 @@ Recorded because each one changed what "support" means here.
   token; `mp_stock_buy_test.py` checks that `baseoq4` buying is unchanged. Game time trails
   the real-time waits in a hidden run, so waits are generous and checks look for steps,
   not totals.
+- `.tmp/awakening/mp_maps_boot.py` (local) boots the expansion's multiplayer maps in the
+  gametypes listed under Status, adds a bot, forces the match live and reads the player
+  back.
