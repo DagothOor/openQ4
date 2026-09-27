@@ -11,7 +11,7 @@ env:
   # Pin the companion's GAME_API 48 and retained input/presentation contract.
   # Renderer API 14 device services are private to this engine repository.
   # Publish this companion commit before CI runs.
-  OPENQ4_GAMELIBS_SHA: 030ac254d576d8a79b841eb297e24bcd9840d5fc
+  OPENQ4_GAMELIBS_SHA: 60b47ae13d64ae8f644bd6edc8578acb067cc70e
 
 concurrency:
   group: openq4-push-verification-${{ github.ref }}
