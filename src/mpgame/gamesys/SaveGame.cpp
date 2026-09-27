@@ -20,6 +20,23 @@
 	#include "NoGameTypeInfo.h"
 #endif
 
+// The generated stamp hashes every save-relevant game source, so it changes
+// whenever one of them does. Keep it out of SaveGame.h: through Game_local.h it
+// would reach the game PCH, and every such edit would rebuild the whole game.
+#if defined( __has_include )
+#if __has_include( "openq4_savegame_compat_generated.h" )
+#include "openq4_savegame_compat_generated.h"
+#endif
+#endif
+
+#ifndef OPENQ4_SAVEGAME_COMPAT_SOURCE_HASH
+#define OPENQ4_SAVEGAME_COMPAT_SOURCE_HASH "standalone-openq4-game"
+#endif
+
+#ifndef OPENQ4_SAVEGAME_COMPAT_SOURCE_FILE_COUNT
+#define OPENQ4_SAVEGAME_COMPAT_SOURCE_FILE_COUNT 0
+#endif
+
 /*
 Save game related helper classes.
 

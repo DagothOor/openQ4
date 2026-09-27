@@ -18,20 +18,6 @@ const int OPENQ4_SAVEGAME_FOOTER_VERSION = 1;
 const int OPENQ4_SAVEGAME_INTEGRITY_MAGIC = 'O' | ( 'Q' << 8 ) | ( '4' << 16 ) | ( 'I' << 24 );
 const int OPENQ4_SAVEGAME_INTEGRITY_VERSION = 1;
 
-#if defined( __has_include )
-#if __has_include( "openq4_savegame_compat_generated.h" )
-#include "openq4_savegame_compat_generated.h"
-#endif
-#endif
-
-#ifndef OPENQ4_SAVEGAME_COMPAT_SOURCE_HASH
-#define OPENQ4_SAVEGAME_COMPAT_SOURCE_HASH "standalone-openq4-game"
-#endif
-
-#ifndef OPENQ4_SAVEGAME_COMPAT_SOURCE_FILE_COUNT
-#define OPENQ4_SAVEGAME_COMPAT_SOURCE_FILE_COUNT 0
-#endif
-
 const char *OpenQ4SaveGameWireABI( void );
 
 class idSaveGame {
