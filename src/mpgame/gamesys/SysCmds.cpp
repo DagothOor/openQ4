@@ -1508,15 +1508,16 @@ void Cmd_EvaluateMPPerformance_f( const idCmdArgs &args ) {
 ==================
 Cmd_Damage_f
 
-Damages the specified entity
+Damages the specified entity, with damage_moverCrush (1 point) unless a
+damage def is named, in which case <damage> scales it
 ==================
 */
 void Cmd_Damage_f( const idCmdArgs &args ) {
 	if ( !gameLocal.GetLocalPlayer() || !gameLocal.CheatsOk( false ) ) {
 		return;
 	}
-	if ( args.Argc() != 3 ) {
-		gameLocal.Printf( "usage: damage <name of entity to damage> <damage>\n" );
+	if ( args.Argc() != 3 && args.Argc() != 4 ) {
+		gameLocal.Printf( "usage: damage <name of entity to damage> <damage> [damage def]\n" );
 		return;
 	}
 
@@ -1526,7 +1527,13 @@ void Cmd_Damage_f( const idCmdArgs &args ) {
 		return;
 	}
 
-	ent->Damage( gameLocal.world, gameLocal.world, idVec3( 0, 0, 1 ), "damage_moverCrush", atoi( args.Argv( 2 ) ), INVALID_JOINT );
+	const char *damageDefName = args.Argc() == 4 ? args.Argv( 3 ) : "damage_moverCrush";
+	if ( !gameLocal.FindEntityDefDict( damageDefName, false ) ) {
+		gameLocal.Printf( "damage def '%s' not found\n", damageDefName );
+		return;
+	}
+
+	ent->Damage( gameLocal.world, gameLocal.world, idVec3( 0, 0, 1 ), damageDefName, atof( args.Argv( 2 ) ), INVALID_JOINT );
 }
 
 

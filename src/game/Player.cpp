@@ -12230,6 +12230,14 @@ void idPlayer::CalcDamagePoints( idEntity *inflictor, idEntity *attacker, const 
 
 	damage = ceil(damageScale*(float)damage);
 
+	float actorScale = damageTakenScale;
+	if ( attacker->IsType( idActor::GetClassType() ) ) {
+		actorScale *= static_cast<idActor *>( attacker )->GetDamageDealtScale();
+	}
+	if ( actorScale != 1.0f ) {
+		damage = ceil( actorScale * (float)damage );
+	}
+
 	pDmgScale = damageDef->GetFloat( "playerScale", "1" );
 	damage = ceil(pDmgScale*(float)damage);
 
@@ -12732,6 +12740,9 @@ float idPlayer::CalcFov( bool honorZoom ) {
  			fov = ( honorZoom && zoomed && weapon ) ? zoomTargetFov : DefaultFov();
 		} else {
 			fov = zoomFov.GetCurrentValue( gameLocal.time );
+		}
+		if ( vehicle ) {
+			fov += vehicle->GetFovOffset();
 		}
 	} else {
 		if ( zoomFov.IsDone( gameLocal.time ) ) {

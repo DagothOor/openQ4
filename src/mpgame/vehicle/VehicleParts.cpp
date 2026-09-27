@@ -750,6 +750,17 @@ void rvVehicleWeapon::Activate ( bool activate ) {
 
 /*
 =====================
+rvVehicleWeapon::Select
+=====================
+*/
+void rvVehicleWeapon::Select ( bool select ) {
+	if ( !select ) {
+		StopTargetEffect( );
+	}
+}
+
+/*
+=====================
 rvVehicleWeapon::StopTargetEffect
 =====================
 */
@@ -1279,6 +1290,7 @@ void rvVehicleWeapon::LaunchProjectile( const idVec3& origin, const idVec3& _dir
 	projectile = ( idProjectile * )ent;
 	projectile->Create( position->GetDriver(), origin, dir, parent );
 	projectile->Launch( origin, dir, pushVelocity, 0.0f, 1.0f );
+	ProjectileLaunched( projectile );
 	
 	if ( projectile->IsType ( idGuidedProjectile::GetClassType() ) ) {
 		if ( spawnArgs.GetBool("guideTowardsDir") && (!targetEnt || targetJoint == INVALID_JOINT) ) {
@@ -1338,10 +1350,25 @@ void rvVehicleWeapon::LaunchProjectiles() {
 
 	gameLocal.AlertAI( parent );
 
+	// "convergence" bends shots from a barrel off the driver's line of sight
+	// towards the point the driver is aiming at
+	idVec3 aimDir = axis[0];
+	const float convergence = idMath::ClampFloat( 0.0f, 1.0f, spawnArgs.GetFloat( "convergence" ) );
+	if ( convergence > 0.0f ) {
+		trace_t	tr;
+		const idVec3 eyeOrigin = position->GetEyeOrigin();
+		gameLocal.TracePoint( parent, tr, eyeOrigin, eyeOrigin + position->GetEyeAxis()[0] * 5000.0f, MASK_SHOT_RENDERMODEL, parent );
+		idVec3 toAim = tr.endpos - origin;
+		if ( toAim.Normalize() > 0.0f ) {
+			aimDir = toAim * convergence + axis[0] * ( 1.0f - convergence );
+			aimDir.Normalize();
+		}
+	}
+
 	for( int i = 0; i < count; i ++ ) {
 		ang = idMath::Sin( spreadRad * gameLocal.random.RandomFloat() );
 		spin = DEG2RAD( 360.0f ) * gameLocal.random.RandomFloat();
-		dir = axis[0] + axis[ 2 ] * ( ang * idMath::Sin( spin ) ) - axis[ 1 ] * ( ang * idMath::Cos( spin ) );
+		dir = aimDir + axis[ 2 ] * ( ang * idMath::Sin( spin ) ) - axis[ 1 ] * ( ang * idMath::Cos( spin ) );
 		dir.Normalize();
 
 		if ( g_debugWeapon.GetBool() ) {

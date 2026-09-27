@@ -33,6 +33,7 @@ const idEventDef AI_GetEnemy						( "getEnemy", NULL, 'e' );
 const idEventDef AI_SetEnemy						( "setEnemy", "E" );
 const idEventDef AI_SetHealth						( "setHealth", "f" );
 const idEventDef AI_SetTalkState					( "setTalkState", "d" );
+const idEventDef AI_ResetTalkCount					( "resetTalkCount" );
 const idEventDef AI_SetScript						( "setScript", "ss" );
 const idEventDef AI_SetMoveSpeed					( "setMoveSpeed", "d" );
 const idEventDef AI_SetPassivePrefix				( "setPassivePrefix", "s" );
@@ -112,6 +113,8 @@ void idAI::Event_SetHealth( float newHealth )												{ health = newHealth; f
 void idAI::Event_FaceEnemy( void )															{ FaceEnemy(); }
 void idAI::Event_FaceEntity( idEntity *ent )												{ FaceEntity( ent ); }
 void idAI::Event_SetTalkState( int state )													{ SetTalkState ( (talkState_t)state );  }
+// Quake 4: The Awakening scripts restart an NPC's conversation from its first line.
+void idAI::Event_ResetTalkCount( void )														{ talkMessage = TALKMSG_NONE; SetTalkState( TALK_OK ); }
 void idAI::Event_Speak( const char *speechDecl )											{ Speak( speechDecl ); }
 void idAI::Event_SpeakRandom( const char *speechDecl )										{ Speak( speechDecl, true ); }
 void idAI::Event_GetLeader( void )															{ idThread::ReturnEntity( leader ); }
@@ -161,6 +164,7 @@ CLASS_DECLARATION( idActor, idAI )
 
 	// Get / Set 
 	EVENT( AI_SetTalkState,						idAI::Event_SetTalkState )
+	EVENT( AI_ResetTalkCount,					idAI::Event_ResetTalkCount )
 	EVENT( AI_SetLeader,						idAI::Event_SetLeader )
 	EVENT( AI_GetLeader,						idAI::Event_GetLeader )
 	EVENT( AI_SetEnemy,							idAI::Event_SetEnemy )

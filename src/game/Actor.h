@@ -189,9 +189,18 @@ public:
 // nmckenzie: a final hook in the middle of the damage function
 	virtual void			AdjustHealthByDamage ( int inDamage ){health -= inDamage;}
 // RAVEN END
+	virtual void			ApplyDamage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir, int damage, int location );
+							// picks the pain animation family ("pain_<type>") for damage applied without a damage def
+	void					SetPainType( const char *type ) { painType = type; }
 
 	virtual int				GetDamageForLocation( int damage, int location );
 	const char *			GetDamageGroup( int location );
+
+							// Scales on the damage this actor deals and takes (1 = unchanged).
+							// Not saved: whatever buffs an actor re-applies it after a restore.
+	void					SetDamageScales( float dealt, float taken ) { damageDealtScale = dealt; damageTakenScale = taken; }
+	float					GetDamageDealtScale( void ) const { return damageDealtScale; }
+	float					GetDamageTakenScale( void ) const { return damageTakenScale; }
 	void					ClearPain( void );
 	virtual bool			Pain( idEntity *inflictor, idEntity *attacker, int damage, const idVec3 &dir, int location );
 	virtual void			AddDamageEffect( const trace_t &collision, const idVec3 &velocity, const char *damageDefName, idEntity* inflictor );
@@ -264,6 +273,9 @@ public:
 
 protected:
 	friend class			idAnimState;
+
+	float					damageDealtScale;
+	float					damageTakenScale;
 
 	float					fovDot;				// cos( fovDegrees )
 	float					fovCloseDot;		// cos( fovDegreesClose )

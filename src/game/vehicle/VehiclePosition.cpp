@@ -633,10 +633,11 @@ void rvVehiclePosition::SelectWeapon ( int weapon ) {
 
 // mekberg: clear effect
 	if ( mCurrentWeapon != -1 ) {
-		static_cast<rvVehicleWeapon*> ( mWeapons[ mCurrentWeapon ] )->StopTargetEffect( );
+		static_cast<rvVehicleWeapon*> ( mWeapons[ mCurrentWeapon ] )->Select( false );
 	}
 	
 	mCurrentWeapon = weapon;
+	static_cast<rvVehicleWeapon*> ( mWeapons[ mCurrentWeapon ] )->Select( true );
 }
 
 /*

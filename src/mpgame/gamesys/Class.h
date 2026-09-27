@@ -93,6 +93,29 @@ public:
 
 ***********************************************************************/
 
+/***********************************************************************
+
+  idClassRegistrar
+
+  Every CLASS_DECLARATION and ABSTRACT_DECLARATION leaves one of these at
+  static initialization. idClass::RegisterClasses() registers the classes it
+  names explicitly, then every class with a registrar, so classes a
+  game-library layer links into the module exist as well.
+
+***********************************************************************/
+
+class idClassRegistrar {
+public:
+								idClassRegistrar( void ( *registerClass )( void ) );
+	static void					RegisterAll( void );
+
+private:
+	void						( *registerClass )( void );
+	idClassRegistrar *			next;
+
+	static idClassRegistrar *	list;
+};
+
 /*
 ================
 CLASS_PROTOTYPE
@@ -185,6 +208,7 @@ idEventFunc<nameofclass> nameofclass::eventCallbacks[] = {
 // mwhitlock: Dynamic memory consolidation
 #define CLASS_DECLARATION( nameofsuperclass, nameofclass )											\
 	idTypeInfo *nameofclass::Type = NULL;															\
+	static idClassRegistrar nameofclass##_classRegistrar( &nameofclass::RegisterClass );			\
 	void nameofclass::RegisterClass( void ) {														\
 		static idTypeInfo type( #nameofclass, #nameofsuperclass,											\
 			( idEventFunc<idClass> * )nameofclass::eventCallbacks,	nameofclass::CreateInstance, ( void ( idClass::* )( void ) )&nameofclass::Spawn,	\
@@ -305,6 +329,7 @@ on abstract classes only.
 // jnewquist: Use accessor for static class type 
 #define ABSTRACT_DECLARATION( nameofsuperclass, nameofclass )										\
 	idTypeInfo *nameofclass::Type = NULL;															\
+	static idClassRegistrar nameofclass##_classRegistrar( &nameofclass::RegisterClass );			\
 	void nameofclass::RegisterClass( void ) {														\
 		static idTypeInfo type( #nameofclass, #nameofsuperclass,									\
 			( idEventFunc<idClass> * )nameofclass::eventCallbacks, nameofclass::CreateInstance, ( void ( idClass::* )( void ) )&nameofclass::Spawn,	\
@@ -571,5 +596,41 @@ ID_INLINE bool idClass::RespondsTo( const idEventDef &ev ) const {
 	c = GetType();
 	return c->RespondsTo( ev );
 }
+
+/***********************************************************************
+
+  idClassSubstitution
+
+  Spawn-time class substitution for game-library layers (see openQ4's
+  tools/build/game_layer.py). A layer that must change a stock class that
+  content spawns by name registers a subclass as its replacement:
+
+	SPAWNCLASS_SUBSTITUTION( rvMonsterGrunt, riMonsterGrunt )
+
+  Every entity spawned as the original class is then created as the
+  replacement, which must derive from it. Only spawning consults the table;
+  type queries, savegames and GetClass() keep seeing the real classes.
+
+***********************************************************************/
+
+class idClassSubstitution {
+public:
+								idClassSubstitution( const char *original, const char *replacement );
+
+	// the class to create when content asks for type
+	static idTypeInfo *			Resolve( idTypeInfo *type );
+	// called once the type system is up; an unknown or unrelated pair is fatal
+	static void					Validate( void );
+
+private:
+	const char *				original;
+	const char *				replacement;
+	idClassSubstitution *		next;
+
+	static idClassSubstitution *list;
+};
+
+#define SPAWNCLASS_SUBSTITUTION( original, replacement ) \
+	static idClassSubstitution original##_##replacement##_substitution( #original, #replacement );
 
 #endif /* !__SYS_CLASS_H__ */

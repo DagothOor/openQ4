@@ -430,6 +430,10 @@ public:
 // RAVEN END
 							// applies damage to this entity
 	virtual	void			Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir, const char *damageDefName, const float damageScale, const int location );
+							// takes an already worked-out amount of damage off health: no damage def, armor, scaling or feedback
+	virtual void			ApplyDamage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir, int damage, int location );
+							// hands damage from a def with a "spawnclass" to an entity of that class; false if it was not handed off
+	bool					SpawnDamageEntity( const idDict *damageDef, idEntity *attacker, int location );
 							// adds a damage effect like overlays, blood, sparks, debris etc.
 	virtual void			AddDamageEffect( const trace_t &collision, const idVec3 &velocity, const char *damageDefName, idEntity* inflictor );
 	virtual bool			CanPlayImpactEffect ( idEntity* attacker, idEntity* target );

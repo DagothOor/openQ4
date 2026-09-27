@@ -45,6 +45,7 @@ public:
 	void			SetLightParms( float parm0, float parm1, float parm2, float parm3 );
 	void			SetRadiusXYZ( float x, float y, float z );
 	void			SetRadius( float radius );
+	const idVec3 &	GetRadius( void ) const { return renderLight.lightRadius; }
 	void			On( void );
 	void			Off( void );
 	void			Fade( const idVec4 &to, float fadeTime );

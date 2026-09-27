@@ -424,6 +424,9 @@ idActor::idActor( void )
 	use_combat_bbox		= false;
 	head				= NULL;
 
+	damageDealtScale	= 1.0f;
+	damageTakenScale	= 1.0f;
+
 	eyeOffset.Zero();
 	chestOffset.Zero();
 	modelOffset.Zero();
@@ -2467,7 +2470,15 @@ void idActor::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir
 		gameLocal.Error( "Unknown damageDef '%s'", damageDefName );
 	}
 
-	int	damage = damageDef->GetInt( "damage" ) * damageScale;
+	if ( SpawnDamageEntity( damageDef, attacker, location ) ) {
+		return;
+	}
+
+	float scale = damageScale * damageTakenScale;
+	if ( attacker->IsType( idActor::GetClassType() ) ) {
+		scale *= static_cast<idActor *>( attacker )->damageDealtScale;
+	}
+	int	damage = damageDef->GetInt( "damage" ) * scale;
 	damage = GetDamageForLocation( damage, location );
 
 	// friendly fire damage
@@ -2612,6 +2623,37 @@ void idActor::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir
 			BecomeActive( TH_PHYSICS );
 		}
 		*/
+	}
+}
+
+/*
+============
+idActor::ApplyDamage
+
+Raw damage still goes through AdjustHealthByDamage, so undying AI stay alive,
+and picks its pain animation from whatever SetPainType last chose.
+============
+*/
+void idActor::ApplyDamage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir, int damage, int location ) {
+	if ( !fl.takedamage || damage <= 0 ) {
+		return;
+	}
+
+	if ( !inflictor ) {
+		inflictor = gameLocal.world;
+	}
+	if ( !attacker ) {
+		attacker = gameLocal.world;
+	}
+
+	AdjustHealthByDamage( damage );
+	if ( health <= 0 ) {
+		if ( health < -999 ) {
+			health = -999;
+		}
+		Killed( inflictor, attacker, damage, dir, location );
+	} else {
+		Pain( inflictor, attacker, damage, dir, location );
 	}
 }
 

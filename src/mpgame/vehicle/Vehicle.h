@@ -201,6 +201,10 @@ public:
 
 	virtual void			UpdateHUD				( idActor* driver, idUserInterface* gui ) {}
 
+							// degrees added to the driver's field of view; parts set it (a boost widening the view)
+	void					SetFovOffset			( float offset ) { fovOffset = offset; }
+	float					GetFovOffset			( void ) const { return fovOffset; }
+
 	float					FocusLength				( void ) const { return spawnArgs.GetFloat("focusLength_enter", "60"); }
 	
 	bool					IsAutoCorrecting		( void ) const { return autoCorrectionBegin != 0; }
@@ -235,6 +239,7 @@ protected:
 	int							drivers;
 
 	idUserInterface *			hud;
+	float						fovOffset;
 	
 	float						crashSpeedSmall;
 	float						crashSpeedMedium;

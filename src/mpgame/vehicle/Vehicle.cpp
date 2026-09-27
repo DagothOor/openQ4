@@ -47,6 +47,7 @@ rvVehicle::rvVehicle
 rvVehicle::rvVehicle ( void ) {
 	autoRight			= false;
 	hud					= NULL;
+	fovOffset			= 0.0f;
 	shieldModel			= NULL;
 	shieldMaxHealth		= 0;
 	hazardWarningTime	= 0;

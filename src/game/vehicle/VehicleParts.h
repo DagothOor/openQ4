@@ -276,9 +276,14 @@ public:
 	int						GetCurrentAmmo		( void ) const;
 	float					GetCurrentCharge	( void ) const;
 
-	void					UpdateCursorGUI		( idUserInterface* gui ) const;
+	virtual void			UpdateCursorGUI		( idUserInterface* gui ) const;
 
-	bool					Fire				();
+	virtual bool			Fire				();
+
+							// the position switched to (true) or away from (false) this weapon
+	virtual void			Select				( bool select );
+							// every projectile the weapon launches, once it is on its way
+	virtual void			ProjectileLaunched	( idProjectile* projectile ) { }
 
 	int						GetZoomFov			( void ) const;
 	idUserInterface *		GetZoomGui			( void ) const;

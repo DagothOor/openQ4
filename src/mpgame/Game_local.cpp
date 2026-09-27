@@ -5798,7 +5798,7 @@ bool idGameLocal::SpawnClientEntityDef( const idDict &args, rvClientEntity **cen
 
 	if ( spawn ) {
 
-		cls = idClass::GetClass( spawn );
+		cls = idClassSubstitution::Resolve( idClass::GetClass( spawn ) );
 		if ( !cls ) {
 			Warning( "Could not spawn '%s'.  Class '%s' not found%s.", classname, spawn, error.c_str() );
 			return false;
@@ -5919,7 +5919,7 @@ bool idGameLocal::SpawnEntityDef( const idDict &args, idEntity **ent, bool setDe
 	spawnArgs.GetString( "spawnclass", NULL, &spawn );
 	if ( spawn ) {
 
-		cls = idClass::GetClass( spawn );
+		cls = idClassSubstitution::Resolve( idClass::GetClass( spawn ) );
 		if ( !cls ) {
 			Warning( "Could not spawn '%s'.  Class '%s' not found%s.", classname, spawn, error.c_str() );
 			return false;

@@ -4205,27 +4205,80 @@ void idEntity::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &di
 		gameLocal.Error( "Unknown damageDef '%s'\n", damageDefName );
 	}
 
+	if ( SpawnDamageEntity( damageDef, attacker, location ) ) {
+		return;
+	}
+
 	int	damage = damageDef->GetInt( "damage" );
 
 	// inform the attacker that they hit someone
 	attacker->DamageFeedback( this, inflictor, damage );
 	gameDebugLogDamage( "idEntity", this, inflictor, attacker, damageDef, damageDefName, dir, damageScale, location,
 		damage, -1, health, health - damage, -1 );
-	if ( damage ) {
-		// do the damage
-		//jshepard: this is kinda important, no?
-		health -= damage;
+	ApplyDamage( inflictor, attacker, dir, damage, location );
+}
 
-		if ( health <= 0 ) {
-			if ( health < -999 ) {
-				health = -999;
-			}
+/*
+============
+idEntity::ApplyDamage
 
-			Killed( inflictor, attacker, damage, dir, location );
-		} else {
-			Pain( inflictor, attacker, damage, dir, location );
-		}
+Takes an already worked-out amount of damage off health and reports the pain
+or the death. Damage() ends here; so does damage that an entity deals on its
+own schedule, such as a burn ticking once a second.
+============
+*/
+void idEntity::ApplyDamage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir, int damage, int location ) {
+	if ( !fl.takedamage || !damage ) {
+		return;
 	}
+
+	if ( !inflictor ) {
+		inflictor = gameLocal.world;
+	}
+
+	if ( !attacker ) {
+		attacker = gameLocal.world;
+	}
+
+	health -= damage;
+
+	if ( health <= 0 ) {
+		if ( health < -999 ) {
+			health = -999;
+		}
+
+		Killed( inflictor, attacker, damage, dir, location );
+	} else {
+		Pain( inflictor, attacker, damage, dir, location );
+	}
+}
+
+/*
+============
+idEntity::SpawnDamageEntity
+
+A damage def that names a "spawnclass" hurts an animated entity through an
+entity of that class instead of directly. The def is spawned as that entity
+with three extra keys, "damageVictim" (this entity's name), "damageAttacker"
+and "damageLocation" (the joint that was hit), and the spawned entity deals
+the damage itself; a burn that ticks for a few seconds, say.
+
+Returns false, leaving the damage to the caller, when the def names no class,
+this is not an animated entity or the spawn fails.
+============
+*/
+bool idEntity::SpawnDamageEntity( const idDict *damageDef, idEntity *attacker, int location ) {
+	if ( !damageDef->GetString( "spawnclass" )[ 0 ] || !IsType( idAnimatedEntity::GetClassType() ) ) {
+		return false;
+	}
+
+	idDict args = *damageDef;
+	args.Set( "damageVictim", name );
+	args.Set( "damageAttacker", attacker ? attacker->name.c_str() : "" );
+	args.SetInt( "damageLocation", location );
+
+	idEntity *ent = NULL;
+	return gameLocal.SpawnEntityDef( args, &ent ) && ent != NULL;
 }
 
 /*

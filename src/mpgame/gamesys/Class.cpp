@@ -463,6 +463,8 @@ void idClass::Init( void ) {
 
 	initialized = true;
 
+	idClassSubstitution::Validate();
+
 	gameLocal.Printf( "...%i classes, %zu bytes for event callbacks\n", types.Num(), eventCallbackMemory );
 }
 
@@ -1444,7 +1446,100 @@ void idClass::RegisterClasses( void )
 	REGISTER(WeaponNapalmGun);	// ..\..\code\game\weapon\WeaponNapalmGun.cpp
 // RITUAL END
 #undef REGISTER
+
+	// and everything else linked into the module, a game-library layer included
+	idClassRegistrar::RegisterAll();
+}
+
+/*
+================
+idClassRegistrar
+================
+*/
+// constructed during static initialization, before any type is registered
+idClassRegistrar *idClassRegistrar::list = NULL;
+
+idClassRegistrar::idClassRegistrar( void ( *registerClass )( void ) ) {
+	this->registerClass = registerClass;
+	next = list;
+	list = this;
+}
+
+void idClassRegistrar::RegisterAll( void ) {
+	for ( const idClassRegistrar *registrar = list; registrar != NULL; registrar = registrar->next ) {
+		registrar->registerClass();
+	}
 }
 
 // RAVEN END
 
+/***********************************************************************
+
+  idClassSubstitution
+
+***********************************************************************/
+
+// constructed during static initialization, before any type is initialized
+idClassSubstitution *idClassSubstitution::list = NULL;
+
+/*
+================
+idClassSubstitution::idClassSubstitution
+================
+*/
+idClassSubstitution::idClassSubstitution( const char *original, const char *replacement ) {
+	this->original = original;
+	this->replacement = replacement;
+	next = list;
+	list = this;
+}
+
+/*
+================
+idClassSubstitution::Resolve
+
+Follows substitutions until none applies; Validate rejects cycles.
+================
+*/
+idTypeInfo *idClassSubstitution::Resolve( idTypeInfo *type ) {
+	if ( type == NULL || list == NULL ) {
+		return type;
+	}
+	for ( int depth = 0; depth < 16; depth++ ) {
+		const idClassSubstitution *sub;
+		for ( sub = list; sub != NULL; sub = sub->next ) {
+			if ( idStr::Cmp( type->classname, sub->original ) == 0 ) {
+				break;
+			}
+		}
+		if ( sub == NULL ) {
+			break;
+		}
+		type = idClass::GetClass( sub->replacement );
+	}
+	return type;
+}
+
+/*
+================
+idClassSubstitution::Validate
+================
+*/
+void idClassSubstitution::Validate( void ) {
+	for ( const idClassSubstitution *sub = list; sub != NULL; sub = sub->next ) {
+		idTypeInfo *from = idClass::GetClass( sub->original );
+		idTypeInfo *to = idClass::GetClass( sub->replacement );
+		if ( from == NULL || to == NULL ) {
+			gameLocal.Error( "Class substitution '%s' -> '%s' names an unknown class", sub->original, sub->replacement );
+		}
+		if ( from == to || !to->IsType( *from ) ) {
+			gameLocal.Error( "Class substitution '%s' -> '%s': the replacement must derive from the original", sub->original, sub->replacement );
+		}
+		for ( const idClassSubstitution *other = list; other != NULL; other = other->next ) {
+			if ( other != sub && idStr::Cmp( other->original, sub->original ) == 0 ) {
+				gameLocal.Error( "Class '%s' has more than one substitution", sub->original );
+			}
+		}
+		gameLocal.Printf( "...spawning '%s' as '%s'\n", sub->original, sub->replacement );
+	}
+}
