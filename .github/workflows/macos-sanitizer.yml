@@ -37,6 +37,8 @@ concurrency:
 env:
   # Keep all builds on the companion engine-interface revision used by CI.
   OPENQ4_GAMELIBS_SHA: 0cffd30cb3bed706e1f50634b0d1bd1e8d335af3
+  # The Awakening's game-library layer: its q4xbase modules build beside baseoq4's.
+  OPENQ4_AWAKENING_SHA: c49842986c0a519feeebc68d78e6f5509d99c3a7
 
 jobs:
   macos-sanitizer:
@@ -45,6 +47,7 @@ jobs:
     timeout-minutes: 150
     env:
       OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}/../openQ4-game
+      OPENQ4_AWAKENING_REPO: ${{ github.workspace }}/../openQ4-game-awakening
       MACOSX_DEPLOYMENT_TARGET: "11.0"
       ASAN_OPTIONS: halt_on_error=1:abort_on_error=1:detect_leaks=0
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
@@ -90,6 +93,16 @@ jobs:
           git -C "${OPENQ4_GAMELIBS_REPO}" fetch --depth 1 origin "${OPENQ4_GAMELIBS_SHA}"
           git -C "${OPENQ4_GAMELIBS_REPO}" checkout --detach "${OPENQ4_GAMELIBS_SHA}"
           test "$(git -C "${OPENQ4_GAMELIBS_REPO}" rev-parse HEAD)" = "${OPENQ4_GAMELIBS_SHA}"
+
+      - name: Fetch openQ4-game-awakening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init "${OPENQ4_AWAKENING_REPO}"
+          git -C "${OPENQ4_AWAKENING_REPO}" remote add origin https://github.com/themuffinator/openQ4-game-awakening.git
+          git -C "${OPENQ4_AWAKENING_REPO}" fetch --depth 1 origin "${OPENQ4_AWAKENING_SHA}"
+          git -C "${OPENQ4_AWAKENING_REPO}" checkout --detach "${OPENQ4_AWAKENING_SHA}"
+          test "$(git -C "${OPENQ4_AWAKENING_REPO}" rev-parse HEAD)" = "${OPENQ4_AWAKENING_SHA}"
 
       - name: Setup Python
         if: steps.select.outputs.selected == 'true'

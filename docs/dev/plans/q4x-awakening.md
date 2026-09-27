@@ -43,11 +43,17 @@ The Meson option `awakening` (`auto` by default) builds the layer when
 `builddir/q4xbase/` for direct runs and `.install/q4xbase/` for the staged package;
 `tools/build/meson_setup.ps1` re-stages whenever the layer's sources change.
 
-CI does not build the layer: `openQ4-game-awakening` is a private repository, which the
-public workflows cannot fetch. Local builds cover it instead (the `auto` option builds it
-whenever the checkout sits beside openQ4), with the headless runs under Validation and a
-Linux `g++ -fsyntax-only` pass over every layer source under WSL. An `openQ4-game` change
-to an extension point therefore needs a local build of both modules before it is pushed.
+CI builds the layer. Five workflows pin one commit of it (`OPENQ4_AWAKENING_SHA`) and fetch
+it beside openQ4-game, so the q4xbase modules compile on Windows x64 and ARM64, on Linux
+x64 and ARM64 (native and cross) and in its sanitizer and Wayland builds, and on macOS
+(Apple silicon and Intel push verification, debug and sanitizer builds). CI names the
+layer through `OPENQ4_AWAKENING_REPO`, and configure fails when a named layer is missing
+instead of quietly building without it.
+The release workflows leave the layer out until shipping q4xbase modules in packages is
+decided, and so do commit validation's macOS thin builds, whose universal2 assembly only
+merges baseoq4's modules. A layer change needs its new commit pinned in all five
+workflows; `tools/tests/awakening_ci_contract.py` checks that they agree and that every
+fetch is in place.
 
 A layer reaches the base in one of three ways, in order of preference:
 

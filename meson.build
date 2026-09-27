@@ -1185,19 +1185,25 @@ awakening_stage_root = ''
 awakening_stage_rel = ''
 awakening_summary = 'disabled'
 if build_games and host_system != 'android' and not awakening_option.disabled()
+  # The first line says whether OPENQ4_AWAKENING_REPO named the layer; the second is its path.
   awakening_repo_discovery = run_command(
     py,
     '-c',
-    'import os, pathlib, sys; root = pathlib.Path(sys.argv[1]); raw = os.environ.get("OPENQ4_AWAKENING_REPO", "").strip(); repo = pathlib.Path(raw) if raw else (root / ".." / "openQ4-game-awakening"); print(repo.resolve().as_posix())',
+    'import os, pathlib, sys; root = pathlib.Path(sys.argv[1]); raw = os.environ.get("OPENQ4_AWAKENING_REPO", "").strip(); repo = pathlib.Path(raw) if raw else (root / ".." / "openQ4-game-awakening"); print("named" if raw else "sibling"); print(repo.resolve().as_posix())',
     meson.project_source_root(),
     check: true,
   )
-  awakening_candidate = awakening_repo_discovery.stdout().strip()
+  awakening_discovery = awakening_repo_discovery.stdout().strip().split('\n')
+  awakening_named = awakening_discovery[0].strip() == 'named'
+  awakening_candidate = awakening_discovery[1].strip()
   if fs_mod.is_file(awakening_candidate / 'layer.json')
     build_awakening = true
     awakening_repo_root = awakening_candidate
   elif awakening_option.enabled()
     error('awakening=enabled but no openQ4-game-awakening layer was found at ' + awakening_candidate + '. Set OPENQ4_AWAKENING_REPO or place it at ../openQ4-game-awakening.')
+  elif awakening_named
+    # Only the sibling checkout is optional: a layer someone names (CI does) must be there.
+    error('OPENQ4_AWAKENING_REPO names ' + awakening_candidate + ', which holds no openQ4-game-awakening layer (layer.json).')
   else
     awakening_summary = 'not found (' + awakening_candidate + ')'
   endif
