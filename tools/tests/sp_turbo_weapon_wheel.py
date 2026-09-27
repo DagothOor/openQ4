@@ -37,6 +37,7 @@ HARNESS = r'''
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <map>
 #include <string>
 #include <vector>
