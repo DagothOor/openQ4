@@ -345,6 +345,32 @@
 - [x] Multiplayer bots retain valid routes when a replacement is blocked, release stalled and no-longer-useful goals, and stop using unseen enemy positions for combat movement/weapon range. Explosion-aware threat filtering catches nearby resting explosives. Visibility and pickup shortlists avoid redundant collision queries; the native fixture reduces 80-item snap queries from 81 to 11 and checks 240 perception cases. Windows x64 build/staging, eight existing bot contracts, native regressions and live stock DM/CTF gameplay passed. CTF exercised fetch, defend, escort and capture goals. Details and reproduction: [Multiplayer bots](mp-bots.md).
 - [x] German is selectable as **Deutsch** in Game Options, with complete bundled menu, objective, terminal and gameplay-message translations. Retail German campaign dialogue remains supported; English-only installations retain English dialogue. Coverage, format arguments, choice ordering and German glyphs are checked alongside the existing localization contracts. Language changes force a deferred GUI reload so cached labels use the selected language. Player notes: [0.13.2](releases/v0.13.2.md).
 - [x] Windows x64 build/staging and German SP/OpenGL and MP/Vulkan gameplay checks passed. The runtime regression checks live language switching, visible menus and the translated Match Control view using engine screenshots. German retail voice playback still requires qualification with the complete retail pack; the available English dialogue fallback was exercised.
+
+## Unreleased — Quake 4: The Awakening (`q4xbase`)
+
+- [x] The unreleased expansion's campaign loads on openQ4 from its own
+  content and openQ4's binaries, never its leaked game DLL. Its game code is
+  rebuilt as the new `openQ4-game-awakening` game-library layer: every class
+  its maps and weapons need (fire volumes, the Walker, Retch, Tank, Pain Lord
+  and Valkaryne, the objective beacon, the goob, freeze and spike guns with
+  burning damage over time, the speeder bike and its boost, and the turret
+  cockpit's pulse cannon, missile launcher and homing rockets). All 13
+  campaign maps load, spawn every entity and shut down cleanly in headless
+  runs; a burning Strogg takes its damage once a second until it dies. The
+  freeze gun slows and freezes enemies solid before they shatter, and the
+  expansion's turrets track, tighten their aim and sweep as its maps expect.
+  Corpse pinning and the multiplayer buy menu, powerups and weapon groups
+  are still to come; see the [support plan](plans/q4x-awakening.md).
+- [x] Engine support the expansion's content needed: mods on the retail base
+  keep openQ4's runtime content, a mod's same-named declaration files no
+  longer hide the retail definitions beside them (`decl_layerModFiles`),
+  version 2 collision models, DXT3 textures, `.jpg` textures shipped as
+  `.tga`, `sound/music/` as music, the menu's cvar value commands, team maps
+  marked `TeamDM` in the create-server list, and `_altattack` as the
+  zoom/alternate-fire button. The Meson option `awakening` builds the layer
+  when its repository sits next to the openQ4 checkout
+  (`../openQ4-game-awakening`) or `OPENQ4_AWAKENING_REPO` names it.
+
 ## Unreleased — `idtech5-ui` development
 
 - The experimental SYSTEM page adds window and custom fullscreen width/height

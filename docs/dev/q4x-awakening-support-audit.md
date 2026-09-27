@@ -7,6 +7,23 @@ Audit of the unreleased Raven/Ritual Quake 4 expansion drop at
 The question answered here is narrow and practical: **if a user launched openQ4 with
 `fs_game q4xbase`, what breaks, and what code change fixes each break?**
 
+> [!NOTE]
+> **Status, 27 September 2026.** Implementation has started; the
+> [support plan](plans/q4x-awakening.md) tracks it. All 13 campaign maps now load.
+> Tier 0 is resolved: the ten events are real, the build writes `q4xbase/mod.json`,
+> `baseoq4` is searched under any mod, and the expansion's classes live in a separate
+> game-library layer (`openQ4-game-awakening`) linked with the unchanged openQ4-game
+> objects. Running the code corrected four findings below:
+> - `velScale`, `iff`, `spawn_iff`, `bindOrientied`, `canTurn`, `ignoreAAS` and
+>   `ai_valkaryneShots` have no reader in the expansion's own DLL either; they are dead
+>   keys, not gaps.
+> - The turret keys (`dynamicAccuracy*`, `accuracyLerpTime`, `delayedTracking`,
+>   `lockDelay`, `scanAnim`) belong to the expansion's modified `rvMonsterTurret`.
+> - The "content pass" on the shadowing decl files is unnecessary: the engine now reads
+>   the shadowed retail files as well (decl layering).
+> - The freeze gun's status effect lives on `idAI`, with no skin swap: a freeze factor
+>   that slows animation, overlays, and a frozen death that shatters.
+
 ## Scope
 
 | | |

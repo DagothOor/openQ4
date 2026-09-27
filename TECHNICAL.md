@@ -249,6 +249,10 @@ The manifest is a flat JSON object with these required string fields:
 
 Game modules are optional for mods. At runtime, openQ4 first checks the selected mod directory for the active `game-sp_<arch>` or `game-mp_<arch>` module; if it is not present, the engine falls back to the matching module in `baseoq4/`. Content-only mods therefore need a compatible `mod.json` and their content files, not copied openQ4 dynamic libraries. Mods that intentionally ship custom game code can still provide their own module in the mod directory.
 
+A mod built on the retail base (`fs_game_base` other than `baseoq4`) still gets openQ4's own runtime content: the filesystem searches `baseoq4/` between the mod and `q4base/`, so openQ4's shaders, GUIs and fonts stay available under it.
+
+When a mod ships a declaration file with the same name as one beneath it (a `def/player.def`, say), the engine reads the mod's copy first and then the shadowed copies from the directories below, so the mod's definitions win and the base file's other definitions are still found. Set `decl_layerModFiles 0` (at startup) to go back to a mod's file hiding the base file entirely.
+
 Example:
 
 ```json
@@ -267,6 +271,8 @@ Example:
 ## SDK and Game Library
 
 The game code is derived from the [Quake 4 SDK](https://www.moddb.com/games/quake-4/downloads/quake-4-sdk-v15) and maintained in the companion [openQ4-game](https://github.com/themuffinator/openQ4-game) repository. The SDK is subject to id Software's EULA, which permits modification for use with Quake 4 and non-commercial distribution of modifications, but prohibits commercial use and standalone game creation. For complete terms, see the [EULA](https://github.com/themuffinator/openQ4-game/blob/main/doc/legacy/EULA.Development%20Kit.rtf).
+
+A *game-library layer* extends openQ4-game for one mod without replacing any of its files: its own repository holds only new classes, and the openQ4 build links them with the unchanged openQ4-game objects into that mod's game modules. [openQ4-game-awakening](https://github.com/themuffinator/openQ4-game-awakening) is the first, for Quake 4: The Awakening (`q4xbase`); the Meson option `awakening` builds it when the repository sits next to the openQ4 checkout (`../openQ4-game-awakening`) or `OPENQ4_AWAKENING_REPO` names it. See the [Awakening support plan](docs/dev/plans/q4x-awakening.md).
 
 ---
 

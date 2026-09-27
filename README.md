@@ -308,6 +308,7 @@ so the experimental PBR path can stay active instead of exhausting its cache.
 - [BUILDING.md](BUILDING.md) - compile openQ4 from source
 - [Android, GLES and SigmaTouch](docs/dev/android-build.md) - experimental native Android builds, optional touch-host integration, and desktop GLES testing
 - [TECHNICAL.md](TECHNICAL.md) - advanced configuration, file layout, compatibility notes, and mod details
+- [The Awakening support plan](docs/dev/plans/q4x-awakening.md) - building and running the `q4xbase` expansion mod, and what works so far
 - [Map Entity Strings](docs/user/map-entity-strings.md) - replace or extend a map's runtime entities without editing the original map
 - [Experimental Level Editor](docs/user/level-editor.md) - separate `editorExperimental` workspace with source preview, entity inspector, undo, protected saves and recovery; legacy Radiant retained
 
@@ -318,6 +319,7 @@ so the experimental PBR path can stay active instead of exhausting its cache.
 - openQ4 targets the **official Quake 4 retail assets**.
 - It ships its **own engine and game modules**.
 - It is **not** a drop-in runtime for the original proprietary Quake 4 DLL mods.
+- The unreleased **Quake 4: The Awakening** expansion is being brought up as the `q4xbase` mod, on openQ4's own game code extended by [openQ4-game-awakening](https://github.com/themuffinator/openQ4-game-awakening), never the leaked game binary. It is a work in progress; the [support plan](docs/dev/plans/q4x-awakening.md) tracks what plays so far.
 - The project is still in **beta development**, so compatibility work is ongoing.
 
 Developers and testers should use the [engine capability matrix](docs/dev/engine-capability-matrix.md) for authoritative implemented/experimental/missing status, the [idTech 5-level modernization roadmap](docs/dev/idtech5-modernization-roadmap.md) for the compatibility-safe implementation order, the [shared interaction-lighting contract](docs/dev/classic-interaction-domain-modernization.md), [shared fog/blend contract](docs/dev/classic-fog-blend-domain-modernization.md), and [shared material-deform contract](docs/dev/classic-deform-domain-modernization.md) for the default-off ownership and rollback boundaries, the [loading/cache contract](docs/dev/loading-cache-modernization.md) for the source-authoritative preload and generated-cache boundary plus pending evidence, and the [stock-asset baseline](docs/dev/stock-asset-baseline.md) for reproducible PK4, SP/MP, save/load, demo, log, and engine-screenshot evidence.
