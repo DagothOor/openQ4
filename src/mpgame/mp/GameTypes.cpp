@@ -219,6 +219,28 @@ bool MPGameTypeHasAny( int type, int mask ) {
 
 /*
 ================
+MapDeclSupports
+
+A map names each gametype it supports as a boolean key. Some spell the name
+without its spaces (the Awakening's maps.def has "TeamDM" for "Team DM"), so
+both spellings count.
+================
+*/
+static bool MapDeclSupports( const idDict *mapDict, const char *key ) {
+	if ( mapDict->GetBool( key ) ) {
+		return true;
+	}
+	idStr compact;
+	for ( const char *c = key; *c; c++ ) {
+		if ( *c != ' ' ) {
+			compact.Append( *c );
+		}
+	}
+	return compact.Length() != idStr::Length( key ) && mapDict->GetBool( compact );
+}
+
+/*
+================
 MPMapSupportsGameType
 
 A map advertises support with a boolean key named after the gametype.  Stock
@@ -235,12 +257,12 @@ bool MPMapSupportsGameType( const idDict *mapDict, int type ) {
 
 	info = MPGameType( type );
 
-	if ( mapDict->GetBool( info->name ) ) {
+	if ( MapDeclSupports( mapDict, info->name ) ) {
 		return true;
 	}
 
 	if ( info->mapDeclKey != NULL && idStr::Icmp( info->mapDeclKey, info->name ) != 0 ) {
-		return mapDict->GetBool( info->mapDeclKey );
+		return MapDeclSupports( mapDict, info->mapDeclKey );
 	}
 
 	return false;
