@@ -69,6 +69,10 @@ public :
 	
 protected:
 	void					SpawnImpactEntities(const trace_t& collision, const idVec3 projectileDirection);
+	void					ReadStickSettings	( void );
+	void					HoldStuck			( void );
+	void					Stick				( const trace_t &collision, idEntity *ent, const idVec3 &dir );
+	void					UpdatePin			( void );
 
 
 	idEntityPtr<idEntity>	owner;
@@ -106,6 +110,12 @@ protected:
 
 	int						bounceCount;
 	bool					sticky;
+	bool					passThroughActors;	// "passThroughActors": hurts a living actor once instead of detonating on it
+	float					maxPinDistance;		// "maxPinDistance": how far behind a corpse to look for a surface to pin it to
+	idEntityPtr<idEntity>	pinVictim;			// the corpse this projectile is stuck in and may still pin (not saved)
+	int						pinClipModelId;		// where it was hit
+	idVec3					pinDir;				// the direction it was travelling
+	idEntityPtr<idEntity>	passedThrough;		// the actor a passThroughActors projectile last hurt (not saved)
 	
 	idStr					impactEntity;
 	int						numImpactEntities;
@@ -134,6 +144,7 @@ protected:
 		FIZZLED = 3,
 		EXPLODED = 4,
 		IMPACTED = 5,
+		STUCK = 6,			// "sticky": stopped where it hit (Stick)
 	} projectileState_t;
 	
 	projectileState_t		state;

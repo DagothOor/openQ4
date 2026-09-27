@@ -6765,9 +6765,19 @@ void idPhysics_AF::Save( idSaveGame *saveFile ) const {
 		saveFile->WriteBool( false );
 	}
 
-	saveFile->WriteInt( constraints.Num() );
+	// constraints added at run time and marked transient (corpse pins) are not
+	// saved: Restore expects exactly the constraints the articulated figure has
+	int numSaved = 0;
 	for ( i = 0; i < constraints.Num(); i++ ) {
-		constraints[i]->Save( saveFile );
+		if ( !constraints[i]->IsTransient() ) {
+			numSaved++;
+		}
+	}
+	saveFile->WriteInt( numSaved );
+	for ( i = 0; i < constraints.Num(); i++ ) {
+		if ( !constraints[i]->IsTransient() ) {
+			constraints[i]->Save( saveFile );
+		}
 	}
 
 	// TOSAVE: idList<idAFConstraint *>primaryConstraints;				

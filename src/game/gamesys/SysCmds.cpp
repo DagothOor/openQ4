@@ -2028,6 +2028,56 @@ void Cmd_EvaluateMPPerformance_f( const idCmdArgs &args ) {
 
 /*
 ==================
+Cmd_OpenQ4LaunchTestProjectile_f
+
+openq4_launchTestProjectile <def> <name> <target entity> [key value ...]
+
+Launches a projectile from the player's eye at the centre of an entity, for
+headless tests of projectile behaviour. Extra key/value pairs override the
+projectile def ("maxPinDistance" "200", say).
+==================
+*/
+void Cmd_OpenQ4LaunchTestProjectile_f( const idCmdArgs &args ) {
+	idPlayer *player = gameLocal.GetLocalPlayer();
+	if ( !player || !gameLocal.CheatsOk( false ) || args.Argc() < 4 || ( args.Argc() & 1 ) ) {
+		gameLocal.Printf( "usage: openq4_launchTestProjectile <def> <name> <target entity> [key value ...]\n" );
+		return;
+	}
+	idEntity *target = gameLocal.FindEntity( args.Argv( 3 ) );
+	if ( target == NULL || gameLocal.FindEntity( args.Argv( 2 ) ) != NULL ) {
+		gameLocal.Printf( "openq4_launchTestProjectile: no target '%s', or '%s' is taken\n", args.Argv( 3 ), args.Argv( 2 ) );
+		return;
+	}
+
+	const idVec3 origin = player->GetEyePosition();
+	idVec3 direction = target->GetPhysics()->GetAbsBounds().GetCenter() - origin;
+	if ( direction.Normalize() == 0.0f ) {
+		return;
+	}
+
+	idDict spawn;
+	spawn.Set( "classname", args.Argv( 1 ) );
+	spawn.Set( "name", args.Argv( 2 ) );
+	spawn.SetVector( "origin", origin );
+	for ( int i = 4; i + 1 < args.Argc(); i += 2 ) {
+		spawn.Set( args.Argv( i ), args.Argv( i + 1 ) );
+	}
+	idEntity *entity = NULL;
+	if ( !gameLocal.SpawnEntityDef( spawn, &entity ) || entity == NULL || !entity->IsType( idProjectile::GetClassType() ) ) {
+		gameLocal.Printf( "openq4_launchTestProjectile: '%s' is not a projectile\n", args.Argv( 1 ) );
+		if ( entity != NULL ) {
+			entity->PostEventMS( &EV_Remove, 0 );
+		}
+		return;
+	}
+	idProjectile *projectile = static_cast<idProjectile *>( entity );
+	projectile->Create( player, origin, direction, player );
+	projectile->Launch( origin, direction, vec3_origin );
+	gameLocal.Printf( "openq4_launchTestProjectile: launched %s at %s\n", projectile->GetName(), target->GetName() );
+}
+
+/*
+==================
 Cmd_Damage_f
 
 Damages the specified entity, with damage_moverCrush (1 point) unless a
@@ -4243,6 +4293,7 @@ void idGameLocal::InitConsoleCommands( void ) {
 	cmdSystem->AddCommand( "trigger",				Cmd_Trigger_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"triggers an entity", idGameLocal::ArgCompletion_EntityName );
 	cmdSystem->AddCommand( "spawn",					Cmd_Spawn_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"spawns a game entity", idCmdSystem::ArgCompletion_Decl<DECL_ENTITYDEF> );
 	cmdSystem->AddCommand( "damage",				Cmd_Damage_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"apply damage to an entity", idGameLocal::ArgCompletion_EntityName );
+	cmdSystem->AddCommand( "openq4_launchTestProjectile", Cmd_OpenQ4LaunchTestProjectile_f, CMD_FL_GAME|CMD_FL_CHEAT, "launch a projectile from the player's eye at an entity, for headless tests" );
 	cmdSystem->AddCommand( "remove",				Cmd_Remove_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"removes an entity", idGameLocal::ArgCompletion_EntityName );
 	cmdSystem->AddCommand( "killMonsters",			Cmd_KillMonsters_f,			CMD_FL_GAME|CMD_FL_CHEAT,	"removes all monsters" );
 	cmdSystem->AddCommand( "killMoveables",			Cmd_KillMovables_f,			CMD_FL_GAME|CMD_FL_CHEAT,	"removes all moveables" );

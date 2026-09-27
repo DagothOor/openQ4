@@ -71,6 +71,9 @@ public:
 	virtual					~idAFConstraint( void );
 	constraintType_t		GetType( void ) const { return type; }
 	const idStr &			GetName( void ) const { return name; }
+							// a transient constraint is left out of saves (idPhysics_AF::Save)
+	void					SetTransient( bool transient ) { fl.transient = transient; }
+	bool					IsTransient( void ) const { return fl.transient; }
 	idAFBody *				GetBody1( void ) const { return body1; }
 	idAFBody *				GetBody2( void ) const { return body2; }
 	void					SetPhysics( idPhysics_AF *p ) { physics = p; }
@@ -112,6 +115,7 @@ protected:
 		bool				noCollision			: 1;	// true if body1 and body2 never collide with each other
 		bool				isPrimary			: 1;	// true if this is a primary constraint
 		bool				isZero				: 1;	// true if 's' is zero during calculations
+		bool				transient			: 1;	// true if added at run time and left out of saves (a corpse pin)
 	} fl;
 
 protected:

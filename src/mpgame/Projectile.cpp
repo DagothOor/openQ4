@@ -68,6 +68,11 @@ idProjectile::idProjectile( void ) {
 	flyEffectIsLiquid	= false;
 	flyEffectAttenuateSpeed = 0.0f;
 	bounceCount			= 0;
+	sticky				= false;
+	passThroughActors	= false;
+	maxPinDistance		= 0.0f;
+	pinClipModelId		= 0;
+	pinDir.Zero();
 	hitCount			= 0;
 	state				= SPAWNED;
 	
@@ -177,6 +182,7 @@ idProjectile::Restore
 ================
 */
 void idProjectile::Restore( idRestoreGame *savefile ) {
+	ReadStickSettings();
 	float	fset;
 	int		packedFlags;
 	idVec3	temp;
@@ -446,6 +452,7 @@ void idProjectile::Launch( const idVec3 &start, const idVec3 &dir, const idVec3 
 	gravity				= spawnArgs.GetFloat( "gravity" );
 	fuse				= spawnArgs.GetFloat( "fuse" ) + ( spawnArgs.GetFloat( "fuse_random", "0" ) * gameLocal.random.RandomFloat() );
 	bounceCount			= spawnArgs.GetInt( "bounce_count", "-1" );
+	ReadStickSettings();
 	
 	//spawn impact entity information
 	impactEntity				= spawnArgs.GetString("def_impactEntity","");
@@ -730,6 +737,11 @@ void idProjectile::Think( void ) {
 		UpdateVisualAngles();
 	}
 		
+	// a stuck projectile may still have a corpse to pin
+	if ( state == STUCK && pinVictim.IsValid() ) {
+		UpdatePin();
+	}
+
 	Present();
 
 	// add the light
@@ -846,7 +858,7 @@ bool idProjectile::Collide( const trace_t &collision, const idVec3 &velocity, bo
  	
  	hitTeleporter = false;
 
-	if ( state == EXPLODED || state == FIZZLED || ( state == IMPACTED && predictedProjectiles ) ) {
+	if ( state == EXPLODED || state == FIZZLED || state == STUCK || ( state == IMPACTED && predictedProjectiles ) ) {
 		return true;
 	}
 
@@ -963,6 +975,11 @@ bool idProjectile::Collide( const trace_t &collision, const idVec3 &velocity, bo
 		ent = ent->GetTeamMaster();
 	}
 
+	// a "passThroughActors" projectile hurts an actor only once
+	if ( ent == passedThrough.GetEntity() ) {
+		return false;
+	}
+
 	// Can the projectile damage?  
 	canDamage = ent->fl.takedamage && !(( collision.c.material != NULL ) && ( collision.c.material->GetSurfaceFlags() & SURF_NODAMAGE ));
   
@@ -1031,6 +1048,13 @@ bool idProjectile::Collide( const trace_t &collision, const idVec3 &velocity, bo
 			return false;
 		}
 	} else {
+		// "sticky": a projectile that does not detonate on the world stays where it hits it
+		if ( sticky && !projectileFlags.detonate_on_world && !canDamage && !gameLocal.isClient ) {
+			DefaultDamageEffect( collision, velocity, damageDefName );
+			Stick( collision, ent, dir );
+			return true;
+		}
+
 		bool bounce = false;
 		
 		// Determine if the projectile should bounce
@@ -1158,6 +1182,14 @@ bool idProjectile::Collide( const trace_t &collision, const idVec3 &velocity, bo
 		}
 	}
 
+	// "passThroughActors" projectiles hurt a living actor once and glance off it instead of detonating
+	// (a "sticky" one stays in a corpse only in single player)
+	if ( !gameLocal.isClient && canDamage && ent->IsType( idActor::GetClassType() ) && passThroughActors && ent->health > 0 ) {
+		ent->AddDamageEffect( collision, velocity, damageDefName, owner );
+		passedThrough = ent;
+		return false;
+	}
+
 	if ( predictedProjectiles ) {
 		if ( ( gameLocal.isClient || gameLocal.isListenServer ) && !playedDamageEffect ) {
 			ent->AddDamageEffect( collision, velocity, damageDefName, owner );
@@ -1195,6 +1227,136 @@ bool idProjectile::Collide( const trace_t &collision, const idVec3 &velocity, bo
 	}
 
 	return true;
+}
+
+/*
+================
+idProjectile::ReadStickSettings
+
+"sticky", "passThroughActors" and "maxPinDistance" come from the def. They are
+read at launch and again after a restore, so they are not saved.
+================
+*/
+void idProjectile::ReadStickSettings( void ) {
+	sticky				= spawnArgs.GetBool( "sticky" );
+	passThroughActors	= spawnArgs.GetBool( "passThroughActors" );
+	maxPinDistance		= spawnArgs.GetFloat( "maxPinDistance", "0" );
+}
+
+/*
+================
+idProjectile::HoldStuck
+
+Stops the projectile where it is; the client side of Stick.
+================
+*/
+void idProjectile::HoldStuck( void ) {
+	physicsObj.SetLinearVelocity( vec3_origin );
+	physicsObj.SetAngularVelocity( vec3_origin );
+	physicsObj.PutToRest();
+	StopEffect( "fx_fly" );
+	if ( flyEffect ) {
+		flyEffect->Stop();
+		flyEffect = NULL;
+	}
+	state = STUCK;
+}
+
+/*
+================
+idProjectile::Stick
+
+A "sticky" projectile stays where it hits, carried along by whatever it hit
+(a mover, or the joint or body of a corpse), until its fuse runs out. One stuck
+in a corpse with a "maxPinDistance" may then pin it (UpdatePin): in single
+player, unless the corpse's def says "canBePinned" "0".
+================
+*/
+void idProjectile::Stick( const trace_t &collision, idEntity *ent, const idVec3 &dir ) {
+	SetOrigin( collision.endpos );
+	GetPhysics()->UnlinkClip();
+	HoldStuck();
+
+	if ( ent != NULL && ent != gameLocal.world ) {
+		const jointHandle_t joint = CLIPMODEL_ID_TO_JOINT_HANDLE( collision.c.id );
+		if ( joint != INVALID_JOINT && ent->IsType( idAnimatedEntity::GetClassType() ) ) {
+			BindToJoint( ent, joint, true );
+		} else if ( ent->IsType( idAFEntity_Base::GetClassType() ) && static_cast<idAFEntity_Base *>( ent )->IsActiveAF() ) {
+			BindToBody( ent, collision.c.id, true );
+		} else {
+			Bind( ent, true );
+		}
+	}
+
+	if ( maxPinDistance > 0.0f && !gameLocal.isMultiplayer && ent != NULL && ent->IsType( idActor::GetClassType() ) &&
+		 ent->health <= 0 && ent->spawnArgs.GetBool( "canBePinned", "1" ) ) {
+		pinVictim = ent;
+		pinClipModelId = collision.c.id;
+		pinDir = dir;
+		BecomeActive( TH_THINK );
+	}
+
+	if ( g_debugDamage.GetBool() ) {
+		gameLocal.Printf( "projectile '%s' stuck in '%s'%s\n", GetName(), ent ? ent->GetName() : "", pinVictim.IsValid() ? ", may pin it" : "" );
+	}
+}
+
+/*
+================
+idProjectile::UpdatePin
+
+Pins the corpse this projectile is stuck in once its ragdoll is up: a
+ball-and-socket joint from the body it hit to the first surface within
+"maxPinDistance" behind that body, free to swing 90 degrees about the
+projectile's line. Until a surface is that close the projectile keeps looking.
+The joint is transient, left out of saves, so a loaded game has the corpse
+unpinned; a corpse takes one pin.
+================
+*/
+void idProjectile::UpdatePin( void ) {
+	idEntity *ent = pinVictim.GetEntity();
+	if ( ent == NULL || !ent->IsType( idActor::GetClassType() ) ) {
+		pinVictim = NULL;
+		return;
+	}
+	idActor *victim = static_cast<idActor *>( ent );
+	if ( !victim->IsActiveAF() ) {
+		// the ragdoll is not up yet (or never will be, and the fuse ends the wait)
+		return;
+	}
+
+	idPhysics_AF *afPhysics = victim->GetAFPhysics();
+	for ( int i = 0; i < afPhysics->GetNumConstraints(); i++ ) {
+		if ( afPhysics->GetConstraint( i )->IsTransient() ) {
+			pinVictim = NULL;
+			return;
+		}
+	}
+
+	const int bodyId = victim->BodyForClipModelId( pinClipModelId );
+	idAFBody *body = ( bodyId >= 0 && bodyId < afPhysics->GetNumBodies() ) ? afPhysics->GetBody( bodyId ) : NULL;
+	if ( body == NULL || body->GetClipModel() == NULL ) {
+		pinVictim = NULL;
+		return;
+	}
+
+	trace_t tr;
+	const idVec3 start = body->GetWorldOrigin();
+	gameLocal.Translation( victim, tr, start, start + pinDir * maxPinDistance, body->GetClipModel(), body->GetWorldAxis(), MASK_SOLID, victim );
+	if ( tr.fraction >= 1.0f ) {
+		return;
+	}
+
+	idAFConstraint_BallAndSocketJoint *pin = new idAFConstraint_BallAndSocketJoint( va( "pin_%d", entityNumber ), body, NULL );
+	pin->SetAnchor( tr.endpos );
+	pin->SetConeLimit( -pinDir, 90.0f, -pinDir );
+	pin->SetTransient( true );
+	afPhysics->AddConstraint( pin );
+	pinVictim = NULL;
+
+	if ( g_debugDamage.GetBool() ) {
+		gameLocal.Printf( "projectile '%s' pinned '%s' (body %d) at %s\n", GetName(), victim->GetName(), bodyId, tr.endpos.ToString( 0 ) );
+	}
 }
 
 void idProjectile::SpawnImpactEntities(const trace_t& collision, const idVec3 velocity)
@@ -1822,6 +1984,9 @@ void idProjectile::ReadFromSnapshot( const idBitMsgDelta &msg ) {
 				Show();
 			}
 			switch ( newState ) {
+			case STUCK:
+				HoldStuck();
+				break;
 			case FIZZLED:
 				Fizzle();
 				break;
@@ -1840,6 +2005,11 @@ void idProjectile::ReadFromSnapshot( const idBitMsgDelta &msg ) {
 				Create( ownerEnt, launchOrig, launchDir );
 				Launch( launchOrig, launchDir, vec3_origin );
 				Show();
+				break;
+			case STUCK:
+				if ( state == LAUNCHED ) {
+					HoldStuck();
+				}
 				break;
 			case FIZZLED:
 				// A short-lived projectile can reach its terminal state before
