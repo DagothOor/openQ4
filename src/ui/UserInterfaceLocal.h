@@ -105,6 +105,9 @@ public:
 	idStr						&GetPendingCmd() { return pendingCmd; };
 	idStr						&GetReturnCmd() { return returnCmd; };
 	void						SetLightColorVar( idWinVec4 *var ) { lightColorVar = var; }
+	// Engine-scripted validation: runs a window's onAction script, or its
+	// onBackAction when back is set, as a click on the window would.
+	bool						RunWindowAction( const char *windowName, bool back, idStr &command );
 
 private:
 	bool						active;

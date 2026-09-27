@@ -94,6 +94,10 @@ private:
 idUserInterfaceManaged *UI_CreateForPath( const char *qpath, bool managed = true );
 bool UI_IsRetainedPath( const char *qpath );
 bool UI_DispatchApplicationActions( idUserInterface *gui, const char *command, bool &closeRequested );
+// Engine-scripted validation for classic GUIs: runs a window's onAction script,
+// or its onBackAction when back is set, as a click on the window would, and
+// returns the command it issued. No device input is read or synthesized.
+bool UI_RunLegacyWindowAction( idUserInterface *gui, const char *windowName, bool back, idStr &command );
 typedef void (*UI_ApplicationCommandCallback)( idUserInterface *gui, const char *command, void *context );
 // Pump only private typed requests. A null owner snapshots all pending managed
 // allocations; a specific owner drains a lifecycle queue before its release.

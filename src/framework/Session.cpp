@@ -4317,6 +4317,27 @@ static void Session_OpenQ4GuiGet_f( const idCmdArgs &args ) {
 	common->Printf( "GUI_VALUE %s=%s\n", args.Argv( 1 ), value.c_str() );
 }
 
+// Runs a classic GUI window's onAction (or onBackAction with "back") and
+// dispatches the command it issues, as a click on the window would, so a
+// harness can drive a menu without device input.
+static void Session_OpenQ4GuiAction_f( const idCmdArgs &args ) {
+	idUserInterface *gui = session->GetActiveGUI();
+	const bool back = args.Argc() == 3 && !idStr::Icmp( args.Argv( 2 ), "back" );
+	if ( gui == NULL || ( args.Argc() != 2 && !back ) ) {
+		common->Printf( "usage: openq4_guiAction <window> [back] with an active classic GUI\n" );
+		return;
+	}
+	idStr command;
+	if ( !UI_RunLegacyWindowAction( gui, args.Argv( 1 ), back, command ) ) {
+		common->Printf( "openq4_guiAction: %s has no reachable %s\n", args.Argv( 1 ), back ? "onBackAction" : "onAction" );
+		return;
+	}
+	common->Printf( "GUI_ACTION %s%s cmd=%s\n", args.Argv( 1 ), back ? " back" : "", command.c_str() );
+	if ( command.Length() ) {
+		sessLocal.DispatchCommand( gui, command.c_str() );
+	}
+}
+
 static void Session_RetainedGui_f( const idCmdArgs &args ) {
 #ifndef ID_DEDICATED
 	idUserInterface* gui = sessLocal.GetActiveGUI();
@@ -8354,6 +8375,7 @@ void idSessionLocal::Init() {
 	cmdSystem->AddCommand( "GuiEvent", Session_GuiEvent_f, CMD_FL_SYSTEM, "sends a named event to the active gui" );
 	cmdSystem->AddCommand( "openq4_guiSet", Session_OpenQ4GuiSet_f, CMD_FL_SYSTEM | CMD_FL_CHEAT, "sets an existing active GUI variable for engine-scripted layout validation" );
 	cmdSystem->AddCommand( "openq4_guiGet", Session_OpenQ4GuiGet_f, CMD_FL_SYSTEM | CMD_FL_CHEAT, "reports an existing active GUI variable for engine-scripted layout validation" );
+	cmdSystem->AddCommand( "openq4_guiAction", Session_OpenQ4GuiAction_f, CMD_FL_SYSTEM | CMD_FL_CHEAT, "runs a classic GUI window's onAction, or onBackAction with back, as a click would, for engine-scripted validation" );
 	cmdSystem->AddCommand( "openq4_browser", Session_OpenQ4Browser_f, CMD_FL_SYSTEM | CMD_FL_CHEAT, "reports and exercises main-menu server-browser operations for engine-scripted validation" );
 	cmdSystem->AddCommand( "saveGame", SaveGame_f, CMD_FL_SYSTEM|CMD_FL_CHEAT, "saves a game" );
 	cmdSystem->AddCommand( "loadGame", LoadGame_f, CMD_FL_SYSTEM|CMD_FL_CHEAT, "loads a game", idCmdSystem::ArgCompletion_SaveGame );

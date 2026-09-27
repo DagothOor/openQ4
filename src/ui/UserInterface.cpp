@@ -651,6 +651,42 @@ bool idUserInterfaceLocal::SetPresentationValue( const char *name, const char *v
 	return true;
 }
 
+// Only a window a click could reach qualifies: it and every ancestor must be
+// visible and accept events. The command comes back instead of being queued,
+// so the caller dispatches it as the click's own HandleEvent result would be.
+bool idUserInterfaceLocal::RunWindowAction( const char *windowName, bool back, idStr &command ) {
+	command.Clear();
+	if ( desktop == NULL || windowName == NULL || windowName[ 0 ] == '\0' ) {
+		return false;
+	}
+	drawWin_t *found = desktop->FindChildByName( windowName );
+	idWindow *window = found != NULL ? found->win : NULL;
+	if ( window == NULL ) {
+		return false;
+	}
+	for ( idWindow *reach = window; reach != NULL; reach = reach->GetParent() ) {
+		if ( !reach->visible || reach->noEvents ) {
+			return false;
+		}
+	}
+	window->cmd = "";
+	if ( !window->RunScript( back ? idWindow::ON_BACKACTION : idWindow::ON_ACTION ) ) {
+		return false;
+	}
+	command = window->cmd;
+	window->cmd = "";
+	return true;
+}
+
+bool UI_RunLegacyWindowAction( idUserInterface *gui, const char *windowName, bool back, idStr &command ) {
+	idUserInterfaceLocal *legacy = dynamic_cast<idUserInterfaceLocal *>( gui );
+	if ( legacy == NULL ) {
+		command.Clear();
+		return false;
+	}
+	return legacy->RunWindowAction( windowName, back, command );
+}
+
 bool idUserInterfaceLocal::GetTextInputState( idRectangle &area, float &cursorOffset ) const {
 	if ( desktop == NULL ) {
 		return false;
