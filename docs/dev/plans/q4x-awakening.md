@@ -95,7 +95,11 @@ Each is inert for stock content; the audit checked the retail defs for every key
   the `.tga`.
 - **Robustness.** Rotation bounds stay finite when a rotation axis component rounds a
   hair above 1 (ragdolls in m04 hit it on their first frames).
-- **Menus.** `GetCVarValue`, `SetCVarValue` and `GetVecCVarValue` GUI commands.
+- **Menus.** `GetCVarValue`, `SetCVarValue` and `GetVecCVarValue` GUI commands. The
+  create-server and server-browser previews show a map's mapDef `loadimage`, as its
+  loading screen does: the expansion's CTF maps, `q4xctf1-5`, have no levelshot of their
+  own name and name retail's there, so they previewed as the generic image.
+  `openq4_mapLevelshot <map>` prints what the menus will show.
 - **Input.** `_altattack` binds the zoom button, which is alternate fire.
 
 ## Status
@@ -120,13 +124,16 @@ Each is inert for stock content; the audit checked the retail defs for every key
 
 ### Multiplayer
 
-The expansion's own maps run as listen servers with a bot in a live match: `q4xctf1-6` in
-CTF, `q4xctf2` in Arena CTF, `q4xctf3` in DeadZone, `q4xctf5` in DM and `q4xtourney1` in
-Tourney and Team DM. (`q4xdm*` re-export the retail DM maps.) The expansion's powerup
-numbering, its two new powerups and its buy menu work (Phase 3). Its effects and materials
-name images that neither it nor retail ships (`gfx/effects/fire/p_fire2a`,
-`gfx/mp/ctf_neutral_flagstrip*`, `models/monsters/burn_misc_sm`); they load as the default
-image, as they would under retail.
+The drop's multiplayer maps run as listen servers with a bot in a live match: `q4xctf1-6`
+in CTF, `q4xctf2` in Arena CTF, `q4xctf3` in DeadZone, `q4xctf5` and `q4xdm12` in DM, and
+`q4xtourney1` in Tourney and Team DM. Only `q4xctf1-5` and `q4xdm12` are new. `q4xctf6`,
+`q4xtourney1` and `q4xdm10`, `11` and `13`-`15` are Raven's post-release maps, already in
+retail's `pak019.pk4`; the drop carries other builds of them, which win under `q4xbase`.
+`q4xdm1-6` re-export retail's DM maps. The expansion's powerup numbering, its two new
+powerups and its buy menu work (Phase 3). Its effects and materials name images that
+neither it nor retail ships (`gfx/effects/fire/p_fire2a`, `gfx/mp/ctf_neutral_flagstrip*`,
+`models/monsters/burn_misc_sm`); they load as the default image, as they would under
+retail.
 
 ## Phases
 
@@ -268,3 +275,10 @@ Recorded because each one changed what "support" means here.
 - `.tmp/awakening/mp_maps_boot.py` (local) boots the expansion's multiplayer maps in the
   gametypes listed under Status, adds a bot, forces the match live and reads the player
   back.
+- `.tmp/awakening/levelshot_test.py` (local) checks `openq4_mapLevelshot` for the
+  expansion's maps, and that stock maps keep their levelshots.
+- For interactive testing the expansion's content sits in the development savepath,
+  `.home/q4xbase/`, copied from the drop without its leaked `gamex86.dll` and never
+  committed. The `(SP) Awakening ...` and `(MP) Awakening ...` launch configurations run
+  it from there, with retail content from the Steam install; `launch_entry_check.py`
+  (local) runs an entry's arguments headlessly against an isolated copy.

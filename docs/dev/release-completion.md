@@ -384,7 +384,8 @@
   longer hide the retail definitions beside them (`decl_layerModFiles`),
   version 2 collision models, DXT3 textures, `.jpg` textures shipped as
   `.tga`, `sound/music/` as music, the menu's cvar value commands, team maps
-  marked `TeamDM` in the create-server list, and `_altattack` as the
+  marked `TeamDM` in the create-server list, the CTF maps' levelshots in the
+  create-server and server-browser previews, and `_altattack` as the
   zoom/alternate-fire button. The Meson option `awakening` builds the layer
   when its repository sits next to the openQ4 checkout
   (`../openQ4-game-awakening`) or `OPENQ4_AWAKENING_REPO` names it.
