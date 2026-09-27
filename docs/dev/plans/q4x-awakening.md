@@ -262,6 +262,11 @@ Recorded because each one changed what "support" means here.
   docks her itself. She spawns with her ranged and melee attacks switched off.
 - `ai_valkaryneShots` is registered and never read, and so are the weapon-group and
   pickup-priority cvars.
+- Some of its map scripts call events their target classes do not have, in its own game
+  code as much as in openQ4's: `playCycle` on m04's security cameras (turrets) and
+  `becomeSolid` / `becomeNonSolid` on m02's `func_static` leaper clips. The calls do
+  nothing and openQ4 logs "not supported", as the SDK does. The expansion DLL's event
+  tables, read statically, register those events on the same classes as retail.
 
 ## Validation
 
@@ -289,6 +294,13 @@ Recorded because each one changed what "support" means here.
   token; `mp_stock_buy_test.py` checks that `baseoq4` buying is unchanged. Game time trails
   the real-time waits in a hidden run, so waits are generous and checks look for steps,
   not totals.
+- `.tmp/awakening/script_sweep.py` (local) fires every `trigger_*` of each campaign map in
+  file order, with the map's `target_endlevel` removed, god mode and `notarget`, under
+  cdb so a crash reports a stack. All 13 maps run to the end without an error or a
+  crash. Firing sequences out of order makes warnings of its own (scripted moves that
+  cannot start, entities a sequence already removed, which a plain boot never shows);
+  the rest are the script calls above, retail's harvester lacking the `turn_90_lt` its
+  code asks for, and m09's ragdoll marines, which spawn with `spawn_health 0` on purpose.
 - `.tmp/awakening/mp_maps_boot.py` (local) boots the expansion's multiplayer maps in the
   gametypes listed under Status, adds a bot, forces the match live and reads the player
   back.
