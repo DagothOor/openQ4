@@ -1,8 +1,8 @@
 # UI product requirement register
 
-9 September 2026, revised 26 September 2026. The
-[machine-readable register](product-requirements.json) contains **267
-requirements** for the complete UI product: 259 that define acceptance and eight
+9 September 2026, revised 26 and 27 September 2026. The
+[machine-readable register](product-requirements.json) contains **296
+requirements** for the complete UI product: 283 that define acceptance and 13
 superseded rows kept for history. It expands
 the [completion plan](../plans/ui-product-completion.md), the
 [original delivery scope](../plans/idtech5-ui.md) and the normative
@@ -31,6 +31,20 @@ changed. The revision re-binds the visual specification and repairs eleven other
 source bindings: an earlier increment recorded the completion plan, the original
 delivery scope and nine evidence document hashes from working-copy bytes that
 were never committed, and they now bind the current documents.
+
+Register schema 3 (27 September 2026) follows visual specification 1.3 and
+1.4. It records five supersessions: `ART-018` and `ART-019` by `ART-023` and
+`ART-024` for the measured list bands, rim light, small-card cuts and modal
+widths; `MOT-009` by `MOT-012` for the stock acceleration rule and per-element
+screen changes; `WID-021` by `WID-024` for the weapon wheel's HUD plates and
+Strogg construction; and `FLOW-027` by `FLOW-029` for the stock crosshair set
+and sizes. It appends 24 further requirements: band motion, masked additive
+composition, the pop-up frame catalogue, detailing, number formatting and text
+shadow, the modern components, the HUD's composition, gauges, anchoring, weapon
+strip, crosshair, messages, multiplayer HUD and alarms, and the version 1.4
+objectives display, boss and vehicle displays, scopes and weapon displays, and
+scoreboard. Every appended requirement is pending. The revision re-binds the
+normative sources and the completion plan's evidence hash.
 
 The [17 September implementation audit](masked-input-review.md) records current
 delivery gaps and the shared vector-mask input repair. `INP-007` remains partial;
@@ -349,8 +363,8 @@ The [full renderer shutdown increment](image-recovery-ownership.md), based on en
 
 The [editor file publication increment](editor-file-safety.md), based on engine `a11a00181b5997993bb9e225bad63a6422386311`, adds actual native creation of complete new files without replacing an existing or racing document. Windows Clang and MSVC each pass 340 checks, GCC with sanitizers passes 344, and all three reject seven compiled mutations. The full engine build and 78 UI suites pass. Windows symlink and DrvFS FIFO limitations are recorded. This file-only increment has no new game captures. Save As/autosave UI, live document association, overwrite/conflict handling and crash/relaunch recovery remain required. No requirement status, migration acceptance or final gate changes. Evidence: `.tmp/ui/editor-new-file/validation-evidence.json`, SHA-256 `846413e35eb34ed965a57005aa6eb724b5c8d3dbc2fb46f65ba30711a509cc63`.
 
-There are **71 partial, 195 pending and one verified requirement**, counting the
-eight superseded rows at their recorded states. `BEH-002`
+There are **71 partial, 224 pending and one verified requirement**, counting the
+13 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock
 sounds and the complete device/modal/widget behavior still require implementation
@@ -417,15 +431,15 @@ complete source-bound mappings and evidence.
 | `BEH-001`–`007` | Typed operations, settings transactions, aliases/events, exactly-once actions/sounds, pause and MP authority | M1, M2, M4 |
 | `SUR-001`–`006` | Explicit output surfaces, GPU lifetime, world density/rays, HUD/aim projection and output-resolution UI | M1, M5, M6 |
 | `SAVE-001`–`004` | Versioned instance/game-save policy, full durable state and live/level restoration | M1, M5 |
-| `LAY-001`–`017` | Exact scale/spacing/target-size values, aspect expansion, compact recovery, HUD safe areas, contrast, viewing profiles, size classes, safe-area gestures and the accessibility baseline | M1–M5 |
-| `TXT-001`–`010` | Scalable typography, the stock-derived type ramp, shaped runs, Unicode, localization, caret/selection/clipboard/IME and platform accessibility | M2, M3 |
+| `LAY-001`–`018` | Exact scale/spacing/target-size values, aspect expansion, compact recovery, HUD safe areas, contrast, viewing profiles, size classes, safe-area gestures, the accessibility baseline and HUD anchoring | M1–M5 |
+| `TXT-001`–`011` | Scalable typography, the stock-derived type ramp, shaped runs, Unicode, localization, caret/selection/clipboard/IME, platform accessibility, number formatting and text shadow | M2, M3 |
 | `INP-001`–`013` | Input transforms, paired activation, repeat/handoff, wheel/touch/text, modal focus, authored mask-aware hits, modality switching, focus memory, controller mapping/editing and touch rules | M1, M3 |
-| `WID-001`–`023` | Every named functional widget: actions, checkbox, radio, slider, choice, text, binding, tabs, lists, scrolling, progress, tooltip, modal, status, tree, path/color controls, prompt bar, detail area, radial wheel, on-screen keyboard and cycling values | M2, M3, M5 |
-| `REN-001`–`014` | Editable paths/paints/strokes/SVG, coverage/color, isolated opacity/masks/clips, additive and darkening composition and recovery | M3, M6 |
+| `WID-001`–`031` | Every named functional widget: actions, checkbox, radio, slider, choice, text, binding, tabs, lists, scrolling, progress, tooltip, modal, status, tree, path/color controls, prompt bar, detail area, radial wheel, on-screen keyboard, cycling values, the weapon wheel, the pop-up frame catalogue and the modern components | M2, M3, M5 |
+| `REN-001`–`015` | Editable paths/paints/strokes/SVG, coverage/color, isolated opacity/masks/clips, additive, darkening and masked additive composition and recovery | M3, M6 |
 | `RES-001`–`005` | Full material/movie/model operations, generated images and actual renderer resource accounting | M3, M4 |
-| `ART-001`–`022` | Measured component/icon libraries, exact visual tokens, panel/plate anatomy, all eight distinct families, complex-image exceptions, device glyphs and modern refinements | M2–M5 |
-| `MOT-001`–`011` | Continuous clocks, normative timing/easing, reversal/ownership, page/modal orchestration, stock choreography, sound, ambient loops/alarms and reduced motion | M1–M6 |
-| `FLOW-001`–`028` | Every menu/MP flow, HUD, communications, scope/vehicle, cinematic and scripted/world GUI; lifecycle, first-run setup, touch controls and editor, terminal input, modern screen patterns, HUD presets and layouts | M2, M4, M5 |
+| `ART-001`–`026` | Measured component/icon libraries, exact visual tokens, panel/plate anatomy, all eight distinct families, complex-image exceptions, device glyphs, modern refinements, detailing and HUD gauge constructions | M2–M5 |
+| `MOT-001`–`014` | Continuous clocks, normative timing/easing, reversal/ownership, page/modal orchestration, stock choreography, sound, ambient loops/alarms, reduced motion, band motion and HUD alarms | M1–M6 |
+| `FLOW-001`–`039` | Every menu/MP flow, HUD, communications, scope/vehicle, cinematic and scripted/world GUI; lifecycle, first-run setup, touch controls and editor, terminal input, modern screen patterns, HUD presets and layouts; the HUD's composition, gauges, strip, crosshair, messages and multiplayer HUD; objectives, boss, vehicle, scope and weapon displays; the scoreboard | M2, M4, M5 |
 | `ED-001`–`030` | Native workspace, canvas/constraints, components, vectors, motion/behavior, persistence/recovery, diagnostics and complete SP/MP delivery | M2, M3 |
 | `PERF-001`–`009` | Named optimized baselines, separate CPU/GPU telemetry, warm/cold runs, budgets, long-run plateau, measured optimization and mobile power limits | M3, M6 |
 | `QUAL-001`–`011` | Display/text/input/refresh/language/world extremes, independent visual review, stock parity, input/profile/device matrix, actual platforms and evidence provenance | M6 |
@@ -465,14 +479,15 @@ as in an increment, document hashes may be re-bound:
 
 ```powershell
 python tools/ui/validate_product_requirements.py `
-  --baseline a1dd82db255216ef910d5fc3ba0aa422a319df6d `
+  --baseline 3c20f83f500650e75d724e1c47c3fcd4af76fd8c `
   --revision `
-  --output .tmp/ui/register-revision-2/register-validation-final.json
+  --output .tmp/ui/register-revision-3/register-validation-final.json
 ```
 
 Use a new output path for each audit. The optional `--defer-hashes` preparation
 mode explicitly reports incomplete source bindings and cannot serve as the
-final audit. The schema 2 revision audit is recorded at
+final audit. The schema 3 revision audit is recorded at
+`.tmp/ui/register-revision-3/register-validation-final.json`. The schema 2 revision audit is recorded at
 `.tmp/ui/register-revision-2/register-validation-final.json`, and the rejected
 candidates of its negative cases are under `.tmp/ui/register-revision-2/negative/`.
 The native-output strict structural/source audit is recorded at

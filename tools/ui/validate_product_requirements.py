@@ -352,8 +352,13 @@ def validate_revision(args) -> dict:
         require(all(item in rows[name]["current_evidence"] for item in carried) and
                 all(any(item in rows[successor]["current_evidence"] for successor in successors) for item in carried),
                 f"Carried evidence must come from the superseded row and reach a successor: {name}")
-    successors = {item for record in records for item in record["successors"]}
-    require(not successors & set(superseded), "A superseded requirement cannot be a successor")
+    # A later revision may supersede an earlier successor, forming a chain; a
+    # chain must end in requirements that still define acceptance.
+    chain = {record["superseded"]: record["successors"] for record in records}
+    def leaves(name, seen=()):
+        require(name not in seen, f"Supersession cycle: {name}")
+        return [leaf for item in chain[name] for leaf in (leaves(item, seen + (name,)) if item in chain else [item])]
+    require(all(leaves(name) for name in chain), "Supersession chain without a successor")
     require(bool(added) or bool(new_records), "A register revision must append requirements or record supersessions")
 
     # Audit findings keep their mapping; successors may be appended.

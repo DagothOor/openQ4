@@ -65,6 +65,15 @@ declaring that choice proven for the whole product.
 
 ### Current implementation progress
 
+The [27 September register revision](../ui/product-requirements.md) follows
+[visual specification](../ui-visual-design.md) 1.3 and 1.4. Register schema 3
+records five supersessions and appends 29 requirements for band motion, the
+pop-up frame catalogue, detailing, modern components and the HUD: gauges, the
+weapon strip and wheel, crosshair, messages, objectives, boss, vehicle and scope
+displays, the multiplayer HUD and the scoreboard. The register now holds 296
+rows, of which 283 define acceptance. No requirement is accepted, and all 271
+migrations and seven final gates remain open.
+
 The [26 September register revision](../ui/product-requirements.md) follows
 [visual specification](../ui-visual-design.md) 1.1 and 1.2. Register schema 2
 records eight supersessions and appends 40 requirements for the measured stock

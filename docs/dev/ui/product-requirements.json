@@ -1,10 +1,10 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id_namespace": "openq4.ui.product",
-  "date": "2026-09-26",
+  "date": "2026-09-27",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "a1dd82db255216ef910d5fc3ba0aa422a319df6d",
+    "engine_revision": "3c20f83f500650e75d724e1c47c3fcd4af76fd8c",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -14,17 +14,17 @@
     "visual": {
       "path": "docs/dev/ui-visual-design.md",
       "authority": "normative visual, interaction and editor contract",
-      "sha256": "53d48a9325f5e6e5aa61dd866c393c47434a31a0387b5660142c8768c678af50"
+      "sha256": "5f7b67e4685f71c59c053e2a00f06661dc732c6776b39154c806890b4bdacc34"
     },
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "f1b5efbf0b321866da9c12f4e17e5fc81f20319f246e1305c3801bea0b5206bb"
+      "sha256": "4b119f998b660dc15b0e9beeff8d5f55d9e6d7311e8ad7d3e37e7997fbcd9038"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "8bb2fb76b9d0b8724d5bd5458e618290675442f668839bbf03d138b009e8200a"
+      "sha256": "2b4823b75fbd8b3e7b2032848de0c3eae62f4ab8729431fd2b09727bc9633cf6"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -102,7 +102,7 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "f1b5efbf0b321866da9c12f4e17e5fc81f20319f246e1305c3801bea0b5206bb"
+      "sha256": "4b119f998b660dc15b0e9beeff8d5f55d9e6d7311e8ad7d3e37e7997fbcd9038"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
@@ -994,7 +994,9 @@
       "RES-003",
       "ART-018",
       "ART-019",
-      "ART-020"
+      "ART-020",
+      "ART-023",
+      "ART-024"
     ],
     "UI-12": [
       "LAY-003",
@@ -1100,6 +1102,63 @@
       "source_refs": [
         "visual:3",
         "visual:13"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "ART-018",
+      "successors": [
+        "ART-023"
+      ],
+      "normative_change": "Visual 1.3 section 4 sets the list selection band to 41%, or 50% in server lists, makes the row rule white, adds the server-list band set and measures the rim light at 37% over 19 u.",
+      "source_refs": [
+        "visual:4",
+        "visual:6"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "ART-019",
+      "successors": [
+        "ART-024"
+      ],
+      "normative_change": "Visual 1.3 section 6 keeps the 12 dp major cut on small cards, records five modal widths with their slot depths and chamfers, and defines the glow column, title placement and action insets.",
+      "source_refs": [
+        "visual:6"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "MOT-009",
+      "successors": [
+        "MOT-012"
+      ],
+      "normative_change": "Visual 1.3 section 8 replaces trapezoid(150, 150) with accel(250, 250), because stock acceleration arguments are fractions of the duration, and records per-element screen-change timing.",
+      "source_refs": [
+        "visual:8"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "WID-021",
+      "successors": [
+        "WID-024"
+      ],
+      "normative_change": "Visual 1.3 section 14.6 replaces cut segments with HUD plates, the weapon strip's selection ring and fixed positions; version 1.4 adds the Strogg construction.",
+      "source_refs": [
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "FLOW-027",
+      "successors": [
+        "FLOW-029"
+      ],
+      "normative_change": "Visual 1.3 section 13.9 replaces crosshair sizes 16-48 with the twenty-mark stock set and its five sizes of 24-72 dp, and makes multiplayer hit markers optional.",
+      "source_refs": [
+        "visual:13",
+        "visual:14"
       ],
       "carried_evidence": []
     }
@@ -9197,6 +9256,1276 @@
       "current_evidence": [],
       "acceptance_evidence": [],
       "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required."
+    },
+    {
+      "id": "ART-023",
+      "title": "Measured Marine tokens and state alpha",
+      "milestone_owner": "M2",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Use the Marine, surface, text, status and measured tokens with the stock alpha ladder of visual 1.3: plates 0.40 at rest, 0.80 or 1.00 on hover or focus and 1.00 for the current page; markers 0.40, orange at 1.00 with the label; labels 0.80 white; titles 0.50; headings 0.40; cards 0.94; modal frames 0.70 over a 0.94 scrim; bands 1.00, or 0.40 in the in-game multiplayer and buy menus over a 0.80 black scrim and 0.80 backing; table header bands 0.60. Menu lists use marine.list at 16% hover and 41% selection with a white 50% hairline; server and multiplayer lists use a #9A9C6E line band at 8%, hover at 29%, selection in marine.list at 50% and a #787E87 greyed band at 41%, without a hairline. The band rim light is #626934 falling from 37% to zero across 19 u. Separators are olive 0.26 on pages and 0.32 in cards and white 0.10 in multiplayer tables and entry dialogs. Join-card values stay limited to in-game partial panels, and status colors keep icon, explanation and non-color cues.",
+      "dependencies": [
+        "ART-001",
+        "REN-005",
+        "REN-014"
+      ],
+      "acceptance_evidence_needed": [
+        "Token source comparison against the survey values plus composited contrast and all-state gallery review."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "marine.list": {
+          "color": "#FF9C00",
+          "hover_alpha": 0.16,
+          "selection_alpha": 0.41,
+          "server_list_selection_alpha": 0.5,
+          "hairline": {
+            "color": "#FFFFFF",
+            "alpha": 0.5
+          }
+        },
+        "server_list_bands": {
+          "line": [
+            "#9A9C6E",
+            0.08
+          ],
+          "hover": [
+            "#9A9C6E",
+            0.29
+          ],
+          "greyed": [
+            "#787E87",
+            0.41
+          ],
+          "end_fade_fraction": 0.22
+        },
+        "marine.rim": {
+          "color": "#626934",
+          "alpha": [
+            0.37,
+            0
+          ],
+          "linear_width_u": 19,
+          "tail_u": 25
+        },
+        "separator_alpha": {
+          "page_olive": 0.26,
+          "card_olive": 0.32,
+          "mp_and_entry_dialog_white": 0.1,
+          "hud_stats_white": 0.3
+        },
+        "in_game_menu": {
+          "band_alpha": 0.4,
+          "scrim_alpha": 0.8,
+          "backing_alpha": 0.8
+        },
+        "plate_alpha": {
+          "rest": 0.4,
+          "hover_primary": 0.8,
+          "hover_section_and_value_row": 1.0,
+          "current_page": 1.0
+        },
+        "card_body_alpha": 0.94,
+        "modal_frame_alpha": 0.7,
+        "scrim_alpha": 0.94,
+        "table_header_band_alpha": 0.6
+      }
+    },
+    {
+      "id": "ART-024",
+      "title": "Panel, pop-up and band constructions",
+      "milestone_owner": "M2",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Cards use one marine.rail.card rail around a 0.94 black body with 12 dp cuts at the top-trailing and bottom-leading corners and 3 dp at the other two; small cards keep the 12 dp cut and only one-line hints use 10 dp. Modals are a 0.70 black silhouette over a 0.94 scrim and an additive glow column exactly as wide as the dialog, graded only vertically, with a leading tooth, a title slot about 73% wide, a raised trailing section, a deep lower-leading chamfer, square trailing corners and no rails; the five stock widths keep their slot depths and chamfers, the title's baseline sits on the raised top line from the foot of the slot's leading flank, and actions sit 30 dp and 33 dp from the edges. The chat box, tab strip, header band, framing and loading bands and corner brackets follow their measured constructions, lengthening only straight spans.",
+      "dependencies": [
+        "ART-001",
+        "REN-001",
+        "REN-014"
+      ],
+      "acceptance_evidence_needed": [
+        "Measured geometry and overlays against the stock at 4:3 and across widths and DPI for every construction; a generic beveled rectangle is insufficient."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "card": {
+          "major_cut_dp": 12,
+          "minor_cut_dp": 3,
+          "one_line_hint_major_cut_dp": 10,
+          "rail_dp": 1.5,
+          "body_alpha": 0.94,
+          "art_inset_u": 2
+        },
+        "modal_widths_dp": {
+          "confirmation_entry_list": {
+            "width": 480,
+            "slot_depth": 17,
+            "chamfer": 38
+          },
+          "system_message_connection_death": {
+            "width": 540,
+            "slot_depth": 20,
+            "chamfer": 46
+          },
+          "ban_list": {
+            "width": 548,
+            "slot_depth": 22,
+            "chamfer": 50
+          },
+          "advanced_options": {
+            "width": [
+              612,
+              642
+            ],
+            "slot_depth": 25,
+            "chamfer": 56
+          }
+        },
+        "modal": {
+          "frame_alpha": 0.7,
+          "scrim_alpha": 0.94,
+          "leading_tooth_dp": 6,
+          "slot_opening_fraction": 0.73,
+          "slot_floor_fraction": 0.66,
+          "action_inset_dp": [
+            30,
+            33
+          ],
+          "glow_half_at_height_fraction": [
+            0.28,
+            0.72
+          ],
+          "glow_extent_u": {
+            "above": 87,
+            "below": 108
+          },
+          "lit_margin_dp": 6,
+          "standard_top_u": 155,
+          "standard_height_u": 136
+        },
+        "header_band": {
+          "cut_texels": 8,
+          "fill_full_to_fraction": 0.5,
+          "half_at_fraction": 0.75
+        },
+        "bands": {
+          "flank_degrees": 45,
+          "notch_height_u": 9,
+          "notch_top_u": 36,
+          "notch_pitch_u": 97,
+          "top_riser_u": 35,
+          "rim_light_u": 19,
+          "silhouettes": "visual Appendix B.2"
+        }
+      }
+    },
+    {
+      "id": "MOT-012",
+      "title": "Stock motion tokens and screen choreography",
+      "milestone_owner": "M2",
+      "implementation_owner": "Presentation motion and UI interaction",
+      "source_refs": [
+        "visual:8",
+        "product:3 Visual quality and motion",
+        "product:5 Visual and interaction qualification",
+        "original:Stage 2"
+      ],
+      "requirement": "Implement the visual 1.3 tokens and choreography: stock transitions take acceleration and deceleration as fractions of the duration, so frame.dock and screen.depart run accel(250, 250) over 500 ms and the home layer sweeps 640 u; screen.return sweeps a page and its plates 640 u in 300 ms linear; content.out fades home plates, labels, markers and the message of the day over 250 ms and the secondary links over 50 ms, while a departing page drops its title at once, its Back action over 100 ms and its backing over 250 ms; content.in fades title, backing and Back over 150 ms while a page's own plates appear at rest at once; menu.fade, band.slide, row.flash, list.unfold, modal.enter, modal.leave and light.up follow their measured values; destinations differ only in their backing and the second light band. Preserve source story, terminal and reticle timing.",
+      "dependencies": [
+        "MOT-001"
+      ],
+      "acceptance_evidence_needed": [
+        "Authored tokens plus sampled curve and duration evidence against the stock timelines, per destination, with rationale for openQ4 additions."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "accel_rule": "stock accel/decel arguments are fractions of the duration, rescaled when they sum past it",
+        "frame.dock": {
+          "duration_ms": 500,
+          "accel_ms": 250,
+          "decel_ms": 250,
+          "start_ms_to_page": 50,
+          "start_ms_back": 0
+        },
+        "screen.depart": {
+          "duration_ms": 500,
+          "accel_ms": 250,
+          "decel_ms": 250,
+          "sweep_u": 640
+        },
+        "screen.return": {
+          "duration_ms": 300,
+          "curve": "linear",
+          "sweep_u": 640
+        },
+        "content.out": {
+          "home_ms": 250,
+          "links_and_plinth_ms": 50,
+          "page_title_ms": 0,
+          "back_action_ms": 100,
+          "backing_ms": 250
+        },
+        "content.in": {
+          "duration_ms": 150,
+          "page_plates": "at rest at once"
+        },
+        "menu.fade": {
+          "duration_ms": 250
+        },
+        "band.slide": {
+          "duration_ms": 150,
+          "curve": "linear",
+          "hold_before_out_ms": 50
+        },
+        "row.flash": {
+          "duration_ms": 250,
+          "from_alpha": 0.6
+        },
+        "list.unfold": {
+          "duration_ms": 150,
+          "curve": "linear"
+        },
+        "modal.enter": {
+          "duration_ms": 200,
+          "contents_appear_ms": 200,
+          "scale_animation": false
+        },
+        "modal.leave": {
+          "hold_ms": 50,
+          "scrim_glow_ms": 250,
+          "frame_ms": [
+            200,
+            250
+          ]
+        },
+        "light.up": {
+          "in_ms": 150,
+          "out_ms": 250
+        },
+        "page_arrival_ms": 550,
+        "backings": {
+          "most": 0.6,
+          "friends": 0.8,
+          "server_browser": 0.9,
+          "credits": 1.0,
+          "multiplayer_hub": null
+        },
+        "second_light_band_alpha": 0.4
+      }
+    },
+    {
+      "id": "WID-024",
+      "title": "Weapon wheel and quick chat",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI components and application bindings",
+      "source_refs": [
+        "visual:7",
+        "product:2 UI-03",
+        "product:3 Text, controls and accessibility",
+        "product:4 M3",
+        "visual:13",
+        "visual:14"
+      ],
+      "requirement": "A held-button wheel in the active HUD family gives every weapon of the game mode a fixed segment in strip order, clockwise from the top: Marine segments are black 0.50 HUD plates with 2 dp radii and constant 6 dp gaps between 104 and 232 dp; unowned weapons stay as 0.15 outlines; the selection takes the weapon strip's orange icon and ring, a 0.70 backing and 8 dp of extension; weapons without ammunition show the prohibition sign and refuse to equip; segments carry the HUD icon, weapon number, reserve and a color-coded reserve arc, and the center names the weapon with clip and reserve. Stick selection past 35% with 4 degrees of hysteresis, a 32 dp mouse selector, touch drags from the weapon button, release equips, Back cancels, a tap under 180 ms swaps to the previous weapon, and the game keeps running. The Strogg HUD uses its own construction, and the same component provides localized multiplayer quick chat.",
+      "dependencies": [
+        "INP-011",
+        "INP-013",
+        "ART-026",
+        "FLOW-032"
+      ],
+      "acceptance_evidence_needed": [
+        "Gameplay traces for weapon and chat wheels on controller, touch and mouse in both HUD families with correct equip, refusal and send results and no simulation pause."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "ring_dp": [
+          104,
+          232
+        ],
+        "gap_dp": 6,
+        "corner_radius_dp": 2,
+        "selected_extension_dp": 8,
+        "unowned_alpha": 0.15,
+        "backing_alpha": {
+          "rest": 0.5,
+          "selected": 0.7
+        },
+        "ring_stroke_dp": 2.4,
+        "stick_threshold": 0.35,
+        "hysteresis_degrees": 4,
+        "mouse_threshold_dp": 32,
+        "tap_ms": 180,
+        "open_ms": 90,
+        "close_ms": 70,
+        "wash_alpha": 0.35,
+        "wash_radius_dp": 280
+      }
+    },
+    {
+      "id": "FLOW-029",
+      "title": "HUD presets and HUD settings",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:13",
+        "visual:14"
+      ],
+      "requirement": "Offer Classic, Remastered, Minimal, Competitive and Touch HUD presets and settings for independent HUD scale, safe inset, opacity, color vision, the crosshair editor (the stock set of twenty, the five stock sizes of 24-72 dp and sizes between, free color with eight presets, live preview), optional multiplayer hit markers, the damage direction indicator, pickup messages and the weapon strip; Couch and Handheld start the HUD at 125%.",
+      "dependencies": [
+        "FLOW-014",
+        "LAY-009",
+        "LAY-014",
+        "LAY-018"
+      ],
+      "acceptance_evidence_needed": [
+        "Each preset and setting applied in SP and MP gameplay with readback and profile defaults."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "presets": [
+          "classic",
+          "remastered",
+          "minimal",
+          "competitive",
+          "touch"
+        ],
+        "stock_crosshair_sizes_u": [
+          16,
+          24,
+          32,
+          40,
+          48
+        ],
+        "crosshair_size_dp": [
+          24,
+          72
+        ],
+        "crosshair_set": 20,
+        "color_presets": 8,
+        "couch_handheld_hud_percent": 125
+      }
+    },
+    {
+      "id": "MOT-013",
+      "title": "Band motion rules",
+      "milestone_owner": "M2",
+      "implementation_owner": "Presentation motion and UI interaction",
+      "source_refs": [
+        "visual:8",
+        "product:3 Visual quality and motion",
+        "product:5 Visual and interaction qualification",
+        "original:Stage 2"
+      ],
+      "requirement": "Each framing band has exactly two dock states per menu and moves on the straight line between them with accel(250, 250), sampled every presented frame; notches, risers and steps travel undeformed while flat spans stay attached to the viewport edges. Input that reverses a change starts the opposite move from the current positions with a duration proportional to the remaining distance, 150-500 ms, so position never jumps. Remastered carries the activated label into the title slot; the rim light moves with the band and nothing flares on arrival; compact classes shorten only the travel; a change renders at the display rate even where a resting menu is capped at 30 Hz; the selection sound plays once at activation.",
+      "dependencies": [
+        "MOT-012",
+        "LAY-015",
+        "ART-024"
+      ],
+      "acceptance_evidence_needed": [
+        "Sampled band positions and velocities for full, interrupted and reversed changes at 30, 60, 144 and 240 Hz, in compact and regular classes, with title-carry and sound traces."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "retarget_duration_ms": [
+          150,
+          500
+        ],
+        "title_carry_ms": 500,
+        "phone_rest_cap_hz": 30
+      }
+    },
+    {
+      "id": "REN-015",
+      "title": "Masked additive composition",
+      "milestone_owner": "M3",
+      "implementation_owner": "Vector compiler and renderer adapters",
+      "source_refs": [
+        "visual:4",
+        "visual:6",
+        "product:2 UI-07",
+        "product:2 UI-08",
+        "product:3 Visual quality and motion",
+        "original:Stage 3",
+        "visual:14"
+      ],
+      "requirement": "Provide masked additive composition on every backend: a mask pass writes a shape into destination alpha and a layer is then added only inside it, for the HUD's EKG, radio waveform and Strogg gauge grain, alongside plain additive layers such as the low-health rim and powerup emblems; group opacity scales the contribution without changing the blend.",
+      "dependencies": [
+        "REN-014",
+        "REN-005"
+      ],
+      "acceptance_evidence_needed": [
+        "Renderer captures on OpenGL, Vulkan and GLES comparing masked additive layers with the stock at the same output, including overlapping masks and group opacity."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required."
+    },
+    {
+      "id": "WID-025",
+      "title": "Pop-up frame catalogue",
+      "milestone_owner": "M3",
+      "implementation_owner": "UI components and application bindings",
+      "source_refs": [
+        "visual:7",
+        "product:2 UI-03",
+        "product:3 Text, controls and accessibility",
+        "product:4 M3",
+        "visual:14"
+      ],
+      "requirement": "Every transient surface uses a catalogued construction: modal, card, hover card, tooltip, statistic and award cards, system message, dropdown list, action popover, notice and countdown. Frames stay 16 dp inside the safe area, flip before they clip, never cover the crosshair, prompt bar or touch controls, anchor to the focused control for keyboard and controller and to the pointer otherwise, and layer HUD, partial panels, menus, cards and popovers, modals, notices, then the pointer. One modal shows at a time; modals contain and restore focus, popovers opened by keyboard or controller take and return it, and hover cards and tooltips never take it.",
+      "dependencies": [
+        "WID-013",
+        "WID-019",
+        "ART-024",
+        "INP-008"
+      ],
+      "acceptance_evidence_needed": [
+        "Real behavior and state-gallery evidence for keyboard, pointer, controller and touch through production routing, including disabled, busy, error, cancel and focus cases as applicable. Include placement near every safe-area edge and queued modal requests."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "safe_area_margin_dp": 16,
+        "tooltip_delay_ms": 300,
+        "stat_card_delay_ms": 500,
+        "list_unfold_ms": 150
+      }
+    },
+    {
+      "id": "ART-025",
+      "title": "Detailing rules",
+      "milestone_owner": "M2",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Apply the visual detailing rules: rails as one continuous mitered stroke of 1.5 dp, never under a physical pixel, snapped when static; only the measured cut ladder; linear straight-alpha fades dithered on 8-bit targets beyond 128 physical pixels; markers inside the cap band; two-texel separators that never touch a rail; locked content with the lock symbol and a 45-degree hatch at 0.10; additive glows that never stack; flipped plates as list headings; the stock details (dot matrix, corner brackets, credit bars, level meter, soft backing, name strip, swatches and picture frames); and the reticle grid, grain and light band only on menu backdrops, never on the HUD, in-game overlays or world displays.",
+      "dependencies": [
+        "ART-001",
+        "ART-024",
+        "REN-003"
+      ],
+      "acceptance_evidence_needed": [
+        "Magnified captures of joins, cuts, fades, markers, separators, hatch and details at 100-200% scale on each backend, and HUD captures free of menu backdrop layers."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "rail_dp": 1.5,
+        "cut_ladder_dp": [
+          2,
+          3,
+          10,
+          12,
+          14,
+          17,
+          20,
+          38,
+          56
+        ],
+        "dither_fade_min_px": 128,
+        "hatch": {
+          "angle_degrees": 45,
+          "pitch_dp": 8,
+          "stroke_dp": 1,
+          "alpha": 0.1
+        },
+        "card_rule_inset_dp": {
+          "leading": 8,
+          "trailing": 25
+        }
+      }
+    },
+    {
+      "id": "TXT-011",
+      "title": "Numbers, units and text shadow",
+      "milestone_owner": "M2",
+      "implementation_owner": "Retained font/text and platform accessibility",
+      "source_refs": [
+        "visual:5",
+        "product:2 UI-06",
+        "product:3 Text, controls and accessibility",
+        "visual:14"
+      ],
+      "requirement": "Use tabular figures wherever digits change or align; separate values from units with a space except for percentages and multipliers; write resolutions with a spaced multiplication sign, ranges with an en dash and durations as m:ss; follow the language's decimal and grouping separators. Text over gameplay or imagery takes the stock drop shadow, a black copy 1.5 dp toward the trailing bottom at the text's alpha, and text on plates and cards never does. Labels wrap before they shrink, and actions never truncate.",
+      "dependencies": [
+        "TXT-002",
+        "TXT-005"
+      ],
+      "acceptance_evidence_needed": [
+        "Formatting fixtures in every supported language plus captures of shadowed and unshadowed text over imagery."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "shadow_offset_dp": 1.5
+      }
+    },
+    {
+      "id": "WID-026",
+      "title": "Notices and undo",
+      "milestone_owner": "M3",
+      "implementation_owner": "UI components and application bindings",
+      "source_refs": [
+        "visual:7",
+        "product:2 UI-03",
+        "product:3 Text, controls and accessibility",
+        "product:4 M3",
+        "visual:13"
+      ],
+      "requirement": "Notices are header-band plates 320-480 dp wide in the top band's trailing section with a status symbol, Lowpixel 14 dp text and an optional action glyph; they hold 4 s, or 8 s with an action, stack at most three newest first and queue the rest; errors and unresolved states persist until resolved; they never cover the crosshair, touch controls or prompt bar. Reversible resets and removals offer Undo for 8 s; deleting a save still confirms in a modal.",
+      "dependencies": [
+        "WID-014",
+        "WID-025",
+        "MOT-013"
+      ],
+      "acceptance_evidence_needed": [
+        "Real behavior and state-gallery evidence for keyboard, pointer, controller and touch through production routing, including disabled, busy, error, cancel and focus cases as applicable."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "width_dp": [
+          320,
+          480
+        ],
+        "hold_s": 4,
+        "hold_with_action_s": 8,
+        "max_visible": 3,
+        "undo_s": 8,
+        "enter_ms": 160,
+        "leave_ms": 200
+      }
+    },
+    {
+      "id": "WID-027",
+      "title": "Settings search and filter tags",
+      "milestone_owner": "M3",
+      "implementation_owner": "UI components and application bindings",
+      "source_refs": [
+        "visual:7",
+        "product:2 UI-03",
+        "product:3 Text, controls and accessibility",
+        "product:4 M3",
+        "visual:13"
+      ],
+      "requirement": "Search runs across every settings category with the search symbol in a recessed field; results update every keystroke, match labels, values and language-table synonyms, show the category path and jump to the setting, whose plate brightens once; an empty result names the search. Filter tags are small header-band plates, set at 0.60 and unset at 0.28, with Clear filters in the prompt bar while any is set.",
+      "dependencies": [
+        "WID-005",
+        "WID-009",
+        "TXT-003"
+      ],
+      "acceptance_evidence_needed": [
+        "Real behavior and state-gallery evidence for keyboard, pointer, controller and touch through production routing, including disabled, busy, error, cancel and focus cases as applicable."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "tag_alpha": {
+          "set": 0.6,
+          "unset": 0.28
+        }
+      }
+    },
+    {
+      "id": "WID-028",
+      "title": "Countdown confirmation and binding conflict",
+      "milestone_owner": "M3",
+      "implementation_owner": "UI components and application bindings",
+      "source_refs": [
+        "visual:7",
+        "product:2 UI-03",
+        "product:3 Text, controls and accessibility",
+        "product:4 M3",
+        "visual:13"
+      ],
+      "requirement": "The countdown confirmation is a modal with a tick ramp that loses one tick per second and the remaining seconds in marine.value; display changes use 15 s, Keep leads, Revert trails and timing out reverts, and Accept from any device keeps. A binding conflict names the action that holds the input with its category path and offers Swap, Clear the other binding or Cancel, which restores the capture state.",
+      "dependencies": [
+        "WID-007",
+        "WID-013",
+        "BEH-002"
+      ],
+      "acceptance_evidence_needed": [
+        "Real behavior and state-gallery evidence for keyboard, pointer, controller and touch through production routing, including disabled, busy, error, cancel and focus cases as applicable."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "display_countdown_s": 15
+      }
+    },
+    {
+      "id": "WID-029",
+      "title": "Transfer progress, network quality and device status",
+      "milestone_owner": "M3",
+      "implementation_owner": "UI components and application bindings",
+      "source_refs": [
+        "visual:7",
+        "product:2 UI-03",
+        "product:3 Text, controls and accessibility",
+        "product:4 M3",
+        "visual:13"
+      ],
+      "requirement": "Transfers show the progress bar with transferred size, rate and time remaining in Profont 13 dp and keep progress through pauses, suspension and restarts. Network quality shows four bars rising like slider ticks beside the ping: four to 60 ms, three to 120 ms, two to 200 ms, one above, each 2% of loss removing a bar. The controller symbol carries a three-cell battery when the platform reports charge, with a notice at 10%.",
+      "dependencies": [
+        "WID-011",
+        "FLOW-020"
+      ],
+      "acceptance_evidence_needed": [
+        "Real behavior and state-gallery evidence for keyboard, pointer, controller and touch through production routing, including disabled, busy, error, cancel and focus cases as applicable."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "ping_thresholds_ms": [
+          60,
+          120,
+          200
+        ],
+        "loss_per_bar_percent": 2,
+        "battery_notice_percent": 10
+      }
+    },
+    {
+      "id": "WID-030",
+      "title": "More actions, empty states and loading rows",
+      "milestone_owner": "M3",
+      "implementation_owner": "UI components and application bindings",
+      "source_refs": [
+        "visual:7",
+        "product:2 UI-03",
+        "product:3 Text, controls and accessibility",
+        "product:4 M3",
+        "visual:13"
+      ],
+      "requirement": "The prompt bar's More action opens a popover of the remaining actions with their glyphs. Empty lists show a section heading, one sentence saying why and an action row that fixes it. Loading lists show row plates at rest without labels, replaced with row.reveal; no shimmer sweep and no spinner over content.",
+      "dependencies": [
+        "WID-019",
+        "WID-009",
+        "WID-025"
+      ],
+      "acceptance_evidence_needed": [
+        "Real behavior and state-gallery evidence for keyboard, pointer, controller and touch through production routing, including disabled, busy, error, cancel and focus cases as applicable."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required."
+    },
+    {
+      "id": "WID-031",
+      "title": "Crosshair editor, stick response, palette preview and text backing",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI components and application bindings",
+      "source_refs": [
+        "visual:7",
+        "product:2 UI-03",
+        "product:3 Text, controls and accessibility",
+        "product:4 M3",
+        "visual:13"
+      ],
+      "requirement": "The crosshair editor previews over a captured scene tile with the stock set, a 24-72 dp size slider and eight color presets; the stick plot draws the dead-zone disc, outer threshold ring, response curve and live position; the palette preview shows team colors and the item code under the chosen color-vision palette; the text backing puts an opaque local plate at 0.85 black behind text in its own row shape.",
+      "dependencies": [
+        "FLOW-029",
+        "INP-011",
+        "LAY-012"
+      ],
+      "acceptance_evidence_needed": [
+        "Real behavior and state-gallery evidence for keyboard, pointer, controller and touch through production routing, including disabled, busy, error, cancel and focus cases as applicable."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "crosshair_size_dp": [
+          24,
+          72
+        ],
+        "text_backing_alpha": 0.85
+      }
+    },
+    {
+      "id": "FLOW-030",
+      "title": "HUD composition and stock layout",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Draw the scope display, crosshair, HUD and multiplayer HUD in stock order; vehicles replace the HUD but keep the crosshair, and the objectives display hides everything while open; the HUD runs on real time. Keep the stock layout for Classic: gauges at 13, 190 and 326 u on y 420 (Strogg 10, 190 and 330 u on y 419), the weapon strip at 370 u, pickup, radio, obituary, powerup, boss, notice, hit-indicator and bracket positions as measured, and the gauges' 52 u and 11 u gaps.",
+      "dependencies": [
+        "FLOW-014",
+        "FLOW-015"
+      ],
+      "acceptance_evidence_needed": [
+        "SP and MP gameplay captures per HUD family against the stock at 4:3 with draw-order and vehicle and objectives-display cases."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "gauge_x_u": [
+          13,
+          190,
+          326
+        ],
+        "gauge_y_u": 420,
+        "strogg_gauge_x_u": [
+          10,
+          190,
+          330
+        ],
+        "strogg_gauge_y_u": 419,
+        "strip_y_u": 370
+      }
+    },
+    {
+      "id": "ART-026",
+      "title": "HUD gauge and strip constructions",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Reconstruct the measured Marine gauge (a 123x40 u rounded backing with a 6.9 u trailing foot, a bevelled fill inset 4.4 and 4.6 u with the ledge-and-arc notch, ten armor cells with soft dividers), the Strogg gauge (raised tab, 30-degree shoulder, stepped fill, cut-away trailing third, masked grain) and the weapon strip plates, sheared 0.22 about each element's own center with upright icons and renders.",
+      "dependencies": [
+        "ART-001",
+        "REN-015"
+      ],
+      "acceptance_evidence_needed": [
+        "Overlays of reconstructed gauges and strip on stock captures at 4:3 per family, including the shear and notch."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "shear": 0.22,
+        "backing_u": [
+          123.0,
+          40.1
+        ],
+        "foot_depth_u": 6.9,
+        "fill_inset_u": [
+          4.4,
+          4.6
+        ],
+        "notch_arc_radius_u": 16.6,
+        "armor_divider_pitch_u": 11.7,
+        "strip_pitch_u": 30,
+        "strip_plate_u": 24.4
+      }
+    },
+    {
+      "id": "FLOW-031",
+      "title": "Gauge behavior",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Fills anchor at the trailing end and drain toward the numerals over a 20% track; ammunition shows clip and reserve for clips of two or more, a total otherwise and nothing for unlimited weapons, with the weapon render behind the clip; Remastered uses tabular numerals; gains pop the numeral to 120% white settling over 250 ms while damage never animates a gauge; low health below 26% (Strogg 25%) turns the fill #FF4C00 at once with a 2 Hz additive rim; the EKG runs two beats per width at 37.5 dp/s and keeps moving under reduced motion.",
+      "dependencies": [
+        "ART-026",
+        "REN-015",
+        "MOT-014"
+      ],
+      "acceptance_evidence_needed": [
+        "Gameplay traces of damage, pickups, clip changes and low health on both families with sampled numerals, fills and rim."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "track_alpha": 0.2,
+        "fill_alpha": 0.35,
+        "pop_scale": 1.2,
+        "pop_ms": 250,
+        "low_health_fraction": {
+          "marine": 0.26,
+          "strogg": 0.25
+        },
+        "ekg_dp_per_s": 37.5
+      }
+    },
+    {
+      "id": "LAY-018",
+      "title": "HUD anchoring and scale",
+      "milestone_owner": "M5",
+      "implementation_owner": "Retained layout and UI design",
+      "source_refs": [
+        "visual:3",
+        "visual:5",
+        "visual:9",
+        "product:2 UI-12",
+        "product:3 Text, controls and accessibility",
+        "product:5 Visual and interaction qualification",
+        "visual:14"
+      ],
+      "requirement": "Anchor gauges to the bottom-leading safe corner with stock spacing, the strip to the bottom center, pickups above the gauges, radio, obituaries and notices top-trailing, powerups and the carried flag to the trailing edge, and the boss bar and timed notices top center, while the crosshair, hit indicator and brackets stay on the true projection center. HUD scale runs 50-200% independently of the menus with a 0-10% safe inset, and elements never stretch.",
+      "dependencies": [
+        "LAY-009",
+        "LAY-014",
+        "FLOW-030"
+      ],
+      "acceptance_evidence_needed": [
+        "HUD captures at 4:3, 16:9, 21:9 and 32:9, HUD scales 50-200% and insets 0-10% with the Classic comparison."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "hud_scale_percent": [
+          50,
+          200
+        ],
+        "safe_inset_percent": [
+          0,
+          10
+        ]
+      }
+    },
+    {
+      "id": "FLOW-032",
+      "title": "Weapon strip",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "The weapon strip lists owned weapons in slot order without gaps on 24.4 u plates at a 30 u pitch, sheared about each plate's center with upright 18 u icons; the pending weapon is #FF8000 in a hard 1.6 u #B2CC80 ring, others #A8A360 at 60% (Strogg #FFCC00, #F59512 and #F2AD0B); weapons without ammunition keep the dim icon under the prohibition sign and are skipped by next and previous; the name is centered below; the strip appears in the frame of a change, hides 1000 ms after the last change or at once on firing.",
+      "dependencies": [
+        "ART-026",
+        "FLOW-030"
+      ],
+      "acceptance_evidence_needed": [
+        "Weapon-change traces covering next, previous, number keys, pickups, empty weapons and firing in both families."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "hide_after_ms": 1000,
+        "ring_u": 1.6
+      }
+    },
+    {
+      "id": "FLOW-033",
+      "title": "Crosshair and hit feedback",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Keep per-weapon default crosshairs, the twenty-mark custom set, the stock sizes 16-48 u and free color; on every hit the crosshair grows 10 u and returns over 150 ms, with a 100 ms red tint in single player and the hit sound in multiplayer; optional multiplayer hit markers are four 6 dp ticks 12 dp from the center for 150 ms, white for a hit and status.error for a kill, off in Classic; the damage-direction dome fades from 0.70 over 500 ms, scales with the HUD, caps at 0.40 under reduced flashing and adds a chevron; context crosshairs keep their stock art and animations.",
+      "dependencies": [
+        "FLOW-029",
+        "FLOW-030",
+        "SUR-005"
+      ],
+      "acceptance_evidence_needed": [
+        "SP and MP gameplay traces of hits, kills and damage from several directions with the reduced-flashing option."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "hit_pop_u": 10,
+        "hit_pop_ms": 150,
+        "sp_red_tint_ms": 100,
+        "marker_tick_dp": 6,
+        "marker_offset_dp": 12,
+        "damage_alpha": 0.7,
+        "damage_fade_ms": 500,
+        "reduced_flashing_cap": 0.4
+      }
+    },
+    {
+      "id": "FLOW-034",
+      "title": "HUD messages and notices",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Show pickups as the stock line (a rounded black bar, the item icon and its name in Marine 14 dp for 3000 ms, replaced by the next) and in Remastered as up to three lines, newest at the bottom, merging repeats with a count; radio chatter with its additive waveform; EXIT under a chevron rising 11 u with accel(500, 500) for 5000 ms and a single \"Game Saved...\" for 2000 ms plus a 1000 ms fade; open #AFDE90 brackets labelled Interactive around the focused world GUI; and openQ4 subtitles in Lowpixel 17 dp white on a 0.60 text backing with the speaker's name in #B0C891, at most two lines in the lower third of the cinematic picture, never over the crosshair.",
+      "dependencies": [
+        "FLOW-030",
+        "FLOW-016",
+        "TXT-011"
+      ],
+      "acceptance_evidence_needed": [
+        "SP gameplay traces of pickups, radio, exit, saves, world-GUI focus and subtitled cinematics in both HUD families."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "pickup_hold_ms": 3000,
+        "pickup_stack": 3,
+        "exit_hold_ms": 5000,
+        "save_hold_ms": 2000,
+        "save_fade_ms": 1000,
+        "subtitle_lines": 2,
+        "subtitle_backing_alpha": 0.6
+      }
+    },
+    {
+      "id": "FLOW-035",
+      "title": "Multiplayer HUD",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Reproduce the measured multiplayer HUD per mode: deathmatch leader and own rows on slabs that fade to a sheared cut; the timer with warm-up and countdown forms; team panels with bright rims, your team on top; CTF, one-flag and Dead Zone states; the Tourney strip, message bar and round banners; a top-trailing kill feed of attacker, Quad mark, color-coded weapon icon and victim with team-colored names, holding 2000 ms, fading 1000 ms and releasing a line every 3.1 s; frag and main notices; breathing spectator and warm-up text; chat, aim text, awards, votes, voice, statistics and the chat input. Remastered marks the local player without color, tags the chat channel, prompts respawn with the active device's glyph, names the flag carrier, shows lag, the ready count and vote time and tallies, and omits the stock script slips.",
+      "dependencies": [
+        "FLOW-030",
+        "FLOW-014",
+        "WID-029",
+        "TXT-011"
+      ],
+      "acceptance_evidence_needed": [
+        "MP gameplay captures per mode with kills, flags, votes, warm-up, spectating and chat, comparing the stock layout and the Remastered additions."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "kill_feed_lines": {
+          "default": 4,
+          "tourney": 2
+        },
+        "kill_feed_hold_ms": 2000,
+        "kill_feed_fade_ms": 1000,
+        "kill_feed_release_ms": 3100,
+        "weapon_icon_dp": 16.5,
+        "notice_hold_ms": 2000,
+        "notice_fade_ms": 500,
+        "spectator_breath_ms": 900,
+        "team_text_colors": [
+          "#AAE355",
+          "#FF8E00"
+        ],
+        "award_hold_ms": 2500,
+        "award_fade_ms": 500,
+        "award_queue_ms": 3000
+      }
+    },
+    {
+      "id": "MOT-014",
+      "title": "HUD alarms and motion",
+      "milestone_owner": "M5",
+      "implementation_owner": "Presentation motion and UI interaction",
+      "source_refs": [
+        "visual:8",
+        "product:3 Visual quality and motion",
+        "product:5 Visual and interaction qualification",
+        "original:Stage 2",
+        "visual:14"
+      ],
+      "requirement": "Keep the measured HUD loops and alarms: the low-health rim at 2 Hz, the missile warning at 2.5 Hz, the hit indicator's 500 ms fade, the boss shield warning at 2 Hz, the carried and taken flag pulses, the exit chevron, the one-flag color pulse, the Dead Zone score flash, the Tourney finished flash, spectator breathing, vehicle warnings and the EKG. Reduced motion holds alarms steady, stops decorative loops and keeps the EKG; every alarm pairs its motion with a static cue.",
+      "dependencies": [
+        "MOT-011",
+        "MOT-005",
+        "FLOW-030"
+      ],
+      "acceptance_evidence_needed": [
+        "Sampled HUD alarm and loop cadences with and without reduced motion and reduced flashing."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "alarm_max_hz": 3,
+        "low_health_hz": 2,
+        "missile_warning_hz": 2.5,
+        "hit_fade_ms": 500
+      }
+    },
+    {
+      "id": "FLOW-036",
+      "title": "Objectives display and notices",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Reproduce the objectives display held on the scores button: a black 0.80 bar over the leading 45%, the >>MISSION OBJECTIVES heading, open-plate entries in #B0CD6B at 0.40 on a 143 u pitch with marker, title, screenshot and description, the serial caption and the empty state, entering over 150 ms plus 100 ms, closing at once, hiding the HUD, crosshair and vehicle HUD but not a scope, with the Strogg variant. Remastered keeps every active objective reachable by scrolling, lists completed and failed objectives, wraps without dropping text, raises the serial to the type floor and offers hold or toggle. Notices sit top-leading and top-trailing, close independently 64 units from the player's position at 2 s or at 5 s, play their click once and hide a vehicle HUD; failure shows the OBJECTIVE FAILED banner under a 12 s fade.",
+      "dependencies": [
+        "FLOW-030",
+        "FLOW-014",
+        "TXT-011",
+        "WID-009"
+      ],
+      "acceptance_evidence_needed": [
+        "SP gameplay with one, two, three and more objectives, completions and a failure in both families, on keyboard, controller and touch."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "entry_pitch_u": 143,
+        "bar_alpha": 0.8,
+        "frame_alpha": 0.4,
+        "entry_ms": [
+          150,
+          100
+        ],
+        "stock_visible_entries": 3,
+        "notice_sample_ms": 2000,
+        "notice_move_units": 64,
+        "notice_max_ms": 5000,
+        "failure_fade_s": 12
+      }
+    },
+    {
+      "id": "FLOW-037",
+      "title": "Boss and vehicle displays",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Reproduce the boss bar (the measured octagon, hexagonal health draining toward its leading point, shield brackets draining toward their outer points and pulsing below 1000 points), the walker and hover-tank HUD (numeral-free Marine gauges labelled ARMOR and SHIELDS with 25% warnings, the chamfered weapon panel, charge bar, entry messages, hit flash and electric warning, exit and lock lines), the flatbed and tram gauges, the air-defence overlay and the scripted Strogg tables, with localized labels.",
+      "dependencies": [
+        "FLOW-015",
+        "ART-026",
+        "FLOW-030"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures of boss fights and every drivable vehicle and ride against the stock at 4:3, including warnings and entry sequences."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "boss_plate_u": [
+          185.8,
+          43.7
+        ],
+        "boss_chamfer_u": 14.2,
+        "shield_warning_points": 1000,
+        "vehicle_warning_fraction": 0.25,
+        "entry_sequence_ms": 5500
+      }
+    },
+    {
+      "id": "FLOW-038",
+      "title": "Scopes and weapon displays",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Reproduce the machinegun, railgun and nailgun scopes with their measured apertures, marks and motion, appearing and vanishing with the zoom and changing field of view over 100 ms, and every gun-mounted weapon display with its state colors and cadence, capping the 9 Hz flicker at 3 Hz and replacing the hyperblaster's baked-English RELOAD bitmap with a localized vector plate.",
+      "dependencies": [
+        "FLOW-015",
+        "SUR-003"
+      ],
+      "acceptance_evidence_needed": [
+        "Zoomed and unzoomed captures of each scope and each weapon display in normal, low and empty states."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "zoom_ms": 100,
+        "machinegun_aperture_radius_u": 182,
+        "railgun_diamond_u": 362,
+        "nailgun_aperture_radius_u": 255,
+        "max_flicker_hz": 3
+      }
+    },
+    {
+      "id": "FLOW-039",
+      "title": "Scoreboard and match summary",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Reproduce the held scoreboard (instant, non-interactive, hiding the whole HUD; your team first; team-colored header bands; the measured columns; server-list bands with a pitch adapting to 16 entries; the footer) and the Tourney bracket board. Remastered marks your row with the marker as well as the brighter band, adds network bars, a DEATHS column and a rank line, dims dead players, tags bots, scrolls past 16 entries and toggles on touch. The match summary keeps its tabs, rankings, winner panel, chat and statistics, reports a draw as DRAW and prompts with the active device's glyphs.",
+      "dependencies": [
+        "WID-009",
+        "FLOW-035",
+        "WID-029"
+      ],
+      "acceptance_evidence_needed": [
+        "MP captures of the scoreboard in every mode at 2-16 and more than 16 entries, and of the summary tabs."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "max_entries_without_scroll": 16,
+        "team_pitch_u": [
+          15,
+          30
+        ],
+        "dm_pitch_u": [
+          17,
+          35
+        ],
+        "tourney_pitch_u": [
+          13,
+          26
+        ],
+        "backing_alpha": 0.6,
+        "summary_backing_alpha": 0.9
+      }
     }
   ]
 }
