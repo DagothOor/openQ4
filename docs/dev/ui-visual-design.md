@@ -1,7 +1,7 @@
 # openQ4 UI Visual Design
 
-Specification version 1.3, 26 September 2026 (1.2 and 1.1 the same day, 1.0 on
-8 September 2026). Status:
+Specification version 1.4, 27 September 2026 (1.1 to 1.3 on 26 September, 1.0
+on 8 September 2026). Status:
 implementation target; the replacement has not shipped. Applies to every
 player-facing GUI and to the visual editor's Quake 4 preview. Implementation and
 evidence are tracked in [the replacement plan](plans/idtech5-ui.md).
@@ -13,7 +13,10 @@ direction](#13-modern-interface-direction): viewing profiles, adaptive layout,
 controller, touch and Android behavior, and modern screen patterns. Version 1.3
 measures the framing-band motion, the HUD and the pop-up frames, adds detailing
 rules, a pop-up frame catalogue and modern components, and gives the HUD its
-own [section](#14-hud-and-in-game-overlays), including the weapon wheel.
+own [section](#14-hud-and-in-game-overlays), including the weapon wheel. Version
+1.4 measures the objectives display, the boss, vehicle and scope displays and
+the multiplayer HUD and scoreboard, gives the Strogg HUD its own weapon wheel,
+and keeps the reticle grid, grain and light band to menu backdrops.
 [Appendix C](#appendix-c-change-record) lists every change and the
 requirement-register rows it affects.
 
@@ -154,7 +157,7 @@ screens. Do not introduce them or carry them into the replacement:
 | Strogg HUD and terminals | Original alien glyphs, mechanical paths and family colors | Each source's geometry and animation; never generic Marine panels |
 | World terminals | Local device panel and in-world illumination | Surface mapping, interaction targets, stateful scripts and intended viewing distance |
 | Weapon displays | Gun-mounted ammo counters on green, amber and red state fields | Digit legibility at view-model distance, per-weapon art, state colors and pulse cadence |
-| Objectives (PDA) | Pale-green objective panels over the darkened view | Objective imagery, flicker-in cadence, Marine and Strogg variants |
+| Objectives (PDA) | Pale-green open plates beside a leading-edge gradient bar | Objective imagery, entry cadence, notices, Marine and Strogg variants |
 | Vehicles and turrets | Weapon-specific reticles, gauges and status | Cockpit alignment, targeting, damage and cooldown states |
 | Scopes | Optical/technical marks in source shape and color | Exact aim center, FOV relationship, masks and tick cadence |
 | Loading/cinematic overlays | Restrained frame, level identity and progress | Background composition, subtitle safe area, fades and cinematic bars |
@@ -176,11 +179,12 @@ family tokens; individual terminals and vehicles still need per-source entries.
 | Marine menus (`mainmenu`, `mpmain`, `buymenu`, `restart`, `msg`, `netmenu`) | Section 4 Marine tokens | Marine, Lowpixel; Profont for tabular detail | Section 6 vocabulary; section 8 choreography |
 | Marine HUD (`hud`) | Readouts `#DDEBC3`; gauge track `#B3D06E` at 20% and fill at 35% (50% in multiplayer) over black 50%; icons `#A8A360` at 60%; weapon render `#C7BD78` at 40%; weapon name `#B0C891`; selected weapon `#FF8000` in a `#B2CC80` ring; low health `#FF4C00` | Chain 0.50 numerals and 0.32 reserve, trailing-aligned; Marine 0.25 weapon name, 0.20 pickup and radio labels | Rounded gauge plates with a stepped foot, trailing-anchored notched fills, ten-cell armor fill, 0.22 shear about each element's center; EKG; 2 Hz low-health rim (section 14) |
 | Strogg HUD (`hud_strogg`) | Readouts `#FCFFC8`; gauge fill `#FF9000` at 20–35%; icons `#FFCC00` at 60%; selected weapon `#FFCC00`, others `#F59512` at 60%, ring `#F2AD0B` | R_Strogg for all HUD text, 0.12–0.50; numerals 0.50 and unsheared | 30–33° shoulders and small notches; 0.22 backward shear; masked grain over each gauge; low health below 25% |
-| Multiplayer (`mphud`, `scoreboard`, `summary`, `spawn`) | Marine team `#6AA42B`; Strogg team `#FF7B04`; spectators `#999999`; notices `#FFFF8D`; Tourney `#3E57B7`, `#5EB987`; health icon `#F7C004` and armor icon `#FA2B05`, both at 80% (the stock define names are swapped); ammo fill in the weapon's color | Lowpixel 0.20–0.50; Chain 0.50 gauge numerals | Team-tinted header bands, faction emblems, award medals; drop-shadowed text over the match |
+| Multiplayer (`mphud`, `scoreboard`, `summary`, `mpmsgmode`, the multiplayer parts of `hud`) | Marine team `#6AA42B`; Strogg team `#FF7B04`; spectators `#999999`; notices `#FFFF8D`; team names and team chat `#AAE355` and `#FF8E00`; deathmatch and Tourney headers `#8B964B`; your Tourney arena `#5EB987` at 40%, finished arenas `#3E57B7`; health icon `#F7C004` and armor icon `#FA2B05`, both at 80% (the stock define names are swapped); ammo fill in the weapon's color | Lowpixel 0.16–0.50; Chain 0.50 gauge numerals; Marine for the chat line's SEND and the summary tabs | Score slabs fading to a sheared cut, team-tinted header bands, faction emblems, award medals; drop-shadowed text over the match (section 14.9) |
 | World terminals (`guis/maps`, `monitors`, `common`, `movers`) | Per source. Common Strogg values: teal `#59AD87`, orange `#E6540F`, amber `#F0960D`, cyan `#2ECCCC`. Marine devices: `#7A9957`, `#BFE375` | R_Strogg and Strogg on Strogg devices; Marine on Marine devices | CRT surface stack (section 6); heavy shear, rotation and mirroring; `guisound_beep2` |
-| Weapon displays (`guis/weapons/*_ammo`) | Normal `#73A640`; low `#CA8F15`, 3 Hz shimmer 80–100%; empty `#C72C1B`, 2 Hz pulse 100–50%; idle flicker 92–100% at 3 Hz | Marine digits at very large size, tight tracking | Per-weapon background art |
-| Scopes (`guis/weapons/*_scope`) | Railgun marks `#00FFFF` at 50%; ammo cells `#99FFFF` | — | Mirrored quadrant glows, diamond zoom-in, slow ring rotation |
-| Objectives (`wristcomm`, `wristcomm_strogg`) | Frames `#B0CD6B`; text `#D0DEB6`, `#D9E7BF`; accent `#FF8000` | Marine 0.14–0.25; Lowpixel 0.20 | Objective shots; 20–150 ms flicker-in steps |
+| Weapon displays (`guis/weapons/*_ammo`) | Machinegun and shotgun: normal `#73A640`; low `#CA8F15`, 3 Hz shimmer 80–100%; empty `#C72C1B`, 2 Hz pulse 100–50%; idle flicker 92–100% at 3 Hz. Other weapons in section 14.13 | Black Marine digits at very large size, tight tracking | Per-weapon art; five weapons have no display |
+| Scopes (`guis/weapons/*_scope`) | Machinegun black marks; railgun marks `#00FFFF` at 50% and clip cells `#99FFFF`; nailgun amber `#EE8E00` | R_Strogg nailgun readouts | Circle, diamond and circle apertures, a yaw compass, a lock-on arrow, ring rotation (section 14.13) |
+| Objectives (`wristcomm`, `wristcomm_strogg`) | Frames `#B0CD6B` at 0.40 on a black 0.80 bar; titles white; descriptions `#D0DEB6`; serial `#D9E7BF` at 0.25; headings `#FF8000`; failure `#FF0000`. Strogg frames `#FF9000`, markers `#FF9900`, notice headings `#FFCC00` | Marine 0.14 serial, 0.25 headings, 0.50 failure; Lowpixel 0.20 | Open plates with the cut in the foot; objective shots; entry 150 + 100 ms (section 14.11) |
+| Vehicles (`guis/vehicles/hud`) | Gauges `#B3D06E` at 20% and 35%; labels and icons `#A8A360` at 60%; weapon silhouettes at 80% and 40%; charge `#FF9E1A`; warnings `#FF3300` at 60%; entry messages `#FF8000` | Lowpixel 0.14 labels; Marine 0.22 messages; Chain 0.70 rocket count | The Marine gauge art without numerals and a chamfered weapon panel (section 14.12) |
 | Loading (`guis/loading`) | Bands black 80% plus additive `#181D0A`; corner brackets additive `#3A3A3A`; progress `marine.progress` | Marine 0.36 level name, 0.40 status | Stepped bands with one 45-degree riser each; four corner brackets |
 | Credits and intros (`cinematic`, `gameover`, `intro`) | Text `#CCFF99` at 40%; credits `#D5FFA7`; logos `#A2C550`; credit bars additive `#FF8000` | Strogg runes paired with Lowpixel | 60 u letterbox bars; decode reveal (section 8) |
 
@@ -470,7 +474,7 @@ Plates and markers:
 | --- | --- |
 | Light plate (`b3_light`, `b4_light`, `b6_light`) | Visible band 25/32 of the rectangle height; lower-leading 45-degree cut through 56% of the band; one-texel rails on the leading edge, cut and bottom; fill 49%; fill and bottom rail full to 33–50% of the width, then linear to zero at the trailing end; white art tinted `marine.olive` |
 | Dark plate (`b1_dark`, `b2_dark`, `b5_dark`) | Visible band 30/64 of the rectangle height; cut through 47% of the band; opaque black fill to 40–57% of the width, zero at 78–94%; rails in `marine.rail.dark` |
-| Header band (`header`, `scoreheader`) | Upper-leading cut of 8 texels, drawn about 9 u on the browser header and 7 u on team headers; top and leading rails; fill 49%, full to half the width, half at 75% and 10% at 95%; olive at 0.60 in menus, team colors at 1.00 on scoreboards |
+| Header band (`header`, `scoreheader`) | Upper-leading cut of 8 texels, drawn about 9 u on the browser header and 7 u on team headers; top and leading rails; fill 49%, full to half the width, half at 75% and 10% at 95%; olive at 0.60 in menus; on scoreboards the team colors, `#8B964B` for deathmatch and Tourney and `#999999` for spectators, all at 1.00 |
 | Link plinth (`bg2`) | Solid band with a lower-leading cut and a trailing end cut at 45 degrees, parallel to it; `marine.plinth` |
 | Marker (`corner`) | Right triangle filling the upper-trailing half of its square (◥), legs half the tile, halo about 20% of the tile beyond the solid; mirrored vertically (◢) as the sort marker |
 
@@ -741,6 +745,7 @@ frames, reticles and checkboxes require vector work.
 | --- | --- |
 | Levelshots, backdrop images, save previews, objective shots | Bitmap exception |
 | MP award medals; publisher logos (id, Raven, Activision, Miles) | Bitmap exception |
+| Multiplayer symbols: flags, stopwatch, infinity, ready, speaker, friend, skull, swirl, Quake emblem | Vector |
 | Weapon renders (`gun_*`) and powerup emblems | Bitmap exception: shaded or colored pictorial art |
 | Quake 4 wordmark (`q4text`) | Classify individually: textured glowing letterforms; its glow may become vector light |
 | Quake emblem, faction marks, simple HUD silhouettes | Vector |
@@ -798,7 +803,9 @@ rules apply to every family and every size class.
   layer per surface.
 - **Texture.** Grain, scanlines and the reticle grid are screen-space layers
   below text. They never move with content, and depth shift (section 13.8)
-  moves them only as whole layers.
+  moves them only as whole layers. The reticle grid, grain and light band
+  belong to menu backdrops: the HUD, in-game overlays and world displays never
+  draw them, and neither do previews of those surfaces.
 - **Text shadow.** Text over gameplay or imagery carries the stock drop shadow
   (section 5); text on plates and cards never does.
 - **Headings over lists.** A light plate flipped vertically, its cut at the
@@ -856,7 +863,7 @@ navigation steps.
 Server tables retain sorting, filtering, favorites, compatibility and selection
 during refresh. Chat retains history, channels, caret movement and scroll
 ownership; new messages cannot steal inspection position. Scoreboards identify
-teams/spectators/local player with text or geometry as well as color. Empty,
+teams/spectators/local player with text or geometry as well as color; the stock marked the local player by brightness alone. Empty,
 offline, disconnected and failed states cannot be unstyled debug output.
 Section 13 defines each component's controller and touch behavior, the
 prompt bar and the detail area.
@@ -872,7 +879,7 @@ prompt bar and the detail area.
 | Slider | Tick ramp at the value column, numeric value after it at 85% of the row |
 | Text field | Entry fields in dialogs sit on a light plate without an outline, Lowpixel white 0.80 (`marine.value` for passwords); the save name and the in-game chat line use dark plates |
 | Key binding | Key names in `marine.value` in the value column |
-| List | Lowpixel column headings at 40% (30% on the controls page) with their baseline 7 u above an olive rule; 30 dp rows with `marine.list` bands and a rule under every row; multiplayer tables use 22–24 dp rows with drop-shadowed text and no hover band on the scoreboard |
+| List | Lowpixel column headings at 40% (30% on the controls page) with their baseline 7 u above an olive rule; 30 dp rows with `marine.list` bands and a rule under every row; multiplayer tables adapt their pitch to the entries (section 14.14), use drop-shadowed text and server-list bands, and have no hover band on the scoreboard |
 | Dropdown | The only stock dropdown, the kick-player list, unfolds under the value column over 150 ms: a black body with a 1 u `#B2CD43` border at 20%, 14 u rows and server-list bands; a pick closes it at once |
 | Disabled | Action plates and markers gray at 0.40 with labels at 0.40–0.50; value rows at 0.40; entries a server forbids at 0.20 |
 | Server list | Olive 0.60 header band holding 28 dp column symbols; 27 dp rows; sortable columns highlight in `marine.sort`; flipped marker beside the sort notice; progress bar under the list |
@@ -1038,6 +1045,8 @@ from white to its color, and the rune line fades out over the same 1000 ms.
 | Missile warning | 70–30% at 2.5 Hz | Alarm |
 | Settings notice | 100–50% at 1 Hz | Alarm |
 | Loading status | 100% to 50% over 500 ms, back over 200 ms | Decorative |
+| Weapon display states | Hyperblaster random flicker 68–100%, low pulse at 3 Hz and RELOAD at 2 Hz; nailgun empty 100–40% at 2 Hz; rocket cells 80–100% at 3 Hz; railgun flicker 92–100% | Decorative; alarms where they mark low or empty |
+| Vehicle warnings | Hull and shield 60% × 100–50% at 2 Hz; electric damage a 1 Hz sawtooth 70–30%; hits an additive edge flash over 500 ms | Alarm |
 
 Alarms keep their stock cadence, all at or below 3 Hz, and always pair with a
 static cue. Reduced motion stops decorative loops and replaces alarm pulses
@@ -1054,7 +1063,7 @@ Stock menus play `main_menu_mouseover` on each hover entry of an enabled
 control and `main_menu_selection` on each activation, including value cycling,
 sorting and closing a modal. Nothing plays on hover exit or during animation.
 World terminals play `guisound_beep2` on actions, objective notices
-`guisounds_click`, and the loading screen `load_screen_ready` and
+`guisounds_click` once, scopes `snd_zoomin` and `snd_zoomout`, and the loading screen `load_screen_ready` and
 `load_screen_click`; modals have no sound of their own. The front end plays
 `main_menu` music and the in-game menu `main_menu_gameplay`. Use these through
 existing sound declarations where appropriate. Play once per semantic event.
@@ -1729,9 +1738,12 @@ extends it and keeps it legible.
 
 The game draws the weapon's scope display first, then the crosshair, then the
 HUD, then the multiplayer HUD and its overlays. A vehicle's own display
-replaces the HUD while the crosshair stays, and the objectives display hides
-everything while it is open. The HUD runs on real time, so it keeps animating
-while the game is paused.
+replaces the HUD while the crosshair stays. The objectives display hides the
+HUD, the crosshair and any vehicle HUD but not a zoomed scope, and an objective
+notice also hides a vehicle HUD; the held scoreboard hides the whole HUD,
+crosshair included. The HUD runs on real time and keeps animating while the
+game is paused; the objectives display and the weapon displays run on game
+time.
 
 Shear and rotation pivot on each element's own rectangle center, and an
 element's transform replaces its container's instead of composing with it
@@ -1752,10 +1764,13 @@ Positions are source units on the 4:3 canvas.
 | Radio chatter | x 468–633, y 5–52 | While a transmission plays |
 | Obituaries (multiplayer) | 351,5 284x70 | Four lines, two in Tourney |
 | Powerups and carried flag (multiplayer) | Trailing column, x 557–641, y 260–474 | Per powerup |
-| Boss bar | x 220–420, y 40–90 | During boss fights |
+| Boss bar | Plate x 227–413, y 42–89; 20 u toward the trailing side in a vehicle | During boss fights |
 | Exit, quicksave and mission-failed notices | Top center and center | Timed |
 | Hit indicator | Full canvas, rotated about its center | For 600 ms after each hit |
 | Interactive brackets | The focused world GUI's projected bounds plus 10 u | While a world GUI has focus |
+| New-objective notice | x 0–247, y 31–208 | For 2.1–5.1 s |
+| Objective-complete notice | x 390–640, y 53–119, below the radio | For 2.1–5.1 s |
+| Objectives display | The leading 45%, centered vertically | While the scores button is held |
 
 The ammo gauge stands apart from the health and armor pair: the gaps are 52 u
 and 11 u. The Strogg HUD places its 129x67 u gauges at 10, 190 and 330 u on
@@ -1792,8 +1807,10 @@ y 419.
 
 - **Anchor groups.** The gauges anchor to the bottom-leading safe corner with
   their stock spacing; the weapon strip to the bottom center; the pickup message
-  above the gauges; radio chatter, obituaries and notices to the top-trailing
-  corner; powerups and the carried flag to the trailing edge; the boss bar and
+  above the gauges; radio chatter, the kill feed and notices to the top-trailing
+  corner, with the objective-complete notice below the radio; the new-objective
+  notice to the top-leading corner and the objectives display to the leading
+  edge; powerups and the carried flag to the trailing edge; the boss bar and
   timed notices to the top center. The crosshair, hit indicator and brackets
   stay on the true projection center.
 - **Scale and inset.** HUD scale runs 50–200% independently of the menus, and
@@ -1852,6 +1869,22 @@ game keeps running, and multiplayer is never slowed.
 Lowpixel 16 dp instead of icons. The center names the channel, All or Team,
 and releasing sends the phrase.
 
+**Strogg HUD.** On the Strogg HUD the wheel takes the Strogg construction, not
+a recolored Marine ring. Each segment is an angular plate: a raised leading
+tooth with 30-degree shoulders, a chamfered trailing corner and a notched inner
+edge, all straight-edged. The ring twists 4 degrees backward, the polar form of
+the Strogg shear. Reserve shows as eight slanted cells along the outer edge in
+#FF9000, and a masked grain layer drifts over the plates like the gauges'
+static. The core is an octagonal plate with a lower tab, after the boss bar,
+circled by two dashed rings that turn at the Strogg terminals' 0.2 and 0.5
+turns a second in opposite directions; thin circuit paths join the core to
+every owned plate and brighten for the selection. Text is R_Strogg, and the
+weapon name decodes from Strogg runes whenever the selection changes: the rune
+line fades while the name wipes open from the center over 240 ms, a short form
+of the credits' decode reveal. Colors follow the Strogg strip: icons #F59512 at
+60%, the selection #FFCC00 in a #F2AD0B ring, readouts #FCFFC8. Reduced motion
+stops the rings and grain and changes the name at once.
+
 ### 14.7 Crosshair and hit feedback
 
 - **Crosshairs.** Every weapon has a default crosshair. The custom set cycles
@@ -1879,15 +1912,14 @@ and releasing sends the phrase.
   icon and its name in Marine 14 dp, for 3000 ms, replaced by the next pickup.
   Remastered stacks up to three lines, newest at the bottom, and merges repeats
   into one line with a count.
-- **Objectives.** ">>NEW OBJECTIVE" and ">>OBJECTIVE COMPLETE" notices come from
-  the objectives display: an orange Marine title, the objective in Lowpixel, and
-  its screenshot, entering over 150 ms plus 100 ms with the objectives click. The
-  stock closes a notice after 5 s or 64 units of movement; openQ4 keeps both
-  rules.
+- **Objectives.** The objective notices and the objectives display are
+  section 14.11.
 - **Radio chatter.** "Incoming" and "transmission" in Marine 0.20 on a rounded
   bar, with an additive #FF8000 waveform scrolling toward the leading edge.
-- **Timed notices.** EXIT with a rising chevron for 5000 ms; "Game Saved..." for
-  2000 ms, fading over 1000 ms; "Mission Failed" after a 3000 ms fade to black.
+- **Timed notices.** EXIT under a chevron that rises 11 u with `accel(500, 500)`
+  while fading from 0.50, for 5000 ms; "Game Saved..." for 2000 ms, fading over
+  1000 ms (the stock drew two copies on foot; openQ4 draws one). The HUD's
+  "Mission Failed" sequence has no stock sender (section 14.11).
 - **Interactive brackets.** Open #AFDE90 brackets around the focused world GUI,
   labelled "Interactive"; the terminal highlight of section 13.5 uses them.
 - **Subtitles.** The stock has none. openQ4 subtitles use Lowpixel 17 dp in
@@ -1897,19 +1929,52 @@ and releasing sends the phrase.
 
 ### 14.9 Multiplayer HUD
 
-The stock multiplayer HUD adds: leader and own-score rows with rank at the top
-leading corner; a timer with its stopwatch (an infinity symbol when untimed);
-team panels with faction marks and scores; flag status for Capture the Flag, "!"
-when taken and "?" when dropped; the Tourney bracket strip; round and warmup
-banners sliding in from the top; frag and main notices; spectator text; votes;
-four chat lines at the bottom leading corner; the aimed player's name 20 u below
-the crosshair; awards; voice indicators; and the statistics panel. Obituaries
-run top-trailing in Lowpixel 0.25 #FFFF8D with a drop shadow, four lines on a
-15 u pitch; each holds 2000 ms and fades over 1000 ms.
+The multiplayer HUD draws over the gauges. A free-flying spectator sees it
+without the gauges, kill feed or powerups; a following spectator sees the
+followed player's HUD.
 
-The Competitive preset enlarges the timer and team scores at the top center
-(Chain 36 dp), adds network quality (section 13.13) and team status, and keeps
-the obituaries.
+| Element | Modes | Stock construction |
+| --- | --- | --- |
+| Leader and own rows | Deathmatch | Two 242x28 u slabs at the top-leading corner, black fading to a faint cut that leans with the 0.22 shear at 70–73% of the width, each with a #FFFF8D band at 0.40 with bright rims; rank, name and score in Lowpixel 0.22 with a drop shadow. Row 1 is the leader; row 2 is you, or second place when you lead or spectate |
+| Timer | All | A #FFFF8D stopwatch and the time in Lowpixel 0.25 below the rows or panels, counting down M:SS; ∞ when untimed and in warm-up, sudden death and review; "Warmup N" ("Pre-game N" in Tourney) during the countdown |
+| Team panels | Team modes | Two 102x58 u slabs in the team colors at 0.80 over black, with bright top and bottom rims fading toward the center and a sheared cut; faction mark and score in Lowpixel 0.36 without a shadow; your team always on top |
+| Flags | Capture the Flag, Arena CTF | 28 u team flags sheared 0.22 beside the panels; "!" when taken, pulsing 28–34 u once a second, "?" when dropped |
+| One flag | One-flag CTF | A neutral #FFFF8D flag joined to both panels by a gray arc; when taken it pulses and its color swings to the carrier's team |
+| Dead Zone | Dead Zone | Team panels whose score flashes white to the team color on every control tick |
+| Tourney | Tourney | A bracket strip across the top (8, 4, 2 and 1 cells), a black 0.60 message bar with a 45-degree end, and round banners that slide 34 u in, hold and slide out over 500 ms; your arena aqua #5EB987 at 0.40, a finished arena blue #3E57B7 settling from 1.00 to 0.40 |
+| Kill feed | All | Top-trailing, four lines (two in Tourney, own arena): attacker, a Quad mark when it applies, the weapon icon at 16.5 dp in the weapon color code, then the victim; a skull for suicides and world deaths, a swirl for telefrags; team modes color the names #AAE355 and #FF8E00. The top line holds 2000 ms and fades over 1000 ms, and lines leave one every 3.1 s |
+| Notices | All | The frag notice ("You fragged …") in Lowpixel 0.36 at 81 u and the main notice (rank, warm-up, sudden death, flag events) in 0.32 at 102 u, #FFFF8D, centered; 2000 ms hold, 500 ms fade |
+| Spectator and warm-up text | All but Tourney | Two centered #FFFF8C lines at 123 and 141 u, breathing over 900 ms: follow status and cycle keys, ready reasons, "STARTING GAME IN N" |
+| Chat | All | Four lines above the gauges at the bottom-leading corner, Lowpixel 0.25 #FFFF8D; team chat colors the channel and the text; long messages wrap into further lines |
+| Aim text | All | The aimed player's name and clan 20 u below the crosshair, with a teammate's health and armor; in over 200 ms after 100 ms, out over 500 ms |
+| Awards | All | The earned medal repeated once per time earned, up to nine (then one medal and a count), centered at 143–175 u; 2500 ms hold, 500 ms fade, queued 3 s apart |
+| Vote | All | The call and up to six field lines at the leading edge with the Yes and No keys; after voting, the tally replaces the prompt |
+| Voice | All | "Transmitting..." or the talker's name on black bars with a waveform |
+| Statistics | All | Held on a key: kills, deaths, per-weapon accuracy and award counts on a soft backing at the trailing edge |
+| Chat input | All | "SEND" in Marine over a dark plate at 0.80 with #FFFF8D entry text; all and team chat look the same |
+
+Stock script slips that openQ4 does not reproduce: the Marine viewer's dropped
+Strogg flag that keeps pulsing, the warm-up banner that grows from a corner
+instead of sliding, and a stuck completion notice (section 14.11).
+
+**Remastered additions.** The stock lacks these; they use its vocabulary.
+
+- **You, marked without color.** Kill-feed and chat lines that involve you sit
+  on a header-band plate at 0.30 with your name in white; your deathmatch row
+  and scoreboard row carry the ◥ marker.
+- **Chat input.** The input shows ALL or TEAM in the channel's color as a small
+  tag before the entry, and a controller or touch player gets the platform or
+  on-screen keyboard (section 13.5).
+- **Respawn.** While dead, "Respawn" with the active device's glyph centered in
+  the lower third, and a countdown when the server delays respawning.
+- **Carrier and control.** The flag status names the carrier under the flag;
+  Dead Zone shows which team holds the zone.
+- **Connection.** When the connection lags, the network symbol and the ping
+  appear as a notice (section 13.13); Competitive shows network quality at all
+  times.
+- **Warm-up and votes.** Warm-up text adds the ready count ("Ready 3/8"); a vote
+  shows its remaining time as a tick ramp and the Yes and No tallies as cells,
+  with the active device's glyphs.
 
 ### 14.10 Alarms and motion
 
@@ -1921,12 +1986,172 @@ the obituaries.
 | Boss shield warning | 100–50% at 2 Hz | Steady at 100% |
 | Carried flag | Grows 22 to 28 u over 150 ms, back over 500 ms | Steady at 28 u |
 | Flag taken | Grows 28 to 34 u over 250 ms, back over 750 ms | Steady at 34 u |
-| Exit chevron | Rises and fades once a second | Static |
+| Exit chevron | Rises 11 u with `accel(500, 500)` and fades once a second | Static |
+| One-flag color | Neutral to the carrier's team over 250 ms, back over 750 ms | Steady team color |
+| Dead Zone score | White to the team color on each control tick | A steady highlight for 1 s |
+| Tourney arena finished | Blue 1.00 to 0.40 over 500 ms | Immediate 0.40 |
+| Voice waveform | Continuous scroll | Static trace |
+| Vehicle warnings | 2 Hz hull and shield, 1 Hz electric | Steady warning colors |
 | Spectator text | 900 ms breathing | Steady |
 | EKG | 37.5 dp/s | Kept: it is an instrument |
 
 Every HUD alarm pairs its motion with a static cue: the color change, the
 symbol or the text.
+
+### 14.11 Objectives display
+
+**Stock.** Holding the scores button shows the objectives display; releasing
+it closes it at once, and nothing plays either way. The game keeps running
+and the player keeps control. The display hides the HUD, the crosshair and any
+vehicle HUD, but a zoomed weapon's scope stays.
+
+| Part | Stock construction |
+| --- | --- |
+| Back bar | A black 0.80 gradient covering the leading 45% of the screen: opaque to 190 u, half at 285 u, clear by 380 u. The rest of the view is not darkened |
+| Heading | ">>MISSION OBJECTIVES" in Marine 0.25, #FF8000, tracking -1, 8 u above the first entry |
+| Entries | At most the three newest objectives, newest at the top, on a 143 u pitch, the whole list centered on the canvas's vertical center. Older objectives are unreachable, and completed ones leave the list |
+| Entry frame | An open plate 600x112 u with a 600x20 u foot in #B0CD6B at 0.40: leading rail, a lower-leading cut through the whole foot, a bottom rail, and a fill dissolving toward the trailing side (full to 30%, gone by 56%) |
+| Entry contents | The marker; the title in Lowpixel 0.20 white on one line (overflow is dropped); a 134x100 u screenshot with a 1 u black border; the description in Lowpixel 0.20 #D0DEB6 wrapping at 178 u, seven lines at most |
+| Serial | "SMC MILCOMM 45B-43556-BGX7J54" in Marine 0.14, #D9E7BF at 0.25, 12 u below the last entry |
+| Empty | One frame with a static screenshot and "No current mission objectives." in Lowpixel 0.31 |
+| Entry motion | 0–150 ms: the back bar slides about 220 u in and fades to 0.80, frames fade to 0.50. 150–250 ms: frames settle to 0.40 while heading, text, markers and screenshots fade in. No exit animation |
+
+The Strogg display keeps the geometry and timing with #FF9000 frames, #FF9900
+markers, R_Strogg headings and a "STROGG NET" serial.
+
+**Remastered.** The construction stays; the limits go.
+
+- Every active objective is reachable. Three entries show at the stock pitch,
+  and the list scrolls beyond them with the right stick, the wheel or a drag;
+  newest stays first.
+- Completed and failed objectives move to a COMPLETED section below the active
+  ones: title only, at 0.40, with a check or cross symbol, newest first.
+- Titles wrap to two lines and descriptions wrap without a line limit; nothing
+  is dropped. The serial rises to the 13 dp type floor.
+- An Objectives setting chooses hold (stock) or toggle; toggle adds a Close
+  prompt. On touch the objectives symbol in the top band toggles the display.
+- Reduced motion replaces the slide with an 80 ms fade.
+
+**Notices.** ">>NEW OBJECTIVE" sits at the top-leading corner: the back bar
+widens in, the frame grows from a strip (150 ms), then the heading, the title
+(Lowpixel 0.20 white, two lines of 134 u) and the screenshot fade in (100 ms).
+It never shows the description. ">>OBJECTIVE COMPLETE" sits at the top-trailing
+corner below the radio chatter, with no screenshot. A notice samples the
+player's position 2 s after it appears and closes once the player has moved
+64 units from there, or after 5 s, with a 100 ms exit; new-objective notices
+wait until 5 s after spawning. The stock closes only the most recent kind and
+plays the completion click twice; openQ4 closes each notice on its own and plays
+the click once. A notice also hides a vehicle HUD while it is up.
+
+**Failure.** "OBJECTIVE FAILED:" in Marine 0.50 #FF0000 with the objective's
+title in white below it, centered at 200–280 u, appears at once and stays while
+the view fades to black over 12 s; the restart menu follows. The HUD's "Mission
+Failed" sequence has no sender in the stock and is not reproduced.
+
+### 14.12 Boss and vehicle displays
+
+**Boss bar.** A black 0.50 elongated octagon, 185.8x43.7 u with 14.2 u
+45-degree chamfers and a 35.8 u tab at the bottom center, centered at the top
+(x 227–413, y 42–89 on foot; 20 u further toward the trailing side in a
+vehicle). Inside, the health bar is a 146x18.7 u hexagon with 45-degree points,
+bevelled in its own tint, #EA8F15 at 20% track and 35% fill, draining toward its
+leading point. Two C-shaped shield brackets, 6.9 u thick with chevron points,
+face each other around it in #6A8C8A at 20% and 35%, each half draining from the
+center toward its outer point; below 1000 shield points they turn #FF4000 and
+pulse 100–50% at 2 Hz. A white health icon at 0.20 sits over the tab. Nothing
+is sheared and there are no numerals.
+
+**Walker and hover tank.** Two gauges on the Marine gauge art without its
+numeral zone: the hull, labelled ARMOR, with ten cells, and SHIELDS, labels in
+Lowpixel 0.14 #A8A360 at 60%, trailing-anchored fills in #B3D06E. At 25% hull, or
+no shield, the gauge turns #FF3300 at 60% and pulses at 2 Hz. A weapon panel
+with a 26 u upper-trailing chamfer shows the current weapon's outlined
+silhouette at 80% and the other at 40%, a rocket count in Chain, and an
+#FF9E1A charge bar while a weapon recharges. On entry, ">>MACHINEGUN
+INITIALIZED..." style lines wipe open in Marine 0.22 #FF8000 inside moving
+#FF8000 brackets, turn white and fade over 5.5 s. Hits flash an additive
+#550000 edge vignette out over 500 ms; electrical damage shows red curved
+brackets and a lightning bolt pulsing once a second for 2.5 s. "[ Press JUMP to
+exit ]", or "[ Vehicle Locked ]" in orange, sits trailing-aligned at the bottom.
+
+**Other rides.** The flatbed and the tram replace the three gauges with a
+vehicle-silhouette gauge. The air-defence cannon draws a static amber scope
+overlay with two load bars and its own reticle. The Stroggification table and
+the MCC body table run scripted Strogg interface sequences of hexagon flashes,
+readouts and static. openQ4 keeps each source's construction and timing and
+lays them out with the HUD anchor rules; vehicle labels and messages come from
+the language tables.
+
+### 14.13 Scopes and weapon displays
+
+Scopes appear and vanish with the zoom, without fades, above everything else in
+the HUD, and the field of view changes over 100 ms.
+
+| Scope | Aperture | Marks and motion |
+| --- | --- | --- |
+| Machinegun (and the hover tank's cannon) | A circle of radius 182 u with a 40% gray veil outside and an optical smear beyond | A black double ring, four broken posts, fine ticks near the center, and a ring of 16 dots that turns with the view's yaw like a compass |
+| Railgun | A diamond, \|dx\| + \|dy\| < 362 u, black at about 86% outside, with a gray bevel | Hairlines with 108 u and 126 u gaps, #00FFFF bars at 50% beside the horizontal hair, a ring turning 40 degrees a second, three sheared #99FFFF clip cells, and a faint diamond pulse every 2 s |
+| Nailgun (seeker modification only) | An amber circle of radius 255 u with four inward hooks | A ring turning with the yaw, a lock arrow pointing at the target, and R_Strogg "// LOCKED //", range and countdown readouts once locked |
+
+Weapon displays are the gun-mounted screens of the view models.
+
+| Weapon | Display |
+| --- | --- |
+| Machinegun, shotgun | Black Marine digits on a #73A640 plate with a 3 Hz shimmer; low (below 10 and 3) #CA8F15; empty #C72C1B pulsing 100–50% at 2 Hz; the shotgun adds a scan band every 2 s |
+| Hyperblaster | Digits on a #85B4FA plate with a random 68–100% flicker; below 10 it pulses at 3 Hz and a RELOAD plate flashes #FE4203 |
+| Nailgun | No digits: an #E8AB1F level in six slanted cells; empty turns #E63300 pulsing 100–40% at 2 Hz |
+| Rocket launcher | Three #44D29D cells that go dark (#422300) as rounds are spent, 80–100% at 3 Hz |
+| Railgun | Teal #009F9F charge arcs that turn orange-red for 2 s after the last shot, turning rings and scan pulses |
+| Napalm launcher | Animated fire art without a readout |
+
+The blaster, grenade launcher, lightning gun, dark matter gun and gauntlet have
+no display. The machinegun and shotgun overlays' 9 Hz flicker is capped at
+3 Hz (section 8), and the hyperblaster's RELOAD plate, a bitmap with baked
+English, becomes a vector plate with localized text.
+
+### 14.14 Scoreboard and match summary
+
+**Stock scoreboard.** Held on the scores button, or forced for 5 s when a
+tournament ends. It appears and disappears at once and hides the whole HUD,
+crosshair included. It is not interactive.
+
+| Part | Stock construction |
+| --- | --- |
+| Backing | The soft backing at black 0.60, opaque over the central 509x399 u; the Tourney board uses a flat black 0.60 fill |
+| Header | Server name and address in Lowpixel 0.22 #FFFF8D |
+| Panels | Your team first, then the other team, then spectators. Each opens with a header band at 1.00 in the team color (#8B964B for deathmatch and Tourney, #999999 for spectators) carrying the faction mark, MARINE, STROGG, SPECTATORS or PLAYERS in Lowpixel 0.31 and the team score; headings in Lowpixel 0.16 at 0.40 over a white 0.10 rule |
+| Columns | Ready, speaker, friend and flag or rune icons; name; clan; score; kills (flag modes); minutes connected; ping, trailing-aligned |
+| Rows | Lowpixel 0.22 with a drop shadow on server-list bands: every row 8%, your row 29%, eliminated Tourney players greyed. The pitch adapts to the entries, up to 16: 15–30 u in team modes, 17–35 u in deathmatch, 13–26 u in Tourney |
+| Footer | A white 0.10 rule, game type and map, the frag, capture or control limit, the time limit and the timer |
+| Tourney | A bracket tree of closed 1 u outlines at 0.40 (the only closed boxes in the family) joined by elbow connectors, over the players and spectators lists |
+
+Past 16 entries the stock spills over its footer, and the local player is
+marked by band brightness alone.
+
+**Remastered scoreboard.** It stays instant and non-interactive while held.
+
+- Your row adds the ◥ marker to the brighter band, so it never depends on
+  brightness or color alone.
+- Ping shows the network-quality bars and color (section 13.13) beside the
+  number; a DEATHS column follows KILLS, and a line under the header reads
+  "3rd of 12".
+- Dead players' rows drop to 0.50 with a skull until they respawn; openQ4 bots
+  carry a BOT tag in the header-band construction.
+- Beyond 16 entries the rows keep the smallest pitch and the list scrolls with
+  the right stick or the wheel while the board is held, with a count of the
+  rows below.
+- On touch, the scoreboard button at the top edge toggles it instead of
+  holding.
+
+**Match summary.** It opens at the end of the match with the cursor: SUMMARY,
+STATISTICS and SCOREBOARD tabs on the tab strip, the soft backing at 0.90, and
+"[ Press ESC to return to the game ]". Deathmatch lists the top ten with each
+player's three most accurate weapons as icons, the first three rows tinted
+blue, red and yellow at 0.15; team modes put the winning team's panel on top.
+The chat history and entry follow, and STATISTICS shows each player's kills,
+deaths, accuracy grid, medals and end-game awards. openQ4 fixes the stock's
+report of a tied match as a Strogg win (it reads DRAW), prompts with the active
+device's glyphs, and marks your row as the scoreboard does.
 
 ## Appendix A. Stock survey method
 
@@ -1954,6 +2179,11 @@ measured the band, frame and HUD textures, and read the engine's transition,
 list and window code and the 1.4.2 SDK game code for behavior the scripts do not
 contain. An overlay of center-pivot gauge outlines on an openQ4 capture
 confirmed the shear rule.
+
+The 1.4 survey read the objectives, vehicle, scope and weapon-display GUIs and
+the multiplayer HUD, scoreboard, summary and chat line, with the 1.4.2 SDK's
+objective and multiplayer code. Static composites rendered from the retail art
+and fonts checked the layouts; nothing was captured in play.
 
 ## Appendix B. Measured stock geometry
 
@@ -2061,7 +2291,18 @@ Gauge art is 256x128 texels drawn at 125x59 u (0.488 u per texel across,
 | `pickupbar`, `hud_rev3/radiobar` | Solid rounded rects, 226.4x21 u and 109.4x24.4 u, radius about 1 u |
 | `powerup_bgbar` | A parallelogram 67.7 to 60.7 u wide and 30.2 u tall, alpha 1.0 at the square end to 0.44 at 80%, then zero at the slanted end |
 | `directional_hit` | A soft dome of light at the top of the canvas; core 144x46 u, peak 151 u above the center |
-| `s_bossbar` | An octagonal plate with a small tab at the bottom center |
+| `s_bossbar` | A 185.8x43.7 u body with 14.2 u 45-degree chamfers at all four corners and a 35.8 u tab 3.9 u deep at the bottom center |
+| `s_boss_healthbar` | A 146x18.7 u hexagon with 45-degree points 9.2 u long, bevelled from 0.67 inside to 1.0 at the edges |
+| `s_boss_shieldbar` | A 6.9 u C bracket with a chevron point at its outer end; the two halves face each other around the health bar |
+| `veh_backbar`, `veh_valbar`, `veh_arbar` | The Marine gauge art without its leading 35 u |
+| `veh_backbar2` | A 92x73 u plate with a 26 u 45-degree chamfer at the upper-trailing corner and 1–2 u radii |
+| `obj_btn1`–`obj_btn4` | Open plates: a 1-texel leading rail, a 14-texel lower-leading cut through the foot strip, a bottom rail, and fill at 0.49 fading from 27–46% of the width to nothing by 55–75% |
+| `ffa_bgbar`, `ffa_bgbar2` | Score slabs: alpha 1.0 to 12% of the width, half at 44%, ending near 0.14 in a cut that leans with the 0.22 shear at 70–73%; the band adds 3.5-texel rims |
+| `ctf_bgbar`, `ctf_bgbar2` | Team slabs: 0.87 at the screen edge, half at 34%, 0.15 at 81%, then a sheared cut; the color band's rims fall from 1.0 to 0.6 over 7 texels |
+| `tourntop_msg` | An opaque band with a 45-degree trailing cut |
+| `tourn_sep`, `tourney_box1`–`3` | An I-beam separator; closed 1-texel outlines with softened corners |
+| `onectf_arc` | Two soft quarter arcs forming an open bracket |
+| `ctf_flag` | A white flag silhouette with its pole on the trailing side and a baked shadow |
 
 ## Appendix C. Change record
 
@@ -2138,3 +2379,23 @@ Register rows ART-018 (list selection alpha), ART-019 (popover cuts), MOT-009
 pop-up catalogue, detailing rules, modern components and section 14 have no
 rows yet. They need a register revision before these values serve as
 acceptance criteria.
+
+### Version 1.4
+
+Version 1.4 surveys the rest of the HUD: the objectives display and its
+notices, the boss, vehicle and scope displays, the weapon displays, the
+multiplayer HUD, the scoreboard and the match summary.
+
+| Area | 1.3 | 1.4 | Basis |
+| --- | --- | --- | --- |
+| Objectives | Panels over a darkened view with flicker-in steps; notices closing after 5 s or 64 units | Open plates beside a leading-edge bar, the three newest objectives, a 150 + 100 ms entry; notices timed from where the player stands at 2 s; the failure banner | `wristcomm`, SDK objective code |
+| Mission failed | A 3000 ms fade and "Mission Failed" | No stock sender; failure is the objectives banner under a 12 s fade | SDK and stock scripts |
+| Exit chevron | Rises and fades once a second | `accel(500, 500)` over 11 u | `hud.gui` |
+| Kill feed | Text lines | Attacker, Quad mark, weapon icon and victim, with team-colored names | `hud.gui`, `MultiplayerGame.cpp` |
+| Multiplayer family | Lists `spawn`; Tourney colors without roles | Lists `mpmsgmode`; Tourney roles, team text colors, header olive | `mphud`, `scoreboard` |
+| Scoreboard rows | 22–24 dp | A pitch adapting to up to 16 entries | `scoreboard.gui` |
+| Weapon displays | One palette | Per-weapon displays; five weapons without one | `guis/weapons` |
+| Added | — | Sections 14.11–14.14, the Strogg weapon wheel, Remastered multiplayer and objectives additions, the rule keeping menu backdrop layers off the HUD | Survey and design |
+
+Register schema 3 records the supersessions version 1.3 requires and appends
+requirements for the scope of versions 1.3 and 1.4.
