@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""CI builds the Awakening (q4xbase) game-library layer from one pinned commit.
+"""CI builds the Awakening (q4xbase) game-library layer from one pinned commit, and releases ship it.
 
 Every workflow that fetches openQ4-game-awakening pins the same OPENQ4_AWAKENING_SHA and
 fetches it in a step right after the openQ4-game one, into the sibling directory that
 OPENQ4_AWAKENING_REPO names. Because CI names the layer, Meson must refuse a named layer
-that is missing instead of silently building without it. Packaging workflows stay out
-until shipping q4xbase modules is decided, and so do the macOS thin builds that feed the
-universal2 assembly, which only lipos baseoq4's modules.
+that is missing instead of silently building without it. The release workflows fetch the
+pin the way they fetch openQ4-game: they refuse to reuse a checkout, verify the commit and
+its cleanliness, then prove the staged layer came from it. Every packaging step requires
+q4xbase, so a build that lost the layer cannot publish a package without it.
 """
 from __future__ import annotations
 
@@ -19,21 +20,39 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 LAYER_URL = "https://github.com/themuffinator/openQ4-game-awakening.git"
 REPO_ENV = "${{ github.workspace }}/../openQ4-game-awakening"
 FETCH_STEP = "Fetch openQ4-game-awakening"
+PINNED_FETCH_STEP = "Fetch pinned openQ4-game-awakening"
+REQUIRE_LAYER = "--require-game-layer q4xbase"
 
 # workflow -> jobs that must build the layer
 COVERED = {
-    "commit-validation.yml": {"windows-x64", "linux-arm64", "windows-arm64", "linux-sanitizer", "linux-wayland"},
+    "commit-validation.yml": {
+        "windows-x64",
+        "linux-arm64",
+        "windows-arm64",
+        "linux-sanitizer",
+        "linux-wayland",
+        "macos-arm64",
+        "macos-x64",
+    },
     "push-verification.yml": {"posix-builds", "windows-build", "windows-arm64-build"},
     "linux-arm64-cross.yml": {"cross-build"},
     "macos-debug.yml": {"macos-debug", "macos-openal-migration"},
     "macos-sanitizer.yml": {"macos-sanitizer"},
+    "manual-release.yml": {"builds"},
+    "macos-universal2-candidate.yml": {"thin_build"},
 }
-# workflow -> jobs that must not (None: the whole workflow)
+# workflows whose fetch follows the release pattern
+RELEASE_WORKFLOWS = {"manual-release.yml", "macos-universal2-candidate.yml"}
+# workflow -> jobs that must not fetch it
 EXCLUDED = {
-    "manual-release.yml": None,
-    "macos-universal2-candidate.yml": None,
-    "commit-validation.yml": {"macos-arm64", "macos-x64", "script-smoke"},
+    "commit-validation.yml": {"script-smoke"},
     "push-verification.yml": {"script-smoke"},
+}
+# workflow -> packaging steps (by name) that must refuse a package without q4xbase
+PACKAGING = {
+    "manual-release.yml": "Prepare package",
+    "macos-universal2-candidate.yml": "Package universal2 release candidate",
+    "commit-validation.yml": "Package and validate universal2 app",
 }
 
 
@@ -82,25 +101,69 @@ def steps(block: list[str]) -> list[tuple[str, list[str]]]:
 
 
 def fetching_jobs(name: str) -> set[str]:
-    return {job for job, block in jobs(read(name)).items() if any(step == FETCH_STEP for step, _ in steps(block))}
+    return {
+        job
+        for job, block in jobs(read(name)).items()
+        if any(step in (FETCH_STEP, PINNED_FETCH_STEP) for step, _ in steps(block))
+    }
 
 
 def check_job(name: str, job: str, block: list[str]) -> None:
     job_steps = steps(block)
     names = [step for step, _ in job_steps]
-    index = names.index(FETCH_STEP)
-    if index == 0 or names[index - 1] != "Fetch openQ4-game":
-        fail(f"{name} {job}: {FETCH_STEP!r} must directly follow 'Fetch openQ4-game'")
+    release = name in RELEASE_WORKFLOWS
+    fetch_step = PINNED_FETCH_STEP if release else FETCH_STEP
+    if fetch_step not in names:
+        fail(f"{name} {job}: the layer must be fetched by a step named {fetch_step!r}")
+    index = names.index(fetch_step)
+    previous = names[index - 1] if index > 0 else ""
+    if release:
+        if not previous.startswith("Fetch pinned openQ4-game") or previous == fetch_step:
+            fail(f"{name} {job}: {fetch_step!r} must directly follow the pinned openQ4-game fetch")
+    elif previous != "Fetch openQ4-game":
+        fail(f"{name} {job}: {fetch_step!r} must directly follow 'Fetch openQ4-game'")
     if not any(line.strip() == f"OPENQ4_AWAKENING_REPO: {REPO_ENV}" for line in block):
         fail(f"{name} {job}: OPENQ4_AWAKENING_REPO must be {REPO_ENV!r}")
     body = "\n".join(job_steps[index][1])
     shell = re.search(r"^        shell: (\S+)", body, re.M)
-    if not shell or shell.group(1) not in ("bash", "pwsh"):
-        fail(f"{name} {job}: {FETCH_STEP!r} must set shell bash or pwsh")
+    if not shell or shell.group(1) not in ("bash", "pwsh") or (release and shell.group(1) != "bash"):
+        fail(f"{name} {job}: {fetch_step!r} must set shell bash{'' if release else ' or pwsh'}")
     ref = '"${OPENQ4_AWAKENING_' if shell.group(1) == "bash" else '"$env:OPENQ4_AWAKENING_'
-    for token in (LAYER_URL, f"fetch --depth 1 origin {ref}SHA", f"checkout --detach {ref}SHA", "rev-parse HEAD"):
+    if release:
+        tokens = (
+            LAYER_URL,
+            "=~ ^[0-9a-f]{40}$",
+            "Refusing to reuse an existing openQ4-game-awakening checkout",
+            f"fetch --quiet --no-tags --depth=1 origin {ref}SHA",
+            f"checkout --quiet --detach {ref}SHA",
+            "rev-parse --verify 'HEAD^{commit}'",
+            "status --porcelain --untracked-files=all",
+        )
+    else:
+        tokens = (LAYER_URL, f"fetch --depth 1 origin {ref}SHA", f"checkout --detach {ref}SHA", "rev-parse HEAD")
+    for token in tokens:
         if token not in body:
-            fail(f"{name} {job}: {FETCH_STEP!r} is missing {token!r}")
+            fail(f"{name} {job}: {fetch_step!r} is missing {token!r}")
+    if release:
+        job_text = "\n".join(block)
+        for token in (
+            '--layer-root "${OPENQ4_AWAKENING_REPO}"',
+            "--manifest --layer awakening)",
+            '--expected-layer-commit "${OPENQ4_AWAKENING_SHA}"',
+        ):
+            if token not in job_text:
+                fail(f"{name} {job}: the staged layer's provenance check is missing {token!r}")
+
+
+def check_packaging(name: str, step_name: str) -> None:
+    for _, block in jobs(read(name)).items():
+        for step, lines in steps(block):
+            if step == step_name:
+                body = "\n".join(lines)
+                if REQUIRE_LAYER not in body:
+                    fail(f"{name} {step_name!r}: packaging must pass {REQUIRE_LAYER!r}")
+                return
+    fail(f"{name}: no packaging step named {step_name!r}")
 
 
 def main() -> int:
@@ -123,11 +186,25 @@ def main() -> int:
 
     for name, excluded in EXCLUDED.items():
         found = fetching_jobs(name)
-        if excluded is None:
-            if found or "OPENQ4_AWAKENING" in (WORKFLOWS / name).read_text(encoding="utf-8"):
-                fail(f"{name}: packaging workflows must not fetch the layer until shipping q4xbase is decided")
-        elif found & excluded:
+        if found & excluded:
             fail(f"{name}: {sorted(found & excluded)} must not fetch the layer")
+
+    for name, step_name in PACKAGING.items():
+        check_packaging(name, step_name)
+
+    release = (WORKFLOWS / "manual-release.yml").read_text(encoding="utf-8")
+    for token in (
+        # the Linux debug-symbol split covers the layer's modules
+        '".install/q4xbase/game-sp_${{ matrix.binary_arch }}.so"',
+        '".install/q4xbase/game-mp_${{ matrix.binary_arch }}.so"',
+        # macOS embeds the layer and loads its own module from Contents/Frameworks/q4xbase
+        '".install/q4xbase/game-sp_${{ matrix.binary_arch }}.dylib"',
+        'layer_sp_module="${module_dir}/q4xbase/game-sp_${{ matrix.binary_arch }}.dylib"',
+        "+set fs_game q4xbase",
+        "/openQ4.app/Contents/Frameworks/q4xbase/game-sp_${{ matrix.binary_arch }}.dylib'",
+    ):
+        if token not in release:
+            fail(f"manual-release.yml must ship q4xbase ({token!r})")
 
     cross = (WORKFLOWS / "linux-arm64-cross.yml").read_text(encoding="utf-8")
     for module in ("builddir-arm64-cross/q4xbase/game-sp_arm64.so", "builddir-arm64-cross/q4xbase/game-mp_arm64.so"):

@@ -43,17 +43,37 @@ The Meson option `awakening` (`auto` by default) builds the layer when
 `builddir/q4xbase/` for direct runs and `.install/q4xbase/` for the staged package;
 `tools/build/meson_setup.ps1` re-stages whenever the layer's sources change.
 
-CI builds the layer. Five workflows pin one commit of it (`OPENQ4_AWAKENING_SHA`) and fetch
-it beside openQ4-game, so the q4xbase modules compile on Windows x64 and ARM64, on Linux
-x64 and ARM64 (native and cross) and in its sanitizer and Wayland builds, and on macOS
-(Apple silicon and Intel push verification, debug and sanitizer builds). CI names the
-layer through `OPENQ4_AWAKENING_REPO`, and configure fails when a named layer is missing
-instead of quietly building without it.
-The release workflows leave the layer out until shipping q4xbase modules in packages is
-decided, and so do commit validation's macOS thin builds, whose universal2 assembly only
-merges baseoq4's modules. A layer change needs its new commit pinned in all five
-workflows; `tools/tests/awakening_ci_contract.py` checks that they agree and that every
-fetch is in place.
+CI builds the layer. Seven workflows pin one commit of it (`OPENQ4_AWAKENING_SHA`) and
+fetch it beside openQ4-game, so the q4xbase modules compile on Windows x64 and ARM64, on
+Linux x64 and ARM64 (native and cross) and in its sanitizer and Wayland builds, and on
+macOS (Apple silicon and Intel push and commit validation, debug and sanitizer builds,
+and the universal2 candidate). CI names the layer through `OPENQ4_AWAKENING_REPO`, and
+configure fails when a named layer is missing instead of quietly building without it.
+
+Releases ship the layer. `manual-release.yml` fetches the pinned commit the way it fetches
+openQ4-game (no reused checkout, verified commit, clean tree), checks that the staged
+layer came from that commit (`verify_release_source_provenance.py --layer-root`), and
+passes `--require-game-layer q4xbase` to the packager, so a build that lost the layer
+cannot publish a package without it.
+
+- Windows and Linux packages carry `q4xbase/` beside `baseoq4/`: the two modules, their
+  `.pdb` files on Windows, and `mod.json`, and nothing else. The Windows installer
+  requires all of them once the folder is present; the Linux release strips the modules
+  into the debug-symbol archive and the AppImage prepares them with the core runtime.
+- The macOS app embeds the modules as signed code in `Contents/Frameworks/q4xbase/`,
+  where the engine's module lookup (`<moduleRoot>/<fs_game>/`) finds them, and
+  `mod.json` as data in `Contents/Resources/q4xbase/`, which is `fs_cdpath`. Only code
+  may sit under `Frameworks`, since codesign treats every file there as nested code.
+  The modules get the same `@loader_path` install names as baseoq4's, and their dSYMs
+  sit in `dSYMs/q4xbase/`. The release's macOS smoke starts the app a second time with
+  `fs_game q4xbase` and requires the layer's own SP module to load, not baseoq4's.
+- Commit validation's macOS thin builds and the universal2 candidate build the layer as
+  well, and the universal2 assembly merges its modules like baseoq4's: a layer must be
+  staged whole in both thin slices or in neither.
+
+A layer change needs its new commit pinned in all seven workflows;
+`tools/tests/awakening_ci_contract.py` checks that they agree, that every fetch is in
+place and that every packaging step requires the layer.
 
 A layer reaches the base in one of three ways, in order of preference:
 

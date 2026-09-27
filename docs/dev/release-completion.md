@@ -440,6 +440,15 @@
   zoom/alternate-fire button. The Meson option `awakening` builds the layer
   when its repository sits next to the openQ4 checkout
   (`../openQ4-game-awakening`) or `OPENQ4_AWAKENING_REPO` names it.
+- [x] Release packages include the expansion's game modules, so it runs from a
+  normal openQ4 download. Windows and Linux packages, the Windows installer and
+  the Linux AppImage carry a `q4xbase` folder beside `baseoq4`; the macOS app
+  carries it inside the bundle. The expansion's content is not included: with
+  its `q4xbase` folder beside `q4base` in your Quake 4 installation, start
+  openQ4 with `+set fs_game q4xbase`. openQ4 never loads the expansion's own
+  `gamex86.dll`. Crash reports from the new modules symbolicate: Windows
+  packages carry their `.pdb` files, and the Linux debug-symbol and macOS dSYM
+  archives cover them.
 
 ## Unreleased — `idtech5-ui` development
 

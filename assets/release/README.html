@@ -259,7 +259,7 @@
     <section>
       <h1>openQ4</h1>
       <p><strong>Release package</strong> for the open-source Quake 4 engine and game-code replacement.</p>
-      <p>This package contains openQ4 binaries plus the staged <code>baseoq4/</code> runtime payload. Quake 4 assets are not included.</p>
+      <p>This package contains openQ4 binaries plus the staged <code>baseoq4/</code> runtime payload and the <code>q4xbase/</code> game modules for Quake 4: The Awakening. Quake 4 assets and the expansion's content are not included.</p>
       <div class="actions">
         <a class="button primary" href="docs/index.html">Open Documentation Portal</a>
         <a class="button" href="docs/README.html">Project Overview</a>
@@ -343,6 +343,7 @@
         <li><code>openQ4-client_&lt;arch&gt;</code> and <code>openQ4-ded_&lt;arch&gt;</code>: engine binaries.</li>
         <li><code>*.pdb</code> files on Windows: diagnostic symbols that make crash dumps actionable.</li>
         <li><code>baseoq4/pak0.pk4</code> (inside <code>openQ4.app/Contents/Resources</code> on macOS): openQ4-owned runtime content and overrides.</li>
+        <li><code>q4xbase/</code> (inside <code>openQ4.app</code> on macOS): openQ4's game modules for the unreleased Quake 4: The Awakening expansion. The expansion's content is not included. With its <code>q4xbase/</code> folder beside <code>q4base/</code> in your Quake 4 installation, launch with <code>+set fs_game q4xbase</code>.</li>
         <li><code>docs/index.html</code>: full packaged HTML documentation portal.</li>
         <li><code>docs/docs/user/</code> and <code>docs/docs/dev/</code>: converted user and developer references.</li>
         <li><code>VERSION.txt</code>: packaged version metadata.</li>
