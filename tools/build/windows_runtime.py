@@ -9,6 +9,7 @@ import stat
 import struct
 from pathlib import Path
 
+from game_layer import PACKAGED_LAYER_GAME_DIRS
 from openq4_pak import copy_file_if_changed
 
 
@@ -57,6 +58,8 @@ RUNTIME_BINARY_PATTERNS = (
     "renderer-vk_*.dll",
     f"{GAME_DIR_NAME}/game-sp_*.dll",
     f"{GAME_DIR_NAME}/game-mp_*.dll",
+    # game-library layers (q4xbase) ship their own game modules beside baseoq4
+    *(f"{layer}/game-{kind}_*.dll" for layer in PACKAGED_LAYER_GAME_DIRS for kind in ("sp", "mp")),
 )
 BUILD_GAME_GENERATED_IGNORE_PATTERNS = (
     "*.dll.p",

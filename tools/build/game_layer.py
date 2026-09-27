@@ -50,6 +50,10 @@ LAYER_TREE_MODULES = {
 }
 MOD_FIELDS = ("name", "version", "releaseDate", "website", "author")
 RESERVED_GAME_DIRS = {"q4base", "baseoq4", "q4mp", "base"}
+# Game directories that packages carry beside baseoq4 when their layer was built. Each holds
+# exactly its two game modules (plus their Windows .pdb files) and the mod.json below.
+PACKAGED_LAYER_GAME_DIRS = ("q4xbase",)
+LAYER_MOD_JSON_FIELDS = ("layer", "version", "requiredopenQ4Version")
 
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_]*\Z")
 _GAME_DIR = re.compile(r"[a-z0-9][a-z0-9_\-]*\Z")
@@ -140,6 +144,29 @@ def render_mod_json(layer: dict, openq4_version: str) -> str:
     manifest["requiredopenQ4Version"] = openq4_version
     manifest["layer"] = layer["id"]
     return json.dumps(manifest, indent=2) + "\n"
+
+
+def read_layer_mod_json(path: Path) -> dict:
+    """Read the mod.json that render_mod_json wrote into a layer's game directory.
+
+    Its "version" is the layer's own; "requiredopenQ4Version" is the engine the layer was
+    built with. A base game's mod.json, which has no "layer", is not a layer's.
+    """
+    if path.is_symlink() or not path.is_file():
+        raise LayerError(f"{path}: a layer mod.json must be a regular file")
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise LayerError(f"{path}: unreadable layer mod.json") from exc
+    if not isinstance(manifest, dict):
+        raise LayerError(f"{path}: a layer mod.json must be an object")
+    for field in LAYER_MOD_JSON_FIELDS:
+        value = manifest.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise LayerError(f"{path}: a layer mod.json needs a non-empty {field!r}")
+    if not _VERSION.match(manifest["requiredopenQ4Version"]):
+        raise LayerError(f"{path}: requiredopenQ4Version must be major.minor.patch")
+    return manifest
 
 
 def main(argv: list[str]) -> int:

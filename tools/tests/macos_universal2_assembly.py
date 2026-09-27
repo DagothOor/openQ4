@@ -155,6 +155,108 @@ def test_tree_classification_and_shared_matching() -> None:
         shutil.rmtree(work, ignore_errors=True)
 
 
+def populate_layer(root: Path, arch: str) -> None:
+    for key, relative in ASSEMBLER.optional_thin_code_paths(arch).items():
+        write_file(root / relative, f"{key}-{arch}\n".encode(), 0o755)
+    write_file(root / "q4xbase" / "mod.json", b'{"layer": "awakening"}\n')
+
+
+def with_layer_binaries(manifest: dict[str, object], arch: str, code_records: dict[str, dict[str, object]]) -> dict[str, object]:
+    binaries = manifest["binaries"]
+    assert isinstance(binaries, dict)
+    for key in ASSEMBLER.optional_thin_code_paths(arch):
+        binaries[key] = {
+            **binaries["game-sp"],
+            "path": code_records[key]["path"],
+            "installName": ASSEMBLER.expected_install_name(key, arch),
+        }
+    for key, record in code_records.items():
+        binaries[key].update(record)
+    return manifest
+
+
+def test_game_layer_slices() -> None:
+    """q4xbase is lipo-merged like baseoq4's modules when both slices stage it whole."""
+    if ASSEMBLER.layer_code_keys("q4xbase") != ("q4xbase/game-sp", "q4xbase/game-mp"):
+        raise AssertionError("q4xbase must contribute exactly its SP and MP modules")
+    if ASSEMBLER.expected_install_name("q4xbase/game-sp", "arm64") != "@loader_path/game-sp_arm64.dylib":
+        raise AssertionError("a layer module keeps its own file name as its install name")
+    if ASSEMBLER.optional_universal_code_paths()["q4xbase/game-mp"] != Path("q4xbase") / "game-mp_universal2.dylib":
+        raise AssertionError("the merged layer module belongs in q4xbase/")
+
+    work = ROOT / ".tmp" / "macos-universal2-layer-contract"
+    arm_root = work / "arm64"
+    x64_root = work / "x64"
+    shutil.rmtree(work, ignore_errors=True)
+    try:
+        populate_staging(arm_root, "arm64")
+        populate_staging(x64_root, "x64")
+        populate_layer(arm_root, "arm64")
+        populate_layer(x64_root, "x64")
+        arm_code, arm_shared = ASSEMBLER.classify_staged_tree(arm_root, "arm64")
+        x64_code, x64_shared = ASSEMBLER.classify_staged_tree(x64_root, "x64")
+        expected_keys = {*ASSEMBLER.CODE_KEYS, "q4xbase/game-sp", "q4xbase/game-mp"}
+        if set(arm_code) != expected_keys or set(x64_code) != expected_keys:
+            raise AssertionError("a staged layer's modules must be recorded as code")
+        if "q4xbase/mod.json" not in arm_shared or arm_shared != x64_shared:
+            raise AssertionError("the layer's mod.json is shared payload, identical in both slices")
+
+        arm_manifest = with_layer_binaries(thin_manifest("arm64", arm_shared), "arm64", arm_code)
+        x64_manifest = with_layer_binaries(thin_manifest("x64", x64_shared), "x64", x64_code)
+        ASSEMBLER.validate_thin_manifest_metadata(arm_manifest, "arm64")
+        ASSEMBLER.validate_thin_manifest_metadata(x64_manifest, "x64")
+        ASSEMBLER.validate_matching_inputs(arm_manifest, x64_manifest, arm_shared, x64_shared)
+        if ASSEMBLER.staged_layer_keys(arm_manifest["binaries"]) != ("q4xbase/game-sp", "q4xbase/game-mp"):
+            raise AssertionError("the recorded layer keys decide which modules are merged")
+
+        # a layer in one slice only would leave the other architecture without it
+        bare_x64 = thin_manifest("x64", x64_shared)
+        expect_error(
+            "must be staged in both thin slices or in neither",
+            lambda: ASSEMBLER.validate_matching_inputs(arm_manifest, bare_x64, arm_shared, x64_shared),
+            "layer staged in one slice",
+        )
+
+        # a manifest that records half a layer is corrupt
+        half = json.loads(json.dumps(arm_manifest))
+        del half["binaries"]["q4xbase/game-mp"]
+        expect_error(
+            "records an incomplete q4xbase/ layer",
+            lambda: ASSEMBLER.validate_thin_manifest_metadata(half, "arm64"),
+            "manifest with half a layer",
+        )
+        unknown = json.loads(json.dumps(arm_manifest))
+        unknown["binaries"]["q4mp/game-sp"] = unknown["binaries"]["q4xbase/game-sp"]
+        expect_error(
+            "invalid binary set",
+            lambda: ASSEMBLER.validate_thin_manifest_metadata(unknown, "arm64"),
+            "manifest with an unknown layer",
+        )
+
+        # the staged tree must hold the whole layer, and only this slice's modules
+        write_file(arm_root / "q4xbase" / "game-sp_x64.dylib", b"stale\n", 0o755)
+        expect_error(
+            "stale or mismatched code file",
+            lambda: ASSEMBLER.classify_staged_tree(arm_root, "arm64"),
+            "stale layer module",
+        )
+        (arm_root / "q4xbase" / "game-sp_x64.dylib").unlink()
+        (x64_root / "q4xbase" / "game-mp_x64.dylib").unlink()
+        expect_error(
+            "incomplete q4xbase/ layer",
+            lambda: ASSEMBLER.classify_staged_tree(x64_root, "x64"),
+            "layer without its MP module",
+        )
+        (arm_root / "q4xbase" / "mod.json").unlink()
+        expect_error(
+            "incomplete q4xbase/ layer",
+            lambda: ASSEMBLER.classify_staged_tree(arm_root, "arm64"),
+            "layer without its mod.json",
+        )
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def test_host_signed_moltenvk_matching() -> None:
     work = ROOT / ".tmp" / "macos-universal2-moltenvk-signature-contract"
     arm_root = work / "arm64"
@@ -697,6 +799,7 @@ def test_static_fail_closed_contract() -> None:
 
 def main() -> int:
     test_tree_classification_and_shared_matching()
+    test_game_layer_slices()
     test_host_signed_moltenvk_matching()
     test_thin_manifest_metadata_reinspection_contract()
     test_source_provenance_validation()

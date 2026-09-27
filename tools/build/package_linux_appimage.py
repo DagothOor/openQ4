@@ -52,6 +52,16 @@ CORE_RUNTIME_RELATIVE_PATHS = {
 RUNPATH_RE = re.compile(r"\((?:RPATH|RUNPATH)\).*?\[([^\]]*)\]")
 
 
+def core_runtime_relative_paths(package_root: Path, arch: str) -> tuple[Path, ...]:
+    """The engine binaries and game modules linuxdeploy prepares, followed by the modules of
+    any game-library layer (q4xbase) the package carries beside baseoq4."""
+    return CORE_RUNTIME_RELATIVE_PATHS[arch] + tuple(
+        Path(name) / f"game-{kind}_{arch}.so"
+        for name in linux_release.packaged_layer_dirs(package_root)
+        for kind in ("sp", "mp")
+    )
+
+
 class AppImageError(RuntimeError):
     """The AppImage input, toolchain, or output violated its release contract."""
 
@@ -249,7 +259,7 @@ def compare_packaged_payload(source_root: Path, appimage_package_root: Path, arc
             f"Missing: {missing or '<none>'}; unexpected: {unexpected or '<none>'}"
         )
 
-    mutable_elfs = set(CORE_RUNTIME_RELATIVE_PATHS[arch])
+    mutable_elfs = set(core_runtime_relative_paths(source_root, arch))
     for relative in sorted(source_files - mutable_elfs):
         source_hash = sha256_file(source_root / relative)
         packaged_hash = sha256_file(appimage_package_root / relative)
@@ -261,7 +271,7 @@ def compare_packaged_payload(source_root: Path, appimage_package_root: Path, arc
 
 def validate_appimage_rpaths(appdir: Path, package_root: Path, arch: str) -> None:
     library_root = (appdir / "usr/lib").resolve(strict=True)
-    for relative in CORE_RUNTIME_RELATIVE_PATHS[arch]:
+    for relative in core_runtime_relative_paths(package_root, arch):
         binary = package_root / relative
         dynamic = staged_validator.readelf_output(binary, ["-W", "-d"], appdir)
         if "(TEXTREL)" in dynamic:
@@ -295,7 +305,7 @@ def validate_appimage_dependency_resolution(appdir: Path, package_root: Path, ar
     if ldd is None:
         raise AppImageError("AppImage dependency validation requires ldd")
     env = linux_release.sanitized_loader_environment()
-    for relative in CORE_RUNTIME_RELATIVE_PATHS[arch]:
+    for relative in core_runtime_relative_paths(package_root, arch):
         completed = subprocess.run(
             [ldd, "-r", str(package_root / relative)],
             cwd=appdir,
@@ -377,6 +387,16 @@ def validate_appdir(
         [expected[2][0]],
         [expected[3][0]],
     )
+    for name in linux_release.packaged_layer_dirs(package_root):
+        linux_release.validate_layer_game_dir(package_root, name, arch)
+        staged_validator.validate_staged_architecture_set(
+            package_root, package_root / name, [expected[0][0]], [expected[1][0]]
+        )
+        staged_validator.validate_distinct_game_modules(
+            package_root,
+            [package_root / name / f"game-sp_{arch}.so"],
+            [package_root / name / f"game-mp_{arch}.so"],
+        )
     staged_validator.validate_linux_binary_hardening(
         package_root,
         [(path, arch, is_module) for path, _, is_module in expected],
@@ -525,7 +545,7 @@ def build_appimage(args: argparse.Namespace) -> Path:
             "--custom-apprun",
             str(apprun_input),
         ]
-        for relative in CORE_RUNTIME_RELATIVE_PATHS[arch]:
+        for relative in core_runtime_relative_paths(appimage_package_root, arch):
             linuxdeploy_command.extend(
                 ["--deploy-deps-only", str(appimage_package_root / relative)]
             )

@@ -1468,6 +1468,78 @@ def validate_release_source_provenance_verifier() -> None:
     )
 
 
+def validate_release_layer_provenance_verifier() -> None:
+    root = WORK / "layer-provenance"
+    project = make_git_repo(root / "openQ4")
+    gamelibs = make_git_repo(root / "openQ4-game")
+    layer = make_git_repo(root / "openQ4-game-awakening")
+    commit_file(project, ".gitignore", ".tmp/\n", "project source")
+    commit_file(gamelibs, "game-source.txt", "game\n", "game source")
+    commit_file(layer, "layer.json", "{}\n", "layer source")
+    project_sha = git(project, "rev-parse", "HEAD")
+    gamelibs_sha = git(gamelibs, "rev-parse", "HEAD")
+    layer_sha = git(layer, "rev-parse", "HEAD")
+    base = {
+        "format": 1,
+        "projectGitCommit": project_sha,
+        "projectGitDirty": False,
+        "gameLibsGitCommit": gamelibs_sha,
+        "gameLibsGitDirty": False,
+        "fileCount": 0,
+        "files": [],
+    }
+    base_manifest = project / ".tmp" / "gamelibs_stage" / "openq4_gamelibs_stage_manifest.json"
+    write_file(base_manifest, json.dumps(base) + "\n")
+    layer_manifest_path = project / ".tmp" / "gamelibs_stage_awakening" / "openq4_gamelibs_stage_manifest.json"
+    layer_manifest = dict(base, layer={"id": "awakening", "gameDir": "q4xbase", "gitCommit": layer_sha, "gitDirty": False})
+    write_file(layer_manifest_path, json.dumps(layer_manifest) + "\n")
+
+    def verify(expected_layer: str = layer_sha):
+        SOURCE_PROVENANCE.verify_release_source_provenance(
+            project,
+            gamelibs,
+            base_manifest,
+            project_sha,
+            gamelibs_sha,
+            layer_root=layer,
+            layer_stage_manifest=layer_manifest_path,
+            expected_layer_commit=expected_layer,
+        )
+
+    verify()
+    expect_runtime_error(
+        lambda: SOURCE_PROVENANCE.verify_release_source_provenance(
+            project, gamelibs, base_manifest, project_sha, gamelibs_sha, layer_root=layer,
+        ),
+        "layer provenance needs",
+        "partial layer provenance arguments",
+    )
+    expect_runtime_error(lambda: verify("0" * 40), "layer checked-out commit", "mismatched checked-out layer SHA")
+
+    layer_manifest["layer"] = dict(layer_manifest["layer"], gitCommit="f" * 40)
+    write_file(layer_manifest_path, json.dumps(layer_manifest) + "\n")
+    expect_runtime_error(verify, "staged layer commit", "mismatched staged layer SHA")
+
+    layer_manifest["layer"] = dict(layer_manifest["layer"], gitCommit=layer_sha, gitDirty=True)
+    write_file(layer_manifest_path, json.dumps(layer_manifest) + "\n")
+    expect_runtime_error(verify, "clean layer checkout", "dirty staged layer")
+
+    layer_manifest["layer"] = dict(layer_manifest["layer"], gitDirty=False)
+    layer_manifest["gameLibsGitCommit"] = "e" * 40
+    write_file(layer_manifest_path, json.dumps(layer_manifest) + "\n")
+    expect_runtime_error(verify, "openQ4-game (layer stage)", "mismatched GameLibs SHA in the layer stage")
+
+    del layer_manifest["layer"]
+    layer_manifest["gameLibsGitCommit"] = gamelibs_sha
+    write_file(layer_manifest_path, json.dumps(layer_manifest) + "\n")
+    expect_runtime_error(verify, "missing its layer metadata", "layer stage without layer metadata")
+
+    layer_manifest["layer"] = {"id": "awakening", "gameDir": "q4xbase", "gitCommit": layer_sha, "gitDirty": False}
+    write_file(layer_manifest_path, json.dumps(layer_manifest) + "\n")
+    write_file(layer / "layer.json", "dirty\n")
+    expect_runtime_error(verify, "checkout is dirty", "dirty checked-out layer source")
+
+
 def validate_linux_release_artifact_helper_contracts() -> None:
     root = WORK / "linux-release-artifacts"
     root.mkdir(parents=True, exist_ok=True)
@@ -1588,6 +1660,85 @@ def validate_linux_release_artifact_helper_contracts() -> None:
     )
     if (root / "escape").exists():
         raise AssertionError("unsafe Linux archive extraction wrote outside its isolated root")
+
+
+def validate_release_game_layer_helpers() -> None:
+    """Linux and Windows release checks treat a packaged q4xbase like baseoq4 and reject an incomplete one."""
+    layer_json = (
+        '{"name": "Quake 4: The Awakening", "version": "0.1.0", '
+        '"requiredopenQ4Version": "0.13.2", "layer": "awakening"}\n'
+    )
+
+    runtime_root = WORK / "linux-layer-runtime"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    if LINUX_RELEASE_ARTIFACTS.packaged_layer_dirs(runtime_root) != []:
+        raise AssertionError("a Linux payload without q4xbase must not report a layer")
+    base = LINUX_RELEASE_ARTIFACTS.expected_runtime_binaries(runtime_root, "x64")
+    layer_dir = runtime_root / "q4xbase"
+    write_file(layer_dir / "game-sp_x64.so")
+    write_file(layer_dir / "game-mp_x64.so")
+    write_file(layer_dir / "mod.json", layer_json)
+    if LINUX_RELEASE_ARTIFACTS.packaged_layer_dirs(runtime_root) != ["q4xbase"]:
+        raise AssertionError("the packaged q4xbase layer was not detected")
+    expected = LINUX_RELEASE_ARTIFACTS.expected_runtime_binaries(runtime_root, "x64")
+    if expected[:4] != base or [path for path, _, _ in expected[4:]] != [
+        layer_dir / "game-sp_x64.so",
+        layer_dir / "game-mp_x64.so",
+    ]:
+        raise AssertionError("q4xbase modules must follow baseoq4's so indices 2 and 3 stay baseoq4's")
+    LINUX_RELEASE_ARTIFACTS.validate_layer_game_dir(runtime_root, "q4xbase", "x64")
+
+    write_file(layer_dir / "game-sp_x64.so.debug")
+    expect_runtime_error(
+        lambda: LINUX_RELEASE_ARTIFACTS.validate_layer_game_dir(runtime_root, "q4xbase", "x64"),
+        "must hold exactly",
+        "Linux q4xbase carrying debug symbols",
+    )
+    (layer_dir / "game-sp_x64.so.debug").unlink()
+    (layer_dir / "game-mp_x64.so").unlink()
+    expect_runtime_error(
+        lambda: LINUX_RELEASE_ARTIFACTS.validate_layer_game_dir(runtime_root, "q4xbase", "x64"),
+        "missing ['game-mp_x64.so']",
+        "Linux q4xbase without its MP module",
+    )
+    write_file(layer_dir / "game-mp_x64.so")
+    write_file(layer_dir / "mod.json", '{"version": "0.13.2"}\n')
+    expect_runtime_error(
+        lambda: LINUX_RELEASE_ARTIFACTS.validate_layer_game_dir(runtime_root, "q4xbase", "x64"),
+        "needs a non-empty 'layer'",
+        "Linux q4xbase carrying a base-game mod.json",
+    )
+
+    package_dir = WORK / "installer-layer-package"
+    for relative in (
+        "openQ4-client_x64.exe",
+        "openQ4-client_x64.pdb",
+        "openQ4-ded_x64.exe",
+        "openQ4-ded_x64.pdb",
+        "OpenAL32.dll",
+        "README.html",
+        "LICENSE",
+        "docs/index.html",
+        "baseoq4/mod.json",
+        "baseoq4/pak0.pk4",
+        "baseoq4/pak1.pk4",
+        "baseoq4/game-sp_x64.dll",
+        "baseoq4/game-sp_x64.pdb",
+        "baseoq4/game-mp_x64.dll",
+        "baseoq4/game-mp_x64.pdb",
+        "q4xbase/game-sp_x64.dll",
+        "q4xbase/game-sp_x64.pdb",
+        "q4xbase/game-mp_x64.dll",
+        "q4xbase/mod.json",
+    ):
+        write_file(package_dir / relative)
+    expect_file_not_found(
+        lambda: INSTALLER.validate_package_dir(package_dir, "x64"),
+        "game-mp_x64.pdb",
+        "installer with an incomplete q4xbase",
+    )
+    write_file(package_dir / "q4xbase" / "game-mp_x64.pdb")
+    INSTALLER.validate_package_dir(package_dir, "x64")
 
 
 def validate_release_asset_set_helper_contracts() -> None:
@@ -1725,7 +1876,9 @@ def main() -> None:
         validate_manual_release_linux_runtime_gate()
         validate_manual_release_companion_checkout()
         validate_release_source_provenance_verifier()
+        validate_release_layer_provenance_verifier()
         validate_linux_release_artifact_helper_contracts()
+        validate_release_game_layer_helpers()
         validate_release_asset_set_helper_contracts()
     finally:
         shutil.rmtree(WORK, ignore_errors=True)

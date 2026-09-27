@@ -109,13 +109,61 @@ def verify_manifest_commit(
         raise RuntimeError(f"GameLibs stage manifest does not record a clean {label} checkout")
 
 
+def verify_layer_provenance(
+    layer_root: Path,
+    layer_stage_manifest: Path,
+    expected_project_commit: str,
+    expected_gamelibs_commit: str,
+    expected_layer_commit: str,
+) -> None:
+    """A game-library layer (openQ4-game-awakening) is staged with the base game into its own
+    stage, whose manifest records all three commits; each must be the approved one."""
+    expected_layer_commit = require_full_git_sha(expected_layer_commit, "expected layer commit")
+    layer_root = require_repository(layer_root, "game-library layer repository")
+    verify_repository_commit(layer_root, expected_layer_commit, "layer")
+
+    validate_stage_manifest(layer_stage_manifest.parent)
+    manifest = read_stage_manifest(layer_stage_manifest)
+    verify_manifest_commit(
+        manifest,
+        commit_key="projectGitCommit",
+        dirty_key="projectGitDirty",
+        expected_commit=expected_project_commit,
+        label="openQ4 (layer stage)",
+    )
+    verify_manifest_commit(
+        manifest,
+        commit_key="gameLibsGitCommit",
+        dirty_key="gameLibsGitDirty",
+        expected_commit=expected_gamelibs_commit,
+        label="openQ4-game (layer stage)",
+    )
+    layer = manifest.get("layer")
+    if not isinstance(layer, dict):
+        raise RuntimeError("layer stage manifest is missing its layer metadata")
+    verify_manifest_commit(
+        layer,
+        commit_key="gitCommit",
+        dirty_key="gitDirty",
+        expected_commit=expected_layer_commit,
+        label="layer",
+    )
+
+
 def verify_release_source_provenance(
     project_root: Path,
     gamelibs_root: Path,
     stage_manifest: Path,
     expected_project_commit: str,
     expected_gamelibs_commit: str,
+    *,
+    layer_root: Path | None = None,
+    layer_stage_manifest: Path | None = None,
+    expected_layer_commit: str | None = None,
 ) -> None:
+    layer_args = (layer_root, layer_stage_manifest, expected_layer_commit)
+    if any(arg is not None for arg in layer_args) and not all(arg is not None for arg in layer_args):
+        raise RuntimeError("layer provenance needs the layer root, its stage manifest and the expected layer commit")
     expected_project_commit = require_full_git_sha(
         expected_project_commit, "expected openQ4 commit"
     )
@@ -145,6 +193,15 @@ def verify_release_source_provenance(
         label="openQ4-game",
     )
 
+    if layer_root is not None:
+        verify_layer_provenance(
+            layer_root,
+            layer_stage_manifest,
+            expected_project_commit,
+            expected_gamelibs_commit,
+            expected_layer_commit,
+        )
+
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -153,6 +210,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--stage-manifest", required=True, type=Path)
     parser.add_argument("--expected-project-commit", required=True)
     parser.add_argument("--expected-gamelibs-commit", required=True)
+    parser.add_argument("--layer-root", type=Path, help="a game-library layer checkout (openQ4-game-awakening)")
+    parser.add_argument("--layer-stage-manifest", type=Path, help="that layer's stage manifest")
+    parser.add_argument("--expected-layer-commit", help="the approved layer commit")
     return parser.parse_args(argv)
 
 
@@ -165,6 +225,9 @@ def main(argv: list[str] | None = None) -> int:
             args.stage_manifest,
             args.expected_project_commit,
             args.expected_gamelibs_commit,
+            layer_root=args.layer_root,
+            layer_stage_manifest=args.layer_stage_manifest,
+            expected_layer_commit=args.expected_layer_commit,
         )
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -174,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
         "release source provenance verified: "
         f"openQ4={args.expected_project_commit.lower()} "
         f"openQ4-game={args.expected_gamelibs_commit.lower()}"
+        + (f" layer={args.expected_layer_commit.lower()}" if args.expected_layer_commit else "")
     )
     return 0
 

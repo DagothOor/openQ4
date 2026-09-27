@@ -4011,6 +4011,278 @@ def validate_embedded_guest_root_validators_runtime() -> None:
                 raise AssertionError(f"{context} did not reject control-character workspace paths: {stderr}")
 
 
+def make_macos_layer_mod_json_bytes(required: str = "0.2.000") -> bytes:
+    manifest = {
+        "name": "Quake 4: The Awakening",
+        "version": "0.1.0",
+        "requiredopenQ4Version": required,
+        "layer": "awakening",
+    }
+    return (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
+
+
+def make_macos_layer_symbol_records(arch: str) -> bytes:
+    records = []
+    for index, kind in enumerate(("sp", "mp")):
+        module = f"game-{kind}_{arch}.dylib"
+        records.append(
+            f"- path=openQ4.app/Contents/Frameworks/q4xbase/{module}\n"
+            f"  sha256={str(6 + index) * 64}\n"
+            "  size=1\n"
+            f"  macho_uuid=UUID: 00000000-0000-0000-0000-00000000000{7 + index} (arm64) {module}\n"
+            f"  dsym=dSYMs/q4xbase/{module}.dSYM\n"
+        )
+    return "".join(records).encode("utf-8")
+
+
+def validate_macos_game_layer_bundle_runtime() -> None:
+    """q4xbase embeds its modules as signed code in Contents/Frameworks/q4xbase and its
+    mod.json as data in Contents/Resources/q4xbase, and nothing else passes."""
+    package = load_package_module()
+    work = ROOT / ".tmp" / "macos-game-layer-contract"
+    package_root = work / "openq4-v0.2.000-macos-arm64-opengl"
+    install_dir = work / "install"
+    arch = "arm64"
+    version = "0.2.000"
+
+    def stage_package() -> None:
+        shutil.rmtree(package_root, ignore_errors=True)
+        write_test_file(package_root / f"openQ4-client_{arch}", b"client\n", 0o755)
+        write_test_file(package_root / package.GAME_DIR_NAME / "mod.json", b"{}\n")
+        write_test_file(package_root / package.GAME_DIR_NAME / "pak0.pk4", b"pak0\n")
+        write_test_file(package_root / package.GAME_DIR_NAME / "pak1.pk4", b"pak1\n")
+        write_test_file(package_root / package.GAME_DIR_NAME / f"game-sp_{arch}.dylib", b"sp\n", 0o755)
+        write_test_file(package_root / package.GAME_DIR_NAME / f"game-mp_{arch}.dylib", b"mp\n", 0o755)
+        write_test_file(package_root / f"renderer-vk_{arch}.dylib", b"renderer-vk\n", 0o755)
+
+    def create(**kwargs):
+        return package.create_macos_app_bundle(package_root, install_dir, arch, version, "v0.2.000", **kwargs)
+
+    def validate(app_root: Path) -> None:
+        package.validate_macos_app_bundle(package_root, app_root, arch, version)
+
+    shutil.rmtree(work, ignore_errors=True)
+    try:
+        write_test_file(install_dir / package.MACOS_MOLTENVK_DYLIB_NAME, b"moltenvk\n", 0o755)
+        write_test_file(install_dir / "Frameworks" / package.MACOS_OPENAL_SOFT_DYLIB_NAME, b"openal-soft\n", 0o755)
+        for filename in package.MACOS_OPENAL_SOFT_LICENSE_FILES:
+            write_test_file(
+                install_dir / "licenses" / "openal-soft" / filename,
+                f"openal-soft-{filename}\n".encode(),
+            )
+        write_test_file(install_dir / "assets" / "splash" / "quake4_rt_bitmap_4001.bmp", b"bmp\n")
+        write_test_file(install_dir / "openQ4.icns", b"icns\n")
+
+        # a release that requires the layer fails when the build did not stage it
+        stage_package()
+        try:
+            create(required_layers={"q4xbase"})
+        except FileNotFoundError as exc:
+            if "required game layer q4xbase/ was not staged" not in str(exc):
+                raise AssertionError(f"unexpected missing-layer error: {exc}") from exc
+        else:
+            raise AssertionError("a required layer that was not staged must fail the macOS package")
+
+        staged_layer = install_dir / "q4xbase"
+        write_test_file(staged_layer / f"game-sp_{arch}.dylib", b"layer-sp\n", 0o755)
+        write_test_file(staged_layer / f"game-mp_{arch}.dylib", b"layer-mp\n", 0o755)
+        write_test_file(staged_layer / "mod.json", make_macos_layer_mod_json_bytes())
+
+        # a stray file in the staged layer fails before anything is embedded
+        write_test_file(staged_layer / "game-sp_x64.dylib", b"stale\n", 0o755)
+        stage_package()
+        expect_runtime_error("must hold exactly", create, "macOS staged layer with a stale module")
+        (staged_layer / "game-sp_x64.dylib").unlink()
+
+        stage_package()
+        app_root = create(required_layers={"q4xbase"})
+        validate(app_root)
+        frameworks = app_root / package.MACOS_APP_FRAMEWORKS_DIR / "q4xbase"
+        resources = app_root / package.MACOS_APP_RESOURCES_DIR / "q4xbase"
+        if {path.name for path in frameworks.iterdir()} != {f"game-sp_{arch}.dylib", f"game-mp_{arch}.dylib"}:
+            raise AssertionError("Contents/Frameworks/q4xbase must hold exactly the layer's two modules")
+        if {path.name for path in resources.iterdir()} != {"mod.json"}:
+            raise AssertionError("Contents/Resources/q4xbase must hold exactly the layer's mod.json")
+        if package.macos_embedded_game_layers(package_root) != ["q4xbase"]:
+            raise AssertionError("the embedded q4xbase layer was not detected")
+
+        # the layer's modules are signed, checked, renamed and symbolicated like baseoq4's
+        layer_modules = [frameworks / f"game-sp_{arch}.dylib", frameworks / f"game-mp_{arch}.dylib"]
+        signable = package.macos_signable_targets(package_root, arch)
+        embedded = package.macos_embedded_library_paths(package_root, arch)
+        dependency_binaries = package.macos_dependency_validation_binaries(package_root, arch)
+        install_names = package.macos_loadable_module_install_names(package_root, arch)
+        symbol_targets = package.macos_symbol_targets(package_root, arch)
+        executables = package.get_package_executable_archive_paths("macos", arch, [], ["q4xbase"])
+        for module in layer_modules:
+            if module not in signable or module not in embedded or module not in dependency_binaries:
+                raise AssertionError(f"the layer module must be signed and checked like baseoq4's: {module}")
+            if install_names.get(module) != f"@loader_path/{module.name}":
+                raise AssertionError(f"layer module install name is {install_names.get(module)!r}")
+            expected_target = (
+                Path("openQ4.app") / "Contents" / "Frameworks" / "q4xbase" / module.name,
+                module,
+                Path("dSYMs") / "q4xbase" / f"{module.name}.dSYM",
+            )
+            if expected_target not in symbol_targets:
+                raise AssertionError(f"layer module has no nested dSYM target: {module}")
+            if module.relative_to(package_root) not in executables:
+                raise AssertionError(f"layer module must be archived executable: {module}")
+        if symbol_targets[-1][0].name != f"renderer-vk_{arch}.dylib":
+            raise AssertionError("the renderer must stay the last dSYM target")
+
+        # every departure from the embedded layout is refused
+        loose = package_root / "q4xbase"
+        write_test_file(loose / "mod.json", make_macos_layer_mod_json_bytes())
+        expect_runtime_error("retained adjacent q4xbase/", lambda: validate(app_root), "macOS loose q4xbase")
+        shutil.rmtree(loose)
+        write_test_file(frameworks / "mod.json", make_macos_layer_mod_json_bytes())
+        expect_runtime_error("unexpected files", lambda: validate(app_root), "macOS layer data under Frameworks")
+        (frameworks / "mod.json").unlink()
+        write_test_file(frameworks / "game-sp_x64.dylib", b"stale\n", 0o755)
+        expect_runtime_error("unexpected files", lambda: validate(app_root), "macOS layer with a stale module")
+        (frameworks / "game-sp_x64.dylib").unlink()
+        write_test_file(resources / "mod.json", make_macos_layer_mod_json_bytes("0.1.000"))
+        expect_runtime_error(
+            "which is not release 0.2.000",
+            lambda: validate(app_root),
+            "macOS layer built for another engine",
+        )
+        (resources / "mod.json").unlink()
+        expect_runtime_error(
+            "a layer mod.json must be a regular file",
+            lambda: validate(app_root),
+            "macOS layer without its mod.json",
+        )
+        resources.rmdir()
+        expect_runtime_error("missing required directories", lambda: validate(app_root), "macOS half-embedded layer")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def validate_macos_game_layer_archive_runtime() -> None:
+    """The runtime and dSYM archives carry q4xbase exactly when the package embeds it."""
+    package = load_package_module()
+    work = ROOT / ".tmp" / "macos-game-layer-archive-contract"
+    package_root = work / "openq4-v0.2.000-macos-arm64-opengl"
+    arch = "arm64"
+    version = "0.2.000"
+    version_tag = "v0.2.000"
+    package_suffix = "-opengl"
+    plist_bytes = make_macos_plist_bytes(package, version)
+    prefix = package_root.name + "/"
+    contents = f"{prefix}openQ4.app/Contents/"
+    base_manifest = make_macos_symbol_manifest_bytes(package_root.name, arch, version, version_tag)
+    layer_manifest = base_manifest + make_macos_layer_symbol_records(arch)
+    layer_sp = f"{contents}Frameworks/q4xbase/game-sp_{arch}.dylib"
+    layer_json = f"{contents}Resources/q4xbase/mod.json"
+
+    def entries(changes=None, removed=()):
+        result = make_macos_archive_entries(
+            package,
+            package_root.name,
+            arch,
+            plist_bytes,
+            extra_entries={
+                layer_sp: (b"layer-sp\n", 0o755),
+                f"{contents}Frameworks/q4xbase/game-mp_{arch}.dylib": (b"layer-mp\n", 0o755),
+                layer_json: (make_macos_layer_mod_json_bytes(), 0o644),
+                f"{prefix}{package.MACOS_SYMBOL_MANIFEST_NAME}": (layer_manifest, 0o644),
+            },
+        )
+        result.update(changes or {})
+        for name in removed:
+            del result[name]
+        return result
+
+    def check(archive_entries, game_layers=("q4xbase",)) -> None:
+        archive_path = work / "layer.tar.gz"
+        write_test_targz_archive(archive_path, archive_entries)
+        package.validate_macos_archive_contents(
+            package_root, archive_path, "tar.gz", arch, version, game_layers=game_layers
+        )
+
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True, exist_ok=True)
+    try:
+        check(entries())
+        expect_runtime_error("unexpected entries", lambda: check(entries(), ()), "macOS archive with an undeclared layer")
+        expect_runtime_error(
+            "not executable",
+            lambda: check(entries({layer_sp: (b"layer-sp\n", 0o644)})),
+            "macOS archive with a non-executable layer module",
+        )
+        expect_runtime_error(
+            "missing required entries",
+            lambda: check(entries(removed=(layer_json,))),
+            "macOS archive without the layer mod.json",
+        )
+        expect_runtime_error(
+            "outside openQ4.app",
+            lambda: check(entries({f"{prefix}q4xbase/mod.json": (make_macos_layer_mod_json_bytes(), 0o644)})),
+            "macOS archive with a loose q4xbase",
+        )
+        expect_runtime_error(
+            "unexpected entries",
+            lambda: check(entries({f"{contents}Frameworks/q4xbase/game-sp_x64.dylib": (b"stale\n", 0o755)})),
+            "macOS archive with a stale layer module",
+        )
+        expect_runtime_error(
+            "missing binary entries",
+            lambda: check(entries({f"{prefix}{package.MACOS_SYMBOL_MANIFEST_NAME}": (base_manifest, 0o644)})),
+            "macOS archive whose symbol manifest leaves out the layer",
+        )
+
+        symbol_root_name = package.macos_symbol_archive_stem(version_tag, arch, package_suffix)
+        symbol_prefix = symbol_root_name + "/"
+        symbol_entries = make_macos_symbol_archive_entries(
+            package, package_root.name, symbol_root_name, arch, version, version_tag
+        )
+        symbol_entries[f"{symbol_prefix}{package.MACOS_SYMBOL_MANIFEST_NAME}"] = (layer_manifest, 0o644)
+        layer_dsym = f"{symbol_prefix}dSYMs/q4xbase/game-sp_{arch}.dylib.dSYM/Contents/Resources/DWARF/game-sp_{arch}.dylib"
+        symbol_entries[layer_dsym] = (b"layer-sp-dsym\n", 0o644)
+        symbol_entries[
+            f"{symbol_prefix}dSYMs/q4xbase/game-mp_{arch}.dylib.dSYM/Contents/Resources/DWARF/game-mp_{arch}.dylib"
+        ] = (b"layer-mp-dsym\n", 0o644)
+
+        def check_symbols(archive_entries, game_layers=("q4xbase",)) -> None:
+            archive_path = work / f"{symbol_root_name}.tar.xz"
+            write_test_tarxz_archive(archive_path, archive_entries, rewrite_runtime_archive=False)
+            package.validate_macos_symbol_archive_contents(
+                archive_path,
+                symbol_root_name,
+                version=version,
+                version_tag=version_tag,
+                arch=arch,
+                package_suffix=package_suffix,
+                runtime_archive_name=f"{package_root.name}.tar.gz",
+                game_layers=game_layers,
+            )
+
+        check_symbols(symbol_entries)
+        expect_runtime_error(
+            "unexpected binary entries",
+            lambda: check_symbols(symbol_entries, ()),
+            "macOS dSYM archive with an undeclared layer",
+        )
+        without_dsym = dict(symbol_entries)
+        del without_dsym[layer_dsym]
+        expect_runtime_error(
+            "missing required dSYM entries",
+            lambda: check_symbols(without_dsym),
+            "macOS dSYM archive without the layer's dSYM",
+        )
+        with_runtime = dict(symbol_entries)
+        with_runtime[f"{symbol_prefix}openQ4.app/Contents/Frameworks/q4xbase/game-sp_{arch}.dylib"] = (b"code\n", 0o755)
+        expect_runtime_error(
+            "runtime payload entries",
+            lambda: check_symbols(with_runtime),
+            "macOS dSYM archive carrying the layer's runtime module",
+        )
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def main() -> None:
     validate_meson_contract()
     validate_sdl3_runtime_contract()
@@ -4024,6 +4296,8 @@ def main() -> None:
     validate_macos_package_main_collateral_error_runtime()
     validate_macos_dmg_output_preflight_runtime()
     validate_macos_archive_validator_runtime()
+    validate_macos_game_layer_bundle_runtime()
+    validate_macos_game_layer_archive_runtime()
     validate_macos_signing_config_runtime()
     validate_macos_notary_archive_output_preflight_runtime()
     validate_macos_signing_keeps_standalone_client_signature_runtime()

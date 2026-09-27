@@ -11,6 +11,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from game_layer import PACKAGED_LAYER_GAME_DIRS  # noqa: E402
+
 
 PRODUCT_NAME = "openQ4"
 PRODUCT_PUBLISHER = "DarkMatter Productions"
@@ -154,6 +160,16 @@ def validate_package_dir(package_dir: Path, arch: str) -> None:
         package_dir / "baseoq4" / f"game-mp_{arch}.dll",
         package_dir / "baseoq4" / f"game-mp_{arch}.pdb",
     ]
+    # a packaged game-library layer (q4xbase) must be complete: its mod.json, modules and symbols
+    for layer in PACKAGED_LAYER_GAME_DIRS:
+        layer_dir = package_dir / layer
+        if layer_dir.is_symlink():
+            raise FileNotFoundError(f"packaged game layer must not be a symlink: {layer_dir}")
+        if layer_dir.exists():
+            required_paths.append(layer_dir / "mod.json")
+            for module in (f"game-sp_{arch}", f"game-mp_{arch}"):
+                required_paths.append(layer_dir / f"{module}.dll")
+                required_paths.append(layer_dir / f"{module}.pdb")
 
     missing = [path for path in required_paths if not path.is_file() and not path.is_symlink()]
     if missing:

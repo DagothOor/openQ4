@@ -1489,6 +1489,129 @@ def validate_target_repository_metadata() -> None:
         raise AssertionError("Universal2 must not read an unrelated thin-build stage")
 
 
+def write_layer_mod_json(path: Path, required: str = "0.13.2", **overrides) -> None:
+    manifest = {
+        "name": "Quake 4: The Awakening",
+        "version": "0.1.0",
+        "requiredopenQ4Version": required,
+        "layer": "awakening",
+    }
+    manifest.update(overrides)
+    write_file(path, (json.dumps(manifest, indent=2) + "\n").encode("utf-8"))
+
+
+def stage_game_layer(install_dir: Path, platform: str, arch: str) -> Path:
+    layer_dir = install_dir / "q4xbase"
+    for filename in PACKAGE.get_required_game_module_binaries(platform, arch):
+        write_file(layer_dir / filename, f"{filename}\n".encode("utf-8"))
+    if platform == "windows":
+        for filename in PACKAGE.get_required_windows_game_symbols(arch):
+            write_file(layer_dir / filename, f"{filename}\n".encode("utf-8"))
+    write_layer_mod_json(layer_dir / "mod.json")
+    return layer_dir
+
+
+def validate_game_layer_packaging() -> None:
+    """A staged layer (q4xbase) is copied beside baseoq4 exactly, or the package fails."""
+    if PACKAGE.PACKAGED_LAYER_GAME_DIRS != ("q4xbase",):
+        raise AssertionError("packages carry exactly the q4xbase game-library layer")
+    for pattern in ("q4xbase/game-sp_*.dll", "q4xbase/game-mp_*.dll"):
+        if pattern not in WINDOWS_RUNTIME.RUNTIME_BINARY_PATTERNS:
+            raise AssertionError(f"Windows runtime staging must refresh {pattern}")
+
+    version = "0.13.2"
+    for platform, arch in (("windows", "x64"), ("linux", "arm64")):
+        work = WORK / f"layer-{platform}"
+        install_dir = work / "install"
+        package_root = work / "package"
+        (install_dir / "baseoq4").mkdir(parents=True, exist_ok=True)
+        package_root.mkdir(parents=True, exist_ok=True)
+
+        # nothing staged: no layer, unless the release requires it
+        if PACKAGE.copy_game_layer_dirs(platform, arch, install_dir, package_root, version, set()) != []:
+            raise AssertionError(f"{platform}: an unstaged layer must not be packaged")
+        try:
+            PACKAGE.copy_game_layer_dirs(platform, arch, install_dir, package_root, version, {"q4xbase"})
+        except FileNotFoundError as exc:
+            if "required game layer q4xbase/ was not staged" not in str(exc):
+                raise AssertionError(f"{platform}: unexpected missing-layer error {exc!r}") from exc
+        else:
+            raise AssertionError(f"{platform}: a required layer that was not staged must fail the package")
+
+        layer_dir = stage_game_layer(install_dir, platform, arch)
+        expected = set(PACKAGE.staged_game_layer_files(platform, arch))
+        if platform == "windows" and expected != {
+            "game-sp_x64.dll", "game-mp_x64.dll", "game-sp_x64.pdb", "game-mp_x64.pdb", "mod.json"
+        }:
+            raise AssertionError(f"Windows layer file set is {sorted(expected)}")
+        if platform == "linux" and expected != {"game-sp_arm64.so", "game-mp_arm64.so", "mod.json"}:
+            raise AssertionError(f"Linux layer file set is {sorted(expected)}")
+        packaged = PACKAGE.copy_game_layer_dirs(platform, arch, install_dir, package_root, version, {"q4xbase"})
+        if packaged != ["q4xbase"]:
+            raise AssertionError(f"{platform}: packaged layers were {packaged}")
+        actual = {path.name for path in (package_root / "q4xbase").iterdir()}
+        if actual != expected:
+            raise AssertionError(f"{platform}: packaged q4xbase holds {sorted(actual)}, expected {sorted(expected)}")
+
+        # anything beyond the exact file set fails, including another architecture's module
+        stray = layer_dir / PACKAGE.get_required_game_module_binaries(platform, "x86")[0]
+        write_file(stray)
+        expect_runtime_error(
+            lambda: PACKAGE.copy_game_layer_dirs(platform, arch, install_dir, package_root, version, set()),
+            "must hold exactly",
+            f"{platform} layer with a stale module",
+        )
+        stray.unlink()
+        missing = layer_dir / PACKAGE.get_required_game_module_binaries(platform, arch)[1]
+        missing.unlink()
+        expect_runtime_error(
+            lambda: PACKAGE.copy_game_layer_dirs(platform, arch, install_dir, package_root, version, set()),
+            "must hold exactly",
+            f"{platform} layer without its MP module",
+        )
+        write_file(missing)
+
+        # a stable release needs a layer built for exactly that engine version
+        write_layer_mod_json(layer_dir / "mod.json", required="0.13.1")
+        expect_runtime_error(
+            lambda: PACKAGE.copy_game_layer_dirs(platform, arch, install_dir, package_root, version, set()),
+            "which is not release 0.13.2",
+            f"{platform} layer built for another engine",
+        )
+        PACKAGE.copy_game_layer_dirs(
+            platform, arch, install_dir, package_root, "0.13.2-nightly.20260927.1+gabcdef12", set()
+        )
+        write_layer_mod_json(layer_dir / "mod.json", layer="")
+        expect_runtime_error(
+            lambda: PACKAGE.copy_game_layer_dirs(platform, arch, install_dir, package_root, version, set()),
+            "needs a non-empty 'layer'",
+            f"{platform} base-game mod.json in a layer directory",
+        )
+        write_file(layer_dir / "mod.json", b"{not json\n")
+        expect_runtime_error(
+            lambda: PACKAGE.copy_game_layer_dirs(platform, arch, install_dir, package_root, version, set()),
+            "unreadable layer mod.json",
+            f"{platform} unreadable layer mod.json",
+        )
+        write_layer_mod_json(layer_dir / "mod.json")
+
+        shutil.rmtree(layer_dir)
+        write_file(layer_dir)
+        expect_runtime_error(
+            lambda: PACKAGE.copy_game_layer_dirs(platform, arch, install_dir, package_root, version, set()),
+            "is not a directory",
+            f"{platform} layer that is a file",
+        )
+        layer_dir.unlink()
+        outside = stage_game_layer(work / "outside", platform, arch)
+        if make_symlink(outside, layer_dir, target_is_directory=True):
+            expect_runtime_error(
+                lambda: PACKAGE.copy_game_layer_dirs(platform, arch, install_dir, package_root, version, set()),
+                "must not be a symlink",
+                f"{platform} symlinked layer",
+            )
+
+
 def main() -> None:
     shutil.rmtree(WORK, ignore_errors=True)
     try:
@@ -1506,6 +1629,7 @@ def main() -> None:
         validate_fast_stage_cross_platform_policy()
         validate_stale_content_prune_symlink_handling()
         validate_package_name_and_copy_guards()
+        validate_game_layer_packaging()
         validate_renderer_module_staging()
         validate_build_pack_and_header_cli_guards()
         validate_unchanged_pack_rebuild_stays_current()

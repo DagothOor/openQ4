@@ -27,6 +27,7 @@ from linux_metadata import (  # noqa: E402
     desktop_entry_exec as parse_linux_desktop_entry_exec,
     desktop_exec_command as parse_linux_desktop_exec_command,
 )
+from game_layer import PACKAGED_LAYER_GAME_DIRS, LayerError, read_layer_mod_json  # noqa: E402
 
 
 PROFILE_DEFAULTS = {
@@ -1577,6 +1578,57 @@ def validate_windows_symbols(root: Path, install_root: Path, game_dir: Path, arc
         raise ValidationError(f"Windows staged payload contains stale or architecture-mismatched PDB files:\n{formatted}")
 
 
+def validate_staged_game_layers(
+    root: Path,
+    install_root: Path,
+    client_candidates: list[Path],
+    dedicated_candidates: list[Path],
+) -> list[tuple[Path, list[Path], list[Path]]]:
+    """Check each staged game-library layer (q4xbase) the way baseoq4's modules are checked.
+
+    That means both modules, the engine's architecture, distinct SP and MP code, executable
+    dylibs with the right slices on macOS, and .pdb files on Windows. A layer holds only those
+    files and its mod.json. Builds that did not stage the layer skip it.
+    """
+    layers: list[tuple[Path, list[Path], list[Path]]] = []
+    for name in PACKAGED_LAYER_GAME_DIRS:
+        layer_dir = install_root / name
+        if layer_dir.is_symlink():
+            raise ValidationError(f"Staged game directory must not be a symlink: {layer_dir}")
+        if not layer_dir.exists():
+            continue
+        if not layer_dir.is_dir():
+            raise ValidationError(f"Staged game layer is not a directory: {rel(layer_dir, root)}")
+        layer_sp = find_staged_game_modules(layer_dir, "game-sp")
+        layer_mp = find_staged_game_modules(layer_dir, "game-mp")
+        if not layer_sp or not layer_mp:
+            raise ValidationError(f"Staged {name}/ needs both its game modules: {rel(layer_dir, root)}")
+        layer_arches = validate_staged_architecture_set(root, layer_dir, client_candidates, dedicated_candidates)
+        validate_distinct_game_modules(root, layer_sp, layer_mp)
+        try:
+            read_layer_mod_json(layer_dir / "mod.json")
+        except LayerError as exc:
+            raise ValidationError(str(exc)) from exc
+        modules = layer_sp + layer_mp
+        allowed = {path.name for path in modules} | {"mod.json"}
+        if host_is_windows():
+            allowed |= {path.with_suffix(".pdb").name for path in modules}
+        unexpected = sorted(
+            path for path in layer_dir.rglob("*") if path.relative_to(layer_dir).as_posix() not in allowed
+        )
+        if unexpected:
+            formatted = "\n".join(f"  - {rel(path, root)}" for path in unexpected)
+            raise ValidationError(f"Staged {name}/ holds files a game layer does not ship:\n{formatted}")
+        if host_is_macos():
+            for module in modules:
+                require_posix_executable(module, root, f"macOS staged {name} game module")
+            for arch in sorted(layer_arches):
+                validate_macos_binary_architectures(root, arch, modules)
+        validate_windows_symbols(root, install_root, layer_dir, layer_arches)
+        layers.append((layer_dir, layer_sp, layer_mp))
+    return layers
+
+
 def validate_staged_payload(root: Path, *, dry_run: bool, build_dir: Path | None = None) -> None:
     section("Validate staged .install payload")
     if dry_run:
@@ -1622,6 +1674,7 @@ def validate_staged_payload(root: Path, *, dry_run: bool, build_dir: Path | None
     )
     validate_no_staged_symlinks(root, install_root)
     validate_distinct_game_modules(root, sp_modules, mp_modules)
+    staged_layers = validate_staged_game_layers(root, install_root, client_candidates, dedicated_candidates)
 
     if host_is_linux():
         validate_linux_launch_metadata(root, install_root, client_candidates)
@@ -1642,6 +1695,9 @@ def validate_staged_payload(root: Path, *, dry_run: bool, build_dir: Path | None
             linux_binary_specs.append(
                 (binary_path, staged_binary_arch(binary_path, "game-mp") or "", True)
             )
+        for _, layer_sp, layer_mp in staged_layers:
+            linux_binary_specs.extend((path, staged_binary_arch(path, "game-sp") or "", True) for path in layer_sp)
+            linux_binary_specs.extend((path, staged_binary_arch(path, "game-mp") or "", True) for path in layer_mp)
         validate_linux_binary_hardening(root, linux_binary_specs)
         validate_linux_client_runtime_dependencies(root, client_candidates)
         dedicated_runtime_specs = [
@@ -1651,6 +1707,9 @@ def validate_staged_payload(root: Path, *, dry_run: bool, build_dir: Path | None
             (binary_path, staged_binary_arch(binary_path, "game-mp") or "")
             for binary_path in mp_modules
         ]
+        dedicated_runtime_specs.extend(
+            (path, staged_binary_arch(path, "game-mp") or "") for _, _, layer_mp in staged_layers for path in layer_mp
+        )
         validate_linux_dedicated_runtime_dependencies(root, dedicated_runtime_specs)
     if host_is_macos():
         openal_provider = selected_macos_openal_provider(build_dir or root / "builddir")
@@ -1692,6 +1751,8 @@ def validate_staged_payload(root: Path, *, dry_run: bool, build_dir: Path | None
     print(f"Dedicated server: {rel(dedicated_candidates[0], root)}", flush=True)
     print(f"SP module: {rel(sp_modules[0], root)}", flush=True)
     print(f"MP module: {rel(mp_modules[0], root)}", flush=True)
+    for layer_dir, _, _ in staged_layers:
+        print(f"Game layer: {rel(layer_dir, root)}", flush=True)
 
 
 def run_runtime_matrix(args: argparse.Namespace, root: Path, env: dict[str, str]) -> None:

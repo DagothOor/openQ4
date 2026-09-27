@@ -15,6 +15,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from game_layer import PACKAGED_LAYER_GAME_DIRS  # noqa: E402
+
 
 THIN_MANIFEST_NAME = "OPENQ4-MACOS-THIN.json"
 THIN_MANIFEST_FORMAT = 1
@@ -80,6 +86,36 @@ MODULE_ENTRY_POINT_EXPORTS = {
     "game-mp": "GetGameAPI",
     "renderer-vk": "GetRenderAPI",
 }
+# A game-library layer (game_layer.PACKAGED_LAYER_GAME_DIRS, q4xbase) stages its own game
+# modules beside baseoq4's. They are optional code keys, "q4xbase/game-sp" and
+# "q4xbase/game-mp": a layer is staged whole (both modules and its mod.json, which is shared
+# payload like baseoq4's) in both thin slices, or in neither.
+LAYER_MODULE_STEMS = ("game-sp", "game-mp")
+
+
+def module_stem(code_key: str) -> str:
+    """The module kind a code key names: "q4xbase/game-sp" is a game-sp module."""
+    return code_key.rsplit("/", 1)[-1]
+
+
+def layer_code_keys(layer: str) -> tuple[str, ...]:
+    return tuple(f"{layer}/{stem}" for stem in LAYER_MODULE_STEMS)
+
+
+def optional_thin_code_paths(arch: str) -> dict[str, Path]:
+    return {
+        f"{layer}/{stem}": Path(layer) / f"{stem}_{arch}.dylib"
+        for layer in PACKAGED_LAYER_GAME_DIRS
+        for stem in LAYER_MODULE_STEMS
+    }
+
+
+def optional_universal_code_paths() -> dict[str, Path]:
+    return {
+        f"{layer}/{stem}": Path(layer) / f"{stem}_{UNIVERSAL_ARCH}.dylib"
+        for layer in PACKAGED_LAYER_GAME_DIRS
+        for stem in LAYER_MODULE_STEMS
+    }
 
 
 class Universal2Error(RuntimeError):
@@ -119,9 +155,32 @@ def universal_code_paths() -> dict[str, Path]:
 def expected_install_name(code_key: str, arch: str) -> str:
     if code_key == "openal-soft":
         return OPENAL_SOFT_INSTALL_NAME
-    if code_key not in MODULE_ENTRY_POINT_EXPORTS:
+    # a layer's modules keep their own file name as ID, as meson links them
+    stem = module_stem(code_key)
+    if stem not in MODULE_ENTRY_POINT_EXPORTS:
         return ""
-    return f"@loader_path/{code_key}_{arch}.dylib"
+    return f"@loader_path/{stem}_{arch}.dylib"
+
+
+def staged_code_paths(root: Path, arch: str) -> dict[str, Path]:
+    """The code files a thin tree holds: the required set plus each staged layer's modules."""
+    paths = thin_code_paths(arch)
+    optional = optional_thin_code_paths(arch)
+    for layer in PACKAGED_LAYER_GAME_DIRS:
+        keys = layer_code_keys(layer)
+        present = [key for key in keys if os.path.lexists(root / optional[key])]
+        has_manifest = os.path.lexists(root / layer / "mod.json")
+        if present or has_manifest:
+            if len(present) != len(keys) or not has_manifest:
+                needed = ", ".join([*(optional[key].as_posix() for key in keys), f"{layer}/mod.json"])
+                raise Universal2Error(f"thin macOS payload has an incomplete {layer}/ layer; it needs {needed}")
+            paths.update({key: optional[key] for key in keys})
+    return paths
+
+
+def staged_layer_keys(binaries: dict[str, object]) -> tuple[str, ...]:
+    """The optional layer code keys a thin manifest records, in a stable order."""
+    return tuple(key for key in optional_thin_code_paths("arm64") if key in binaries)
 
 
 def prepare_thin_payload(root: Path, arch: str) -> None:
@@ -134,7 +193,7 @@ def prepare_thin_payload(root: Path, arch: str) -> None:
     expected_arches = THIN_MACHO_ARCHES[arch]
     macho_arch = next(iter(expected_arches))
 
-    for code_key, relative in thin_code_paths(arch).items():
+    for code_key, relative in staged_code_paths(root, arch).items():
         expected_id = expected_install_name(code_key, arch)
         if not expected_id:
             continue
@@ -307,7 +366,7 @@ def require_module_entry_export(path: Path, *, macho_arch: str, code_key: str) -
     symbol would silently accept a module the engine can never bind.
     """
 
-    symbol = MODULE_ENTRY_POINT_EXPORTS[code_key]
+    symbol = MODULE_ENTRY_POINT_EXPORTS[module_stem(code_key)]
     completed = run_command(
         [require_tool("nm"), "-arch", macho_arch, "-gU", str(path)],
         f"reading exported symbols for {path} ({macho_arch})",
@@ -363,7 +422,7 @@ def load_source_manifest(path: Path) -> dict[str, object]:
 
 
 def classify_staged_tree(root: Path, arch: str) -> tuple[dict[str, dict[str, object]], dict[str, dict[str, object]]]:
-    code_paths = thin_code_paths(arch)
+    code_paths = staged_code_paths(root, arch)
     reverse_code_paths = {path.as_posix(): key for key, path in code_paths.items()}
     expected_code_names = set(reverse_code_paths)
     code_records: dict[str, dict[str, object]] = {}
@@ -391,6 +450,11 @@ def classify_staged_tree(root: Path, arch: str) -> tuple[dict[str, dict[str, obj
         if (
             (path.parent == root and re.fullmatch(r"openQ4-(?:client|ded)_[A-Za-z0-9]+", path.name))
             or (path.parent == root / "baseoq4" and re.fullmatch(r"game-(?:sp|mp)_[A-Za-z0-9]+\.dylib", path.name))
+            or (
+                path.parent.parent == root
+                and path.parent.name in PACKAGED_LAYER_GAME_DIRS
+                and re.fullmatch(r"game-(?:sp|mp)_[A-Za-z0-9]+\.dylib", path.name)
+            )
             or (path.parent == root and re.fullmatch(r"renderer-(?:gl|vk)_[A-Za-z0-9]+\.dylib", path.name))
         ) and relative not in expected_code_names:
             raise Universal2Error(f"thin macOS payload contains a stale or mismatched code file: {relative}")
@@ -406,7 +470,7 @@ def classify_staged_tree(root: Path, arch: str) -> tuple[dict[str, dict[str, obj
         else:
             shared_records[relative] = record
 
-    missing_code = sorted(set(CODE_KEYS) - set(code_records))
+    missing_code = sorted(set(code_paths) - set(code_records))
     if missing_code:
         raise Universal2Error(f"thin macOS payload is missing required code files: {', '.join(missing_code)}")
     for code_key, relative in code_paths.items():
@@ -418,7 +482,7 @@ def collect_binary_metadata(root: Path, arch: str, deployment_target: str) -> di
     expected_arches = THIN_MACHO_ARCHES[arch]
     macho_arch = next(iter(expected_arches))
     result: dict[str, dict[str, object]] = {}
-    for code_key, relative in thin_code_paths(arch).items():
+    for code_key, relative in staged_code_paths(root, arch).items():
         path = root / relative
         validate_exact_arches(path, expected_arches)
         minimum_os = minimum_os_version(path, macho_arch=macho_arch)
@@ -432,7 +496,7 @@ def collect_binary_metadata(root: Path, arch: str, deployment_target: str) -> di
             raise Universal2Error(
                 f"install name mismatch for {path}: expected {expected_id!r}, found {actual_id!r}"
             )
-        if code_key in MODULE_ENTRY_POINT_EXPORTS:
+        if module_stem(code_key) in MODULE_ENTRY_POINT_EXPORTS:
             require_module_entry_export(path, macho_arch=macho_arch, code_key=code_key)
         result[code_key] = {
             "path": relative.as_posix(),
@@ -469,7 +533,9 @@ def record_thin(args: argparse.Namespace) -> None:
     code_records, shared_records = classify_staged_tree(root, args.arch)
     source = load_source_manifest(Path(args.source_manifest))
     binary_records = collect_binary_metadata(root, args.arch, args.deployment_target)
-    for key in CODE_KEYS:
+    if set(binary_records) != set(code_records):
+        raise Universal2Error("thin code files changed while they were being recorded")
+    for key in code_records:
         if binary_records[key]["sha256"] != code_records[key]["sha256"]:
             raise Universal2Error(f"thin binary changed while it was being recorded: {code_records[key]['path']}")
     manifest = {
@@ -545,9 +611,18 @@ def validate_thin_manifest_metadata(manifest: dict[str, object], expected_arch: 
         raise Universal2Error("thin build manifest has invalid sharedFileCount")
 
     binaries = manifest.get("binaries")
-    if not isinstance(binaries, dict) or set(binaries) != set(CODE_KEYS):
+    if not isinstance(binaries, dict) or not set(CODE_KEYS) <= set(binaries):
         raise Universal2Error("thin build manifest has an invalid binary set")
-    for key, relative in thin_code_paths(expected_arch).items():
+    optional = optional_thin_code_paths(expected_arch)
+    layer_keys = set(binaries) - set(CODE_KEYS)
+    if not layer_keys <= set(optional):
+        raise Universal2Error("thin build manifest has an invalid binary set")
+    for layer in PACKAGED_LAYER_GAME_DIRS:
+        keys = set(layer_code_keys(layer))
+        if layer_keys & keys and not keys <= layer_keys:
+            raise Universal2Error(f"thin build manifest records an incomplete {layer}/ layer")
+    recorded_paths = {**thin_code_paths(expected_arch), **{key: optional[key] for key in sorted(layer_keys)}}
+    for key, relative in recorded_paths.items():
         record = binaries.get(key)
         if not isinstance(record, dict):
             raise Universal2Error(f"thin build manifest has invalid {key} binary metadata")
@@ -588,6 +663,8 @@ def validate_recorded_tree(root: Path, arch: str, manifest: dict[str, object]) -
         raise Universal2Error(f"thin shared payload changed after recording: {root}")
     binary_manifest = manifest["binaries"]
     assert isinstance(binary_manifest, dict)
+    if set(code_records) != set(binary_manifest):
+        raise Universal2Error(f"thin code files changed after recording: {root}")
     for key, record in code_records.items():
         saved = binary_manifest.get(key)
         if not isinstance(saved, dict) or any(saved.get(field) != record[field] for field in ("path", "sha256", "size", "mode")):
@@ -615,6 +692,16 @@ def validate_matching_inputs(
     mismatched_fields = [field for field in COMMON_BUILD_FIELDS if arm_manifest.get(field) != x64_manifest.get(field)]
     if mismatched_fields:
         raise Universal2Error(f"thin macOS provenance/build settings differ: {', '.join(mismatched_fields)}")
+    arm_binaries = arm_manifest["binaries"]
+    x64_binaries = x64_manifest["binaries"]
+    assert isinstance(arm_binaries, dict) and isinstance(x64_binaries, dict)
+    arm_layer_keys = staged_layer_keys(arm_binaries)
+    x64_layer_keys = staged_layer_keys(x64_binaries)
+    if arm_layer_keys != x64_layer_keys:
+        raise Universal2Error(
+            "game-layer modules must be staged in both thin slices or in neither: "
+            f"arm64={list(arm_layer_keys)} x64={list(x64_layer_keys)}"
+        )
     if arm_shared != x64_shared:
         arm_paths = set(arm_shared)
         x64_paths = set(x64_shared)
@@ -627,10 +714,7 @@ def validate_matching_inputs(
         if changed:
             details.append(f"different content/mode: {changed[:5]}")
         raise Universal2Error("thin shared payloads are not identical; " + "; ".join(details))
-    arm_binaries = arm_manifest["binaries"]
-    x64_binaries = x64_manifest["binaries"]
-    assert isinstance(arm_binaries, dict) and isinstance(x64_binaries, dict)
-    for key in CODE_KEYS:
+    for key in (*CODE_KEYS, *arm_layer_keys):
         arm_record = arm_binaries[key]
         x64_record = x64_binaries[key]
         assert isinstance(arm_record, dict) and isinstance(x64_record, dict)
@@ -707,7 +791,7 @@ def merge_binary(arm_path: Path, x64_path: Path, output_path: Path, code_key: st
                 raise Universal2Error(
                     f"universal2 {code_key} install name mismatch for {macho_arch}: {actual_id!r}"
                 )
-        if code_key in MODULE_ENTRY_POINT_EXPORTS:
+        if module_stem(code_key) in MODULE_ENTRY_POINT_EXPORTS:
             for macho_arch in sorted(UNIVERSAL_MACHO_ARCHES):
                 require_module_entry_export(output_path, macho_arch=macho_arch, code_key=code_key)
 
@@ -731,7 +815,9 @@ def validate_universal_output(
     arm_binaries = arm_manifest["binaries"]
     x64_binaries = x64_manifest["binaries"]
     assert isinstance(arm_binaries, dict) and isinstance(x64_binaries, dict)
-    for key, relative in universal_code_paths().items():
+    optional = optional_universal_code_paths()
+    output_paths = {**universal_code_paths(), **{key: optional[key] for key in staged_layer_keys(arm_binaries)}}
+    for key, relative in output_paths.items():
         path = require_regular_file(output_root / relative, f"universal2 {key}", executable=True)
         validate_exact_arches(path, UNIVERSAL_MACHO_ARCHES)
         expected_id = expected_install_name(key, UNIVERSAL_ARCH)
@@ -820,9 +906,11 @@ def assemble(args: argparse.Namespace) -> None:
     temporary_root = Path(tempfile.mkdtemp(prefix=f".{output_root.name}-", dir=output_parent))
     try:
         copy_shared_payload(arm_root, temporary_root, arm_shared)
-        arm_paths = thin_code_paths("arm64")
-        x64_paths = thin_code_paths("x64")
-        for key, output_relative in universal_code_paths().items():
+        arm_paths = staged_code_paths(arm_root, "arm64")
+        x64_paths = staged_code_paths(x64_root, "x64")
+        optional = optional_universal_code_paths()
+        output_paths = {**universal_code_paths(), **{key: optional[key] for key in staged_layer_keys(arm_paths)}}
+        for key, output_relative in output_paths.items():
             merge_binary(arm_root / arm_paths[key], x64_root / x64_paths[key], temporary_root / output_relative, key)
         output_records = validate_universal_output(temporary_root, arm_manifest, x64_manifest)
         os.replace(temporary_root, output_root)
