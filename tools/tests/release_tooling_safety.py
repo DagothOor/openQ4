@@ -964,8 +964,9 @@ def validate_manual_release_linux_staged_gate() -> None:
         "validate_linux_binary_hardening(root, linux_binary_specs)",
         'fields[4] in {"GLOBAL", "WEAK", "UNIQUE"}',
         'fields[5] in {"DEFAULT", "PROTECTED"}',
-        "len(public_symbols) == 1",
-        'public_symbols[0][4] == "GetGameAPI"',
+        'expected_game_exports = {"GetGameAPI", "openQ4_Mem_GetModuleStats"}',
+        "len(public_symbols) == len(expected_game_exports)",
+        'symbol[:3] == ("FUNC", "GLOBAL", "DEFAULT")',
     ):
         if token not in validator:
             raise AssertionError(f"staged Linux release validation is missing required gate: {token}")

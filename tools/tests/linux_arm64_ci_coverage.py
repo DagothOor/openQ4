@@ -191,9 +191,10 @@ def validate_linux_hardening_contract() -> None:
     require(validator, '["--wide", "--dyn-syms"]', "Linux dynamic module export validation")
     require(validator, 'fields[4] in {"GLOBAL", "WEAK", "UNIQUE"}', "Linux public symbol binding validation")
     require(validator, 'fields[5] in {"DEFAULT", "PROTECTED"}', "Linux public symbol visibility validation")
-    require(validator, "len(public_symbols) == 1", "single public Linux module export")
-    require(validator, 'public_symbols[0][4] == "GetGameAPI"', "Linux exact game module export validation")
-    require(validator, "Linux game module must expose exactly one GLOBAL/DEFAULT/FUNC", "Linux game module export validation")
+    require(validator, 'expected_game_exports = {"GetGameAPI", "openQ4_Mem_GetModuleStats"}', "Linux exact game module export set")
+    require(validator, "len(public_symbols) == len(expected_game_exports)", "no extra public Linux module export")
+    require(validator, 'symbol[:3] == ("FUNC", "GLOBAL", "DEFAULT")', "Linux game module export binding validation")
+    require(validator, "Linux game module must expose exactly the GLOBAL/DEFAULT/FUNC GetGameAPI", "Linux game module export validation")
 
 
 def validate_runtime_flags() -> None:

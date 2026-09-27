@@ -246,6 +246,7 @@ def validate_elf_contract() -> None:
     require(meson, "'-Wl,--version-script=' + linux_game_module_export_map[0].full_path()", "Linux game-module export map")
     require(module_meson, "link_depends: game_module_link_depends", "Linux game-module export-map relink dependency")
     require(export_map, "GetGameAPI;", "Linux game-module public API")
+    require(export_map, "openQ4_Mem_GetModuleStats;", "Linux game-module memory counter export")
     require(export_map, "local:", "Linux game-module local symbol policy")
     require(export_map, "*;", "Linux game-module default-local symbol policy")
     for token in (
@@ -255,10 +256,11 @@ def validate_elf_contract() -> None:
         '["--wide", "--dyn-syms"]',
         'fields[4] in {"GLOBAL", "WEAK", "UNIQUE"}',
         'fields[5] in {"DEFAULT", "PROTECTED"}',
-        "len(public_symbols) == 1",
-        'public_symbols[0][4] == "GetGameAPI"',
+        'expected_game_exports = {"GetGameAPI", "openQ4_Mem_GetModuleStats"}',
+        "len(public_symbols) == len(expected_game_exports)",
+        'symbol[:3] == ("FUNC", "GLOBAL", "DEFAULT")',
         'readelf_env["LC_ALL"] = "C"',
-        "Linux game module must expose exactly one GLOBAL/DEFAULT/FUNC",
+        "Linux game module must expose exactly the GLOBAL/DEFAULT/FUNC GetGameAPI",
         "linux_binary_specs",
     ):
         require(validator, token, "Linux staged ELF validation")

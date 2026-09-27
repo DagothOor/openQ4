@@ -1331,12 +1331,15 @@ def validate_linux_binary_hardening(
                         (fields[3], fields[4], fields[5], fields[6], fields[-1])
                     )
 
+            # The entry point plus the one deliberate addition in
+            # tools/build/linux_game_module.map: the engine resolves
+            # openQ4_Mem_GetModuleStats by name to add the module's own idlib
+            # memory counters to its total (src/idlib/Heap.h).
+            expected_game_exports = {"GetGameAPI", "openQ4_Mem_GetModuleStats"}
             expected_game_api = (
-                len(public_symbols) == 1
-                and public_symbols[0][0] == "FUNC"
-                and public_symbols[0][1] == "GLOBAL"
-                and public_symbols[0][2] == "DEFAULT"
-                and public_symbols[0][4] == "GetGameAPI"
+                len(public_symbols) == len(expected_game_exports)
+                and {symbol[4] for symbol in public_symbols} == expected_game_exports
+                and all(symbol[:3] == ("FUNC", "GLOBAL", "DEFAULT") for symbol in public_symbols)
             )
             if not expected_game_api:
                 public_summary = ", ".join(
@@ -1344,8 +1347,8 @@ def validate_linux_binary_hardening(
                     for symbol_type, binding, visibility, index, name in public_symbols
                 ) or "<none>"
                 raise ValidationError(
-                    "Linux game module must expose exactly one GLOBAL/DEFAULT/FUNC "
-                    f"GetGameAPI definition: {rel(binary_path, root)}; found {public_summary}"
+                    "Linux game module must expose exactly the GLOBAL/DEFAULT/FUNC GetGameAPI "
+                    f"and openQ4_Mem_GetModuleStats definitions: {rel(binary_path, root)}; found {public_summary}"
                 )
 
 
