@@ -31,7 +31,7 @@ concurrency:
 
 env:
   # Keep all builds on the companion engine-interface revision used by CI.
-  OPENQ4_GAMELIBS_SHA: 0cffd30cb3bed706e1f50634b0d1bd1e8d335af3
+  OPENQ4_GAMELIBS_SHA: de5ec71b1abda9a48281b0c3a6243490496eab8f
   # The Awakening's game-library layer: its q4xbase modules build beside baseoq4's.
   OPENQ4_AWAKENING_SHA: c49842986c0a519feeebc68d78e6f5509d99c3a7
 

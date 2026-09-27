@@ -11,7 +11,7 @@ env:
   # Pin the companion's GAME_API 48 and retained input/presentation contract.
   # Renderer API 14 device services are private to this engine repository.
   # Publish this companion commit before CI runs.
-  OPENQ4_GAMELIBS_SHA: 0cffd30cb3bed706e1f50634b0d1bd1e8d335af3
+  OPENQ4_GAMELIBS_SHA: de5ec71b1abda9a48281b0c3a6243490496eab8f
   # The Awakening's game-library layer: its q4xbase modules build beside baseoq4's.
   OPENQ4_AWAKENING_SHA: c49842986c0a519feeebc68d78e6f5509d99c3a7
 
