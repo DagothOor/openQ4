@@ -2406,7 +2406,10 @@ void idActor::Gib( const idVec3 &dir, const char *damageDefName ) {
 	}
 	StopSound( SND_CHANNEL_VOICE, false );
 	
-	gameLocal.PlayEffect ( spawnArgs, "fx_gib", GetPhysics()->GetOrigin(), GetPhysics()->GetAxis() );
+	// an actor frozen solid shatters instead ("freezegib" damage)
+	const idDict *damageDef = gameLocal.FindEntityDefDict( damageDefName, false );
+	const char *gibEffect = ( damageDef != NULL && damageDef->GetBool( "freezegib" ) ) ? "fx_freezegib" : "fx_gib";
+	gameLocal.PlayEffect ( spawnArgs, gibEffect, GetPhysics()->GetOrigin(), GetPhysics()->GetAxis() );
 }
 
 void idActor::CheckDeathObjectives( void )
@@ -2565,6 +2568,15 @@ void idActor::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir
 		}
 	}
 // RAVEN END
+
+	// freezing damage that would kill an AI turns it to ice instead; it shatters later (idAI::UpdateFreeze)
+	if ( damage > 0 && health >= 1 && health - damage <= 1 && damageDef->GetBool( "filter_freeze" ) && IsType( idAI::GetClassType() ) ) {
+		if ( health > 1 ) {
+			static_cast<idAI *>( this )->FreezeSolid( location );
+		}
+		health = 1;
+		return;
+	}
 
 	if ( damage > 0 ) {
 		int oldHealth = health;

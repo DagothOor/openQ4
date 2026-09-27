@@ -36,6 +36,11 @@ static const float AI_SIGHTDELAYSCALE	= 5000.0f;			// Full sight delay at 5 seco
 ===============================================================================
 */
 
+// freezing's overlays and shatter damage (see "Freezing" below)
+static const char * const AI_FREEZE_OVERLAY			= "common/freeze_overlay1";
+static const char * const AI_FROZEN_OVERLAY			= "common/freeze_death_overlay";
+static const char * const AI_FROZEN_SHATTER_DAMAGE	= "damage_freezegib";
+
 /*
 =====================
 idAI::idAI
@@ -43,6 +48,11 @@ idAI::idAI
 */
 idAI::idAI ( void ) {
 	projectile_height_to_distance_ratio = 1.0f;
+
+	freezeFactor			= 0.0f;
+	frozenSolidTime			= 0;
+	frozenLocation			= INVALID_JOINT;
+	freezeOverlay			= false;
 
 	aas						= NULL;
 	aasSensor				= NULL;
@@ -702,6 +712,14 @@ void idAI::Restore( idRestoreGame *savefile ) {
 	// create combat collision hull for exact collision detection, do initial set un-hidden
 	SetCombatModel();
 	LinkCombat();
+
+	// freezing is not saved, so drop a freeze overlay the render entity kept
+	if ( renderEntity.overlayShader != NULL &&
+		 ( renderEntity.overlayShader == declManager->FindMaterial( AI_FREEZE_OVERLAY, false ) ||
+		   renderEntity.overlayShader == declManager->FindMaterial( AI_FROZEN_OVERLAY, false ) ) ) {
+		renderEntity.overlayShader = NULL;
+		UpdateVisuals();
+	}
 }
 
 /*
@@ -754,6 +772,11 @@ void idAI::Spawn( void ) {
 
 	// Initialize the non saved spawn args
 	InitNonPersistentSpawnArgs ( );	
+
+	// load freezing's decls with the map, where the content has them
+	declManager->FindMaterial( AI_FREEZE_OVERLAY, false );
+	declManager->FindMaterial( AI_FROZEN_OVERLAY, false );
+	gameLocal.FindEntityDefDict( AI_FROZEN_SHATTER_DAMAGE, false );
 
 	spawnArgs.GetInt(	"team",					"1",		team );
 	spawnArgs.GetInt(	"rank",					"0",		rank );
@@ -1379,6 +1402,10 @@ void idAI::Think( void ) {
 		return;
 	}
 
+	if ( freezeFactor > 0.0f || frozenSolidTime > 0 ) {
+		UpdateFreeze();
+	}
+
 	// Simple think this frame?
 	aifl.simpleThink = aiManager.IsSimpleThink ( this );
 
@@ -1767,6 +1794,134 @@ void idAI::AdjustHealthByDamage	( int damage ) {
 		//so we still take pain!
 		health = 1;
 	}
+}
+
+/*
+===============================================================================
+
+	Freezing
+
+	A "freezeEnemies" projectile chills the AI it hits (AddFreeze, from
+	idProjectile::Collide). Chill slows the AI's animation, shows
+	"common/freeze_overlay1" past a light frost and thaws over a few seconds;
+	it cannot go past 0.9 that way. "filter_freeze" damage that would kill the
+	AI freezes it solid instead (FreezeSolid, from idActor::Damage): it stops
+	dead under "common/freeze_death_overlay" with "snd_freezeDeathBegin", and
+	shatters through "damage_freezegib" four seconds later, or at once when
+	anything else kills it.
+
+===============================================================================
+*/
+
+static const float	AI_FREEZE_MAX_CHILL			= 0.9f;
+static const float	AI_FREEZE_THAW_PER_SECOND	= 0.3f;
+static const float	AI_FREEZE_OVERLAY_ABOVE		= 0.15f;
+static const float	AI_FROZEN_ANIM_RATE			= 0.001f;
+static const int	AI_FROZEN_SHATTER_DELAY		= 4000;
+
+/*
+=====================
+idAI::IsFrozenSolid
+=====================
+*/
+bool idAI::IsFrozenSolid ( void ) const {
+	return frozenSolidTime > 0 && frozenSolidTime < gameLocal.time;
+}
+
+/*
+=====================
+idAI::SetFreezeFactor
+=====================
+*/
+void idAI::SetFreezeFactor ( float factor ) {
+	freezeFactor = idMath::ClampFloat( 0.0f, IsFrozenSolid() ? 1.0f : AI_FREEZE_MAX_CHILL, factor );
+
+	// the animation slows with the square of the chill, to a quarter, and stops when frozen solid
+	const float warmth = 1.0f - freezeFactor;
+	const float rate = IsFrozenSolid() ? AI_FROZEN_ANIM_RATE : warmth * warmth * 0.75f + 0.25f;
+	animator.SetPlaybackRate( rate );
+	animator.CurrentAnim( ANIMCHANNEL_TORSO )->SetPlaybackRate( gameLocal.time, rate );
+	animator.CurrentAnim( ANIMCHANNEL_LEGS )->SetPlaybackRate( gameLocal.time, rate );
+}
+
+/*
+=====================
+idAI::SetFreezeOverlay
+
+Clears the overlay only when the freeze put it there.
+=====================
+*/
+void idAI::SetFreezeOverlay ( const char *material ) {
+	if ( material != NULL ) {
+		renderEntity.overlayShader = declManager->FindMaterial( material );
+		freezeOverlay = true;
+	} else if ( freezeOverlay ) {
+		renderEntity.overlayShader = NULL;
+		freezeOverlay = false;
+	} else {
+		return;
+	}
+	UpdateVisuals();
+}
+
+/*
+=====================
+idAI::AddFreeze
+=====================
+*/
+void idAI::AddFreeze ( float amount ) {
+	if ( frozenSolidTime > 0 ) {
+		return;
+	}
+	SetFreezeFactor( freezeFactor + amount );
+}
+
+/*
+=====================
+idAI::FreezeSolid
+=====================
+*/
+void idAI::FreezeSolid ( int location ) {
+	frozenSolidTime = gameLocal.time;
+	frozenLocation = location;
+	SetFreezeFactor( 1.0f );
+	SetFreezeOverlay( AI_FROZEN_OVERLAY );
+
+	StartSound( "snd_freezeDeathBegin", SND_CHANNEL_VOICE, 0, false, NULL );
+	StartSound( "snd_freezeDeathBegin", SND_CHANNEL_VOICE2, 0, false, NULL );
+	StartSound( "snd_freezeDeathBegin", SND_CHANNEL_DAMAGE, 0, false, NULL );
+
+	// hold still, and break into pieces when shattered
+	DisableAnimState( ANIMCHANNEL_TORSO );
+	DisableAnimState( ANIMCHANNEL_LEGS );
+	StopMove( MOVE_STATUS_DONE );
+	spawnArgs.Set( "gib", "1" );
+}
+
+/*
+=====================
+idAI::UpdateFreeze
+=====================
+*/
+void idAI::UpdateFreeze ( void ) {
+	if ( IsFrozenSolid() ) {
+		SetFreezeFactor( 1.0f );
+		if ( gameLocal.time > frozenSolidTime + AI_FROZEN_SHATTER_DELAY || health <= 0 ) {
+			frozenSolidTime = 0;
+			freezeFactor = 0.0f;
+			if ( gameLocal.FindEntityDefDict( AI_FROZEN_SHATTER_DAMAGE, false ) ) {
+				Damage( gameLocal.world, gameLocal.world, idVec3( 0.0f, 0.0f, 1.0f ), AI_FROZEN_SHATTER_DAMAGE, 1000.0f, frozenLocation );
+			}
+		}
+		return;
+	}
+	if ( frozenSolidTime > 0 ) {
+		// frozen this frame; solid from the next
+		return;
+	}
+
+	SetFreezeFactor( freezeFactor - AI_FREEZE_THAW_PER_SECOND * MS2SEC( gameLocal.msec ) );
+	SetFreezeOverlay( freezeFactor > AI_FREEZE_OVERLAY_ABOVE ? AI_FREEZE_OVERLAY : NULL );
 }
 
 /*

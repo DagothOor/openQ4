@@ -598,6 +598,11 @@ public:
 	virtual void			AdjustHealthByDamage			( int inDamage );
 	void					CalculateAttackOffsets			( void );
 
+							// freezing ("freezeEnemies" projectiles, "filter_freeze" damage)
+	void					AddFreeze						( float amount );
+	void					FreezeSolid						( int location );
+	bool					IsFrozenSolid					( void ) const;
+
 	void					InitNonPersistentSpawnArgs		( void );	
 
 	/*
@@ -871,6 +876,15 @@ public:
 	rvAIEnemy_t				enemy;					// Members related to tracking enemies
 	rvAIPain_t				pain;
 	rvAIFuncs_t				funcs;
+
+	// Freezing. None of it is saved: a restored AI has thawed.
+	float					freezeFactor;			// 0..1, slows animation
+	int						frozenSolidTime;		// when lethal freezing damage turned it to ice
+	int						frozenLocation;			// where that damage landed, for the shatter
+	bool					freezeOverlay;			// the overlay on the AI is the freeze's
+	void					SetFreezeFactor					( float factor );
+	void					SetFreezeOverlay				( const char *material );
+	void					UpdateFreeze					( void );
 
 	rvPlaybackDriver		mPlayback;
 	rvPlaybackDriver		mLookPlayback;

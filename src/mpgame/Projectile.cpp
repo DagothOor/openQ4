@@ -1147,6 +1147,17 @@ bool idProjectile::Collide( const trace_t &collision, const idVec3 &velocity, bo
 	
 	ignore = ent;
 
+	// "freezeEnemies": every hit chills the AI a little more (idAI::AddFreeze)
+	if ( spawnArgs.GetBool( "freezeEnemies" ) ) {
+		idEntity *victim = ent;
+		if ( victim->IsType( idAFAttachment::GetClassType() ) ) {
+			victim = static_cast<idAFAttachment *>( victim )->GetBody();
+		}
+		if ( victim != NULL && victim->IsType( idAI::GetClassType() ) ) {
+			static_cast<idAI *>( victim )->AddFreeze( 0.05f );
+		}
+	}
+
 	if ( predictedProjectiles ) {
 		if ( ( gameLocal.isClient || gameLocal.isListenServer ) && !playedDamageEffect ) {
 			ent->AddDamageEffect( collision, velocity, damageDefName, owner );
