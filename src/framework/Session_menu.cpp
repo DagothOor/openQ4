@@ -1427,6 +1427,82 @@ static void SetMainMenuMPModelVars( idUserInterface *gui ) {
 	cvarSystem->SetCVarString( "gui_ui_clan", cvarSystem->GetCVarString( "ui_clan" ) );
 }
 
+/*
+==============
+Main menu custom crosshair
+
+The Game Options preview row draws gui::crossImage, and the game draws
+g_crosshairCustomFile in place of each weapon's own art when
+g_crosshairCustom is set. The picker walks the mtr_crosshair keys of the
+multiplayer UI player def in file order, as the retail session menu did.
+==============
+*/
+static const char *MAINMENU_CROSSHAIR_PREFIX = "mtr_crosshair";
+
+static const idDict *MainMenuCrosshairDict( void ) {
+	// Resolved without caching, as retail did, so parsing the def never
+	// precaches player media on the menu path. player_marine_mp lists the same
+	// twenty crosshairs.
+	const idDecl *decl = declManager->FindType( DECL_ENTITYDEF, "player_marine_mp_ui", false, true );
+	if ( decl == NULL ) {
+		decl = declManager->FindType( DECL_ENTITYDEF, "player_marine_mp", false, true );
+	}
+	return decl != NULL ? &static_cast<const idDeclEntityDef *>( decl )->dict : NULL;
+}
+
+// Returns the entry that names the current crosshair (step 0), or the one
+// after it (step > 0) or before it (step < 0), wrapping at both ends. A current
+// value that names no entry, such as the cvar's default "0", resolves to the
+// first entry, or to the last one when stepping back.
+static const idKeyValue *MainMenuFindCrosshair( const idDict &dict, const char *current, int step ) {
+	const idKeyValue *first = dict.MatchPrefix( MAINMENU_CROSSHAIR_PREFIX );
+	const idKeyValue *last = NULL;
+	const idKeyValue *previous = NULL;
+	const idKeyValue *found = NULL;
+	const idKeyValue *next = NULL;
+	for ( const idKeyValue *kv = first; kv != NULL; kv = dict.MatchPrefix( MAINMENU_CROSSHAIR_PREFIX, kv ) ) {
+		if ( found == NULL ) {
+			if ( kv->GetValue().Icmp( current ) == 0 ) {
+				found = kv;
+			} else {
+				previous = kv;
+			}
+		} else if ( next == NULL ) {
+			next = kv;
+		}
+		last = kv;
+	}
+	if ( found == NULL ) {
+		return step < 0 ? last : first;
+	}
+	if ( step > 0 ) {
+		return next != NULL ? next : first;
+	}
+	if ( step < 0 ) {
+		return previous != NULL ? previous : last;
+	}
+	return found;
+}
+
+// Shows the crosshair in the preview and makes it the custom crosshair.
+static void MainMenuPublishCrosshair( idUserInterface *gui, int step ) {
+	const idDict *dict = MainMenuCrosshairDict();
+	if ( gui == NULL || dict == NULL ) {
+		return;
+	}
+	const idKeyValue *crosshair = MainMenuFindCrosshair( *dict, cvarSystem->GetCVarString( "g_crosshairCustomFile" ), step );
+	if ( crosshair == NULL ) {
+		return;
+	}
+	const char *materialName = crosshair->GetValue().c_str();
+	gui->SetStateString( "crossImage", materialName );
+	const idMaterial *material = declManager->FindMaterial( materialName );
+	if ( material != NULL ) {
+		material->SetSort( SS_GUI );
+	}
+	cvarSystem->SetCVarString( "g_crosshairCustomFile", materialName );
+}
+
 static void CommitMainMenuMPSettings( void ) {
 	if ( idStr::Cmp( cvarSystem->GetCVarString( "gui_ui_name" ), cvarSystem->GetCVarString( "ui_name" ) ) ) {
 		cvarSystem->SetCVarString( "ui_name", cvarSystem->GetCVarString( "gui_ui_name" ) );
@@ -2308,6 +2384,8 @@ void idSessionLocal::SetMainMenuGuiVars( bool refreshCatalogs ) {
 	if ( refreshCatalogs ) {
 		SetMainMenuMPModelVars( guiMainMenu );
 	}
+	// the Game Options preview shows the current custom crosshair
+	MainMenuPublishCrosshair( guiMainMenu, 0 );
 	arenaCampaign.UpdateMainMenuGui( guiMainMenu );
 }
 
@@ -2705,6 +2783,19 @@ void idSessionLocal::HandleMainMenuCommands( const char *menuCommand ) {
 					gui->SetStateString( stateName, va( "%f", value[ component ] ) );
 				}
 			}
+			continue;
+		}
+
+		// Clicking the crosshair preview sends "chooseCrosshair 1" and
+		// right-clicking it "chooseCrosshair -1": one step through the custom
+		// set, wrapping at both ends. Retail stepped back for any value below 1.
+		// The multiplayer menu's argless button means forward.
+		if ( !idStr::Icmp( cmd, "chooseCrosshair" ) ) {
+			int step = 1;
+			if ( icmd < args.Argc() && idStr::Cmp( args.Argv( icmd ), ";" ) ) {
+				step = atoi( args.Argv( icmd++ ) ) >= 1 ? 1 : -1;
+			}
+			MainMenuPublishCrosshair( guiMainMenu, step );
 			continue;
 		}
 

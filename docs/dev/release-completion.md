@@ -391,6 +391,20 @@
   the 30-second return, a respawn while the flag lay dropped, and a capture by each
   team) and a CTF drop, through HUD event logs and screenshots, with no new warnings.
   The game-side half is openQ4-game `de5ec71`.
+- [x] The Game Options crosshair preview now picks the custom crosshair, as in retail
+  Quake 4: click it for the next of the twenty designs, right-click it for the previous
+  one, wrapping at both ends. The row did nothing before: the engine never answered its
+  `chooseCrosshair` command, never showed the current crosshair in it, and never ran a
+  menu's right-click action (`onBackAction`). A crosshair colour or custom crosshair
+  change now shows in game at once on every platform. Before, it waited for the next
+  weapon change or respawn, because stock re-applied it on the Xbox 360 only. A hidden
+  client with no input checked both on `airdefense1` with the SP launch profile. The
+  preview stepped forward and back and wrapped at both ends. Colour and custom
+  crosshair changes showed on the next frame with no weapon change. The right-click
+  dispatch is pinned by `crosshair_picker_contract.py` and matches the 1.4.2
+  executable; it was not run, since that needs a real click. The new
+  `openq4_guiAction` command runs a menu window's click or right-click action for such
+  checks. The game-side half is openQ4-game `4d87dbd`.
 
 ## Unreleased — Quake 4: The Awakening (`q4xbase`)
 

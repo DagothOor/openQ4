@@ -1330,6 +1330,12 @@ const char *idWindow::HandleEvent(const sysEvent_t *event, bool *updateVisuals) 
 						}
 					}
 				}
+				// Quake 4 runs a window's onBackAction on a right-click press, as a
+				// left-click press runs onAction. The Game Options crosshair preview
+				// steps back through the custom crosshairs with it.
+				if ( event->evValue2 && !actionDownRun ) {
+					actionDownRun = RunScript( ON_BACKACTION );
+				}
 			} else if (event->evValue == K_MOUSE3) {
 				if (gui_edit.GetBool()) {
 					for ( int i = 0; i < children.Num(); i++ ) {

@@ -418,6 +418,7 @@ jobs:
             tools/ui/capture_legacy_baseline.py \
             tools/ui/verify_binding_capture.py \
             tools/tests/ui_background_cursor.py \
+            tools/tests/crosshair_picker_contract.py \
             tools/tests/menu_controller_navigation.py \
             tools/tests/sdl3_multidisplay_windowing.py \
             tools/tests/settings_menu_coverage.py \
@@ -718,6 +719,7 @@ jobs:
           python tools/tests/ui_legacy_expression.py --mutations
           python tools/tests/ui_legacy_observation.py --mutations
           python tools/tests/ui_background_cursor.py
+          python tools/tests/crosshair_picker_contract.py
           python tools/tests/menu_controller_navigation.py
           python tools/tests/sdl3_multidisplay_windowing.py
           python tools/tests/settings_menu_coverage.py

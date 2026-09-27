@@ -205,9 +205,9 @@ The Game Options pane is `p_settings_game` and is included from `content/baseoq4
 | Label | Widget type | Value widget | Target | Values or range | Notes |
 |---|---|---|---|---|---|
 | Custom Crosshair | `choiceDef` | `set_game_customxhair_value` | `g_crosshairCustom` | `Weapon Default;Custom` | Enables or disables the custom preview/action row. |
-| Crosshair Preview | `windowDef` action | `set_game_previewxhair` and preview size windows | `chooseCrosshair` command | Next/previous through command args `1` and `-1` | Disabled when `g_crosshairCustom` is off. |
+| Crosshair Preview | `windowDef` action | `set_game_previewxhair` and preview size windows | `chooseCrosshair` command, `g_crosshairCustomFile` | Click steps to the next of the twenty custom crosshairs (`chooseCrosshair 1`), right-click to the previous (`-1`), wrapping at both ends | Disabled when `g_crosshairCustom` is off. Each menu build shows the current crosshair; a value outside the set becomes the first. |
 | Crosshair Size | `choiceDef` | `set_game_xhairsize_value` | `g_crosshairSize` | `16 Small`, `24 Medium`, `32 Default`, `40 Large`, `48 Extra Large` | Paired with preview update events. |
-| Crosshair Color | `choiceDef` | `set_game_xhaircolor_value` | GUI state `g_crosshairColorChoice` | White, red, orange, yellow, green, cyan, blue, magenta | Focusable picker. Selection writes `g_crosshairColor` RGBA values and updates the preview. |
+| Crosshair Color | `choiceDef` | `set_game_xhaircolor_value` | GUI state `g_crosshairColorChoice` | White, red, orange, yellow, green, cyan, blue, magenta | Focusable picker. Selection writes `g_crosshairColor` RGBA values and updates the preview. The in-game crosshair takes the new colour at once. |
 | Hit Marker | `choiceDef` | `set_game_hitmarker_value` | `hud_hitMarker` | `No;Yes` | Boolean picker, on by default. Off restores stock Quake 4's crosshair recolour on a hit; `hud_hitMarkerScale` and `hud_crosshairHitFlash` stay console-only. |
 
 ### Corpse, Language, Console
