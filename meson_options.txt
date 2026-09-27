@@ -34,6 +34,13 @@ option(
 )
 
 option(
+  'awakening',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build the Quake 4: The Awakening (q4xbase) game modules from the openQ4-game-awakening layer (OPENQ4_AWAKENING_REPO or ../openQ4-game-awakening). auto builds them when the layer is present.',
+)
+
+option(
   'build_renderer_gles',
   type: 'feature',
   value: 'auto',

@@ -15,7 +15,7 @@ env:
   # Pin the companion's GAME_API 48 and retained input/presentation contract.
   # Renderer API 14 device services are private to this engine repository.
   # Publish this companion commit before CI runs.
-  OPENQ4_GAMELIBS_SHA: c24ce89097865ead402457068b2ce1df3eeb29d1
+  OPENQ4_GAMELIBS_SHA: 20213e3ab4a4372be81042fa1d1e3c50d4dc7c15
 
 jobs:
   script-smoke:
@@ -157,6 +157,7 @@ jobs:
             tools/tests/game_module_completion_safety.py \
             tools/tests/game_type_module_selection.py \
             tools/tests/gamelibs_staging.py \
+            tools/tests/gamelibs_layer_staging.py \
             tools/tests/generated_animation_cache.py \
             tools/tests/level_load_cache.py \
             tools/tests/hdr_postprocess_math.py \
@@ -477,6 +478,7 @@ jobs:
           python tools/tests/game_module_completion_safety.py
           python tools/tests/game_type_module_selection.py
           python tools/tests/gamelibs_staging.py
+          python tools/tests/gamelibs_layer_staging.py
           python tools/tests/generated_animation_cache.py
           python tools/tests/level_load_cache.py
           python tools/tests/hdr_postprocess_math.py

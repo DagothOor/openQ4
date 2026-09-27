@@ -16,7 +16,7 @@ permissions:
 
 env:
   # Keep all builds on the companion engine-interface revision used by CI.
-  OPENQ4_GAMELIBS_SHA: c24ce89097865ead402457068b2ce1df3eeb29d1
+  OPENQ4_GAMELIBS_SHA: 20213e3ab4a4372be81042fa1d1e3c50d4dc7c15
 
 jobs:
   cross-build:

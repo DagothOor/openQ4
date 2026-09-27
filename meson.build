@@ -1173,6 +1173,62 @@ if needs_game_headers
   game_libs_repo_summary = game_libs_repo_root
 endif
 
+# Quake 4: The Awakening. openQ4-game-awakening is a game-library layer: it
+# only adds sources (tools/build/game_layer.py), and its q4xbase modules link
+# the same openQ4-game objects as the baseoq4 modules plus the layer's own.
+awakening_option = get_option('awakening')
+build_awakening = false
+awakening_repo_root = ''
+awakening_game_dir = ''
+awakening_layer_id = ''
+awakening_stage_root = ''
+awakening_stage_rel = ''
+awakening_summary = 'disabled'
+if build_games and host_system != 'android' and not awakening_option.disabled()
+  awakening_repo_discovery = run_command(
+    py,
+    '-c',
+    'import os, pathlib, sys; root = pathlib.Path(sys.argv[1]); raw = os.environ.get("OPENQ4_AWAKENING_REPO", "").strip(); repo = pathlib.Path(raw) if raw else (root / ".." / "openQ4-game-awakening"); print(repo.resolve().as_posix())',
+    meson.project_source_root(),
+    check: true,
+  )
+  awakening_candidate = awakening_repo_discovery.stdout().strip()
+  if fs_mod.is_file(awakening_candidate / 'layer.json')
+    build_awakening = true
+    awakening_repo_root = awakening_candidate
+  elif awakening_option.enabled()
+    error('awakening=enabled but no openQ4-game-awakening layer was found at ' + awakening_candidate + '. Set OPENQ4_AWAKENING_REPO or place it at ../openQ4-game-awakening.')
+  else
+    awakening_summary = 'not found (' + awakening_candidate + ')'
+  endif
+elif awakening_option.enabled()
+  error('awakening=enabled requires build_games=true on a desktop target.')
+endif
+
+if build_awakening
+  awakening_game_dir = run_command(py, files('tools/build/game_layer.py'), 'field', awakening_repo_root, 'gameDir', check: true).stdout().strip()
+  awakening_layer_id = run_command(py, files('tools/build/game_layer.py'), 'field', awakening_repo_root, 'id', check: true).stdout().strip()
+  awakening_stage_rel = '.tmp/gamelibs_stage_' + awakening_layer_id
+  if host_system != 'windows'
+    awakening_stage_rel = awakening_stage_rel + '-' + host_system + '-' + binary_arch
+  endif
+  awakening_stage_result = run_command(
+    py,
+    meson.project_source_root() / 'tools' / 'build' / 'stage_gamelibs.py',
+    meson.project_source_root(),
+    game_libs_repo_root,
+    meson.project_source_root() / awakening_stage_rel,
+    '--layer',
+    awakening_repo_root,
+    check: true,
+  )
+  awakening_stage_root = awakening_stage_result.stdout().strip()
+  if awakening_stage_root == ''
+    error('Failed to stage the openQ4-game-awakening layer.')
+  endif
+  awakening_summary = awakening_repo_root + ' -> ' + awakening_game_dir
+endif
+
 if build_engine and not fs_mod.is_dir(bse_source_root)
   error('Integrated BSE source directory not found: ' + bse_source_root)
 endif
@@ -2142,6 +2198,24 @@ if needs_game_headers
   bse_client_include_dirs += [staged_game_include_dir]
 endif
 
+if build_awakening
+  # the layer stage carries its own copy of the openQ4-game trees, taken from
+  # the same checkout as the base stage, so layer sources resolve their
+  # relative includes exactly as base sources do
+  awakening_game_include_dirs = [
+    root_include_dir,
+    src_include_dir,
+    src_idlib_include_dir,
+    src_renderer_include_dir,
+    src_ui_include_dir,
+    src_sys_include_dir,
+    src_bse_include_dir,
+    src_maya_import_include_dir,
+    include_directories(awakening_stage_rel / 'src' / 'game'),
+    include_directories(awakening_stage_rel / 'src' / 'mpgame'),
+  ]
+endif
+
 engine_cpp_args = shared_cpp_args + common_header_cpp_args + ['-D__DOOM_DLL__'] + linux_cross_dso_sanitizer_cpp_args
 engine_c_args = shared_c_args
 # client-only flavor: module-only clients compile the loader/backend for the
@@ -2878,6 +2952,10 @@ if build_engine or (build_games and (build_game_sp or build_game_mp))
   subdir('content/baseoq4')
 endif
 
+if build_awakening and (build_game_sp or build_game_mp)
+  subdir('content/q4xbase')
+endif
+
 if build_games and build_game_sp
   custom_target(
     'openq4_stage_game_sp_direct_run',
@@ -3063,6 +3141,7 @@ summary(
     'Build game_mp': build_games and build_game_mp,
     'game_sp binary': game_sp_binary_name,
     'game_mp binary': game_mp_binary_name,
+    'Awakening layer (q4xbase)': awakening_summary,
     'Build Vulkan renderer module': build_renderer_vk and build_engine,
     'Vulkan renderer binary': renderer_vk_binary_name,
     'Resource compiler': resource_compiler.found(),

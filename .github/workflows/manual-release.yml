@@ -22,7 +22,7 @@ on:
         description: openQ4-game branch, tag, or full commit SHA to package
         required: true
         # The default must match the engine-interface revision pinned in CI.
-        default: c24ce89097865ead402457068b2ce1df3eeb29d1
+        default: 20213e3ab4a4372be81042fa1d1e3c50d4dc7c15
         type: string
       linux_arm64_support_tier:
         description: Linux ARM64 release support tier

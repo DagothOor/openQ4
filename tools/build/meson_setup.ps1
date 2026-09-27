@@ -593,6 +593,51 @@ function Test-GamelibsStageRefreshNeeded {
     return $false
 }
 
+function Test-GameLayerStageRefreshNeeded {
+    param(
+        [string]$BuildDir,
+        [string]$RepoRoot
+    )
+
+    # The Awakening layer (openQ4-game-awakening) is staged at configure time
+    # like openQ4-game itself. stage_gamelibs.py --check-fresh compares every
+    # recorded source root with its staged copy: exit 0 = fresh, 3 = stale.
+    if (-not (Test-MesonBuildDirectory $BuildDir)) {
+        return $false
+    }
+    if ((Get-MesonBuildOptionValue -BuildDir $BuildDir -OptionName "build_games") -ne $true) {
+        return $false
+    }
+    if ([string](Get-MesonBuildOptionValue -BuildDir $BuildDir -OptionName "awakening") -eq "disabled") {
+        return $false
+    }
+
+    $layerRepo = $env:OPENQ4_AWAKENING_REPO
+    if ([string]::IsNullOrWhiteSpace($layerRepo)) {
+        $layerRepo = Join-Path $RepoRoot "..\openQ4-game-awakening"
+    }
+    $layerRepo = [System.IO.Path]::GetFullPath($layerRepo)
+    if (-not (Test-Path -LiteralPath (Join-Path $layerRepo "layer.json") -PathType Leaf)) {
+        return $false
+    }
+
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if ($null -eq $python) { $python = Get-Command python3 -ErrorAction SilentlyContinue }
+    if ($null -eq $python) {
+        Write-Warning "Python was not found; cannot check the staged Awakening layer."
+        return $false
+    }
+
+    $layerId = (& $python.Source (Join-Path $RepoRoot "tools\build\game_layer.py") field $layerRepo id 2>$null)
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($layerId)) {
+        Write-Warning "Could not read $layerRepo\layer.json; forcing a Meson reconfigure."
+        return $true
+    }
+    $stageRoot = Join-Path $RepoRoot (".tmp\gamelibs_stage_" + $layerId.Trim())
+    & $python.Source (Join-Path $RepoRoot "tools\build\stage_gamelibs.py") --check-fresh $stageRoot | Out-Null
+    return ($LASTEXITCODE -ne 0)
+}
+
 function Remove-BSEArtifacts {
     param([string]$DirectoryPath)
 
@@ -647,11 +692,6 @@ function Remove-NonRuntimeInstallArtifacts {
         }
     }
 
-    $installGameDir = Join-Path $InstallRoot "baseoq4"
-    if (-not (Test-Path $installGameDir)) {
-        return
-    }
-
     $gameDirPatterns = @(
         "*.lib",
         "*.exp",
@@ -663,11 +703,17 @@ function Remove-NonRuntimeInstallArtifacts {
         "game-mp_x86.dll"
     )
 
-    foreach ($pattern in $gameDirPatterns) {
-        $matches = @(Get-ChildItem -Path $installGameDir -Filter $pattern -File -ErrorAction SilentlyContinue)
-        foreach ($match in $matches) {
-            Write-Host "Removing non-runtime staged artifact '$($match.FullName)'"
-            Remove-Item -LiteralPath $match.FullName -Force
+    # baseoq4 and every staged mod game directory (such as q4xbase) that
+    # carries game modules
+    $installGameDirs = @(Get-ChildItem -Path $InstallRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -eq "baseoq4" -or (Test-Path -LiteralPath (Join-Path $_.FullName "mod.json") -PathType Leaf) })
+    foreach ($installGameDir in $installGameDirs) {
+        foreach ($pattern in $gameDirPatterns) {
+            $matches = @(Get-ChildItem -Path $installGameDir.FullName -Filter $pattern -File -ErrorAction SilentlyContinue)
+            foreach ($match in $matches) {
+                Write-Host "Removing non-runtime staged artifact '$($match.FullName)'"
+                Remove-Item -LiteralPath $match.FullName -Force
+            }
         }
     }
 }
@@ -969,6 +1015,10 @@ if ($effectiveArgs.Length -gt 0 -and ($effectiveArgs[0] -eq "compile" -or $effec
     if ($needsGameLibsRefresh) {
         Write-Host "GameLibs staging inputs changed since the last snapshot. Reconfiguring '$($buildInfo.BuildDir)'..."
         $reconfigureReasons += "staged openQ4-game refresh"
+    }
+    elseif (Test-GameLayerStageRefreshNeeded -BuildDir $buildInfo.BuildDir -RepoRoot $repoRoot) {
+        Write-Host "Awakening layer staging inputs changed since the last snapshot. Reconfiguring '$($buildInfo.BuildDir)'..."
+        $reconfigureReasons += "staged openQ4-game-awakening refresh"
     }
 
     if ($reconfigureReasons.Count -gt 0) {

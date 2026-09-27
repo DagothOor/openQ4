@@ -1,13 +1,28 @@
+# The openQ4-game objects are compiled once into a core static library per
+# game flavour. The baseoq4 modules link a core whole, and a game layer's
+# modules (content/q4xbase) link the same core plus the layer's own sources, so
+# a layer always runs the current openQ4 game rather than a copy of it.
+game_core_pic = host_system == 'linux' or host_system == 'android' or host_system == 'darwin'
+game_core_visibility = host_system == 'windows' ? 'default' : 'hidden'
+
 if build_games and build_game_sp
+  game_sp_core_library = static_library(
+    'openq4_game_sp_core',
+    game_sp_sources,
+    include_directories: game_include_dirs,
+    cpp_args: game_common_cpp_args,
+    c_args: game_common_c_args,
+    cpp_pch: game_module_pch_headers,
+    override_options: game_target_override_options,
+    pic: game_core_pic,
+    gnu_symbol_visibility: game_core_visibility,
+    install: false,
+  )
   if host_system == 'windows'
     game_sp_module_target = shared_module(
       game_sp_binary_name,
-      game_sp_sources,
-      include_directories: game_include_dirs,
+      link_whole: game_sp_core_library,
       link_with: game_idlib_library,
-      cpp_args: game_common_cpp_args,
-      c_args: game_common_c_args,
-      cpp_pch: game_module_pch_headers,
       override_options: game_target_override_options,
       link_args: game_module_link_args,
       vs_module_defs: game_sp_module_defs_file,
@@ -18,12 +33,8 @@ if build_games and build_game_sp
   elif host_system == 'darwin'
     game_sp_module_target = shared_library(
       game_sp_binary_name,
-      game_sp_sources,
-      include_directories: game_include_dirs,
+      link_whole: game_sp_core_library,
       link_with: game_idlib_library,
-      cpp_args: game_common_cpp_args,
-      c_args: game_common_c_args,
-      cpp_pch: game_module_pch_headers,
       override_options: game_target_override_options,
       link_args: game_module_link_args + ['-Wl,-install_name,@loader_path/' + game_sp_binary_name + '.dylib'],
       link_depends: game_module_link_depends,
@@ -36,12 +47,8 @@ if build_games and build_game_sp
   else
     game_sp_module_target = shared_module(
       game_sp_binary_name,
-      game_sp_sources,
-      include_directories: game_include_dirs,
+      link_whole: game_sp_core_library,
       link_with: game_idlib_library,
-      cpp_args: game_common_cpp_args,
-      c_args: game_common_c_args,
-      cpp_pch: game_module_pch_headers,
       override_options: game_target_override_options,
       link_args: game_module_link_args,
       link_depends: game_module_link_depends,
@@ -54,15 +61,23 @@ if build_games and build_game_sp
 endif
 
 if build_games and build_game_mp
+  game_mp_core_library = static_library(
+    'openq4_game_mp_core',
+    game_mp_sources,
+    include_directories: game_include_dirs,
+    cpp_args: game_common_cpp_args + ['-DGAME_MPAPI'],
+    c_args: game_common_c_args,
+    cpp_pch: game_module_pch_headers,
+    override_options: game_target_override_options,
+    pic: game_core_pic,
+    gnu_symbol_visibility: game_core_visibility,
+    install: false,
+  )
   if host_system == 'windows'
     game_mp_module_target = shared_module(
       game_mp_binary_name,
-      game_mp_sources,
-      include_directories: game_include_dirs,
+      link_whole: game_mp_core_library,
       link_with: game_idlib_library_mp,
-      cpp_args: game_common_cpp_args + ['-DGAME_MPAPI'],
-      c_args: game_common_c_args,
-      cpp_pch: game_module_pch_headers,
       override_options: game_target_override_options,
       link_args: game_module_link_args,
       vs_module_defs: game_mp_module_defs_file,
@@ -73,12 +88,8 @@ if build_games and build_game_mp
   elif host_system == 'darwin'
     game_mp_module_target = shared_library(
       game_mp_binary_name,
-      game_mp_sources,
-      include_directories: game_include_dirs,
+      link_whole: game_mp_core_library,
       link_with: game_idlib_library_mp,
-      cpp_args: game_common_cpp_args + ['-DGAME_MPAPI'],
-      c_args: game_common_c_args,
-      cpp_pch: game_module_pch_headers,
       override_options: game_target_override_options,
       link_args: game_module_link_args + ['-Wl,-install_name,@loader_path/' + game_mp_binary_name + '.dylib'],
       link_depends: game_module_link_depends,
@@ -91,12 +102,8 @@ if build_games and build_game_mp
   else
     game_mp_module_target = shared_module(
       game_mp_binary_name,
-      game_mp_sources,
-      include_directories: game_include_dirs,
+      link_whole: game_mp_core_library,
       link_with: game_idlib_library_mp,
-      cpp_args: game_common_cpp_args + ['-DGAME_MPAPI'],
-      c_args: game_common_c_args,
-      cpp_pch: game_module_pch_headers,
       override_options: game_target_override_options,
       link_args: game_module_link_args,
       link_depends: game_module_link_depends,
