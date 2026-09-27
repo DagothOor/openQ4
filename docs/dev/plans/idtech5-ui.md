@@ -28,6 +28,18 @@ rules, modern components and a HUD section with the weapon wheel; version 1.4
 adds the objectives display, boss, vehicle and scope displays, the multiplayer
 HUD and scoreboard, and the Strogg weapon wheel. [Register schema 3](../ui/product-requirements.md)
 records five supersessions and appends 29 requirements for both versions.
+Version 1.5 lays the HUD out in screens with a centered status bar. It
+rebuilds the multiplayer HUD's top, chat and kill feed, catalogues every
+crosshair and item icon as vector art, and gives the weapon wheels the stock's
+translation and transmission effects. Register schema 4 supersedes seven rows
+and appends four for it.
+
+The controller weapon wheel already in openQ4-game (`356dfe56`: 12 slots,
+centered at 77% of the width, cursor selection) differs from section 14.6
+(every weapon of the mode, centered on the aim point, stick-angle selection).
+openQ4-game's hit marker is on by default in single player and multiplayer and
+replaces the stock pop, where section 14.7 keeps the pop and offers markers in
+multiplayer only. Reconcile both before implementing those sections.
 
 The [17 September implementation audit](../ui/masked-input-review.md) refreshes
 delivery priorities and repairs vector-mask pointer/focus eligibility. The

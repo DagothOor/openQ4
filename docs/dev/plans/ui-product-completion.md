@@ -65,6 +65,14 @@ declaring that choice proven for the whole product.
 
 ### Current implementation progress
 
+A second [27 September register revision](../ui/product-requirements.md)
+follows [visual specification](../ui-visual-design.md) 1.5. Register schema 4
+supersedes seven rows and appends four. The new scope covers the HUD's screens,
+the centered status bar, the Remastered multiplayer top, chat and kill feed, the
+side-screen notices, the crosshair and item icon catalogues, and the weapon
+wheel's transitions. The register now holds 307 rows, of which 287 define
+acceptance.
+
 The [27 September register revision](../ui/product-requirements.md) follows
 [visual specification](../ui-visual-design.md) 1.3 and 1.4. Register schema 3
 records five supersessions and appends 29 requirements for band motion, the

@@ -1,10 +1,10 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "id_namespace": "openq4.ui.product",
   "date": "2026-09-27",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "3c20f83f500650e75d724e1c47c3fcd4af76fd8c",
+    "engine_revision": "6a0baf567afedba52e07ced6914a0ee46f0a5423",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -14,17 +14,17 @@
     "visual": {
       "path": "docs/dev/ui-visual-design.md",
       "authority": "normative visual, interaction and editor contract",
-      "sha256": "5f7b67e4685f71c59c053e2a00f06661dc732c6776b39154c806890b4bdacc34"
+      "sha256": "88f17646f1b94b5c85954621d365a5d972b67bb8cd3e381bc711b22361485807"
     },
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "4b119f998b660dc15b0e9beeff8d5f55d9e6d7311e8ad7d3e37e7997fbcd9038"
+      "sha256": "f171facbc27127f4757abd4e434554cd8b6cc95a053a1d3b728c8567a4895970"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "2b4823b75fbd8b3e7b2032848de0c3eae62f4ab8729431fd2b09727bc9633cf6"
+      "sha256": "2209410a4fb9401bf5e5c9a26e70d7337b905580123609c6e16d0d4f2c25fa19"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -102,7 +102,7 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "4b119f998b660dc15b0e9beeff8d5f55d9e6d7311e8ad7d3e37e7997fbcd9038"
+      "sha256": "f171facbc27127f4757abd4e434554cd8b6cc95a053a1d3b728c8567a4895970"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
@@ -1156,6 +1156,85 @@
         "FLOW-029"
       ],
       "normative_change": "Visual 1.3 section 13.9 replaces crosshair sizes 16-48 with the twenty-mark stock set and its five sizes of 24-72 dp, and makes multiplayer hit markers optional.",
+      "source_refs": [
+        "visual:13",
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "LAY-018",
+      "successors": [
+        "LAY-019"
+      ],
+      "normative_change": "Visual 1.5 section 14.4 replaces the bottom-leading gauges with a status bar centered on the bottom edge, defines the center screen, leading and trailing screens and top and bottom bands, anchors chat bottom-leading and powerups bottom-trailing, and adds the HUD width limit.",
+      "source_refs": [
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "FLOW-034",
+      "successors": [
+        "FLOW-040"
+      ],
+      "normative_change": "Visual 1.5 section 14.8 centers two pickup lines over the status bar with the weapon strip above them instead of three lines, and measures the radio chatter's timing, carrier and emblem.",
+      "source_refs": [
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "FLOW-035",
+      "successors": [
+        "FLOW-041"
+      ],
+      "normative_change": "Visual 1.5 section 14.9 corrects the Dead Zone flash and rebuilds the Remastered top of the screen from compact plates: standing, team panels, timer states, the Tourney strip, a stacking center column and a kill feed on per-line plates.",
+      "source_refs": [
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "FLOW-036",
+      "successors": [
+        "FLOW-042"
+      ],
+      "normative_change": "Visual 1.5 section 14.11 anchors the Remastered notices to the side screens, mirrors the completion notice and replaces the stock back bars with backings inside 200 u plates.",
+      "source_refs": [
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "FLOW-033",
+      "successors": [
+        "FLOW-043"
+      ],
+      "normative_change": "Visual 1.5 sections 14.7 and 14.15 redraw every crosshair and context cursor as vector art, record the stock cycle order, and move the optional hit markers outside the crosshair art.",
+      "source_refs": [
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "WID-024",
+      "successors": [
+        "WID-032"
+      ],
+      "normative_change": "Visual 1.5 section 14.6 adds the Marine ammunition gauge, bezel and signal-screen hub, and the wheel's transmission and translation transitions.",
+      "source_refs": [
+        "visual:14",
+        "visual:8"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "FLOW-029",
+      "successors": [
+        "FLOW-044"
+      ],
+      "normative_change": "Visual 1.5 section 13.9 adds the HUD width setting and names the stock menu's eight swatches as the crosshair presets.",
       "source_refs": [
         "visual:13",
         "visual:14"
@@ -10525,6 +10604,497 @@
         ],
         "backing_alpha": 0.6,
         "summary_backing_alpha": 0.9
+      }
+    },
+    {
+      "id": "LAY-019",
+      "title": "HUD screens, anchors and expansion",
+      "milestone_owner": "M5",
+      "implementation_owner": "Retained layout and UI design",
+      "source_refs": [
+        "visual:3",
+        "visual:5",
+        "visual:9",
+        "product:2 UI-12",
+        "product:3 Text, controls and accessibility",
+        "product:5 Visual and interaction qualification",
+        "visual:14"
+      ],
+      "requirement": "Lay out the Remastered HUD with the 4:3 stock canvas as the center screen at full view height: a wider view adds leading and trailing screens and a narrower one adds top and bottom bands. Every group belongs to one of nine anchors and keeps its stock offset from it, so 4:3 lands on the stock rectangles; the ammunition, health and armor gauges form one 438 u status bar centered on the bottom edge with the stock gaps; the pickup lines and weapon strip sit above it; radio chatter, the completion notice and the kill feed anchor top-trailing, the new-objective notice, standing and timer top-leading, chat bottom-leading and powerups bottom-trailing, while the crosshair, hit indicator, brackets and aim text stay on the projection center. Side screens stop at 21:9 unless the HUD width is Full; groups never overlap and never carry a backing wider than their content. HUD scale runs 50-200% about each group's anchor with a 0-10% safe inset, and Classic keeps the stock rectangles.",
+      "dependencies": [
+        "LAY-009",
+        "LAY-014",
+        "FLOW-030"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures of the SP and MP HUD at 5:4, 4:3, 16:10, 16:9, 21:9 and 32:9 at 100% and 150% HUD scale, against the anchor table, with Classic at 4:3 matching the stock rectangles."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "status_bar_u": [
+          101,
+          278,
+          414
+        ],
+        "status_bar_width_u": 438,
+        "side_screen_dp": {
+          "16:10": 96,
+          "16:9": 160,
+          "21:9": 373
+        },
+        "default_hud_width": "21:9",
+        "hud_scale_percent": [
+          50,
+          200
+        ],
+        "safe_inset_percent": [
+          0,
+          10
+        ]
+      }
+    },
+    {
+      "id": "FLOW-040",
+      "title": "HUD messages, pickups and radio chatter",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Show pickups as the stock line in Classic and, in Remastered, as up to two lines centered over the status bar, newest nearest the gauges, merging repeats with a count, with the weapon strip above them and its name above its slots; radio chatter anchored top-trailing, appearing and disappearing at once for the voice line plus 150 ms or 5 s, with its masked additive carrier scrolling 24.6 u/s and stepping height every 79 ms, and the Rhino emblem shrinking over 500 ms when the line addresses the player; EXIT under a chevron rising 11 u with accel(500, 500) for 5000 ms, a single \"Game Saved...\" for 2000 ms plus a 1000 ms fade, the Interactive brackets, and openQ4 subtitles in Lowpixel 17 dp on a 0.60 backing, at most two lines, never over the crosshair.",
+      "dependencies": [
+        "FLOW-030",
+        "FLOW-016",
+        "TXT-011",
+        "LAY-019"
+      ],
+      "acceptance_evidence_needed": [
+        "SP gameplay traces of pickups, weapon changes during pickups, radio chatter, exit, saves, world-GUI focus and subtitled cinematics in both HUD families and both layouts."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "pickup_hold_ms": 3000,
+        "pickup_stack": 2,
+        "radio_extra_ms": 150,
+        "radio_default_ms": 5000,
+        "radio_scroll_u_per_s": 24.6,
+        "radio_step_ms": 79,
+        "emblem_shrink_ms": 500,
+        "exit_hold_ms": 5000,
+        "save_hold_ms": 2000,
+        "save_fade_ms": 1000,
+        "subtitle_lines": 2,
+        "subtitle_backing_alpha": 0.6
+      }
+    },
+    {
+      "id": "FLOW-041",
+      "title": "Multiplayer HUD and its Remastered top",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Reproduce the measured multiplayer HUD per mode and state in Classic, including the corrected Dead Zone flash (pure team color relaxing to white) and without the stock script slips. In Remastered, build the top of the screen from compact HUD plates never wider than their content: deathmatch standing rows with ordinal, name cut with an ellipsis, Chain score, the leader's frag limit and your signed gap and marker; team panels with faction mark, team name, score against the limit and flag state with the carrier's name; the Dead Zone holder; round numbers and clocks; one timer readout per state including elapsed time when untimed, the countdown stated once and the last-minute and last-ten-second cues; the Tourney strip with ellipses, your row marked and finished arenas checked; a center column of notices, spectator lines and awards that stack without overlapping on their own plates; a trailing-aligned kill feed on per-line plates with ellipses, your lines marked, team kills tagged and spectators included; and the managed-match card under it.",
+      "dependencies": [
+        "FLOW-030",
+        "FLOW-014",
+        "WID-029",
+        "TXT-011",
+        "LAY-019",
+        "ART-028"
+      ],
+      "acceptance_evidence_needed": [
+        "MP captures per mode and state (warm-up, countdown, play, last minute, sudden death, overtime, spectating) in Classic and Remastered at 4:3, 16:9 and 21:9, with long names and bright scenery."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "kill_feed_lines": {
+          "default": 4,
+          "tourney": 2
+        },
+        "kill_feed_hold_ms": 2000,
+        "kill_feed_fade_ms": 1000,
+        "kill_feed_release_ms": 3100,
+        "name_ellipsis_u": 84,
+        "line_plate_alpha": 0.35,
+        "standing_plate_u": [
+          150,
+          18
+        ],
+        "team_plate_u": [
+          150,
+          22
+        ],
+        "timer_last_minute": "#FFBE23",
+        "timer_last_ten_seconds": "#E46D56",
+        "team_text_colors": [
+          "#AAE355",
+          "#FF8E00"
+        ]
+      }
+    },
+    {
+      "id": "FLOW-042",
+      "title": "Objectives display and side-screen notices",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Reproduce the objectives display held on the scores button (the 0.80 bar over the leading 45%, the heading, open-plate entries on a 143 u pitch, the serial and the empty state, 150 plus 100 ms entry, hiding the HUD, crosshair and vehicle HUD but not a scope, and the Strogg variant), with Remastered scrolling, completed objectives, wrapping, the raised serial and hold or toggle. Remastered notices anchor to the leading screen (new objective) and, mirrored, to the trailing screen under the radio chatter (completion), drop the stock back bars, use 200 u plates carrying a black 0.50 backing inside their own outline and fade, and keep the stock entry, exit and closing rules; Classic keeps the stock rectangles and back bars; failure shows the banner under a 12 s fade.",
+      "dependencies": [
+        "FLOW-030",
+        "FLOW-014",
+        "TXT-011",
+        "WID-009",
+        "LAY-019"
+      ],
+      "acceptance_evidence_needed": [
+        "SP gameplay with objectives, completions and a failure in both families and layouts at 16:9 and 21:9."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "entry_pitch_u": 143,
+        "bar_alpha": 0.8,
+        "frame_alpha": 0.4,
+        "notice_plate_u": 200,
+        "notice_backing_alpha": 0.5,
+        "notice_sample_ms": 2000,
+        "notice_move_units": 64,
+        "notice_max_ms": 5000,
+        "failure_fade_s": 12
+      }
+    },
+    {
+      "id": "FLOW-043",
+      "title": "Crosshair and hit feedback",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Draw every weapon crosshair, custom mark and context cursor from the vector catalogue; keep the stock cycle of twenty entries (nineteen designs) with a picker stepping both ways, the stock sizes 16-48 u, free color applied at once, vehicle weapons' own crosshairs, and the context cursors' stock colors and motion. On every hit the crosshair grows 10 u and returns over 150 ms, red for 100 ms in single player; optional multiplayer hit markers, off in Classic, are four 6 dp diagonal ticks starting half the crosshair size plus 4 dp from the center, white or status.error, for 150 ms; the damage-direction dome fades from 0.70 over 500 ms, scales with the HUD, caps at 0.40 under reduced flashing and adds a chevron.",
+      "dependencies": [
+        "FLOW-044",
+        "FLOW-030",
+        "SUR-005",
+        "ART-027"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures of every crosshair at the five sizes and eight swatches, hit feedback with and without markers on the lightning gun, and each context cursor's motion."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "cycle_entries": 20,
+        "distinct_designs": 19,
+        "stock_sizes_u": [
+          16,
+          24,
+          32,
+          40,
+          48
+        ],
+        "hit_pop_u": 10,
+        "hit_pop_ms": 150,
+        "sp_red_ms": 100,
+        "marker_offset_dp": 4,
+        "marker_len_dp": 6
+      }
+    },
+    {
+      "id": "FLOW-044",
+      "title": "HUD presets and HUD settings",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14",
+        "visual:13"
+      ],
+      "requirement": "Offer Classic, Remastered, Minimal, Competitive and Touch HUD presets and settings for independent HUD scale, safe inset, HUD width (16:9, 21:9 or Full), opacity, color vision, the crosshair editor (the stock set of twenty in its cycle order, the five stock sizes of 24-72 dp and sizes between, free color with the stock menu's eight swatches, live preview), optional multiplayer hit markers, the damage direction indicator, pickup messages and the weapon strip; Couch and Handheld start the HUD at 125%.",
+      "dependencies": [
+        "FLOW-014",
+        "LAY-009",
+        "LAY-014",
+        "LAY-019"
+      ],
+      "acceptance_evidence_needed": [
+        "Settings traces for every HUD option on keyboard, controller and touch with live preview and persistence."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "presets": [
+          "Classic",
+          "Remastered",
+          "Minimal",
+          "Competitive",
+          "Touch"
+        ],
+        "hud_width": [
+          "16:9",
+          "21:9",
+          "Full"
+        ],
+        "crosshair_size_dp": [
+          24,
+          72
+        ],
+        "crosshair_swatches": [
+          "#FFFFFF",
+          "#FF0000",
+          "#FF8000",
+          "#FFFF00",
+          "#00FF00",
+          "#00FFFF",
+          "#0000FF",
+          "#FF0080"
+        ],
+        "couch_hud_scale": 1.25
+      }
+    },
+    {
+      "id": "FLOW-045",
+      "title": "Remastered chat box and chat input",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Place the multiplayer chat box on the leading side: bottom-leading beside the status bar where the leading screen holds it, otherwise raised with its bottom 150 u above the bottom edge; 180-300 u wide; four whole messages at rest and up to eight while typing, each line on its own 0.35 plate, team messages tagged TEAM in the team's text color, server lines with the information symbol and your lines marked. The input sits below the lines on the stock chat plate with an ALL or TEAM channel tag switchable while typing, Lowpixel entry that scrolls sideways with a caret, a remaining-character count from 80% of the 128-character limit, and Send, Channel and Cancel prompts with the active device's glyphs; controller and touch use the platform or on-screen keyboard. Classic keeps the stock lines and input.",
+      "dependencies": [
+        "FLOW-009",
+        "INP-012",
+        "LAY-019",
+        "TXT-004"
+      ],
+      "acceptance_evidence_needed": [
+        "MP chat traces with all and team messages, wrapping, server lines, a full-length entry and channel switching on keyboard, controller and touch at 4:3, 16:9 and 21:9."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "width_u": [
+          180,
+          300
+        ],
+        "raised_bottom_u": 150,
+        "lines_at_rest": 4,
+        "lines_typing": 8,
+        "line_plate_alpha": 0.35,
+        "max_chars": 128,
+        "count_from_fraction": 0.8
+      }
+    },
+    {
+      "id": "WID-032",
+      "title": "Weapon wheel, quick chat and their transitions",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI components and application bindings",
+      "source_refs": [
+        "visual:7",
+        "product:2 UI-03",
+        "product:3 Text, controls and accessibility",
+        "product:4 M3",
+        "visual:14",
+        "visual:13"
+      ],
+      "requirement": "A held-button wheel in the active HUD family gives every weapon of the game mode a fixed segment in strip order: Marine segments are 0.50 HUD plates between 104 and 232 dp with the weapon glyph, number, reserve and a curved ammunition gauge in the weapon color code, a tick-ramp bezel, and a hub built from the machinegun scope's rings and compass dots over a signal screen, naming the weapon on up to two lines above the ammunition and the carrier waveform; the Strogg wheel keeps its claw plates, cells, grain, octagonal core, rings and circuit paths with every label drawn in runes and R_Strogg. Selection, refusal, the previous-weapon tap and quick chat follow section 14.6. The Marine wheel opens, selects and closes as a transmission (slit power-on, static bursts, tune-in, jolt, sign-off) and the Strogg wheel as a translation (boot cascade, rune-to-R_Strogg cross-fades with the scale pop and the scan bar, scrambled drop-out); neither delays input, plates and icons read by 150 ms, and reduced motion keeps only 80 ms opacity changes.",
+      "dependencies": [
+        "INP-011",
+        "INP-013",
+        "ART-026",
+        "FLOW-032",
+        "MOT-015",
+        "ART-028"
+      ],
+      "acceptance_evidence_needed": [
+        "Gameplay traces for weapon and chat wheels on controller, touch and mouse in both families with correct equip, refusal and send results, sampled transition timelines and no simulation pause."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "inner_radius_dp": 104,
+        "outer_radius_dp": 232,
+        "gap_dp": 6,
+        "readable_by_ms": 150,
+        "segment_stagger_ms": 8,
+        "slit_power_on_ms": 150,
+        "strogg_cascade_ms": 12,
+        "translate_heading_ms": 300,
+        "reduced_motion_ms": 80
+      }
+    },
+    {
+      "id": "ART-027",
+      "title": "Crosshair catalogue",
+      "milestone_owner": "M4",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Reconstruct all 31 stock crosshair and context-cursor textures as vector paths on a 64x64 master centered on the aim point: true circles and straight strokes for line art, fitted curves for organic art, symmetry where the stock meant it, white ink that takes the tint while black outline and shadow ink stays black, two-tone bands as one layer, strokes clamped to one physical pixel, and the stock pixel flaws left out. The use hand and the medic and tech badges keep their colors.",
+      "dependencies": [
+        "ART-001",
+        "ART-007"
+      ],
+      "acceptance_evidence_needed": [
+        "The catalogue rendered against each stock texture at the five sizes and eight swatches, reviewed for silhouette and proportion."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "textures": 31,
+        "master": [
+          64,
+          64
+        ]
+      }
+    },
+    {
+      "id": "ART-028",
+      "title": "Item icon catalogue",
+      "milestone_owner": "M4",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Reconstruct every stock item icon as vector paths: weapon glyphs, the shaded weapon renders as side views with lit top facets at full ink and bodies at half, ammunition as the weapon glyph in a frame, health, armor, powerup and rune emblems in their stock colors with flat facets and a separate soft glow, flags, team and status symbols, the kill-feed skull and telefrag mark, vehicle weapons and the world sprites; paired states share geometry, holes and cuts are kept, and every glyph reads at 16 dp. Weapon renders and powerup emblems are no longer bitmap exceptions; award medals remain one.",
+      "dependencies": [
+        "ART-001",
+        "ART-007",
+        "ART-016"
+      ],
+      "acceptance_evidence_needed": [
+        "The catalogue rendered against each stock icon and at 16, 24 and 27 dp in every tint the HUD uses."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "master_height": 24,
+        "min_legible_dp": 16
+      }
+    },
+    {
+      "id": "MOT-015",
+      "title": "Translation and transmission effects",
+      "milestone_owner": "M4",
+      "implementation_owner": "Presentation motion and UI interaction",
+      "source_refs": [
+        "visual:8",
+        "product:3 Visual quality and motion",
+        "product:5 Visual and interaction qualification",
+        "original:Stage 2",
+        "visual:5"
+      ],
+      "requirement": "Provide the stock's named text and signal effects: the credits translation (rune and Latin copies on one baseline, a 2000 ms rune fade-in, per-line cross-fades of 1000, 500 or 200 ms every 250 ms with the 0.02 textscale pop, names settling from white, and the additive #FF8000 scan bar sliding in with accel(120, 180) and dimming over 1000 ms), the intro decode (a clip opening from a 1 u slit over 1000 ms), the medlabs changeover (letters swapping in scrambled order every 200 ms under additive flashes) and the MCC briefing transmission (slit power-on, static bursts, a picture opening from a 2 u line, a 100 ms jolt, white-settling labels and power-off to the slit). Rune copies use the rune face or new glyphs built to its rules. Reduced motion keeps cross-fades of up to 80 ms.",
+      "dependencies": [
+        "MOT-011",
+        "MOT-012"
+      ],
+      "acceptance_evidence_needed": [
+        "Sampled timelines of each effect against the stock scripts, and the wheel's short forms, with and without reduced motion."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "rune_fade_ms": 2000,
+        "decode_ms": {
+          "heading": 1000,
+          "name": 500,
+          "row": 200
+        },
+        "line_stagger_ms": 250,
+        "bar_slide_ms": 300,
+        "bar_dim_ms": 1000,
+        "intro_wipe_ms": 1000,
+        "changeover_step_ms": 200,
+        "briefing_power_ms": 150,
+        "briefing_burst": [
+          0.06,
+          0.4
+        ]
       }
     }
   ]
