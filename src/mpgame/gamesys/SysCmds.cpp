@@ -526,6 +526,18 @@ void GiveStuffToPlayer( idPlayer* player, const char* name, const char* value )
 		player->GivePowerUp( POWERUP_GUARD, -1 );
 		return;
 	}
+
+	// Quake 4: The Awakening's powerups exist only where its defs do
+	if ( !idStr::Icmp( name, "adrenaline" ) || !idStr::Icmp( name, "fc_armor_regen" ) ) {
+		const int powerup = !idStr::Icmp( name, "adrenaline" ) ? POWERUP_ADRENALINE : POWERUP_FC_ARMOR_REGEN;
+		const idDict *def = gameLocal.FindEntityDefDict( idPlayer::GetPowerupDefName( powerup ), false );
+		if ( def == NULL ) {
+			gameLocal.Printf( "%s is not in this game's content\n", idPlayer::GetPowerupDefName( powerup ) );
+			return;
+		}
+		player->GivePowerUp( powerup, SEC2MS( def->GetFloat( "time", "30" ) ) );
+		return;
+	}
 // RAVEN END
 
 	if ( !idStr::Icmp ( name, "wpmod_all" ) ) {
@@ -3844,6 +3856,9 @@ static void Cmd_OpenQ4ReportMPWorld_f( const idCmdArgs &args ) {
 					player->inventory.powerupEndTime[ powerup ] - gameLocal.time );
 			}
 		}
+		gameLocal.Printf( "MP_WORLD_INVENTORY entity=%d armor=%d maxHealth=%d maxArmor=%d credits=%d weapons=%d\n",
+			entity->entityNumber, player->inventory.armor, player->inventory.maxHealth,
+			player->inventory.maxarmor, (int)player->buyMenuCash, player->inventory.weapons );
 		if ( player->weapon != NULL ) {
 			gameLocal.Printf( "MP_WORLD_WEAPON entity=%d clip=%d ready=%d reloading=%d\n",
 				entity->entityNumber, player->weapon->AmmoInClip(),

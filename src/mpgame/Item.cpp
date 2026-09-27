@@ -1378,7 +1378,8 @@ void idItemPowerup::Spawn( void ) {
 		time = -1;
 	}
 
-	type = spawnArgs.GetInt( "type", "0" );
+	// content numbers its powerups its own way (the Awakening renumbered them)
+	type = idPlayer::PowerupForContentType( spawnArgs.GetInt( "type", "0" ) );
 	
 	// If the powerup was dropped then make it dissapear using its remaining time.
 	if ( spawnArgs.GetBool( "dropped" ) && time != -1 ) {

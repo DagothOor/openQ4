@@ -77,6 +77,14 @@ const int SPECTATE_RAISE = 25;
 
 const int	HEALTH_PULSE		= 1000;			// Regen rate and heal leak rate (for health > 100)
 const int	ARMOR_PULSE			= 1000;			// armor ticking down due to being higher than maxarmor
+
+// Quake 4: The Awakening's powerups
+const int	ADRENALINE_HEALTH_BOOST	= 400;		// health Adrenaline lends, taken back over its time
+const int	ADRENALINE_HEALTH_FLOOR	= 100;		// Adrenaline ends when the payback reaches this
+const int	FC_ARMOR_REGEN_PULSE	= 500;
+const int	FC_ARMOR_REGEN_STEP		= 5;
+const int	FC_ARMOR_REGEN_OVER_MAX	= 100;		// how far past max armor FC Armor Regen builds
+const int	FC_ARMOR_REGEN_WIRE_MAX	= 255;		// the player snapshot carries armor in a byte
 const int	AMMO_REGEN_PULSE	= 1000;			// ammo regen in Arena CTF
 const int	POWERUP_BLINKS		= 5;			// Number of times the powerup wear off sound plays
 const int	POWERUP_BLINK_TIME	= 1000;			// Time between powerup wear off sounds
@@ -1438,6 +1446,7 @@ idPlayer::idPlayer() {
 	deathClearContentsTime	= 0;
 	corpseSinkStartTime		= 0;
 	nextHealthPulse			= 0;
+	adrenalineHealthDrain	= 0;
 
 	scoreBoardOpen			= false;
 	forceScoreBoard			= false;
@@ -5819,6 +5828,23 @@ bool idPlayer::GivePowerUp( int powerup, int time, bool team ) {
 			}
 			break;
 		}
+		case POWERUP_ADRENALINE: {
+			// lends ADRENALINE_HEALTH_BOOST health at once, less the first pulse's
+			// share; UpdatePowerUps takes it back over the powerup's time
+			nextHealthPulse = gameLocal.time + HEALTH_PULSE;
+			if ( gameLocal.isServer ) {
+				adrenalineHealthDrain = ADRENALINE_HEALTH_BOOST / Max( 1, time / 1000 );
+				health += ADRENALINE_HEALTH_BOOST - adrenalineHealthDrain;
+			}
+			break;
+		}
+		case POWERUP_FC_ARMOR_REGEN: {
+			nextArmorPulse = gameLocal.time + FC_ARMOR_REGEN_PULSE;
+			if ( gameLocal.GetLocalPlayer() == this ) {
+				gameLocal.mpGame.ScheduleAnnouncerSound( AS_GENERAL_REGENERATION, gameLocal.time, gameLocal.gameType == GAME_TOURNEY ? GetInstance() : -1 );
+			}
+			break;
+		}
 //RITUAL BEGIN
 		case POWERUP_DEADZONE: {
 			if ( playClientEffects && this == gameLocal.GetLocalPlayer() ) {
@@ -5952,6 +5978,24 @@ void idPlayer::UpdatePowerUps( void ) {
 // RITUAL BEGIN
 // squirrel: health regen only applies if you have positive health
 		if( health > 0 ) {
+			// Adrenaline takes back what it lent, a share each pulse while health is
+			// at max or above; it ends when health falls below max or the payback
+			// reaches ADRENALINE_HEALTH_FLOOR
+			if ( gameLocal.isServer && PowerUpActive( POWERUP_ADRENALINE ) ) {
+				bool keepAdrenaline = false;
+				if ( health >= inventory.maxHealth ) {
+					health -= adrenalineHealthDrain;
+					nextHealthPulse = gameLocal.time + HEALTH_PULSE;
+					keepAdrenaline = ( health >= ADRENALINE_HEALTH_FLOOR );
+					if ( !keepAdrenaline ) {
+						health = ADRENALINE_HEALTH_FLOOR;
+					}
+				}
+				if ( !keepAdrenaline ) {
+					ClearPowerup( POWERUP_ADRENALINE );
+				}
+			}
+
 			if ( PowerUpActive ( POWERUP_REGENERATION ) || PowerUpActive ( POWERUP_GUARD ) ) {
 				int healthBoundary = inventory.maxHealth; // health will regen faster under this value, slower above
 				int healthTic = 15;
@@ -6018,12 +6062,19 @@ void idPlayer::UpdatePowerUps( void ) {
 		}
 	}
 
-	// Tick armor down if greater than max armor
+	// Tick armor down if greater than max armor. FC Armor Regen builds it up
+	// instead, FC_ARMOR_REGEN_STEP a pulse, to FC_ARMOR_REGEN_OVER_MAX past max.
 	if ( !gameLocal.isClient && gameLocal.time > nextArmorPulse ) {
-		if ( inventory.armor > inventory.maxarmor ) { 
+		if ( PowerUpActive( POWERUP_FC_ARMOR_REGEN ) ) {
+			const int armorCap = Min( inventory.maxarmor + FC_ARMOR_REGEN_OVER_MAX, FC_ARMOR_REGEN_WIRE_MAX );
+			if ( inventory.armor < armorCap ) {
+				inventory.armor = Min( inventory.armor + FC_ARMOR_REGEN_STEP, armorCap );
+				nextArmorPulse = gameLocal.time + FC_ARMOR_REGEN_PULSE;
+			}
+		} else if ( inventory.armor > inventory.maxarmor ) {
 			nextArmorPulse += ARMOR_PULSE;
 			inventory.armor--;
-		}		
+		}
 	}
 		
 	// Assign the powerup skin as long as we are alive
@@ -6854,7 +6905,7 @@ void idPlayer::DropPowerups( void ) {
 		}		
 		
 		// These powerups aren't dropped
-		if ( i >= POWERUP_TEAM_AMMO_REGEN && i <= POWERUP_TEAM_DAMAGE_MOD )
+		if ( ( i >= POWERUP_TEAM_AMMO_REGEN && i <= POWERUP_TEAM_DAMAGE_MOD ) || i == POWERUP_FC_ARMOR_REGEN )
 			continue;
 
 		// Don't drop this either with buying enabled.
@@ -14769,7 +14820,7 @@ void idPlayer::WritePlayerStateToSnapshot( int lastSnapshotFrame, idBitMsgDelta 
 
 	msg.WriteShort( inventory.weapons );
 	msg.WriteByte( inventory.armor );
-	msg.WriteShort( inventory.powerups );
+	msg.WriteBits( inventory.powerups, POWERUP_MAX );
 
 	for( i = 0; i < MAX_AMMO; i++ ) {
 		// send a value of -1 as the max positive value as we have ASYNC_PLAYER_INV_AMMO_BITS>0
@@ -14805,7 +14856,7 @@ void idPlayer::ReadPlayerStateFromSnapshot( const idBitMsgDelta &msg ) {
 
 	inventory.weapons = msg.ReadShort();
 	inventory.armor = msg.ReadByte();
-	inventory.powerups = msg.ReadShort();
+	inventory.powerups = msg.ReadBits( POWERUP_MAX );
 
 	for( i = 0; i < MAX_AMMO; i++ ) {
  		ammo = msg.ReadBits( ASYNC_PLAYER_INV_AMMO_BITS );
@@ -15289,6 +15340,75 @@ const idDeclEntityDef* idPlayer::GetWeaponDef ( int weaponIndex ) {
 
 /*
 ==============
+idPlayer::GetPowerupDefName
+
+The entity def each powerup type stands for. Content numbers its powerups in
+its "powerup_types" def, and the retail game and the Awakening expansion
+number them differently; the def names are what they agree on.
+==============
+*/
+const char* idPlayer::GetPowerupDefName( int powerup ) {
+	static const char * const powerupDefNames[] = {
+		"powerup_quad_damage",			// POWERUP_QUADDAMAGE
+		"powerup_haste",				// POWERUP_HASTE
+		"powerup_regeneration",			// POWERUP_REGENERATION
+		"powerup_invisibility",			// POWERUP_INVISIBILITY
+		"mp_ctf_marine_flag",			// POWERUP_CTF_MARINEFLAG
+		"mp_ctf_strogg_flag",			// POWERUP_CTF_STROGGFLAG
+		"mp_ctf_one_flag",				// POWERUP_CTF_ONEFLAG
+		"powerup_ammoregen",			// POWERUP_AMMOREGEN
+		"powerup_guard",				// POWERUP_GUARD
+		"powerup_doubler",				// POWERUP_DOUBLER
+		"powerup_scout",				// POWERUP_SCOUT
+		"powerup_moderator",			// POWERUP_MODERATOR
+		"powerup_deadzone",				// POWERUP_DEADZONE
+		"powerup_team_ammo_regen",		// POWERUP_TEAM_AMMO_REGEN
+		"powerup_team_health_regen",	// POWERUP_TEAM_HEALTH_REGEN
+		"powerup_team_damage_mod",		// POWERUP_TEAM_DAMAGE_MOD
+		"powerup_adrenaline",			// POWERUP_ADRENALINE
+		"powerup_fc_armor_regen",		// POWERUP_FC_ARMOR_REGEN
+	};
+	static_assert( sizeof( powerupDefNames ) / sizeof( powerupDefNames[0] ) == POWERUP_MAX, "one def name per powerup type" );
+
+	if ( powerup < 0 || powerup >= POWERUP_MAX ) {
+		return "";
+	}
+	return powerupDefNames[ powerup ];
+}
+
+/*
+==============
+idPlayer::PowerupForContentType
+
+Translates a powerup number from content (a powerup def's "type") into the
+game's powerup type, through the def name "powerup_types" gives that number.
+The Awakening inserted Adrenaline at 12, moving DeadZone and the team
+powerups one along; retail's numbers translate to themselves. A number the
+content does not name, or names with a def this table does not know, is kept.
+==============
+*/
+int idPlayer::PowerupForContentType( int contentType ) {
+	const idDict *types = gameLocal.FindEntityDefDict( "powerup_types", false );
+	if ( types == NULL ) {
+		return contentType;
+	}
+	for ( int i = 0; i < types->GetNumKeyVals(); i++ ) {
+		const idKeyValue *kv = types->GetKeyVal( i );
+		if ( atoi( kv->GetValue() ) != contentType ) {
+			continue;
+		}
+		for ( int powerup = 0; powerup < POWERUP_MAX; powerup++ ) {
+			if ( !kv->GetKey().Icmp( GetPowerupDefName( powerup ) ) ) {
+				return powerup;
+			}
+		}
+		break;
+	}
+	return contentType;
+}
+
+/*
+==============
 idPlayer::GetPowerupDef
 
 Returns the powerup dictionary for the given powerup index.  The dictionary is cached to ensure a
@@ -15300,6 +15420,12 @@ const idDeclEntityDef* idPlayer::GetPowerupDef ( int powerupIndex ) {
 	int			  i;
 	int			  num;
 	
+	if ( cachedPowerupDefs[powerupIndex] ) {
+		return cachedPowerupDefs[powerupIndex];
+	}
+
+	// the def named for the type, whatever number the content gives it
+	cachedPowerupDefs[powerupIndex] = gameLocal.FindEntityDef( GetPowerupDefName( powerupIndex ), false );
 	if ( cachedPowerupDefs[powerupIndex] ) {
 		return cachedPowerupDefs[powerupIndex];
 	}

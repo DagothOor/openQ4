@@ -144,7 +144,12 @@ enum {
 	POWERUP_TEAM_AMMO_REGEN,
 	POWERUP_TEAM_HEALTH_REGEN,
 	POWERUP_TEAM_DAMAGE_MOD,
-	
+
+	// Quake 4: The Awakening's powerups, appended so every type above keeps its
+	// number (content numbers them its own way: idPlayer::PowerupForContentType)
+	POWERUP_ADRENALINE,
+	POWERUP_FC_ARMOR_REGEN,
+
 	POWERUP_MAX
 };
 
@@ -363,6 +368,7 @@ public:
 	int						nextHealthPulse;	// time when health will tick down
 	int						nextAmmoRegenPulse[ MAX_AMMO ];	// time when ammo will regenerate
 	int						nextArmorPulse;		// time when armor will tick down
+	int						adrenalineHealthDrain;	// health Adrenaline takes back each pulse (MP only, not saved)
 	bool					hiddenWeapon;		// if the weapon is hidden ( in noWeapons maps )
 
 	// mp stuff
@@ -591,6 +597,8 @@ public:
 	// Helper methods to retrieving dictionaries
 	const idDeclEntityDef*	GetWeaponDef				( int weaponIndex );
 	const idDeclEntityDef*	GetPowerupDef				( int powerupIndex );
+	static const char*		GetPowerupDefName			( int powerup );
+	static int				PowerupForContentType		( int contentType );
 
 	// Weapons
 	bool					GiveWeaponMods				( int mods );

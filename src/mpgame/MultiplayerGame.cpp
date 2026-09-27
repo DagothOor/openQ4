@@ -20985,7 +20985,7 @@ idMultiplayerGame::WriteStartState
 		if ( ( withLocalClient || i != clientNum ) && ent && ent->IsType( idPlayer::GetClassType() ) ) {
 // RAVEN END
 			msg.WriteShort( i );
-			msg.WriteShort( static_cast< idPlayer * >( ent )->inventory.powerups );
+			msg.WriteBits( static_cast< idPlayer * >( ent )->inventory.powerups, POWERUP_MAX );
 			msg.WriteBits( ent->GetInstance(), ASYNC_PLAYER_INSTANCE_BITS );
 			msg.WriteBits( static_cast< idPlayer * >( ent )->spectating, 1 );
 		}
@@ -21058,7 +21058,7 @@ void idMultiplayerGame::ClientReadStartState( const idBitMsg &msg ) {
 // jnewquist: Use accessor for static class type 
 		assert( gameLocal.entities[ client ] && gameLocal.entities[ client ]->IsType( idPlayer::GetClassType() ) );
 // RAVEN END
-		powerup = msg.ReadShort();
+		powerup = msg.ReadBits( POWERUP_MAX );
 
 		int instance = ( msg.ReadBits( ASYNC_PLAYER_INSTANCE_BITS ) );
 		if ( instance < 0 || instance >= MAX_INSTANCES ) {
