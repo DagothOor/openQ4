@@ -733,7 +733,7 @@ jobs:
             exit 1
           fi
           if ! grep -F "Selected game module: logical='game_sp'" "${layer_console}" \
-            | grep -Fq "/openQ4.app/Contents/Frameworks/q4xbase/game-sp_universal2.dylib'"; then
+            | grep -F "/openQ4.app/Contents/Frameworks/q4xbase/game-sp_universal2.dylib'" >/dev/null; then
             echo "Universal2 app q4xbase smoke did not load the layer's own game module."
             tail -n 160 "${layer_console}" || true
             exit 1
