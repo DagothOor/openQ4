@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "id": "awakening",
+  "gameDir": "q4xbase",
+  "sources": {
+    "shared": "src/shared",
+    "game": "src/game",
+    "mpgame": "src/mpgame"
+  },
+  "mod": {
+    "name": "Quake 4: The Awakening",
+    "version": "0.1.0",
+    "releaseDate": "2026-09-26",
+    "website": "https://github.com/themuffinator/openQ4-game-awakening",
+    "author": "DarkMatter Productions"
+  }
+}
