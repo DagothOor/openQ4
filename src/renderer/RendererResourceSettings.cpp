@@ -12,6 +12,7 @@
 #endif
 #include <array>
 #include <atomic>
+#include <cstring>
 #include <mutex>
 #include <memory>
 #include <thread>

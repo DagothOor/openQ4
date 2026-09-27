@@ -12,6 +12,7 @@
 #undef ID_INLINE
 #endif
 #include <algorithm>
+#include <cstring>
 #include <set>
 #include <tuple>
 
