@@ -347,12 +347,11 @@ def main():
     assert create.index("VK_Device_RequestedSwapInterval()") < create.index("VK_Device_SelectPresentMode(")
     assert "R_IsRecoverableRendererRestart() || vkCtx.strictSwapInterval" in create
     assert create.index("VK_Device_CreateDepthImages()") < create.index("VK_Device_RecordSwapInterval( requestedInterval )")
-    sdk = Path(os.environ.get("VULKAN_SDK", ""))
-    includes = [sdk / "Include", sdk / "include", Path("/usr/include"),
-                *sorted((ROOT / "subprojects").glob("SDL3-*/src/video/khronos"))]
-    include = next((path for path in includes if (path / "vulkan/vulkan_core.h").is_file()), None)
-    if include is None:
-        raise RuntimeError("Vulkan headers are required (VULKAN_SDK or configured SDL3 subproject)")
+    # renderer-vk compiles against the vendored SDK headers, which every
+    # checkout has before Meson provisions SDL3 or any system SDK is installed.
+    include = ROOT / "src/external/vulkan/include"
+    if not (include / "vulkan/vulkan_core.h").is_file():
+        raise RuntimeError(f"Vendored Vulkan headers are missing: {include}")
     compiler = next((path for name in ("clang++", "g++", "c++") if (path := shutil.which(name))), None)
     if compiler is None:
         raise RuntimeError("a C++ compiler is required")
