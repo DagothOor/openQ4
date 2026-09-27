@@ -650,6 +650,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         (root / "tools" / "tests" / 'ui_choice_scroll_interaction.py', ['--mutations']),
         (root / "tools" / "tests" / 'ui_document_edit.py', ['--mutations']),
         (root / "tools" / "tests" / 'ui_popup_placement.py', ['--mutations']),
+        (root / "tools" / "tests" / 'gui_state_debug_log_contract.py', ['--mutations']),
         (root / "tools" / "tests" / 'ui_text_owner.py', []),
         (root / "tools" / "tests" / 'ui_system_settings_host.py', []),
         (root / "tools" / "tests" / 'ui_settings_service.py', []),

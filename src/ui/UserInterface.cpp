@@ -1220,14 +1220,16 @@ void idUserInterfaceLocal::DeleteStateVar( const char *varName ) {
 }
 
 void idUserInterfaceLocal::SetStateString( const char *varName, const char *value ) {
-	const char *oldValue = state.GetString( varName, "" );
-	state.Set( varName, value );
+	// Log before storing: Set frees the pooled old string once nothing else
+	// shares it, and the caller's pointers may point into that string too.
 	if ( gui_debugScript.GetInteger() > 3 ) {
+		const char *oldValue = state.GetString( varName, "" );
 		const char *newValue = value ? value : "";
 		if ( idStr::Icmp( oldValue, newValue ) != 0 ) {
 			common->Printf( "GUI: state %s = \"%s\" (was \"%s\") gui=%s\n", varName, newValue, oldValue, source.c_str() );
 		}
 	}
+	state.Set( varName, value );
 }
 
 void idUserInterfaceLocal::SetStateBool( const char *varName, const bool value ) {

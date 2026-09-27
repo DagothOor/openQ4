@@ -107,6 +107,7 @@ jobs:
             tools/tests/generate_file_memory_test.py \
             tools/tests/gui_clipping_contract.py \
             tools/tests/gui_transition_operand_contract.py \
+            tools/tests/gui_state_debug_log_contract.py \
             tools/tests/list_window_selection_contract.py \
             tools/tests/mp_browser_smoke.py \
             tools/tests/mp_duel_queue_smoke.py \
@@ -447,6 +448,7 @@ jobs:
           python tools/tests/filesystem_find_file_contract.py
           python tools/tests/gui_clipping_contract.py
           python tools/tests/gui_transition_operand_contract.py --mutations
+          python tools/tests/gui_state_debug_log_contract.py --mutations
           python tools/tests/list_window_selection_contract.py
           python tools/tests/parser_include_paths_contract.py
           python tools/tests/server_browser_contract.py
