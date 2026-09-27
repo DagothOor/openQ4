@@ -602,6 +602,8 @@ public:
 	void					AddFreeze						( float amount );
 	void					FreezeSolid						( int location );
 	bool					IsFrozenSolid					( void ) const;
+							// "onlyTarget": the only entities this AI may take as an enemy
+	bool					IsAllowedTarget					( const idEntity *ent ) const;
 
 	void					InitNonPersistentSpawnArgs		( void );	
 
@@ -885,6 +887,10 @@ public:
 	void					SetFreezeFactor					( float factor );
 	void					SetFreezeOverlay				( const char *material );
 	void					UpdateFreeze					( void );
+
+	// "onlyTarget" names, re-read with the other non-persistent spawn args on restore
+	idStrList				onlyTargets;
+	bool					onlyTargetSubstring;
 
 	rvPlaybackDriver		mPlayback;
 	rvPlaybackDriver		mLookPlayback;

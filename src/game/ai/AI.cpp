@@ -741,6 +741,15 @@ void idAI::InitNonPersistentSpawnArgs ( void ) {
 	combat.tacticalMaskUpdate = 0;
 		
 	enemy.smoothVelocityRate = spawnArgs.GetFloat ( "smoothVelocityRate", "0.1" );
+
+	// "onlyTarget", "onlyTarget2", ...: the only entities this AI may take as an enemy
+	onlyTargets.Clear();
+	for ( const idKeyValue *kv = spawnArgs.MatchPrefix( "onlyTarget" ); kv; kv = spawnArgs.MatchPrefix( "onlyTarget", kv ) ) {
+		if ( kv->GetValue().Length() ) {
+			onlyTargets.Append( kv->GetValue() );
+		}
+	}
+	onlyTargetSubstring = spawnArgs.GetBool( "subStringOnlyTarget" );
 }
 
 /*
@@ -1942,6 +1951,28 @@ void idAI::UpdateFreeze ( void ) {
 
 /*
 =====================
+idAI::IsAllowedTarget
+
+"onlyTarget" (and "onlyTarget2", ...) names the only entities an AI may take as
+an enemy, for scripted fights; with "subStringOnlyTarget" a name only has to
+begin with one of them. Without the keys anything goes.
+=====================
+*/
+bool idAI::IsAllowedTarget( const idEntity *ent ) const {
+	if ( ent == NULL || onlyTargets.Num() == 0 ) {
+		return true;
+	}
+	for ( int i = 0; i < onlyTargets.Num(); i++ ) {
+		const idStr &name = onlyTargets[ i ];
+		if ( onlyTargetSubstring ? !ent->name.Icmpn( name, name.Length() ) : !ent->name.Icmp( name ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/*
+=====================
 idAI::Pain
 =====================
 */
@@ -2599,6 +2630,10 @@ bool idAI::SetEnemy( idEntity *newEnemy ) {
 	// Cant set enemy if the enemy is dead or has no target set
 	if ( newEnemy ) {
 		if ( newEnemy->health <= 0 || newEnemy->fl.notarget ) {
+			return false;
+		}
+		// nor one a scripted fight does not name ("onlyTarget")
+		if ( !IsAllowedTarget( newEnemy ) ) {
 			return false;
 		}
 	}
@@ -4590,6 +4625,11 @@ idEntity *idAI::FindEnemy ( bool inFov, bool forceNearest, float maxDistSqr ){
 	for( actor = aiManager.GetEnemyTeam ( (aiTeam_t)team ); actor; actor = actor->teamNode.Next() ) {
 		// Skip hidden enemies and enemies that cant be targeted
 		if( actor->fl.notarget || actor->fl.isDormant || ( actor->IsHidden ( ) && !actor->IsInVehicle() ) ) {
+			continue;
+		}
+
+		// a scripted fight names its only targets ("onlyTarget")
+		if ( !IsAllowedTarget( actor ) ) {
 			continue;
 		}
 
