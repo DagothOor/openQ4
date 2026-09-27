@@ -1525,6 +1525,7 @@ public:
 	static void				Path_f( const idCmdArgs &args );
 	static void				TouchFile_f( const idCmdArgs &args );
 	static void				TouchFileList_f( const idCmdArgs &args );
+	static void				MapLevelshot_f( const idCmdArgs &args );
 
 private:
 	friend dword 			BackgroundDownloadThread( void *parms );
@@ -4867,6 +4868,22 @@ void idFileSystemLocal::TouchFile_f( const idCmdArgs &args ) {
 
 /*
 ============
+idFileSystemLocal::MapLevelshot_f
+============
+*/
+void idFileSystemLocal::MapLevelshot_f( const idCmdArgs &args ) {
+	if ( args.Argc() != 2 ) {
+		common->Printf( "Usage: openq4_mapLevelshot <map>\n" );
+		return;
+	}
+
+	char levelshot[ MAX_STRING_CHARS ];
+	fileSystemLocal.FindMapScreenshot( args.Argv( 1 ), levelshot, sizeof( levelshot ) );
+	common->Printf( "MAP_LEVELSHOT %s %s\n", args.Argv( 1 ), levelshot );
+}
+
+/*
+============
 idFileSystemLocal::TouchFileList_f
 
 Takes a text file and touches every file in it, use one file per line.
@@ -5799,6 +5816,7 @@ void idFileSystemLocal::Startup( void ) {
 	cmdSystem->AddCommand( "path", Path_f, CMD_FL_SYSTEM, "lists search paths" );
 	cmdSystem->AddCommand( "touchFile", TouchFile_f, CMD_FL_SYSTEM, "touches a file" );
 	cmdSystem->AddCommand( "touchFileList", TouchFileList_f, CMD_FL_SYSTEM, "touches a list of files" );
+	cmdSystem->AddCommand( "openq4_mapLevelshot", MapLevelshot_f, CMD_FL_SYSTEM, "prints the levelshot the menus show for a map" );
 
 	// print the current search paths
 	Path_f( idCmdArgs() );
@@ -6383,6 +6401,7 @@ void idFileSystemLocal::Shutdown( bool reloading ) {
 	cmdSystem->RemoveCommand( "dir" );
 	cmdSystem->RemoveCommand( "dirtree" );
 	cmdSystem->RemoveCommand( "touchFile" );
+	cmdSystem->RemoveCommand( "openq4_mapLevelshot" );
 
 	mapDict.Clear();
 }
@@ -7970,11 +7989,32 @@ const idDict * idFileSystemLocal::GetMapDecl( int idecl ) {
 /*
 ===============
 idFileSystemLocal::FindMapScreenshot
+
+The levelshot the menus show for a map. A mapDef's "loadimage" comes first, as on
+the map's loading screen: the Awakening's CTF maps have no levelshot of their own
+name and reuse retail's through it. Otherwise it is
+gfx/guis/loadscreens/<map>.tga, one extracted from an addon, or the generic one.
 ===============
 */
 void idFileSystemLocal::FindMapScreenshot( const char *path, char *buf, int len ) {
 	idFile	*file;
 	idStr	mapname = path;
+
+	// a mapDef is named by its map's path under maps/, without the extension
+	idStr declName = path;
+	declName.BackSlashesToSlashes();
+	declName.StripFileExtension();
+	if ( !declName.Icmpn( "maps/", 5 ) ) {
+		declName = declName.Right( declName.Length() - 5 );
+	}
+	const idDeclEntityDef *mapDef = static_cast<const idDeclEntityDef *>( declManager->FindType( DECL_MAPDEF, declName.c_str(), false ) );
+	if ( mapDef != NULL ) {
+		const char *loadImage = mapDef->dict.GetString( "loadimage" );
+		if ( loadImage[ 0 ] != '\0' ) {
+			idStr::Copynz( buf, loadImage, len );
+			return;
+		}
+	}
 
 	mapname.StripPath();
 	mapname.StripFileExtension();
