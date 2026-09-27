@@ -8,6 +8,8 @@
 #include "../framework/CVarCompletionSnapshot.h"
 #include "../bse/BSEInterface.h"
 
+#include <cstring>
+
 /*
 ===============================================================================
 
