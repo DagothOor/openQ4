@@ -503,7 +503,17 @@ void idCollisionModelManagerLocal::ParsePolygons( Lexer *src, idCollisionModelLo
 				src->Parse1DMatrix( 2, p->texBounds[0].ToFloatPtr() );
 				src->Parse1DMatrix( 2, p->texBounds[1].ToFloatPtr() );
 				src->Parse1DMatrix( 2, p->texBounds[2].ToFloatPtr() );
-				p->primitiveNum = src->ParseInt();
+				// CM "3" ends the record with the primitive number. CM "2" (the
+				// Awakening expansion's model clip hulls) ends it at the texture
+				// bounds, so an unconditional read would swallow the next
+				// polygon's edge count and desync the rest of the block.
+				if ( src->ReadTokenOnLine( &token ) ) {
+					if ( token.type == TT_NUMBER ) {
+						p->primitiveNum = token.GetIntValue();
+					} else {
+						src->UnreadToken( &token );
+					}
+				}
 			} else {
 				src->UnreadToken( &token );
 			}
@@ -714,7 +724,10 @@ bool idCollisionModelManagerLocal::LoadCollisionModelFile( const char *name, uns
 		return false;
 	}
 
-	if ( !src->ReadToken( &token ) || ( token != CM_FILEVERSION && token.Icmp( "3" ) != 0 && token.Icmp( "3.00" ) != 0 ) ) {
+	// "2" is the model clip-hull revision the Awakening expansion was authored
+	// with; ParsePolygons reads its shorter polygon records.
+	if ( !src->ReadToken( &token ) || ( token != CM_FILEVERSION && token.Icmp( "3" ) != 0 && token.Icmp( "3.00" ) != 0 &&
+		 token.Icmp( "2" ) != 0 && token.Icmp( "2.00" ) != 0 ) ) {
 		common->Warning( "%s has version %s instead of %s", fileName.c_str(), token.c_str(), CM_FILEVERSION );
 		delete src;
 		return false;

@@ -769,6 +769,14 @@ static bool R_DDSComputeLevelLayout( int fileSize, int dataOffset, uint32 width,
 	return true;
 }
 
+// DXT3 files are left to LoadDDS (see there), so R_ParseDDSFileInfo rejects them
+static bool R_DDSFileIsDXT3( const byte *file, int fileSize ) {
+	return fileSize >= DDS_HEADER_BYTES &&
+		R_ReadLittleUInt32( file + 0 ) == R_MakeFourCC( 'D', 'D', 'S', ' ' ) &&
+		( R_ReadLittleUInt32( file + 80 ) & DDS_PIXELFORMAT_FOURCC ) != 0 &&
+		R_ReadLittleUInt32( file + 84 ) == R_MakeFourCC( 'D', 'X', 'T', '3' );
+}
+
 static bool R_ParseDDSFileInfo( const byte *header, int headerBytes, int fileSize, ddsFileInfo_t &info ) {
 	memset( &info, 0, sizeof( info ) );
 	info.format = DDS_STORED_FORMAT_INVALID;
@@ -1325,7 +1333,10 @@ bool R_LoadPrecompressedDDS( const char *cname, idBinaryImage &image, ID_TIME_T 
 	do {
 		ddsFileInfo_t info;
 		if ( !R_ParseDDSFileInfo( buffer, fileSize, fileSize, info ) ) {
-			idLib::Warning( "Image file '%s' has an invalid or incomplete supported DDS layout", name.c_str() );
+			// DXT3 is valid but never uploaded as it is: LoadDDS decodes it
+			if ( !R_DDSFileIsDXT3( buffer, fileSize ) ) {
+				idLib::Warning( "Image file '%s' has an invalid or incomplete supported DDS layout", name.c_str() );
+			}
 			break;
 		}
 
@@ -1397,6 +1408,32 @@ bool R_LoadPrecompressedDDS( const char *cname, idBinaryImage &image, ID_TIME_T 
 	} while ( false );
 
 	return loaded;
+}
+
+/*
+=============
+R_WriteDXT3Alpha
+
+DXT3 (BC2) blocks carry the same colour half as DXT5 ones, so LoadDDS decodes
+their colour as DXT5 and then writes the real alpha over what that decode made
+of the first eight bytes: sixteen explicit 4-bit values, row by row, low nibble
+first.
+=============
+*/
+static void R_WriteDXT3Alpha( const byte *blocks, byte *rgba, const int paddedWidth, const int paddedHeight ) {
+	const int blocksWide = paddedWidth / 4;
+	const int blocksHigh = paddedHeight / 4;
+	for ( int by = 0; by < blocksHigh; by++ ) {
+		for ( int bx = 0; bx < blocksWide; bx++ ) {
+			const byte *block = blocks + ( by * blocksWide + bx ) * 16;
+			for ( int texel = 0; texel < 16; texel++ ) {
+				const int nibble = ( block[ texel >> 1 ] >> ( ( texel & 1 ) * 4 ) ) & 0x0f;
+				const int x = bx * 4 + ( texel & 3 );
+				const int y = by * 4 + ( texel >> 2 );
+				rgba[ ( y * paddedWidth + x ) * 4 + 3 ] = (byte)( nibble * 17 );
+			}
+		}
+	}
 }
 
 /*
@@ -1501,6 +1538,34 @@ bool R_ImageDDS_RunSelfTest() {
 		return false;
 	}
 
+	// DXT3 never goes up as it is: Quake 4's font atlases are DXT3 and have to
+	// load from the .tga beside each one. LoadDDS decodes DXT3 instead.
+	R_WriteLittleUInt32( header + 84, R_MakeFourCC( 'D', 'X', 'T', '3' ) );
+	if ( R_ParseDDSFileInfo( header, DDS_HEADER_BYTES, completeRXGBFileSize, info ) ) {
+		common->Warning( "Image DDS self-test failed: DXT3 data was accepted for direct upload" );
+		return false;
+	}
+
+	// one DXT3 block: alphas 0 to 15, row by row, over solid red
+	byte dxt3Block[16];
+	for ( int texel = 0; texel < 16; texel += 2 ) {
+		dxt3Block[ texel >> 1 ] = (byte)( texel | ( ( texel + 1 ) << 4 ) );
+	}
+	dxt3Block[8] = 0x00;	// color0 0xf800, red
+	dxt3Block[9] = 0xf8;
+	memset( dxt3Block + 10, 0, 6 );	// color1 black, every index color0
+	byte dxt3Rgba[4 * 4 * 4];
+	idDxtDecoder dxt3Decoder;
+	dxt3Decoder.DecompressImageDXT5( dxt3Block, dxt3Rgba, 4, 4 );
+	R_WriteDXT3Alpha( dxt3Block, dxt3Rgba, 4, 4 );
+	for ( int texel = 0; texel < 16; texel++ ) {
+		const byte *rgba = dxt3Rgba + texel * 4;
+		if ( rgba[0] != 255 || rgba[1] != 0 || rgba[2] != 0 || rgba[3] != texel * 17 ) {
+			common->Warning( "Image DDS self-test failed: DXT3 texel %d decoded to %d %d %d %d", texel, rgba[0], rgba[1], rgba[2], rgba[3] );
+			return false;
+		}
+	}
+
 	common->Printf( "Image DDS self-test passed\n" );
 	return true;
 }
@@ -1508,6 +1573,12 @@ bool R_ImageDDS_RunSelfTest() {
 /*
 =============
 LoadDDS
+
+Decodes DXT1, DXT3, DXT5 and RXGB files on the CPU. DXT3 is only ever read
+here, never uploaded as it is: Quake 4 ships a DXT3 .dds beside the .tga of
+each font atlas, and those atlases must keep coming from the .tga (see
+idImage::DeriveOpts). A DXT3 file is used only when a material names it outright
+or nothing else by its name exists, as with the Awakening expansion's three.
 =============
 */
 static void LoadDDS( const char *name, byte **pic, int *width, int *height, ID_TIME_T *timestamp, bool decodeRXGBNormalMap ) {
@@ -1552,6 +1623,7 @@ static void LoadDDS( const char *name, byte **pic, int *width, int *height, ID_T
 	int blockSize = 0;
 	enum ddsCompression_t {
 		DDS_COMPRESSION_DXT1,
+		DDS_COMPRESSION_DXT3,
 		DDS_COMPRESSION_DXT5
 	} compression;
 	bool storedRXGBNormalMap = false;
@@ -1559,6 +1631,9 @@ static void LoadDDS( const char *name, byte **pic, int *width, int *height, ID_T
 	if ( fourCC == R_MakeFourCC( 'D', 'X', 'T', '1' ) ) {
 		blockSize = 8;
 		compression = DDS_COMPRESSION_DXT1;
+	} else if ( fourCC == R_MakeFourCC( 'D', 'X', 'T', '3' ) ) {
+		blockSize = 16;
+		compression = DDS_COMPRESSION_DXT3;
 	} else if ( fourCC == R_MakeFourCC( 'D', 'X', 'T', '5' ) ) {
 		blockSize = 16;
 		compression = DDS_COMPRESSION_DXT5;
@@ -1596,6 +1671,9 @@ static void LoadDDS( const char *name, byte **pic, int *width, int *height, ID_T
 	idDxtDecoder decoder;
 	if ( compression == DDS_COMPRESSION_DXT1 ) {
 		decoder.DecompressImageDXT1( buffer + dataOffset, decodedRgba, paddedWidth, paddedHeight );
+	} else if ( compression == DDS_COMPRESSION_DXT3 ) {
+		decoder.DecompressImageDXT5( buffer + dataOffset, decodedRgba, paddedWidth, paddedHeight );
+		R_WriteDXT3Alpha( buffer + dataOffset, decodedRgba, paddedWidth, paddedHeight );
 	} else if ( storedRXGBNormalMap || decodeRXGBNormalMap ) {
 		decoder.DecompressNormalMapDXT5( buffer + dataOffset, decodedRgba, paddedWidth, paddedHeight );
 	} else {
@@ -1739,6 +1817,13 @@ static void R_LoadImageInternal( const char *cname, byte **pic, int *width, int 
 		}
 	} else if ( ext == "jpg" ) {
 		LoadJPG( name.c_str(), pic, width, height, timestamp );
+		if ( ( pic && *pic == 0 ) || ( timestamp && *timestamp == -1 ) ) { //-V595
+			// the mirror of the .tga-to-.jpg fallback: the Awakening expansion's
+			// Valkaryne names its limb textures .jpg and ships them as .tga
+			name.StripFileExtension();
+			name.DefaultFileExtension( ".tga" );
+			LoadTGA( name.c_str(), pic, width, height, timestamp );
+		}
 		if ( ( pic && *pic == 0 ) || ( timestamp && *timestamp == -1 ) ) { //-V595
 			name.StripFileExtension();
 			name.DefaultFileExtension( ".dds" );

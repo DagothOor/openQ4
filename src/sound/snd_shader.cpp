@@ -86,8 +86,11 @@ static rvSoundShaderEditLocal localSoundShaderEdit;
 rvSoundShaderEdit* soundShaderEdit = &localSoundShaderEdit;
 
 static bool SND_IsMusicSamplePath( const idToken &token ) {
+	// retail keeps its score under sound/musical/; the Awakening expansion
+	// keeps its own under sound/music/
 	return token.IcmpPrefixPath( "sound/musical/" ) == 0 ||
-		token.IcmpPrefixPath( "sound/ambience/musical/" ) == 0;
+		token.IcmpPrefixPath( "sound/ambience/musical/" ) == 0 ||
+		token.IcmpPrefixPath( "sound/music/" ) == 0;
 }
 
 //typedef enum
