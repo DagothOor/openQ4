@@ -164,6 +164,7 @@ def main() -> int:
     stock_sp_maps = sorted({qualified.removeprefix("game/") for config in configs
                             if (qualified := value(config.get("args", []), "+map"))
                             and qualified.startswith("game/")
+                            and value(config["args"], "fs_game") == "baseoq4"
                             and value(config["args"], "r_renderApi") == "gl"})
     if opts.random_maps is not None:
         if opts.scenario:
