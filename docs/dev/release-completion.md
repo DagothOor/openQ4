@@ -359,8 +359,14 @@
   runs; a burning Strogg takes its damage once a second until it dies. The
   freeze gun slows and freezes enemies solid before they shatter, and the
   expansion's turrets track, tighten their aim and sweep as its maps expect.
-  Corpse pinning and the multiplayer buy menu, powerups and weapon groups
-  are still to come; see the [support plan](plans/q4x-awakening.md).
+  Corpse pinning is still to come; see the [support plan](plans/q4x-awakening.md).
+- [x] The expansion's multiplayer: its buy menu works (`sq_buy`, bound to `b`),
+  with its own prices and its new items: the core cannon (spike gun), fire
+  cannon (goob gun), freeze gun, the nine weapon mods (each for the weapon you
+  carry) and FC Armor Regen, a team special that builds armor past its maximum.
+  Its DeadZone tokens and team powerups keep working under its renumbered
+  powerup list, and Adrenaline lends up to 400 health that drains back over
+  its 40 seconds. Stock `baseoq4` buying, prices and powerups are unchanged.
 - [x] Engine support the expansion's content needed: mods on the retail base
   keep openQ4's runtime content, a mod's same-named declaration files no
   longer hide the retail definitions beside them (`decl_layerModFiles`),

@@ -68,6 +68,10 @@ Each is inert for stock content; the audit checked the retail defs for every key
 | `rvVehicleWeapon`: virtual `Fire`, `UpdateCursorGUI`, `Select`, `ProjectileLaunched`; a `convergence` key | Cockpit cannons |
 | `rvVehicle::SetFovOffset`, added to the driver's FOV | `riVehiclePartBoost` |
 | `damage <entity> <scale> [def]` console command | Headless testing |
+| Multiplayer powerups resolved by def name (`idPlayer::PowerupForContentType`), plus `POWERUP_ADRENALINE` and `POWERUP_FC_ARMOR_REGEN` | The expansion's `powerup_types` numbering |
+| `idBuyItemPrice` / `BUY_ITEM_PRICE`: prices a layer sets in code, ahead of `ItemCostConstants` | `src/mpgame/BuyPrices.cpp` |
+| `sq_buy` / `sq_buyMenu`, and the `canbuy_*` states on every buy-menu refresh | The expansion's `buymenu.gui` and `default.cfg` |
+| `openq4_reportMPWorld` also prints armor, credits and weapons (`MP_WORLD_INVENTORY`) | Headless multiplayer testing |
 
 ### Engine work in `openQ4`
 
@@ -112,11 +116,12 @@ Each is inert for stock content; the audit checked the retail defs for every key
 
 ### Multiplayer
 
-Boots and loads with the SP-shared classes. The items in Phase 3 remain.
+`q4xdm1` runs as a listen server in DM, Team DM and DeadZone with the SP-shared classes;
+the expansion's powerup numbering, its two new powerups and its buy menu work (Phase 3).
 
 ## Phases
 
-### Phase 1 — the campaign plays (this change)
+### Phase 1 — the campaign plays (done)
 
 Everything in the status table above, plus the engine work, the build, and the headless
 harness `.tmp/awakening/run_q4x.py` (local, untracked) used to boot each map.
@@ -147,20 +152,38 @@ harness `.tmp/awakening/run_q4x.py` (local, untracked) used to boot each map.
 ### Phase 3 — multiplayer
 
 - `"TeamDM"` accepted as `"Team DM"` in `maps.def`, in the game and in the engine's
-  create-server map list.
-- Powerups: the expansion inserted Adrenaline at type 12, which pushes DeadZone and the
-  team powerups one along, and added FC Armor Regen at 17. openQ4 should resolve a
-  powerup by its def name and append the two it lacks, keeping every existing index.
-- The buy menu. The expansion's `buymenu.gui` issues `sq_buy <item>` and reads 27
-  `canbuy_*` states (1 or 0), which its code fills from: `weapon_shotgun`,
-  `weapon_hyperblaster`, `weapon_grenadelauncher`, `weapon_nailgun`,
-  `weapon_rocketlauncher`, `weapon_railgun`, `weapon_lightninggun`, `weapon_spikegun`
-  (`canbuy_corecannon`), `weapon_goobgun` (`canbuy_firecannon`), `weapon_dmg`,
-  `weapon_freezegun`, the nine `wpmod_*` (a mod only with its weapon), the two armors,
-  `ammorefill`, and the team specials `ammo_regen`, `health_regen`, `damage_boost`,
-  `fc_armor_regen` (`canbuy_special0-3`, not in DM). Buys travel as usercmd impulses,
-  so the new items need free impulse numbers.
-- Weapon groups (`g_weaponGroup0..7`, `g_weaponPickupPriority`).
+  create-server map list (done).
+- **Powerups** (done, in `openQ4-game`'s multiplayer module). The expansion inserted
+  Adrenaline at 12 in its `powerup_types` def, which pushes DeadZone and the team powerups
+  one along, and added FC Armor Regen at 17. openQ4 keeps its own numbering and translates
+  a content number through the def name `powerup_types` gives it
+  (`idPlayer::PowerupForContentType`, `GetPowerupDefName`), so every retail number maps to
+  itself and the expansion's DeadZone tokens stay DeadZone tokens. The two new powerups are
+  appended (`POWERUP_ADRENALINE`, `POWERUP_FC_ARMOR_REGEN`); the powerup bits now travel as
+  `POWERUP_MAX` bits instead of a short.
+  - Adrenaline lends 400 health at once, less one second's share, and takes that share
+    back every second while health is at max or above; it ends when health falls below max
+    or the payback reaches 100. No map places it; `give adrenaline` works where its def exists.
+  - FC Armor Regen, the fourth team special on the buy menu, builds armor 5 every half
+    second up to 100 over max (capped at 255, the snapshot's byte) instead of letting it
+    tick down. It stays with its buyer when they die.
+- **The buy menu** (done). The expansion's `buymenu.gui` runs `sq_buy <item>` and reads 27
+  `canbuy_*` states; its `default.cfg` binds `sq_buyMenu`. Both names are the `buy` and
+  `buyMenu` commands, and the menu refresh fills retail's `buyStatus_*` states and the
+  expansion's `canbuy_*` states from one table (firing retail's `update_buymenu` and the
+  expansion's `redraw`). The expansion kept its prices in code, so the layer registers them
+  (`BUY_ITEM_PRICE`, `src/mpgame/BuyPrices.cpp`), ahead of the content's
+  `ItemCostConstants`. An item is for sale only when something prices it: that puts the
+  nine weapon mods (each only with its weapon, once) and FC Armor Regen (team games) on
+  sale in `q4xbase` and keeps them off it in `baseoq4`. A buy travels as impulse
+  `IMPULSE_100` plus its index in one table; the Awakening's items fill the numbers retail
+  left unused and the goob gun takes 128. The expansion's own check for the spike gun
+  scope looked for a `weapon_scope` that does not exist, so the scope never sold there;
+  openQ4 reads a mod's weapon from its def, and it does.
+- Weapon groups (optional, not done). `g_weaponGroup0..7` (impulse lists a key cycles
+  through) and `g_weaponPickupPriority` (the auto-switch order on pickup) are player
+  preferences; the content only sets the priority in `default.cfg`, which is harmless
+  without them.
 
 ### Phase 4 — latent content
 
@@ -196,3 +219,10 @@ Recorded because each one changed what "support" means here.
   once a second on an AI.
 - Every campaign map must load, spawn its entities without class errors and run to its
   after-load quit.
+- `run_q4x.py mp/q4xdm1 --mp "Team DM"` starts a listen server; with `net_allowCheats`,
+  `addbot` and `serverForceReady` the match goes live, and `openq4_reportMPWorld player1`
+  reads the player back. `.tmp/awakening/mp_phase3_test.py` (local) picks up a spawned
+  Adrenaline, buys the spike gun, its scope and FC Armor Regen, and picks up a DeadZone
+  token; `mp_stock_buy_test.py` checks that `baseoq4` buying is unchanged. Game time trails
+  the real-time waits in a hidden run, so waits are generous and checks look for steps,
+  not totals.
