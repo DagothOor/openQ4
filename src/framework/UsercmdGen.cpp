@@ -201,6 +201,7 @@ userCmdString_t	userCmdStrings[] = {
 	{ "_showScores",	UB_SHOWSCORES },
 	{ "_mlook",			UB_MLOOK },
 	{ "_weaponWheel",	UB_WEAPONWHEEL },
+	{ "_altattack",		UB_ZOOM },		// the Awakening's name for zoom / alternate fire
 	{ "_ingameStats",	UB_BUTTON5 },
 	{ "_voiceChat",		UB_BUTTON6 },
 	{ "_tourney",		UB_BUTTON7 },

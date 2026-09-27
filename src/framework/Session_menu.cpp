@@ -969,6 +969,28 @@ static void ApplyMainMenuCustomDisplaySize( idUserInterface *gui ) {
 
 /*
 =================
+MapDeclSupports
+
+A map names each gametype it supports as a boolean key. Some spell the name
+without its spaces (the Awakening's maps.def has "TeamDM" for "Team DM"), so
+both spellings count.
+=================
+*/
+static bool MapDeclSupports( const idDict *dict, const char *gameType ) {
+	if ( dict->GetBool( gameType ) ) {
+		return true;
+	}
+	idStr compact;
+	for ( const char *c = gameType; *c; c++ ) {
+		if ( *c != ' ' ) {
+			compact.Append( *c );
+		}
+	}
+	return compact.Length() != idStr::Length( gameType ) && dict->GetBool( compact );
+}
+
+/*
+=================
 MapSupportsStartServerGameType
 =================
 */
@@ -979,28 +1001,28 @@ static bool MapSupportsStartServerGameType( const idDict *dict, const char *game
 
 	// Match the multiplayer vote/admin behavior so DM and Team DM can use any standard MP map type.
 	if ( !idStr::Icmp( gameType, "DM" ) || !idStr::Icmp( gameType, "Team DM" ) ) {
-		return dict->GetBool( "DM" ) ||
-			dict->GetBool( "Team DM" ) ||
-			dict->GetBool( "CTF" ) ||
-			dict->GetBool( "Tourney" ) ||
-			dict->GetBool( "Arena CTF" );
+		return MapDeclSupports( dict, "DM" ) ||
+			MapDeclSupports( dict, "Team DM" ) ||
+			MapDeclSupports( dict, "CTF" ) ||
+			MapDeclSupports( dict, "Tourney" ) ||
+			MapDeclSupports( dict, "Arena CTF" );
 	}
 	if ( !idStr::Icmp( gameType, "Duel" ) ) {
-		return dict->GetBool( "DM" );
+		return MapDeclSupports( dict, "DM" );
 	}
 	if ( !idStr::Icmp( gameType, "Clan Arena" ) ||
 		!idStr::Icmp( gameType, "Freeze Tag" ) ||
 		!idStr::Icmp( gameType, "Red Rover" ) ) {
-		return dict->GetBool( "Team DM" );
+		return MapDeclSupports( dict, "Team DM" );
 	}
 	if ( !idStr::Icmp( gameType, "One Flag CTF" ) ) {
-		return dict->GetBool( "CTF" );
+		return MapDeclSupports( dict, "CTF" );
 	}
 	if ( !idStr::Icmp( gameType, "Arena One Flag CTF" ) ) {
-		return dict->GetBool( "Arena CTF" );
+		return MapDeclSupports( dict, "Arena CTF" );
 	}
 
-	return dict->GetBool( gameType );
+	return MapDeclSupports( dict, gameType );
 }
 
 /*
@@ -2640,6 +2662,48 @@ void idSessionLocal::HandleMainMenuCommands( const char *menuCommand ) {
 					optionIndex++;
 				}
 				gui->SetStateInt( stateName, matchIndex );
+			}
+			continue;
+		}
+
+		// Retail menu commands that copy a cvar into a gui state and back. The
+		// stock and Awakening main menus use the getters to seed their
+		// crosshair size and colour controls.
+		if ( !idStr::Icmp( cmd, "GetCVarValue" ) ) {
+			idUserInterface *gui = guiActive ? guiActive : guiMainMenu;
+			if ( args.Argc() - icmd >= 2 ) {
+				const char *cvarName = args.Argv( icmd++ );
+				const char *stateName = args.Argv( icmd++ );
+				if ( gui != NULL ) {
+					gui->SetStateString( stateName, cvarSystem->GetCVarString( cvarName ) );
+				}
+			}
+			continue;
+		}
+
+		if ( !idStr::Icmp( cmd, "SetCVarValue" ) ) {
+			idUserInterface *gui = guiActive ? guiActive : guiMainMenu;
+			if ( args.Argc() - icmd >= 2 ) {
+				const char *stateName = args.Argv( icmd++ );
+				const char *cvarName = args.Argv( icmd++ );
+				if ( gui != NULL ) {
+					cvarSystem->SetCVarString( cvarName, gui->State().GetString( stateName ) );
+				}
+			}
+			continue;
+		}
+
+		if ( !idStr::Icmp( cmd, "GetVecCVarValue" ) ) {
+			idUserInterface *gui = guiActive ? guiActive : guiMainMenu;
+			if ( args.Argc() - icmd >= 3 ) {
+				const char *cvarName = args.Argv( icmd++ );
+				const int component = atoi( args.Argv( icmd++ ) );
+				const char *stateName = args.Argv( icmd++ );
+				if ( gui != NULL && component >= 0 && component < 4 ) {
+					idVec4 value( 0.0f, 0.0f, 0.0f, 0.0f );
+					sscanf( cvarSystem->GetCVarString( cvarName ), "%f %f %f %f", &value.x, &value.y, &value.z, &value.w );
+					gui->SetStateString( stateName, va( "%f", value[ component ] ) );
+				}
 			}
 			continue;
 		}
