@@ -729,6 +729,9 @@ def validate_validation_wiring() -> None:
         "renderer_gameplay_benchmark.py",
         "renderer_milestone_d_acceptance.py",
         "renderer_milestone_d_fixture.py",
+        # Imported by the UI harnesses that compile wrap sources; the workflows
+        # py_compile it, and it is exercised through those harnesses.
+        "wrap_sources.py",
     }
     discovered_tests = sorted(path.name for path in (ROOT / "tools" / "tests").glob("*.py"))
     if not discovered_tests:

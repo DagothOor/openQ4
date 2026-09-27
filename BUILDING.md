@@ -245,6 +245,8 @@ powershell -ExecutionPolicy Bypass -File tools/validation/validate_push.ps1
 bash tools/validation/validate_push.sh
 ```
 
+The Python checks run before Meson setup, and a few native UI checks compile the jsoncpp and libtess2 wrap sources. On a fresh checkout they fetch those with `meson subprojects download` (`tools/tests/wrap_sources.py`), so Meson must be installed even for `--skip-build` runs.
+
 ### PR Validation
 
 Use this before opening or updating a pull request. It performs a clean release-style debug build in `.tmp/validation/pr-builddir`, stages `.install/`, and verifies the staged runtime payload contains the expected engine executables, SP/MP game modules, required `baseoq4` files, Windows diagnostic symbols when applicable, and no root-level build-only linker artifacts.

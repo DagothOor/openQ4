@@ -55,6 +55,11 @@ jobs:
       - name: Install release documentation dependency
         run: python -m pip install markdown
 
+      # Native UI harnesses compile jsoncpp/libtess2 wrap sources, which a fresh
+      # checkout lacks until Meson provisions them (tools/tests/wrap_sources.py).
+      - name: Install Meson for wrap-sourced test harnesses
+        run: python -m pip install meson
+
       - name: Check validation script syntax
         shell: bash
         run: |
@@ -368,6 +373,7 @@ jobs:
             tools/tests/ui_system_display.py \
             tools/tests/ui_settings_display_service.py \
             tools/tests/ui_display_settings_fixture.py \
+            tools/tests/wrap_sources.py \
             tools/tests/ui_generated_font_precache.py \
             tools/tests/ui_capture_display_settings.py \
             tools/tests/ui_capture_settings_recovery.py \

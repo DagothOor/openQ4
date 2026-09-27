@@ -16,6 +16,7 @@ import sys
 import tempfile
 
 from filesystem_case_segments import function_body
+from wrap_sources import wrap_source
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -47,7 +48,7 @@ def main():
         'src/idlib/Str.h', 'src/idlib/NumericString.h', 'src/sys/WindowSettings.h',
         'src/renderer/RendererModule.h', 'src/renderer/RenderModuleAPI.h', 'src/renderer/DisplayPresentation.h',
         'src/renderer/RenderSystem.cpp', 'src/renderer/Vulkan/vk_GuiExecutor.cpp', 'src/renderer/OpenGL/gl_ContextSDL3.cpp')]
-    jsoncpp = r / 'subprojects/jsoncpp-1.9.6'
+    jsoncpp = wrap_source('jsoncpp', r)
     paths += [p for folder in ('include', 'src/lib_json') for p in (jsoncpp / folder).rglob('*')
               if p.is_file() and p.suffix in ('.h', '.cpp', '.inl')]
     sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()

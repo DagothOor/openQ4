@@ -3,12 +3,13 @@
 from pathlib import Path
 import argparse,hashlib,json,os,subprocess,tempfile,sys
 sys.stdout.reconfigure(encoding="utf-8",errors="replace")
+from wrap_sources import wrap_source
 ROOT=Path(__file__).resolve().parents[2]
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def main():
  a=argparse.ArgumentParser(description=__doc__);a.add_argument('--repository',type=Path,default=ROOT);a.add_argument('--compiler',default='clang++');a.add_argument('--msvc',action='store_true');a.add_argument('--sanitize',action='store_true');a.add_argument('--mutations',action='store_true');args=a.parse_args()
- repository=args.repository.resolve();out=Path(tempfile.mkdtemp(prefix='document-edit-',dir=ROOT/'.tmp'));core=ROOT/'src/ui/retained';jsonroot=repository/'subprojects/jsoncpp-1.9.6'
- tessroot=repository/'subprojects/libtess2-8dbd6483e920311a58c9af10a10beb278efebc36'
+ repository=args.repository.resolve();out=Path(tempfile.mkdtemp(prefix='document-edit-',dir=ROOT/'.tmp'));core=ROOT/'src/ui/retained';jsonroot=wrap_source('jsoncpp',repository)
+ tessroot=wrap_source('libtess2',repository)
  env={**os.environ,'TEMP':str(out),'TMP':str(out),'TMPDIR':str(out)}
  sources=[core/(name+'.cpp') for name in ['Document','DocumentEdit','State','Vector','Motion','Presentation']]+[jsonroot/'src/lib_json'/name for name in ['json_reader.cpp','json_value.cpp','json_writer.cpp']]+[ROOT/'tools/tests/native/UiDocumentEditTest.cpp']
  sources+=sorted((tessroot/'Source').glob('*.c'))

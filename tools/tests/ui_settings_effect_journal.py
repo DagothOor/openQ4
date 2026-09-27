@@ -6,13 +6,14 @@ remain opaque; successful decoding certifies their envelope only.
 from pathlib import Path
 import argparse,hashlib,json,os,subprocess,tempfile
 from filesystem_case_segments import function_body
+from wrap_sources import wrap_source
 ROOT=Path(__file__).resolve().parents[2]
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def main():
  ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--repository',type=Path);ap.add_argument('--compiler',default='clang++');ap.add_argument('--sanitize',action='store_true');ap.add_argument('--no-mutations',action='store_true');a=ap.parse_args()
  repo=(a.repository or ROOT).resolve();(ROOT/'.tmp').mkdir(exist_ok=True);out=Path(tempfile.mkdtemp(prefix='settings-effect-journal-',dir=ROOT/'.tmp'))
  env=dict(os.environ,TEMP=str(out),TMP=str(out),TMPDIR=str(out))
- app=ROOT/'src/ui/application';doc=ROOT/'src/ui/retained/Document.cpp';jsonroot=repo/'subprojects/jsoncpp-1.9.6'
+ app=ROOT/'src/ui/application';doc=ROOT/'src/ui/retained/Document.cpp';jsonroot=wrap_source('jsoncpp',repo)
  paths=[Path(__file__),ROOT/'tools/tests/filesystem_case_segments.py',doc]+[p for p in (ROOT/'src/ui/retained').glob('*.h')]+[app/(name+ext) for name in ('SettingsJournal','SettingsEffectPlan','SystemDisplay','SystemSettingsHost','SettingsTransaction') for ext in ('.h','.cpp')]+[app/'SettingsValue.h']+[ROOT/'tools/tests/native'/n for n in ('UiSettingsEffectJournalTest.cpp','UiSettingsJournalTest.cpp','UiSettingsJournalExactTest.cpp')]+list((ROOT/'src/renderer').glob('*.h'))
  dependencies=[p for folder in ('include','src/lib_json') for p in (jsonroot/folder).rglob('*') if p.is_file() and p.suffix in ('.h','.cpp','.inl')]
  paths += [ROOT/'src/imagetools/ImageRecoveryEnvelope.h',ROOT/'tools/tests/native/UiSettingsImageEnvelopeTest.cpp']+[ROOT/'src'/n for n in ('renderer/RendererImageRecovery.cpp','renderer/RendererImageRecovery.h','imagetools/ImageContentIdentity.cpp','imagetools/ImageContentIdentity.h','idlib/CryptoHash.cpp','idlib/CryptoHash.h')]

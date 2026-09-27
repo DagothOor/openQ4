@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 from filesystem_case_segments import function_body
+from wrap_sources import wrap_source
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'tools/ui'))
@@ -116,7 +117,7 @@ def main():
     assert 'event ' not in resume and 'menu ' not in resume and 'state ' not in resume
     compiler = next((found for name in ('clang++','g++','c++') if (found := shutil.which(name))), None)
     if not compiler: raise RuntimeError('C++ compiler required')
-    jsoncpp = ROOT/'subprojects/jsoncpp-1.9.6'
+    jsoncpp = wrap_source('jsoncpp')
     with tempfile.TemporaryDirectory(prefix='display-settings-fixture-',dir=ROOT/'.tmp') as temp:
         env = dict(os.environ,TEMP=temp,TMP=temp)
         service_source = (ROOT/'src/ui/SettingsService.cpp').read_text(encoding='utf-8')

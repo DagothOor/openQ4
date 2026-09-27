@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 
 from filesystem_case_segments import function_body
+from wrap_sources import wrap_source
 import ui_system_settings_host as host_test
 import ui_system_display as display_test
 
@@ -422,7 +423,7 @@ def main(production_mutations=()):
     values = out / "values.cpp"
     values.write_text('#include "src/ui/retained/Document.h"\n#include <json/json.h>\n#include <cmath>\n#include <algorithm>\n#include <memory>\nnamespace openq4::ui {\nconstexpr size_t MaxSourceBytes=16*1024*1024;\n' + validation + '\n}\n', encoding="utf-8")
     executable = out / ("service.exe" if os.name == "nt" else "service")
-    jsoncpp = ROOT / "subprojects/jsoncpp-1.9.6"
+    jsoncpp = wrap_source("jsoncpp")
     command = [compiler, "-std=c++20", "-DUSE_SDL3", "-I", str(ROOT), "-I", str(jsoncpp / "include"),
                str(source), str(values), str(ROOT / "src/ui/application/SettingsJournal.cpp"),
                str(ROOT / "src/ui/application/SettingsEffectPlan.cpp"),
