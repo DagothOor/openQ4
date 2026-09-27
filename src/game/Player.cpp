@@ -4661,6 +4661,39 @@ void idPlayer::UpdateZoomGuiViewState( void ) {
 
 /*
 ===============
+Player_RefreshCrosshairGUI
+
+openQ4: the crosshair cvars reach the cursor GUI through
+rvWeapon::UpdateCrosshairGUI, which runs on a weapon change or a respawn. Stock
+re-ran it on a g_crosshairColor change on the Xbox 360 only, so on PC a new
+color or custom crosshair waited for the next weapon change. This applies one
+on the frame after it is made, on every platform and for any viewed cursor.
+Each drawn frame tests three modified flags; the cursor is touched only when
+one is set. Call it after the cursor's redraw: the first redraw runs the
+GUI's onInit, which resets the combat windows to white.
+===============
+*/
+static void Player_RefreshCrosshairGUI( idUserInterface *cursor, const rvWeapon *weapon, bool driving ) {
+	if ( !g_crosshairColor.IsModified() && !g_crosshairCustom.IsModified() && !g_crosshairCustomFile.IsModified() ) {
+		return;
+	}
+	// A vehicle's cursor takes its weapon's art and g_crosshairColor every
+	// frame, and leaving the vehicle restores the on-foot art from the cvars.
+	if ( !driving ) {
+		if ( weapon == NULL ) {
+			return;
+		}
+		weapon->UpdateCrosshairGUI( cursor );
+	}
+	// the combat windows copy gui::crossColor into their matcolor on this event
+	cursor->HandleNamedEvent( "weaponChange" );
+	g_crosshairColor.ClearModified();
+	g_crosshairCustom.ClearModified();
+	g_crosshairCustomFile.ClearModified();
+}
+
+/*
+===============
 idPlayer::DrawHUD
 ===============
 */
@@ -4828,6 +4861,7 @@ void idPlayer::DrawHUD( idUserInterface *_hud ) {
 
 				vehicleController.UpdateCursorGUI( cursor );
 				cursor->Redraw( gameLocal.time );
+				Player_RefreshCrosshairGUI( cursor, weapon, true );
 			}
 		}
 		_hud = GetHud();
@@ -4874,6 +4908,7 @@ void idPlayer::DrawHUD( idUserInterface *_hud ) {
 				cursor->SetStateInt( "g_crosshairSize", crossSize );
 // RAVEN END
 				cursor->Redraw( gameLocal.time );
+				Player_RefreshCrosshairGUI( cursor, weapon, false );
 
 				// openQ4: over the crosshair, and under the crosshair's own
 				// gating - no marker in a gui, a vehicle, or while dead
@@ -10946,14 +10981,8 @@ void idPlayer::Think( void ) {
 		return;
 	}
 
-#ifdef _XENON
-	// change the crosshair if it's modified
-	if ( cursor && weapon && g_crosshairColor.IsModified() ) {
-		weapon->UpdateCrosshairGUI( cursor );
-		cursor->HandleNamedEvent( "weaponChange" );
-		g_crosshairColor.ClearModified();
-	}
-#endif
+	// openQ4: a crosshair cvar change is applied in DrawHUD
+	// (Player_RefreshCrosshairGUI), which stock did here on the Xbox 360 only.
 
  	// Dont do any thinking if we are in modview
 	if ( gameEdit->PlayPlayback() ) {
