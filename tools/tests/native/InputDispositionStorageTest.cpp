@@ -184,7 +184,7 @@ static void LegacyBoundaries() {
         Check(Sys_QueKeyboardInputWithDisposition(key) && Sys_QueMouseInputWithDisposition(mouse), "checked protection fixture queued");
         sysInputDispositionSlice_t keys,mice;
         Check(Sys_PollKeyboardInputWithDisposition(keys) && Sys_PollMouseInputWithDisposition(mice), "checked protection fixture polled");
-        const auto token=Sys_EventQueueToken(), emittedBefore=emissions.size();
+        const auto token=Sys_EventQueueToken(); const auto emittedBefore=emissions.size();
         if(attempted==0)Check(Sys_PollKeyboardInputEvents()==0,"legacy key poll blocked");
         if(attempted==1)Check(Sys_PollMouseInputEvents()==0,"legacy mouse poll blocked");
         if(attempted==2)Check(Sys_ReturnKeyboardInputEvent(0,ch,down)==0,"legacy key Return blocked");
