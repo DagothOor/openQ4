@@ -230,6 +230,18 @@ The [upstream notice](../../licenses/JsonCpp.txt) is retained and installed into
 static dependency isolated from engine headers. Dedicated binaries do not link
 the document parser or retained renderer. No new dynamic runtime DLL is added.
 
+Meson applies one openQ4 patch,
+[`subnormal-numbers.patch`](../../../subprojects/packagefiles/jsoncpp/subnormal-numbers.patch).
+JsonCpp reads numbers with `istringstream >> double`, and libc++ fails that
+extraction whenever `strtod` reports a range error, which Apple's `strtod`
+does for every subnormal result. The patch accepts a failed extraction that
+consumed the whole token and produced a subnormal, classified from its bits so
+that denormals-are-zero cannot hide it. Malformed tokens and underflow to zero
+still fail there, while subnormal values in documents and settings journals
+now decode on macOS exactly as on Windows and Linux. `UiJsonNumberTest` checks
+both readers against the platform library and against an emulation of libc++
+over Apple's `strtod`.
+
 The parser supplies a DOM and source offsets; openQ4 supplies schema validation,
 source-span transactions and motion evaluation. JsonCpp's permissive handling
 of some numeric/string forms is checked by a small lexical preflight before DOM

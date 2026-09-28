@@ -635,6 +635,13 @@ if build_engine or get_option('build_native_tests')
       install: false,
     )
     test('openq4-ui-float-chars', openq4_ui_float_chars_test, args: ['500'], timeout: 60)
+    openq4_ui_json_number_test = executable(
+      'openq4-ui-json-number-test',
+      files('tools/tests/native/UiJsonNumberTest.cpp'),
+      dependencies: jsoncpp_project.get_variable('jsoncpp_dep'),
+      install: false,
+    )
+    test('openq4-ui-json-number', openq4_ui_json_number_test, timeout: 30)
     openq4_ui_number_native_view_test = executable(
       'openq4-ui-number-native-view-test',
       files('tools/tests/native/UiNumberNativeViewTest.cpp'),

@@ -119,6 +119,8 @@ powershell -ExecutionPolicy Bypass -File tools/build/meson_setup.ps1 subprojects
 
 Then rerun the normal `setup --wipe`, compile, and install steps. The purge removes the generated SDL source extraction, not `subprojects/packagefiles/sdl3/` or the configured build directory.
 
+The same holds for the `diff_files` patches Meson applies at extraction, such as `subprojects/packagefiles/jsoncpp/subnormal-numbers.patch`. When a wrap file changes, Meson only warns that the subproject "may be out of date", and the existing `subprojects/jsoncpp-1.9.6` tree keeps its old sources. Re-extract it in place through the same wrapper with `subprojects update --reset jsoncpp` before rebuilding. The native UI checks do that themselves when they find such a tree.
+
 On current Debian/Ubuntu systems, install the SDL3/Linux package set (`binutils`, `libasound2-dev`, `libdbus-1-dev`, `libdecor-0-dev`, `libdrm-dev`, `libegl1-mesa-dev`, `libfribidi-dev`, `libgbm-dev`, `libgl1-mesa-dev`, `libopengl-dev`, `libibus-1.0-dev`, `libjack-dev`, `libopenal-dev`, `libpipewire-0.3-dev`, `libpulse-dev`, `libsndio-dev`, `libthai-dev`, `libudev-dev`, `libwayland-dev`, and `libxkbcommon-dev`). Add `libx11-dev`, `libxext-dev`, `libxcursor-dev`, `libxfixes-dev`, `libxi-dev`, `libxrandr-dev`, `libxss-dev`, `libxtst-dev`, `libxxf86dga-dev`, and `libxxf86vm-dev` when validating the optional SDL3 X11 helper path or the native Linux backend.
 
 ---
@@ -245,7 +247,7 @@ powershell -ExecutionPolicy Bypass -File tools/validation/validate_push.ps1
 bash tools/validation/validate_push.sh
 ```
 
-The Python checks run before Meson setup, and a few native UI checks compile the jsoncpp and libtess2 wrap sources. On a fresh checkout they fetch those with `meson subprojects download` (`tools/tests/wrap_sources.py`), so Meson must be installed even for `--skip-build` runs.
+The Python checks run before Meson setup, and a few native UI checks compile the jsoncpp and libtess2 wrap sources. On a fresh checkout they fetch those with `meson subprojects download` (`tools/tests/wrap_sources.py`), and they re-extract a tree whose wrap file has changed since Meson extracted it, so Meson must be installed even for `--skip-build` runs.
 
 ### PR Validation
 
