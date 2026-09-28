@@ -2128,6 +2128,130 @@ bool R_LightGridPackFileMatchesBakeOptions( const char *name, const lightGridBak
 	return true;
 }
 
+/*
+===================
+LightGrid_AlignAxis
+
+One axis of an area's grid layout. Probes sit on multiples of the cell size inside the
+area's bounds, or on the one multiple nearest its centre when the area is thinner than a
+cell. SetupGrid lays grids out with this, and the loaders check baked grids against it.
+===================
+*/
+static void LightGrid_AlignAxis( float boundsMin, float boundsMax, float center, float size, float &origin, int &count ) {
+	float alignedMin = size * idMath::Ceil( boundsMin / size );
+	float alignedMax = size * idMath::Floor( boundsMax / size );
+	if ( alignedMax < alignedMin ) {
+		alignedMin = size * idMath::Floor( center / size );
+		alignedMax = alignedMin;
+	}
+	origin = alignedMin;
+	count = Max( idMath::FtoiFast( ( alignedMax - alignedMin ) / size ) + 1, 1 );
+}
+
+/*
+===================
+LightGrid_BakedForThisMap
+
+A baked grid only fits the build of the map it was baked from. A mod can ship its own
+build of a map under a stock name (the Awakening's mp/q4xdm13 has 10 areas where retail's
+has 14), and the grid openQ4 baked for the stock build must not light it. Every area the
+loaded grid describes has to have the layout SetupGrid gives this map's area at the
+grid's cell size.
+===================
+*/
+static bool LightGrid_BakedForThisMap( const idRenderWorldLocal *world ) {
+	for ( int i = 0; i < world->numPortalAreas; i++ ) {
+		const LightGrid &lightGrid = world->portalAreas[i].lightGrid;
+		if ( lightGrid.lightGridBounds[0] <= 0 ) {
+			continue;
+		}
+		const idBounds &bounds = world->portalAreas[i].globalBounds;
+		if ( bounds.IsCleared() ) {
+			return false;
+		}
+		const idVec3 center = bounds.GetCenter();
+		for ( int axis = 0; axis < 3; axis++ ) {
+			const float size = lightGrid.lightGridSize[axis];
+			if ( size <= 0.0f ) {
+				return false;
+			}
+			float origin = 0.0f;
+			int count = 0;
+			LightGrid_AlignAxis( bounds[0][axis], bounds[1][axis], center[axis], size, origin, count );
+			if ( idMath::Fabs( lightGrid.lightGridOrigin[axis] - origin ) > 0.5f || lightGrid.lightGridBounds[axis] != count ) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+/*
+===================
+LightGrid_GameDirRank
+
+Where relativePath is found in the game-directory stack, counting from the top, or -1 when
+no game directory has it. The stack is the one idFileSystemLocal::Startup builds: fs_game
+over fs_game_base over the openQ4 runtime over q4base.
+===================
+*/
+static int LightGrid_GameDirRank( const char *relativePath ) {
+	idStrList dirs;
+	const auto add = [&dirs]( const char *dir ) {
+		if ( dir == NULL || dir[0] == '\0' || idStr::Icmp( dir, BASE_GAMEDIR ) == 0 ) {
+			return;
+		}
+		for ( int i = 0; i < dirs.Num(); i++ ) {
+			if ( dirs[i].Icmp( dir ) == 0 ) {
+				return;
+			}
+		}
+		dirs.Append( dir );
+	};
+	add( cvarSystem->GetCVarString( "fs_game" ) );
+	add( cvarSystem->GetCVarString( "fs_game_base" ) );
+	add( OPENQ4_GAMEDIR );
+	dirs.Append( BASE_GAMEDIR );
+
+	for ( int i = 0; i < dirs.Num(); i++ ) {
+		idFile *file = fileSystem->OpenFileRead( relativePath, false, dirs[i].c_str() );
+		if ( file != NULL ) {
+			fileSystem->CloseFile( file );
+			return i;
+		}
+	}
+	return -1;
+}
+
+/*
+===================
+LightGrid_LayeredBelowMap
+
+A grid found lower in the game-directory stack than the map it would light was baked for a
+build the map no longer uses: a mod's own map under a stock name (the Awakening's
+mp/q4xctf6 keeps retail's areas but not its geometry) must not take the grid openQ4 ships
+for the stock one.
+===================
+*/
+static bool LightGrid_LayeredBelowMap( const char *gridName, int mapRank, const char *mapName ) {
+	if ( mapRank < 0 ) {
+		return false;
+	}
+	const int gridRank = LightGrid_GameDirRank( gridName );
+	if ( gridRank <= mapRank ) {
+		return false;
+	}
+	common->DPrintf( "Ignoring %s: %s comes from a game directory above it, so it was baked for another build\n", gridName, mapName );
+	return true;
+}
+
+static void LightGrid_ClearAreas( idRenderWorldLocal *world ) {
+	for ( int i = 0; i < world->numPortalAreas; i++ ) {
+		world->portalAreas[i].lightGrid.Clear();
+		world->portalAreas[i].lightGrid.area = i;
+	}
+}
+
 static bool LightGrid_ReadPackPointData( idFile *file, idRenderWorldLocal *world ) {
 	int areaIndex = -1;
 	int numLightGridPoints = 0;
@@ -2263,7 +2387,7 @@ bool idRenderWorldLocal::LoadLightGridPackFile( const char *name ) {
 	}
 	if ( packPortalAreas != numPortalAreas ) {
 		fileSystem->CloseFile( file );
-		common->Warning( "%s has %i light-grid areas, but map has %i", name, packPortalAreas, numPortalAreas );
+		common->DPrintf( "Ignoring %s: it has %i light-grid areas, but this build of %s has %i\n", name, packPortalAreas, mapName.c_str(), numPortalAreas );
 		return false;
 	}
 
@@ -2273,6 +2397,11 @@ bool idRenderWorldLocal::LoadLightGridPackFile( const char *name ) {
 			common->Warning( "%s has invalid light-grid metadata", name );
 			return false;
 		}
+	}
+	if ( !LightGrid_BakedForThisMap( this ) ) {
+		fileSystem->CloseFile( file );
+		common->DPrintf( "Ignoring %s: it was baked for a different build of %s\n", name, mapName.c_str() );
+		return false;
 	}
 
 	idList<lightGridPackChunkDirectory_t> chunks;
@@ -2703,16 +2832,7 @@ void LightGrid::SetupGrid( const idBounds &bounds, const idRenderWorld *world, c
 				lightGridSize[i] = LIGHTGRID_DEFAULT_SIZE[i];
 			}
 
-			float alignedMin = lightGridSize[i] * idMath::Ceil( bounds[0][i] / lightGridSize[i] );
-			float alignedMax = lightGridSize[i] * idMath::Floor( bounds[1][i] / lightGridSize[i] );
-			if ( alignedMax < alignedMin ) {
-				alignedMin = lightGridSize[i] * idMath::Floor( boundsCenter[i] / lightGridSize[i] );
-				alignedMax = alignedMin;
-			}
-
-			lightGridOrigin[i] = alignedMin;
-			lightGridBounds[i] = idMath::FtoiFast( ( alignedMax - alignedMin ) / lightGridSize[i] ) + 1;
-			lightGridBounds[i] = Max( lightGridBounds[i], 1 );
+			LightGrid_AlignAxis( bounds[0][i], bounds[1][i], boundsCenter[i], lightGridSize[i], lightGridOrigin[i], lightGridBounds[i] );
 			numGridPoints *= lightGridBounds[i];
 		}
 
@@ -2824,9 +2944,13 @@ void idRenderWorldLocal::SetupLightGrid() {
 		portalAreas[i].lightGrid.area = i;
 	}
 
+	idStr procName = mapName;
+	procName.SetFileExtension( "proc" );
+	const int mapRank = LightGrid_GameDirRank( procName );
+
 	idStr filename = mapName;
 	filename.SetFileExtension( "lightgridpack" );
-	if ( LoadLightGridPackFile( filename ) ) {
+	if ( !LightGrid_LayeredBelowMap( filename, mapRank, mapName ) && LoadLightGridPackFile( filename ) ) {
 		PreloadLightGridImages();
 		common->DPrintf( "LightGrid setup for %s used packed data in %.3fs\n", mapName.c_str(), ( Sys_Milliseconds() - setupStart ) * 0.001f );
 		return;
@@ -2840,7 +2964,7 @@ void idRenderWorldLocal::SetupLightGrid() {
 	filename = mapName;
 	filename.SetFileExtension( "lightgrid" );
 
-	if ( LoadLightGridFile( filename ) ) {
+	if ( !LightGrid_LayeredBelowMap( filename, mapRank, mapName ) && LoadLightGridFile( filename ) ) {
 		LoadLightGridImages();
 		PreloadLightGridImages();
 		common->DPrintf( "LightGrid setup for %s used loose metadata/images in %.3fs\n", mapName.c_str(), ( Sys_Milliseconds() - setupStart ) * 0.001f );
@@ -2996,7 +3120,9 @@ void idRenderWorldLocal::PreloadLightGridImages() {
 }
 
 bool idRenderWorldLocal::LoadLightGridFile( const char *name ) {
-	idLexer *src = new idLexer( name, LEXFL_NOSTRINGCONCAT | LEXFL_NODOLLARPRECOMPILE );
+	// Errors are not fatal: a grid that cannot be read, or that was baked for another build
+	// of this map, is ignored and the map loads without it.
+	idLexer *src = new idLexer( name, LEXFL_NOSTRINGCONCAT | LEXFL_NODOLLARPRECOMPILE | LEXFL_NOFATALERRORS );
 	if ( !src->IsLoaded() ) {
 		delete src;
 		return false;
@@ -3022,49 +3148,71 @@ bool idRenderWorldLocal::LoadLightGridFile( const char *name ) {
 		return false;
 	}
 
-	while ( src->ReadToken( &token ) ) {
+	bool fitsThisMap = true;
+	while ( fitsThisMap && !src->HadError() && src->ReadToken( &token ) ) {
 		if ( token == "lightGridBakeStats" ) {
 			src->SkipBracedSection();
 			continue;
 		}
 
 		if ( token == "lightGridPoints" ) {
-			ParseLightGridPoints( src );
+			fitsThisMap = ParseLightGridPoints( src );
 			continue;
 		}
 
 		if ( token == "lightGridVisibility" ) {
-			ParseLightGridVisibility( src );
+			fitsThisMap = ParseLightGridVisibility( src );
 			continue;
 		}
 
 		src->Error( "idRenderWorldLocal::LoadLightGridFile: bad token \"%s\"", token.c_str() );
 	}
 
+	const bool readCleanly = !src->HadError();
 	delete src;
-	return true;
+	if ( readCleanly && fitsThisMap && LightGrid_BakedForThisMap( this ) ) {
+		return true;
+	}
+
+	// the lexer already warned about a file it could not read
+	LightGrid_ClearAreas( this );
+	if ( readCleanly ) {
+		common->DPrintf( "Ignoring %s: it was baked for a different build of %s\n", name, mapName.c_str() );
+	}
+	return false;
 }
 
-void idRenderWorldLocal::ParseLightGridPoints( idLexer *src ) {
+/*
+===================
+idRenderWorldLocal::ParseLightGridPoints
+
+Returns false when the block cannot apply to this map: it could not be read (the lexer
+reports that), or it describes an area this build of the map does not have.
+===================
+*/
+bool idRenderWorldLocal::ParseLightGridPoints( idLexer *src ) {
 	src->ExpectTokenString( "{" );
 
 	const int areaIndex = src->ParseInt();
-	if ( areaIndex < 0 || areaIndex >= numPortalAreas ) {
+	if ( src->HadError() || areaIndex >= numPortalAreas ) {
+		return false;
+	}
+	if ( areaIndex < 0 ) {
 		src->Error( "ParseLightGridPoints: bad area index %i", areaIndex );
-		return;
+		return false;
 	}
 
 	const int numLightGridPoints = src->ParseInt();
 	if ( numLightGridPoints < 0 ) {
 		src->Error( "ParseLightGridPoints: bad numLightGridPoints %i", numLightGridPoints );
-		return;
+		return false;
 	}
 
 	const int imageProbeSize = src->ParseInt();
 	const int imageBorderSize = src->ParseInt();
 	if ( imageProbeSize <= 0 || imageBorderSize < 0 ) {
 		src->Error( "ParseLightGridPoints: bad probe layout %i %i", imageProbeSize, imageBorderSize );
-		return;
+		return false;
 	}
 
 	LightGrid &lightGrid = portalAreas[areaIndex].lightGrid;
@@ -3082,8 +3230,12 @@ void idRenderWorldLocal::ParseLightGridPoints( idLexer *src ) {
 		lightGrid.lightGridBounds[i] = src->ParseInt();
 	}
 
+	if ( src->HadError() ) {
+		return false;
+	}
+
 	lightGrid.lightGridPoints.SetNum( numLightGridPoints );
-	for ( int i = 0; i < numLightGridPoints; i++ ) {
+	for ( int i = 0; i < numLightGridPoints && !src->HadError(); i++ ) {
 		lightGridPoint_t &gridPoint = lightGrid.lightGridPoints[i];
 		gridPoint.valid = static_cast<byte>( src->ParseInt() );
 		gridPoint.visibilityMeanDistance = LIGHTGRID_VISIBILITY_MAX_DISTANCE;
@@ -3106,21 +3258,32 @@ void idRenderWorldLocal::ParseLightGridPoints( idLexer *src ) {
 	}
 
 	src->ExpectTokenString( "}" );
+	return !src->HadError();
 }
 
-void idRenderWorldLocal::ParseLightGridVisibility( idLexer *src ) {
+/*
+===================
+idRenderWorldLocal::ParseLightGridVisibility
+
+Returns false when the block cannot apply to this map, as ParseLightGridPoints does.
+===================
+*/
+bool idRenderWorldLocal::ParseLightGridVisibility( idLexer *src ) {
 	src->ExpectTokenString( "{" );
 
 	const int areaIndex = src->ParseInt();
-	if ( areaIndex < 0 || areaIndex >= numPortalAreas ) {
+	if ( src->HadError() || areaIndex >= numPortalAreas ) {
+		return false;
+	}
+	if ( areaIndex < 0 ) {
 		src->Error( "ParseLightGridVisibility: bad area index %i", areaIndex );
-		return;
+		return false;
 	}
 
 	const int numLightGridPoints = src->ParseInt();
 	if ( numLightGridPoints < 0 ) {
 		src->Error( "ParseLightGridVisibility: bad numLightGridPoints %i", numLightGridPoints );
-		return;
+		return false;
 	}
 
 	LightGrid &lightGrid = portalAreas[areaIndex].lightGrid;
@@ -3129,7 +3292,7 @@ void idRenderWorldLocal::ParseLightGridVisibility( idLexer *src ) {
 		lightGrid.visibilityMaxDistance = LIGHTGRID_VISIBILITY_MAX_DISTANCE;
 	}
 
-	for ( int i = 0; i < numLightGridPoints; i++ ) {
+	for ( int i = 0; i < numLightGridPoints && !src->HadError(); i++ ) {
 		const float meanDistance = src->ParseFloat();
 		const float meanDistanceSq = src->ParseFloat();
 		if ( i < lightGrid.lightGridPoints.Num() ) {
@@ -3140,6 +3303,7 @@ void idRenderWorldLocal::ParseLightGridVisibility( idLexer *src ) {
 	}
 
 	src->ExpectTokenString( "}" );
+	return !src->HadError();
 }
 
 void idRenderWorldLocal::WriteLightGridsToFile( const char *name ) const {

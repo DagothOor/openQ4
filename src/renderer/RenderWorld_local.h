@@ -311,8 +311,8 @@ public:
 	bool					AnyLightGridAvailable();
 	bool					LoadLightGridFile( const char *name );
 	bool					LoadLightGridPackFile( const char *name );
-	void					ParseLightGridPoints( idLexer *src );
-	void					ParseLightGridVisibility( idLexer *src );
+	bool					ParseLightGridPoints( idLexer *src );
+	bool					ParseLightGridVisibility( idLexer *src );
 	void					WriteLightGridsToFile( const char *name ) const;
 
 	//--------------------------

@@ -449,6 +449,13 @@
   `gamex86.dll`. Crash reports from the new modules symbolicate: Windows
   packages carry their `.pdb` files, and the Linux debug-symbol and macOS dSYM
   archives cover them.
+- [x] A mod's own build of a map that shares a stock map's name no longer picks
+  up the lighting data openQ4 ships for the stock map. The expansion carries its
+  own builds of seven post-release multiplayer maps: `q4xdm13` and `q4xdm14`
+  failed to load and returned to the menu, and `q4xctf6`, `q4xdm10`, `q4xdm11`,
+  `q4xdm15` and `q4xtourney1` were lit with lighting made for the retail
+  geometry. They now load with the game's standard lighting, and the stock maps
+  keep theirs, under the expansion too.
 
 ## Unreleased — `idtech5-ui` development
 
