@@ -1,7 +1,7 @@
 # openQ4 UI Visual Design
 
-Specification version 1.5, 27 September 2026 (1.4 the same day, 1.1 to 1.3 on 26
-September, 1.0 on 8 September 2026). Status:
+Specification version 1.6, 28 September 2026 (1.4 and 1.5 on 27 September, 1.1
+to 1.3 on 26 September, 1.0 on 8 September 2026). Status:
 implementation target; the replacement has not shipped. Applies to every
 player-facing GUI and to the visual editor's Quake 4 preview. Implementation and
 evidence are tracked in [the replacement plan](plans/idtech5-ui.md).
@@ -20,7 +20,9 @@ and keeps the reticle grid, grain and light band to menu backdrops. Version
 1.5 lays the HUD out as a center screen with side screens and bands, centers
 the status bar, rebuilds the multiplayer HUD's top, chat and kill feed,
 catalogues every crosshair and item icon as vector art, and gives both weapon
-wheels the stock's translation and transmission effects.
+wheels the stock's translation and transmission effects. Version 1.6 adds the
+loading screens and the tabbed multiplayer menus, and redraws the EKG and the
+transmission waveform from their textures.
 [Appendix C](#appendix-c-change-record) lists every change and the
 requirement-register rows it affects.
 
@@ -329,9 +331,11 @@ plates are black art with `marine.rail.dark` rails. Both rest at 40%.
 | Table header band | 0.60 olive | Stable; no perpetual pulsing |
 
 The stock marks a primary action by size, not opacity: START GAME is a
-356x43 u light plate with a 24 dp label. openQ4's in-game join card rests its
-primary action at 0.62, secondary actions at 0.28 and its header wash at 0.16
-so the live scene stays readable; that variant is limited to in-game partial
+356x43 u light plate with a 24 dp label. openQ4's in-game partial panels (the
+join card and the multiplayer menus of section 14.18) rest the primary action
+at 0.62, other actions at 0.28 and the header wash at 0.16, all over the
+`b6_light` and `b3_light` constructions, so the live scene stays readable; a
+focused action rises to 1.00. That variant is limited to in-game partial
 panels.
 
 Node opacity applies to the completed node and its descendants as one isolated
@@ -547,7 +551,8 @@ layout or the hit target.
 
 Choose the panel construction by purpose, not size.
 
-**Card** (hover cards, tooltips, in-game partial panels such as the join card):
+**Card** (hover cards, tooltips, in-game partial panels such as the
+multiplayer menus of section 14.18):
 a black body at 0.94 inside a single `marine.rail.card` rail; 12 dp 45-degree
 cuts at the top-trailing and bottom-leading corners and 3 dp cuts at the
 top-leading and bottom-trailing corners. Small popovers keep this construction
@@ -1633,9 +1638,10 @@ second. The Phone profile starts with ambient loops and parallax off.
   and Arena), LOAD GAME, MULTIPLAYER and SETTINGS follow, and the secondary links
   stay on the plinth.
 - **Pause.** Resume leads. Single player offers Save, Load, Settings, Restart
-  Level, Objectives and Quit to Menu. Multiplayer offers Team or Spectate,
-  Match Control, Settings and Disconnect, and never pauses the server. The
-  panel sits over the softened scene (section 9).
+  Level, Objectives and Quit to Menu. Multiplayer uses the tabbed Escape menu
+  of section 14.18 (Team, Players, Vote, Match, Settings, Voice, Server and
+  Admin) and never pauses the server. The panel sits over the softened scene
+  (section 9).
 - **Settings.** Categories are tabs switched with the bumpers or a swipe, and
   sections keep their picker. Search runs across every category when the player
   types, presses north, or taps the search symbol, and each result shows its
@@ -1663,7 +1669,7 @@ second. The Phone profile starts with ambient loops and parallax off.
   hides the controls and the timeline drags.
 - **Loading.** The level name and levelshot lead; localized tips run in the
   bottom band; the continue prompt shows the active device's glyph, or "Tap to
-  continue" on touch.
+  continue" on touch (section 14.17).
 - **Notices.** Short notices appear in the top band's trailing section: a
   controller disconnect, a low battery, match events. They never cover the
   crosshair or touch controls, and unresolved errors persist.
@@ -1860,6 +1866,15 @@ y 419. Remastered centers the three gauges as one status bar (section 14.4).
   beats per width moving toward the trailing edge at 37.5 dp/s (24 beats a
   minute), #161B0E, and #4C0D00 at low health. It is an instrument, so reduced
   motion keeps it moving.
+  - **Trace.** Draw the measured trace, never a smoothed curve. The baseline
+    sits at 58% of the gauge height. Each 62.5 u beat has a triangular P wave
+    rising 3.5 u (11.2–18.6 u), a 2.5 u Q dip, an R spike rising 17.5 u and an
+    S trough 6.2 u below the baseline (22.7–29.2 u), then triangular T and U
+    waves rising 6.2 u and 3.0 u (37.4–49.6 u and 51.8–58.6 u); the T wave has
+    a short flat crest.
+  - **Line.** A 0.95 u core with a halo falling from 0.24 to nothing over
+    3.7 u. Added at the stock color it reads as a faint olive line, about 15
+    levels over the drained track.
 
 ### 14.4 Remastered layout
 
@@ -2051,16 +2066,27 @@ a recolored Marine ring.
 - **Objectives.** The objective notices and the objectives display are
   section 14.11.
 - **Radio chatter.** "Incoming" and "transmission" in Marine 0.20 on a rounded
-  bar, anchored to the top-trailing corner, so on a wide view it sits in the
-  trailing screen.
+  bar, their baselines at 19 and 26 u, anchored to the top-trailing corner, so
+  on a wide view it sits in the trailing screen.
   - **Timing.** It appears and disappears in one frame and stays up for the
     voice line plus 150 ms, or 5 s.
-  - **Waveform.** Its motion is the additive #FF8000 carrier waveform, masked
-    to a trapezoid that leans with the plate. The waveform scrolls toward the
-    leading edge at 24.6 u/s. Its height steps every 79 ms through a canned
-    table, from 0.71 to 2.5 times, rather than following the audio.
+  - **Waveform.** Its motion is the additive #FF8000 carrier waveform, the
+    stock `waveform.tga`: a recorded voice trace with a 4-texel core and
+    bursts of spikes up to 32% of its height above and below it, flat in 37%
+    of its columns. Rebuild it column by column as vector bars (Appendix
+    B.5); a generated zigzag does not read as speech.
+  - **Mask and scroll.** A right trapezoid 19.2 u wide at the top and 23.1 u
+    at the bottom, its leading side leaning with the plate. The trace scrolls
+    toward the leading edge at 24.6 u/s.
+  - **Height.** Classic steps it every 79 ms through the canned table, 0.71
+    to 2.5 times, core included. Remastered follows the playing line's level:
+    the core stays and the spikes scale from nearly flat between words to
+    2.35 times. The canned table returns when the sound system reports no
+    level.
   - **Rhino emblem.** When the line addresses the player, the Rhino emblem
-    shrinks into place beside the bar over 500 ms.
+    (#FFFF00, traced from `radio_rhino`) and its black 0.40 plate shrink into
+    place beside the bar over 500 ms, the emblem from 42x39 u to 22x22 u.
+    Every new line restarts the shrink.
   - **Strogg HUD.** It uses R_Strogg 0.16 labels and a #FFCC00 waveform in a
     backslanted mask.
 - **Timed notices.** EXIT under a chevron that rises 11 u with `accel(500, 500)`
@@ -2099,7 +2125,7 @@ sees the followed player's HUD.
 | Aim text | All | The aimed player's name and clan 20 u below the crosshair, with a teammate's health and armor; in over 200 ms after 100 ms, out over 500 ms |
 | Awards | All | The earned medal repeated once per time earned, up to nine (then one medal and a count), centered at 143–175 u; 2500 ms hold, 500 ms fade, queued 3 s apart |
 | Vote | All | The call and up to six field lines at the leading edge with the Yes and No keys; after voting, the tally replaces the prompt |
-| Voice | All | "Transmitting..." or the talker's name on black bars with a waveform |
+| Voice | All | You ("Transmitting...") at 263 u and one talker at 286 u, each on a bar fading from black 0.42 to 0.07 with a slanted end at 87%, with a 10x12 u additive #FFFF8D transmission trace (canned height) and the name in Lowpixel 14 dp |
 | Statistics | All | Held on a key: kills, deaths, per-weapon accuracy and award counts on a soft backing at the trailing edge |
 | Chat input | All | "SEND" in Marine over a dark plate at 0.80 with #FFFF8D entry text; all and team chat look the same. It takes 128 characters, shows about 35, and scrolls sideways under a `|` (insert) or `_` (overstrike) cursor blinking about every 267 ms |
 
@@ -2192,6 +2218,13 @@ the timer, the other side.
   - **Keyboards.** Controller and touch players get the platform or on-screen
     keyboard (section 13.5).
 - **Classic.** Classic keeps the stock lines at 8,302 u and the stock input.
+
+**Voice (Remastered).** One plate per talker stacks directly above the chat
+box, newest nearest it: a sheared HUD plate at black 0.50 holding the
+transmission trace (section 14.8) in the talker's team text color, or #FFFF8D
+in deathmatch, following their voice level, then the speaker symbol and the
+name. Your own transmission reads YOU on the header-band plate at 0.30 with a
+microphone. Each trace keeps its own phase, so two talkers never move in step.
 
 ### 14.10 Alarms and motion
 
@@ -2354,7 +2387,7 @@ crosshair included. It is not interactive.
 | --- | --- |
 | Backing | The soft backing at black 0.60, opaque over the central 509x399 u; the Tourney board uses a flat black 0.60 fill |
 | Header | Server name and address in Lowpixel 0.22 #FFFF8D |
-| Panels | Your team first, then the other team, then spectators. Each opens with a header band at 1.00 in the team color (#8B964B for deathmatch and Tourney, #999999 for spectators) carrying the faction mark, MARINE, STROGG, SPECTATORS or PLAYERS in Lowpixel 0.31 and the team score; headings in Lowpixel 0.16 at 0.40 over a white 0.10 rule |
+| Panels | Your team first, then the other team, then spectators. Each opens with a header band at 1.00 in the team color (#8B964B for deathmatch and Tourney, #999999 for spectators) carrying the faction mark, MARINE, STROGG, SPECTATORS or PLAYERS in Lowpixel 0.31 and the team score; headings in Lowpixel 0.16 at 0.40 over a white 0.10 rule, standing in the strip between the band (drawn 3–24.5 u below the panel's top) and the first row with their baseline on the first band's top edge, so a heading never shares a row with an entry |
 | Columns | Ready, speaker, friend and flag or rune icons; name; clan; score; kills (flag modes); minutes connected; ping, trailing-aligned |
 | Rows | Lowpixel 0.22 with a drop shadow on server-list bands: every row 8%, your row 29%, eliminated Tourney players greyed. The pitch adapts to the entries, up to 16: 15–30 u in team modes, 17–35 u in deathmatch, 13–26 u in Tourney |
 | Footer | A white 0.10 rule, game type and map, the frag, capture or control limit, the time limit and the timer |
@@ -2524,6 +2557,149 @@ layer instead of the stock's baked halo, capped at the family's light peak
   - the collision between the stock ammunition glyph and its frame;
   - the pixel stair-steps of the 16- and 32-texel art.
 
+### 14.17 Loading screens
+
+The loading screen is the one full-screen picture between the menu and play.
+The stock builds it from the level's levelshot and a little furniture. The
+Remastered screen keeps every piece and fills the wait with what the player is
+waiting for.
+
+**Stock screens** (`guis/loading/*.gui`; section 9 gives the composition):
+
+| Part | Single player (`generic`) | Multiplayer (`mplevel`) | Intro (`intro`) |
+| --- | --- | --- | --- |
+| Picture | The levelshot, full screen | As single player | The intro art (`e3_load`) |
+| Bands | Top 0–119 u and bottom from 345 u, black 0.80, each with an additive #181D0A spill into the picture (Appendix B.2) | Bottom band raised to 227 u | As single player |
+| Furniture | Corner brackets at 28 and 374 u, the dot matrix and the `+` grid at 0.04 | Lower brackets at 256 u | Dot matrix only |
+| Identity | The level name trailing at the top in Marine 26 dp at 0.80, over a gradient that darkens toward the trailing edge | Adds a message line beneath it: the map path, "collision map", then each item as it spawns | None |
+| Progress | The bar from 235 to 640 u at 431 u, #E06C00 track 0.30 and fill 0.50; LOADING trailing across it in Marine 29 dp with a shadow | Bar and LOADING at 313 u | As single player |
+| Server | — | Name and address at 0.80 and game type and limit at 0.52, trailing, in Lowpixel 18 dp; a load line centered at 409 u; a row of 24 u item icons at 430 u, one for each kind of item as it spawns | — |
+| Completion | LOADING becomes "- CLICK TO CONTINUE -", the full bar shows and `load_screen_ready` plays; the text pulses from white to 50% over 500 ms and back over 200 ms. A click closes the screen with `load_screen_click` | Never waits: the match starts | As single player |
+
+The first mission, Air Defense Bunker, uses the intro screen. The stock centers
+the multiplayer icon row 12 u left of center, a rounding slip that Classic
+keeps.
+
+**Remastered.**
+
+- **Picture and bands.** The levelshot covers the whole view (openQ4's
+  expanded levelshots fill the side screens) and drifts in by 3% over the load;
+  reduced motion holds it still. Both bands keep their silhouettes and lengthen
+  only their straight spans to the view's edges. The top band anchors to the top
+  edge and the bottom band to the bottom, and the corner brackets and the dot
+  matrix move out with the view's corners.
+- **Identity.** The level name trails at the top. Beneath it, on the stock
+  message line, run the mission and difficulty in single player, or the game
+  type and map in multiplayer.
+- **Objectives.** When the map lists objectives, they stand on the leading side
+  in the objectives display's open plate (section 14.11): the orange >>MISSION
+  OBJECTIVES title, then one line per objective behind its marker.
+- **Progress.** The trailing part of the thick bottom band holds LOADING above a
+  240 u bar. Under the bar sit the loader's current phase with its count and
+  the percentage in the value color. The phases are the loader's own, such as
+  the map, the collision map, area awareness and the asset queue, and the
+  count is the phase's place or the queue's assets loaded of its total.
+  Multiplayer names each item as it spawns ("SPAWNING · RAILGUN"). A long
+  phase reads as work, never as a stall.
+- **Tips.** Single player runs localized tips in the band's leading part: at
+  most two lines of Lowpixel 14 dp under a TIP tag, changing every 6 s with a
+  250 ms cross-fade.
+- **Continue.** When the level is ready, LOADING becomes the continue prompt
+  with the active device's glyph: CLICK TO CONTINUE with a mouse, the south
+  button and CONTINUE on a controller, TAP TO CONTINUE on touch. It pulses with
+  the stock timing, and the stage line reports the load time.
+- **Multiplayer.** The bottom band stays low and the picture tall.
+  - **Server card.** A section 6 card on the leading side, above the thin part
+    of the band: the server's name in its header, then the address in Profont,
+    the mode, the limits, the players by team and the server's message.
+  - **Arsenal.** The band's leading part holds the map's items: each icon fades
+    in over 150 ms in its color code as the item spawns.
+  - **Hand-off.** When loading ends the prompt reads JOINING, and the screen
+    gives way to the Welcome menu (section 14.18) without a click.
+- **Classic** keeps the stock screens on the 4:3 canvas.
+
+### 14.18 Multiplayer menus
+
+The stock multiplayer menu takes the whole screen. A column of buttons runs down
+the leading edge (Main Menu, Join Team, Players, Vote, Settings, Voice Config,
+Server Info, Admin and Disconnect, to which openQ4 adds Match Control), with
+the chosen page beside it. openQ4 also shows a compact join card when a player
+connects. Classic keeps both. Remastered replaces them with one construction in
+two variants.
+
+**Construction.** A card in the center screen over the live view, never the
+whole screen. It is the section 6 card: a 0.94 black body inside one rail, 12
+and 3 dp cuts and a 40 dp header. The card holds a horizontal tab strip, the
+page and a prompt bar.
+
+- **Size.** 570x402 dp (380x268 u) for Welcome and 648x477 dp (432x318 u) for
+  Escape, centered on the projection center, so at 16:9 the view shows on every
+  side. Switching tabs never changes the card's size.
+- **Scene.** The view behind is softened by the scene effect (section 9, with
+  the join card's values): blurred and slightly desaturated, never dimmed. The
+  softening ramps in over 250 ms while the card rises 12 dp and fades in over
+  150 ms, and it releases over 250 ms on every way out. Where softening is
+  unavailable, the fallback is the darkening scrim and vignette of section
+  13.6. The HUD hides while the card is up, and the match keeps running.
+- **Header.** The 8 dp triangle, then the title in Marine: the server's welcome
+  on Welcome, the map on Escape. The trailing end holds the player count on
+  Welcome, and the mode, the clock in the value color and the score on Escape.
+  The header wash is white 0.16 over `b3_light`.
+- **Tab strip.** The stock tab strip, laid under the header at the card's scale:
+  - **Active tab.** It rises 30 dp with a small leading flare and an 18 dp
+    45-degree trailing shoulder, filled #5A652A from 1.00 at the top to 0.60 at
+    the baseline. The baseline rail breaks under it, and a wash fades below the
+    strip over one tab height.
+  - **Labels.** Tab widths fit their Marine labels. Inactive labels sit at 0.55
+    and rise to 0.85 on hover.
+  - **Ends.** The previous and next glyphs sit at the strip's ends: Q and E on
+    a keyboard, the bumpers on a controller.
+- **Pages.** Content is inset 24 dp. Actions are plates in the in-game ladder
+  of section 4: `b6_light` with its leading, cut and bottom rails, at 0.62 for
+  the primary action and 0.28 for the others, rising to 1.00 with the orange
+  marker when focused. Choices (steppers, No and Yes pairs, sliders and
+  swatches) follow section 7, and player lists use the scoreboard's rows.
+- **Prompt bar.** The leading prompts are Resume (Escape) or Spectate (Welcome)
+  on the back button, Tabs on the previous and next glyphs, and Select on the
+  accept button. Main Menu and Disconnect (Escape) or Leave Server (Welcome)
+  trail it. The destructive action comes last and asks first in the stock
+  modal over the marine.scrim (section 6).
+- **Unavailable actions.** They stay in place, dimmed to 0.38, with a lock after
+  the label and the reason on the plate in the error color. Choosing one shakes
+  the plate for 300 ms and announces the reason; nothing else happens.
+
+**Welcome** opens when a player connects, after the loading screen (section
+14.17), and replaces the join card. Esc spectates for now, and the menu key
+reopens it.
+
+| Tab | Content |
+| --- | --- |
+| Join | The mode and map; the match state with the time left in the value color, the limit and the player count. Team modes then show two team cards, each the plate that joins that team: the header band in the team color with the mark, name and score, then the player count and, in CTF, the flag's state. Auto join follows, focused, naming the team it will choose, then Spectate. Deathmatch shows the three leaders, Join game and Spectate. Tourney shows the arenas in play, Join the queue with the player's place, and Watch for each arena |
+| Server | The name and address, the server's message in #FFFF8D, the rules in two columns (mode, map, limits, players, friendly fire, balance and next map) and the map rotation |
+| Players | The team lists with the speaker and friend symbols, score and ping; spectators below |
+| Settings | Name, clan tag, model, the rail color swatches and the crosshair, then All settings |
+
+**Escape** opens with the menu key during a match, with Resume leading the
+prompt bar.
+
+| Tab | Content |
+| --- | --- |
+| Team | Your team in its header band with the score and the team sizes; Switch team, with the sizes it would leave, and Spectate. Ready is unavailable outside the warm-up and says so. The last three chat lines follow |
+| Players | The team lists beside the selected player's statistics: kills, deaths and score, accuracy per weapon in the weapon color code, awards, then Mute and Friend |
+| Vote | The running vote first: who called it, what it changes, the time left, the yes and no tally, and Yes and No (F1 and F2). The call-a-vote rows follow: map, game type, limits, balance, shuffle and kick. Call vote is unavailable while a vote runs |
+| Match | Match Control's six sections as a second, smaller strip: Status, Teams, Proposals, Rules, Series and Evidence. Status shows readiness and the pause and referee actions; captain-only actions stay visible, unavailable, and say so |
+| Settings | Player appearance: name, model, rail color, handicap, the forced models for self, enemy and teammate, and outline; then Controls, Game options and System |
+| Voice | Send and receive voice, their volumes, voice echo and a live microphone meter beside the transmission trace (section 14.8); the push-to-talk keys and Test microphone |
+| Server | As on Welcome |
+| Admin | The remote console password first; then Players (kick, ban, force team switch and the ban list), Server (the rules and Apply changes) and Console |
+
+**Input.** The previous and next glyphs, Q and E, the bumpers and the left and
+right arrows switch tabs at once and cross-fade the page over 150 ms. Up and
+down move focus through the page's plates, accept chooses, and back leaves.
+Each page opens with its primary action focused (Auto join on Welcome's Join
+tab) and keeps its focus while the player changes values on it. The tab set is
+fixed; the strip scrolls only on compact widths (section 13.3).
+
 ## Appendix A. Stock survey method
 
 The 1.1 survey read the 30 installed `q4base` archives of the Steam 1.4.2
@@ -2630,6 +2806,14 @@ Bottom band inner edge (x, y): (0, 70.5), (166.3, 70.5), (176.5, 79.6),
 Both bands are 1024x128 texel art drawn at 1045x129 u. The in-game states draw
 the bands at 0.40.
 
+The loading bands are separate art: `load_top_edge` (512x128 texels drawn at
+640x119 u) and `load_btm_edge` (512x256 at 640x253 u). Top band inner edge
+(x, y): (0, 28.8), (268.8, 28.8), (290, 9.3), (640, 9.3). Bottom band inner
+edge, band-local: (0, 123.5), (165, 123.5), (207.5, 81), (640, 81), which is
+468.5 and 426 u with the band at 345 u. Their `edgeadd` companions add
+#181D0A from the inner edge into the picture, 0.98 at the edge to 0.55 at
+35 u.
+
 ### B.3 Text size conversion
 
 | Face | `textscale` | Em (dp) | Cap height (dp) |
@@ -2668,7 +2852,10 @@ Gauge art is 256x128 texels drawn at 125x59 u (0.488 u per texel across,
 | `valbar` | The fill outline with its notch; luminance 0.58 inside and 0.93–0.97 at the edges over about 7 u |
 | `arbar` | The `valbar` outline; interior luminance 0.69; nine dividers every 24 texels (11.7 u), 3 texels wide, alpha 0.61 |
 | `backbar_add` | An inner-edge glow of the backing silhouette, full at the edge and gone about 17 u inside; drawn additively |
-| `ekg` | Black with a white trace: baseline at 58% of the rect, two identical beats per width (P, a QRS rising 17.7 u, T, U) and a soft halo |
+| `ekg` | Black with a white trace: baseline at 58% of the rect; two identical beats per width, each a P wave (+3.5 u), a Q dip (−2.5 u), an R spike (+17.5 u), an S trough (−6.2 u) and T and U waves (+6.2 u, +3.0 u), all with straight flanks; a 2-texel core and a halo from 0.24 to nothing over 8 texels |
+| `waveform`, `waveform_mask` | A recorded voice trace: a 4-texel core on rows 64–67 and per-column spikes up to 41 texels above and 36 below, 71 of 256 columns flat. The mask is a right trapezoid: rows 2–29, the leading edge from column 21 at the top to 15 at the bottom, the trailing edge at 51. The Strogg mask leans both edges back (11 to 17 and 45 to 51) |
+| `radio_rhino` | The Rhino squad emblem, alpha only: a rounded square frame and a rhino head with speed streaks |
+| `aud_wavbg` | The voice bar: rows 1–14, alpha 0.85 to 0.14 across, a hard slanted end at 87% |
 | `wsbar`, `wsbarglow` | A 24.4 u rounded square with a radius of about 1 u; the glow is a hard 1.6 u ring on the same outline |
 | `noammo` | A red prohibition sign about 15 u across with a 2.3 u stroke, slashed from upper trailing to lower leading |
 | `pickupbar`, `hud_rev3/radiobar` | Solid rounded rects, 226.4x21 u and 109.4x24.4 u, radius about 1 u |
@@ -2811,3 +2998,22 @@ FLOW-033 with FLOW-043, FLOW-034 with FLOW-040, FLOW-035 with FLOW-041,
 FLOW-036 with FLOW-042 and WID-024 with WID-032. It also appends FLOW-045 (chat),
 ART-027 (crosshairs), ART-028 (item icons) and MOT-015 (translation and
 transmission effects).
+
+### Version 1.6
+
+Version 1.6 adds the loading screens and the multiplayer menus, redraws the EKG
+and the transmission waveform from their textures, and moves the scoreboard's
+column headings out of the first row.
+
+| Area | 1.5 | 1.6 | Basis |
+| --- | --- | --- | --- |
+| Loading screens | The stock composition (section 9) and one screen-pattern line | Section 14.17: the stock screens measured, and a Remastered screen with extended bands, the mission and objectives, named stages, tips, a device-aware continue prompt, and a multiplayer server card and arsenal | `guis/loading/*.gui`, `Session.cpp`, `mpgame/Game_local.cpp` |
+| Multiplayer menus | A pause pattern and the join card | Section 14.18: a card with a horizontal tab strip over the softened view, in Welcome and Escape variants, with every page's content | `mpmain.gui`, openQ4's join card and Match Control |
+| In-game panel ladder | The join card's values | The same values for every in-game partial panel, over the stock light plates, with focus at 1.00 | openQ4's `p_quickjoin` |
+| EKG | Beats, speed and colors | The traced waveform and its halo; no smoothed curves | `ekg.tga`, `hud.gui` |
+| Transmission waveform | A trapezoid mask and a canned table | The traced voice trace, the right-trapezoid mask, a Remastered height that follows the line, and the traced Rhino emblem | `waveform.tga`, `waveform_mask.tga`, `radio_rhino.tga`, `tables.mtr` |
+| Voice indicator | Stock bars; Remastered bars above the chat | The stock bars measured; Remastered talker plates with team-colored traces | `mphud.gui`, `aud_wavbg.tga` |
+| Scoreboard headings | Headings over a rule | Headings in their own strip under the header band, never inside a row | `scoreboard.gui` |
+
+Register schema 5 appends FLOW-046 (multiplayer menus), FLOW-047 (loading
+screens) and ART-029 (instrument traces). It supersedes no row.
