@@ -134,7 +134,12 @@ public final class StorageTest {
         require(root.resolve("files/packages/keep/test.txt").toFile().isFile(), "unmanaged content preservation");
         Path outside = root.resolve("outside");
         write(outside.resolve("sentinel"), "outside package tree");
-        try {
+        // The cleanup guard relies on getCanonicalFile() resolving symlinks, as
+        // it does on Android. A Windows host JVM does not resolve them, so it
+        // cannot model that guard; Linux and macOS hosts still exercise it.
+        if (System.getProperty("os.name", "").startsWith("Windows")) {
+            System.out.println("SKIP: a Windows JVM does not canonicalize through symlinks as Android does");
+        } else try {
             Files.createSymbolicLink(root.resolve("files/packages/" + "c".repeat(64)), outside);
             extract(activity);
             require(outside.resolve("sentinel").toFile().isFile(), "cleanup must not follow symlinks");
