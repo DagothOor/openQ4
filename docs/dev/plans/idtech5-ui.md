@@ -32,7 +32,11 @@ Version 1.5 lays the HUD out in screens with a centered status bar. It
 rebuilds the multiplayer HUD's top, chat and kill feed, catalogues every
 crosshair and item icon as vector art, and gives the weapon wheels the stock's
 translation and transmission effects. Register schema 4 supersedes seven rows
-and appends four for it.
+and appends four for it. Version 1.6 adds the loading screens and the
+multiplayer menus. The menus are a tabbed card over the softened view, in
+Welcome and Escape variants that replace the join card and the full-screen menu.
+It also traces the EKG and the transmission waveform from their textures.
+Register schema 5 appends three rows for it.
 
 The controller weapon wheel already in openQ4-game (`356dfe56`: 12 slots,
 centered at 77% of the width, cursor selection) differs from section 14.6

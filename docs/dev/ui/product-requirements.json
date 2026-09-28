@@ -1,10 +1,10 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "id_namespace": "openq4.ui.product",
-  "date": "2026-09-27",
+  "date": "2026-09-28",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "6a0baf567afedba52e07ced6914a0ee46f0a5423",
+    "engine_revision": "8bd0eddf2074226773322181a89afafcd892c016",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -14,17 +14,17 @@
     "visual": {
       "path": "docs/dev/ui-visual-design.md",
       "authority": "normative visual, interaction and editor contract",
-      "sha256": "88f17646f1b94b5c85954621d365a5d972b67bb8cd3e381bc711b22361485807"
+      "sha256": "7bc42723eb3beb35ba343ad5d6aff13a8b1f6750abecdf1fa063b66653fd3be2"
     },
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "f171facbc27127f4757abd4e434554cd8b6cc95a053a1d3b728c8567a4895970"
+      "sha256": "c5d69538d0e2f0ae151364d7bba7fc58eb15e3673155ef706fc99084a5b0e318"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "2209410a4fb9401bf5e5c9a26e70d7337b905580123609c6e16d0d4f2c25fa19"
+      "sha256": "0abe18afd079008582bfd1024a3b48bf1d6f0925d6764c6315d88342a97d2ced"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -102,7 +102,7 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "f171facbc27127f4757abd4e434554cd8b6cc95a053a1d3b728c8567a4895970"
+      "sha256": "c5d69538d0e2f0ae151364d7bba7fc58eb15e3673155ef706fc99084a5b0e318"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
@@ -282,7 +282,7 @@
     "text-entry-foundation": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/text-entry-foundation.md",
-      "sha256": "eae52f62888a4cd51a9374e14332760ce7c8217d3b186fbed2cb4d81d8d5aee5",
+      "sha256": "5c83903f8b32fee5db3157411d9a238a64b18608b7e4a8e71192ef33f128de45",
       "baseline_engine_revision": "e3e65887480368191df154a9b52cce69d8e72140",
       "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
       "scope": "Validated scalar UTF-8 commit/preedit records, atomic local edit buffer, bounded undo/redo and exact finite numeric parsing/formatting. Checked clipboard primitives enabled only for patched bundled Windows SDL; other providers make no SDL calls. Pending-only event-payload cleanup on Windows/POSIX. Integrated Windows build, four native suites, compiled actual-method checks and hidden SP/OpenGL gameplay/menu smoke pass within their recorded scope. No live field, native clipboard exchange, owner-aware IME delivery, shared shaped caret/grapheme/bidi editing, migration or product acceptance.",
@@ -11095,6 +11095,173 @@
           0.06,
           0.4
         ]
+      }
+    },
+    {
+      "id": "FLOW-046",
+      "title": "Multiplayer menus: Welcome and Escape",
+      "milestone_owner": "M4",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14",
+        "visual:13"
+      ],
+      "requirement": "Replace the stock full-screen multiplayer menu and the join card, in Remastered, with one card in the center screen over the live view softened by the scene effect (blurred and slightly desaturated, never dimmed; in over 250 ms while the card rises 12 dp and fades in over 150 ms; released on every exit, with the scrim-and-vignette fallback where softening is unavailable) while the match keeps running and the HUD hides. The card is the section 6 card, 570x402 dp for Welcome and 648x477 dp for Escape, whatever the tab, holding the stock tab strip laid horizontally (the active tab rising 30 dp with its leading flare and 18 dp shoulder, #5A652A 1.00 to 0.60, the broken baseline and the wash, labels fitted to their widths, the previous and next glyphs at the ends), the page and a prompt bar. Welcome opens after the loading screen with Join, Server, Players and Settings: team cards, Auto join (focused, naming its team) and Spectate in team modes, Join game in deathmatch, the queue and arena watching in Tourney; Esc spectates. Escape opens on the menu key with Team, Players, Vote, Match (Match Control's six sections as a second strip), Settings, Voice, Server and Admin; Resume leads the prompt bar and Main Menu and Disconnect trail it, Disconnect asking first in the stock modal. Plates follow the in-game ladder (primary 0.62, others 0.28, focus 1.00 over b6_light), unavailable actions stay visible with a lock and their reason, and the previous and next glyphs switch tabs at once with a 150 ms page cross-fade while each page keeps its focus. Classic keeps the stock menus.",
+      "dependencies": [
+        "FLOW-024",
+        "FLOW-006",
+        "WID-008",
+        "ART-024",
+        "BEH-007",
+        "INP-011"
+      ],
+      "acceptance_evidence_needed": [
+        "MP captures of Welcome on connect and Escape during a live match at 4:3, 16:9 and 21:9 with keyboard and controller prompts, every tab in team, deathmatch and Tourney modes, the unavailable states and the Disconnect modal, and the scene softening and its release on GL, Vulkan and the GLES fallback."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "welcome_card_dp": [
+          570,
+          402
+        ],
+        "escape_card_dp": [
+          648,
+          477
+        ],
+        "active_tab_rise_dp": 30,
+        "tab_shoulder_dp": 18,
+        "soften_ms": 250,
+        "card_rise_dp": 12,
+        "card_fade_ms": 150,
+        "page_crossfade_ms": 150,
+        "primary_alpha": 0.62,
+        "other_alpha": 0.28,
+        "focus_alpha": 1.0,
+        "unavailable_label_alpha": 0.38,
+        "welcome_tabs": [
+          "Join",
+          "Server",
+          "Players",
+          "Settings"
+        ],
+        "escape_tabs": [
+          "Team",
+          "Players",
+          "Vote",
+          "Match",
+          "Settings",
+          "Voice",
+          "Server",
+          "Admin"
+        ]
+      }
+    },
+    {
+      "id": "FLOW-047",
+      "title": "Loading screens",
+      "milestone_owner": "M4",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14",
+        "visual:13"
+      ],
+      "requirement": "Reproduce the stock single-player, multiplayer and intro loading screens in Classic (levelshot, the measured band silhouettes at black 0.80 with their #181D0A spill, brackets, dot matrix and grid, the level name over its gradient, the #E06C00 bar at 0.30 and 0.50 with LOADING, the multiplayer server lines, message line and item icon row, and the completion pulse and sounds). In Remastered, cover the view with the levelshot, drifting in by 3% unless motion is reduced; lengthen only the bands' straight spans and anchor them to the top and bottom edges; add the mission line and, when the map lists them, the objectives in the objectives display's open plate; show LOADING over a 240 u bar with the loader's current phase, its count and the percentage; run localized tips every 6 s with a 250 ms cross-fade; and end on a continue prompt in the active device's glyphs with the stock pulse. Multiplayer keeps the picture tall with a server card on the leading side and the arsenal filling in as each item spawns, then hands over to the Welcome menu without a click.",
+      "dependencies": [
+        "FLOW-005",
+        "ART-014",
+        "FLOW-024",
+        "LAY-019"
+      ],
+      "acceptance_evidence_needed": [
+        "SP, intro and MP loading captures at 4:3, 16:9 and 21:9 through a full load with each device's continue prompt, Classic against the stock screens, and a timing trace of the phase readout, tips and hand-off."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "band_alpha": 0.8,
+        "mp_stock_band_y_u": 227,
+        "bar_track_alpha": 0.3,
+        "bar_fill_alpha": 0.5,
+        "remastered_bar_u": 240,
+        "levelshot_drift": 0.03,
+        "tip_interval_ms": 6000,
+        "tip_fade_ms": 250,
+        "continue_pulse_ms": [
+          500,
+          200
+        ],
+        "arsenal_icon_fade_ms": 150
+      }
+    },
+    {
+      "id": "ART-029",
+      "title": "Instrument traces",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Draw the HUD's instrument traces from their measured textures, never as generated approximations: the EKG beat (baseline at 58%, a triangular P wave rising 3.5 u, a 2.5 u Q dip, an R spike of 17.5 u, an S trough of 6.2 u and triangular T and U waves of 6.2 u and 3.0 u in each 62.5 u beat) with a 0.95 u core and a halo falling from 0.24 to nothing over 3.7 u; the transmission waveform rebuilt column by column from waveform.tga in its right-trapezoid mask (19.2 u to 23.1 u), scrolling 24.6 u/s, its height stepping through the stock table in Classic and following the playing line's level in Remastered (the core fixed, spikes up to 2.35 times, the table again when no level is reported); the traced Rhino emblem shrinking with its plate over 500 ms; and the multiplayer voice bars, with Remastered talker plates stacked above the chat, each trace in the talker's team color and its own phase.",
+      "dependencies": [
+        "ART-026",
+        "REN-015",
+        "FLOW-031",
+        "FLOW-040",
+        "FLOW-045"
+      ],
+      "acceptance_evidence_needed": [
+        "Side-by-side captures of the EKG, the transmission display with and without the emblem, and the voice bars against the stock textures at 100% and 300%, and a trace of the Remastered waveform's height against the playing line's level."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "ekg_baseline_fraction": 0.58,
+        "ekg_beat_u": 62.5,
+        "ekg_waves_u": {
+          "P": 3.46,
+          "Q": -2.5,
+          "R": 17.5,
+          "S": -6.2,
+          "T": 6.22,
+          "U": 3.0
+        },
+        "ekg_core_u": 0.95,
+        "ekg_halo_u": 3.7,
+        "waveform_mask_u": [
+          19.2,
+          23.1
+        ],
+        "waveform_scroll_u_per_s": 24.6,
+        "waveform_table_step_ms": 79.4,
+        "voice_spike_max": 2.35,
+        "emblem_shrink_ms": 500
       }
     }
   ]

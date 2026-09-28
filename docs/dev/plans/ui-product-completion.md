@@ -65,6 +65,12 @@ declaring that choice proven for the whole product.
 
 ### Current implementation progress
 
+A [28 September register revision](../ui/product-requirements.md) follows
+[visual specification](../ui-visual-design.md) 1.6. Register schema 5 appends
+three rows and supersedes none: the Welcome and Escape multiplayer menus, the
+loading screens, and the HUD's instrument traces. The register now holds 310
+rows, of which 290 define acceptance.
+
 A second [27 September register revision](../ui/product-requirements.md)
 follows [visual specification](../ui-visual-design.md) 1.5. Register schema 4
 supersedes seven rows and appends four. The new scope covers the HUD's screens,
