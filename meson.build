@@ -628,6 +628,13 @@ if build_engine or get_option('build_native_tests')
       install: false,
     )
     test('openq4-ui-slider-decimal', openq4_ui_slider_decimal_test, timeout: 30)
+    openq4_ui_float_chars_test = executable(
+      'openq4-ui-float-chars-test',
+      files('tools/tests/native/UiFloatCharsTest.cpp'),
+      include_directories: root_include_dir,
+      install: false,
+    )
+    test('openq4-ui-float-chars', openq4_ui_float_chars_test, args: ['500'], timeout: 60)
     openq4_ui_number_native_view_test = executable(
       'openq4-ui-number-native-view-test',
       files('tools/tests/native/UiNumberNativeViewTest.cpp'),

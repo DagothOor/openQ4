@@ -1,5 +1,6 @@
 // Copyright (C) 2026 DarkMatter Productions. GPL-3.0-or-later.
 #include "src/ui/application/SettingsJournal.h"
+#include "src/ui/retained/FloatChars.h"
 #include <charconv>
 #include <cstdio>
 #include <cstdlib>
@@ -32,7 +33,7 @@ static SettingsRecoveryJournal Journal(double original) {
  j.target={{"scalar",0.0},{"toggle",true}};j.patch={{"scalar",0.0},{"toggle",true}};
  j.displayRestore={{"width",1280.0}};j.displayTarget={{"width",960.0}};j.placement={{"x",-1920.0}};return j;
 }
-static std::string OldGeneral(double value) { Mode gradual(false);char text[64];auto r=std::to_chars(text,text+sizeof(text),value,std::chars_format::general,std::numeric_limits<double>::max_digits10);CHECK(r.ec==std::errc{});return {text,r.ptr}; }
+static std::string OldGeneral(double value) { Mode gradual(false);char text[64];auto r=FloatToChars(text,text+sizeof(text),value,std::chars_format::general,std::numeric_limits<double>::max_digits10);CHECK(r.ec==std::errc{});return {text,r.ptr}; }
 static std::string Rechecksum(const std::string& bytes) {
  const auto first=bytes.find('\n'),payloadStart=bytes.find('\n',first+1)+1;std::uint32_t crc=0xffffffffu;
  for(unsigned char c:bytes.substr(payloadStart)){crc^=c;for(unsigned i=0;i<8;++i)crc=(crc&1)?(crc>>1)^0xedb88320u:crc>>1;}
@@ -47,7 +48,7 @@ static void Serialization() {
   const double value=std::bit_cast<double>(fraction|((i&1)?0x8000000000000000ULL:0));
   const auto legacy=OldGeneral(value);
   for(bool flush:{false,true}) {Mode mode(flush);std::string text="untouched";const unsigned originalMode=FloatingMode();CHECK(SettingsNumberText(value,SettingsNumberFormat::GeneralRoundTrip,text)&&text==legacy);CHECK(FloatingMode()==originalMode);
-   double parsed=0;auto result=std::from_chars(text.data(),text.data()+text.size(),parsed);CHECK(result.ec==std::errc{}&&result.ptr==text.data()+text.size());CHECK(std::memcmp(&value,&parsed,sizeof(value))==0);
+   double parsed=0;auto result=FloatFromChars(text.data(),text.data()+text.size(),parsed);CHECK(result.ec==std::errc{}&&result.ptr==text.data()+text.size());CHECK(std::memcmp(&value,&parsed,sizeof(value))==0);
   }
  }
  for(double value:{0.0,-0.0,1.375,.1375,1e-7,1e-100,std::numeric_limits<double>::min(),std::bit_cast<double>(std::uint64_t(0x10000000000001ULL)),1e12}) {

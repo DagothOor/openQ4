@@ -1,5 +1,6 @@
 // Copyright (C) 2026 DarkMatter Productions. GPL-3.0-or-later.
 #include "Document.h"
+#include "FloatChars.h"
 #include <charconv>
 #include <cmath>
 #include <limits>
@@ -30,20 +31,20 @@ bool AliasPart(std::string_view part) {
 	return true;
 }
 bool Number(std::string_view token, double& value) {
-	// Floating from_chars is independent of the process locale. Its grammar
+	// FloatFromChars is independent of the process locale. Its grammar
 	// deliberately excludes a leading '+', which the public numeric API accepts.
 	if (!token.empty() && token.front() == '+') {
 		token.remove_prefix(1);
 		if (!token.empty() && (token.front() == '+' || token.front() == '-')) return false;
 	}
 	if (token.empty()) return false;
-	const auto result = std::from_chars(token.data(),token.data()+token.size(),value,std::chars_format::general);
+	const auto result = FloatFromChars(token.data(),token.data()+token.size(),value,std::chars_format::general);
 	return result.ec == std::errc{} && result.ptr == token.data()+token.size() &&
 		std::isfinite(value) && std::abs(value) <= 1000000000000.0;
 }
 std::string NumberText(double value) {
 	char buffer[64];
-	const auto result = std::to_chars(buffer,buffer+sizeof(buffer),value,
+	const auto result = FloatToChars(buffer,buffer+sizeof(buffer),value,
 		std::chars_format::general,std::numeric_limits<double>::max_digits10);
 	return result.ec == std::errc{} ? std::string(buffer,result.ptr) : std::string{};
 }

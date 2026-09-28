@@ -28,6 +28,7 @@ CVAR_SUPPORT=r'''
 #define TEST_SSE 1
 #endif
 #include "src/idlib/NumericString.h"
+#include "src/ui/retained/FloatChars.h"
 namespace ActualCVar {
 namespace idStrAllocationDetail {size_t SaturatingAdd(size_t a,size_t b){return a+b;}}
 class idStr {
@@ -68,7 +69,7 @@ struct FloatMode{
 static void ExactSerialization(){
  for(const std::uint64_t bits:{1ULL,2ULL,255ULL,0x8000000000000ULL,0xfffffffffffffULL,0x10000000000000ULL,0x10000000000001ULL,0x8000000000000001ULL,0x800fffffffffffffULL}){
   const double value=std::bit_cast<double>(bits);const auto text=Serialize(StateValue(value));CHECK(!text.empty()&&text.size()<=1077&&text.find_first_of("eE")==std::string::npos);CHECK(idNumericString::IsDecimal(text.c_str()));
-  double parsed=0;const auto result=std::from_chars(text.data(),text.data()+text.size(),parsed,std::chars_format::fixed);CHECK(result.ec==std::errc{}&&result.ptr==text.data()+text.size());CHECK(std::memcmp(&value,&parsed,sizeof(value))==0);
+  double parsed=0;const auto result=openq4::ui::FloatFromChars(text.data(),text.data()+text.size(),parsed,std::chars_format::fixed);CHECK(result.ec==std::errc{}&&result.ptr==text.data()+text.size());CHECK(std::memcmp(&value,&parsed,sizeof(value))==0);
  }
 }
 static void Precision(){
@@ -136,7 +137,7 @@ def main():
     compiler=options.compiler or next((p for name in ('clang++','g++','c++') if(p:=shutil.which(name))),None)
     if not compiler:raise RuntimeError('C++20 compiler required')
     (ROOT/'.tmp').mkdir(exist_ok=True)
-    dependencies=[Path(__file__),ROOT/'src/framework/PerformancePreset.h',ROOT/'src/framework/PerformancePreset.cpp',ROOT/'tools/tests/ui_system_settings_host.py',ROOT/'tools/tests/filesystem_case_segments.py',ROOT/'src/framework/CVarSystem.cpp',ROOT/'src/idlib/Str.h',ROOT/'src/idlib/NumericString.h',ROOT/'src/ui/application/SystemSettingsHost.cpp',ROOT/'src/ui/application/SystemSettingsHost.h',ROOT/'src/ui/application/SettingsTransaction.h',ROOT/'src/ui/application/SettingsValue.h',ROOT/'src/ui/retained/Presentation.cpp',ROOT/'src/ui/retained/Document.cpp',ROOT/'src/ui/retained/Document.h',ROOT/'src/ui/retained/Vector.h']
+    dependencies=[Path(__file__),ROOT/'src/framework/PerformancePreset.h',ROOT/'src/framework/PerformancePreset.cpp',ROOT/'tools/tests/ui_system_settings_host.py',ROOT/'tools/tests/filesystem_case_segments.py',ROOT/'src/framework/CVarSystem.cpp',ROOT/'src/idlib/Str.h',ROOT/'src/idlib/NumericString.h',ROOT/'src/ui/application/SystemSettingsHost.cpp',ROOT/'src/ui/application/SystemSettingsHost.h',ROOT/'src/ui/application/SettingsTransaction.h',ROOT/'src/ui/application/SettingsValue.h',ROOT/'src/ui/retained/Presentation.cpp',ROOT/'src/ui/retained/Document.cpp',ROOT/'src/ui/retained/Document.h',ROOT/'src/ui/retained/FloatChars.h',ROOT/'src/ui/retained/Vector.h']
     before={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in dependencies}
     out=Path(tempfile.mkdtemp(prefix='settings-decimal-',dir=ROOT/'.tmp'));code=out/'host.cpp';code.write_text(source(),encoding='utf-8',newline='\n')
     binary=out/('test.exe' if os.name=='nt' else 'test');args=[compiler,'-std=c++20','-O2','-D_CRT_SECURE_NO_WARNINGS','-I',str(ROOT),str(code),str(ROOT/'src/ui/retained/Presentation.cpp'),str(ROOT/'src/framework/PerformancePreset.cpp'),'-o',str(binary)]

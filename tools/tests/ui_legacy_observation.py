@@ -127,7 +127,7 @@ def source():
     generated=generated.replace('static int Icmp(const char* a,const char* b)', 'static int Icmpn(const char* a,const char* b,int n){return std::strncmp(a,b,n);}static bool CheckExtension(const char* s,const char* ext){std::string x=s,y=".";y+=ext;return x.size()>=y.size()&&x.substr(x.size()-y.size())==y;}static int Icmp(const char* a,const char* b)')
     generated=generated.replace('struct idDeclTable:idDecl{int Index()const{return 7;}', 'struct idDeclTable:idDecl{mutable unsigned indexCalls=0;int Index()const{++indexCalls;return 7;}')
     generated=generated.replace('struct Common {int warnings=0;', 'struct Common {int warnings=0;std::string log;void Printf(const char* fmt,...){char b[1024];va_list args;va_start(args,fmt);std::vsnprintf(b,sizeof(b),fmt,args);va_end(args);log+=b;}')
-    includes='''#include <memory>\n#include <charconv>\n#include <limits>\n#include <cmath>\n#include <new>\nstatic bool denyAllocation=false;\nvoid* operator new(std::size_t n){if(denyAllocation)throw std::bad_alloc();if(auto* p=std::malloc(n?n:1))return p;throw std::bad_alloc();}\nvoid* operator new[](std::size_t n){return ::operator new(n);}\nvoid operator delete(void* p)noexcept{std::free(p);}\nvoid operator delete[](void* p)noexcept{std::free(p);}\nvoid operator delete(void* p,std::size_t)noexcept{std::free(p);}\nvoid operator delete[](void* p,std::size_t)noexcept{std::free(p);}\n'''
+    includes='''#include <memory>\n#include <charconv>\n#include <limits>\n#include <cmath>\n#include <new>\n#include "'''+(ROOT/'src/ui/retained/FloatChars.h').as_posix()+'''"\nstatic bool denyAllocation=false;\nvoid* operator new(std::size_t n){if(denyAllocation)throw std::bad_alloc();if(auto* p=std::malloc(n?n:1))return p;throw std::bad_alloc();}\nvoid* operator new[](std::size_t n){return ::operator new(n);}\nvoid operator delete(void* p)noexcept{std::free(p);}\nvoid operator delete[](void* p)noexcept{std::free(p);}\nvoid operator delete(void* p,std::size_t)noexcept{std::free(p);}\nvoid operator delete[](void* p,std::size_t)noexcept{std::free(p);}\n'''
     generated=generated.replace('static unsigned checks=0;',includes+'static unsigned checks=0;')
     helpers=cpp[cpp.index('namespace {'):cpp.index('\nvoid RetainedUI_ExportLegacy')]
     core=cpp[cpp.index('// LEGACY_OBSERVATION_CORE_BEGIN'):]
@@ -136,7 +136,7 @@ def source():
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--compiler');ap.add_argument('--sanitizers',action='store_true');ap.add_argument('--mutations',action='store_true');args=ap.parse_args()
     out=Path(tempfile.mkdtemp(prefix='legacy-observation-',dir=ROOT/'.tmp'));sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
-    deps=[ROOT/p for p in ['src/ui/Window.cpp','src/ui/Window.h','src/ui/RegExp.cpp','src/ui/Winvar.h','src/ui/Winvar.cpp','src/framework/DeclManager.cpp','src/ui/UserInterface.cpp','src/ui/LegacyGuiImport.h','src/ui/LegacyGuiImport.cpp','tools/tests/ui_legacy_expression.py','tools/tests/ui_legacy_observation.py']]
+    deps=[ROOT/p for p in ['src/ui/Window.cpp','src/ui/Window.h','src/ui/RegExp.cpp','src/ui/Winvar.h','src/ui/Winvar.cpp','src/framework/DeclManager.cpp','src/ui/UserInterface.cpp','src/ui/LegacyGuiImport.h','src/ui/LegacyGuiImport.cpp','src/ui/retained/FloatChars.h','tools/tests/ui_legacy_expression.py','tools/tests/ui_legacy_observation.py']]
     before={str(p):sha(p) for p in deps};text=source();cases=[('positive',text,None)]
     if args.mutations:
         edits=[

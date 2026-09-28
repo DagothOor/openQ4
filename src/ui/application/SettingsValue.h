@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../retained/Document.h"
+#include "../retained/FloatChars.h"
 #include <bit>
 #include <charconv>
 #include <cstdint>
@@ -87,8 +88,8 @@ inline bool SettingsNumberText(double number, SettingsNumberFormat format, std::
 	}
 	char buffer[768];
 	const auto result = format == SettingsNumberFormat::FixedShortest ?
-		std::to_chars(buffer,buffer+sizeof(buffer),number,std::chars_format::fixed) :
-		std::to_chars(buffer,buffer+sizeof(buffer),number,std::chars_format::general,std::numeric_limits<double>::max_digits10);
+		FloatToChars(buffer,buffer+sizeof(buffer),number,std::chars_format::fixed) :
+		FloatToChars(buffer,buffer+sizeof(buffer),number,std::chars_format::general,std::numeric_limits<double>::max_digits10);
 	if (result.ec != std::errc()) return false;
 	std::string candidate(buffer,result.ptr); output = std::move(candidate); return true;
 }

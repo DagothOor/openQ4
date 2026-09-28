@@ -1,5 +1,6 @@
 // Copyright (C) 2026 DarkMatter Productions. GPL-3.0-or-later.
 #include "TextEdit.h"
+#include "FloatChars.h"
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -210,7 +211,7 @@ TextNumberStatus ParseTextNumber(std::string_view text, const TextNumberPolicy& 
 	// from_chars deliberately excludes leading '+', which the field accepts.
 	if (text.front() == '+') text.remove_prefix(1);
 	double candidate = 0;
-	const auto parsed = std::from_chars(text.data(),text.data()+text.size(),candidate,std::chars_format::general);
+	const auto parsed = FloatFromChars(text.data(),text.data()+text.size(),candidate,std::chars_format::general);
 	if (parsed.ec == std::errc::result_out_of_range) return TextNumberStatus::OutOfRange;
 	if (parsed.ec != std::errc{} || parsed.ptr != text.data()+text.size() || !std::isfinite(candidate)) return TextNumberStatus::Invalid;
 	if (candidate < policy.minimum || candidate > policy.maximum) return TextNumberStatus::OutOfRange;
@@ -225,7 +226,7 @@ bool FormatTextNumber(double value, const TextNumberPolicy& policy, std::string&
 	char buffer[768];
 	// Shortest round-trip form preserves the exact double without exposing
 	// unnecessary trailing digits in an editable value such as 1.1.
-	const auto result = std::to_chars(buffer,buffer+sizeof(buffer),value,
+	const auto result = FloatToChars(buffer,buffer+sizeof(buffer),value,
 		policy.exponent ? std::chars_format::general : std::chars_format::fixed);
 	if (result.ec != std::errc{}) return Fail(error, "Cannot format the numeric edit value");
 	text.assign(buffer,result.ptr); error.clear(); return true;

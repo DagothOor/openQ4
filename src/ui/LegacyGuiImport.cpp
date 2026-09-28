@@ -11,6 +11,7 @@
 #include "DeviceContext.h"
 #include "Window.h"
 #include "UserInterfaceLocal.h"
+#include "retained/FloatChars.h"
 
 namespace {
 bool ImportPath(const char* path) {
@@ -302,7 +303,8 @@ idWindow* LegacyExactWindow(idWindow* root, const std::string& path, unsigned& v
 }
 void LegacyFloat(std::string& out, float value) {
 	if (!std::isfinite(value)) { out += "null"; return; }
-	char text[64]; const auto result = std::to_chars(text,text+sizeof(text),value,std::chars_format::general,std::numeric_limits<float>::max_digits10);
+	// printf promotes float to double, so %.9g of the double is the float's text.
+	char text[64]; const auto result = openq4::ui::FloatToChars(text,text+sizeof(text),value,std::chars_format::general,std::numeric_limits<float>::max_digits10);
 	if (result.ec != std::errc{}) throw std::runtime_error("float formatting failed");
 	out.append(text,result.ptr);
 }

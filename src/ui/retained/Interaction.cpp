@@ -1,5 +1,6 @@
 // Copyright (C) 2026 DarkMatter Productions. GPL-3.0-or-later.
 #include "Interaction.h"
+#include "FloatChars.h"
 #include <algorithm>
 #include <atomic>
 #include <charconv>
@@ -58,7 +59,7 @@ bool ValidNumber(const Control& control) {
 // then canonicalize only generated ticks. Custom readbacks and Number edits
 // never pass through this path. At most 324 fractional digits are required.
 int SliderDecimalPlaces(double value) {
-	char text[64]; const auto formatted=std::to_chars(text,text+sizeof(text),value);
+	char text[64]; const auto formatted=FloatToChars(text,text+sizeof(text),value);
 	if (formatted.ec!=std::errc{}) return 0;
 	const auto end=formatted.ptr; const auto exponent=std::find(text,end,'e');
 	int power=0;
@@ -75,10 +76,10 @@ double SliderTickValue(const SliderSpec& spec,long double tick) {
 	const double value=std::clamp(static_cast<double>(spec.minimum+tick*spec.step),spec.minimum,spec.maximum);
 	if (value==spec.minimum || value==spec.maximum) return value;
 	char text[768]; const int places=std::max(SliderDecimalPlaces(spec.minimum),SliderDecimalPlaces(spec.step));
-	const auto formatted=std::to_chars(text,text+sizeof(text),value,std::chars_format::fixed,places);
+	const auto formatted=FloatToChars(text,text+sizeof(text),value,std::chars_format::fixed,places);
 	if (formatted.ec!=std::errc{}) return value;
 	double canonical=0;
-	const auto parsed=std::from_chars(text,formatted.ptr,canonical,std::chars_format::fixed);
+	const auto parsed=FloatFromChars(text,formatted.ptr,canonical,std::chars_format::fixed);
 	if (parsed.ec!=std::errc{} || parsed.ptr!=formatted.ptr || !std::isfinite(canonical)) return value;
 	return std::clamp(canonical,spec.minimum,spec.maximum);
 }

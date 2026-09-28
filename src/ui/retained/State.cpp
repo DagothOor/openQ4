@@ -1,5 +1,6 @@
 // Copyright (C) 2026 DarkMatter Productions. GPL-3.0-or-later.
 #include "State.h"
+#include "FloatChars.h"
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -51,7 +52,7 @@ StateValue EvaluateExpression(const Expression& e, const StateValues& variables,
 	if (e.op == ">=") return number(0) >= number(1);
 	if (e.op == "numberText") {
 		char buffer[96];
-		const auto result = std::to_chars(buffer,buffer+sizeof(buffer),number(0),std::chars_format::fixed,e.decimals);
+		const auto result = FloatToChars(buffer,buffer+sizeof(buffer),number(0),std::chars_format::fixed,e.decimals);
 		if (result.ec != std::errc{}) throw std::runtime_error("Number text exceeds the supported range");
 		return std::string(buffer,result.ptr);
 	}

@@ -1,5 +1,6 @@
 // Copyright (C) 2026 DarkMatter Productions. GPL-3.0-or-later.
 #include "ScrollbarView.h"
+#include "FloatChars.h"
 #include <RmlUi/Core/Box.h>
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Element.h>
@@ -24,7 +25,7 @@ bool Same(const ScrollGeometry& a,const ScrollGeometry& b) {
     return std::tie(a.viewport,a.range,a.offset,a.track,a.thumb,a.position,a.travel,a.usable)==
         std::tie(b.viewport,b.range,b.offset,b.track,b.thumb,b.position,b.travel,b.usable);
 }
-std::string Pixels(double value) {char text[64];const auto r=std::to_chars(text,text+sizeof(text),value);return r.ec==std::errc{}?std::string(text,r.ptr)+"px":"0px";}
+std::string Pixels(double value) {char text[64];const auto r=FloatToChars(text,text+sizeof(text),value);return r.ec==std::errc{}?std::string(text,r.ptr)+"px":"0px";}
 float CssExtent(Rml::Element* element,float border,bool vertical) {
     if(element->GetComputedValues().box_sizing()==Rml::Style::BoxSizing::BorderBox)return std::max(0.f,border);
     const auto frame=element->GetBox().GetFrameSize(Rml::BoxArea::Border)+element->GetBox().GetFrameSize(Rml::BoxArea::Padding);return std::max(0.f,border-(vertical?frame.y:frame.x));

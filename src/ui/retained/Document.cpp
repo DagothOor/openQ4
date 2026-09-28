@@ -1,6 +1,7 @@
 // Copyright (C) 2026 DarkMatter Productions. GPL-3.0-or-later.
 #include "Document.h"
 #include "DocumentSource.h"
+#include "FloatChars.h"
 #include "State.h"
 #include <json/json.h>
 #include <algorithm>
@@ -56,7 +57,7 @@ namespace {
 constexpr size_t MaxSourceBytes = 16 * 1024 * 1024;
 std::string Number(double value) {
 	char buffer[64];
-	const auto result = std::to_chars(buffer, buffer + sizeof(buffer), value, std::chars_format::general, 10);
+	const auto result = FloatToChars(buffer, buffer + sizeof(buffer), value, std::chars_format::general, 10);
 	return std::string(buffer, result.ptr);
 }
 bool Identifier(const std::string& text) {

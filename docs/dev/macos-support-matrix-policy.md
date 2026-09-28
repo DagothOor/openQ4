@@ -131,6 +131,11 @@ macOS 11 or later. The Bash Meson wrapper now supplies
 companion GameLibs inherit the same floor; an explicit dotted override remains
 available for deliberate local compatibility experiments.
 
+The floor also limits the C++ library. At `11.0` Apple's libc++ rejects
+floating-point `std::to_chars` (introduced in macOS 13.3), and Xcode 16's
+libc++ has no floating-point `std::from_chars` at all, so binary64 text
+conversion goes through `src/ui/retained/FloatChars.h` instead.
+
 The validation policy is:
 
 - Treat `macOS 11` as a documented floor, not as proven first-class support,

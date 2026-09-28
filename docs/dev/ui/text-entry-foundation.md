@@ -25,6 +25,11 @@ delivery, IME, or clipboard commands in a retained menu.
   Incomplete signs, decimal points and exponent prefixes remain editable but
   cannot become proposals. Bounds do not imply slider-step quantization.
   Formatting round-trips finite readbacks and honors the exponent syntax policy.
+  Both directions use `src/ui/retained/FloatChars.h`, an integer-only codec
+  with the exact results of `std::to_chars`/`std::from_chars`. It does not
+  depend on the locale, FTZ/DAZ or the C++ library's floating-point
+  `<charconv>`, which libc++ lacks for parsing before LLVM 20 and Apple gates
+  above the macOS 11 floor.
 - Checked clipboard operations enforce the SDL main thread, UTF-8 validation,
   bounded accepted copies and explicit failure. They are enabled only for the
   patched bundled Windows provider. External SDL and unqualified native

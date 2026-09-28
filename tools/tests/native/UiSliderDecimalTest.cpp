@@ -1,5 +1,6 @@
 // Copyright (C) 2026 DarkMatter Productions. GPL-3.0-or-later.
 #include "src/ui/retained/Interaction.h"
+#include "src/ui/retained/FloatChars.h"
 #include <charconv>
 #include <cmath>
 #include <cstdio>
@@ -8,7 +9,7 @@
 using namespace openq4::ui;
 static unsigned checks=0;
 #define CHECK(x) do{++checks;if(!(x)){std::fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);std::exit(1);}}while(false)
-static double Parse(const std::string& text){double value=0;auto r=std::from_chars(text.data(),text.data()+text.size(),value);CHECK(r.ec==std::errc{}&&r.ptr==text.data()+text.size());return value;}
+static double Parse(const std::string& text){double value=0;auto r=FloatFromChars(text.data(),text.data()+text.size(),value);CHECK(r.ec==std::errc{}&&r.ptr==text.data()+text.size());return value;}
 static std::string Decimal(long long units,unsigned places){const bool negative=units<0;std::string digits=std::to_string(negative?-units:units);while(digits.size()<=places)digits.insert(digits.begin(),'0');if(places)digits.insert(digits.end()-places,'.');if(negative)digits.insert(digits.begin(),'-');return digits;}
 struct Fixture{
  Interaction input;std::string error;double accepted;SliderSpec spec;
