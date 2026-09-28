@@ -132,9 +132,13 @@ int main(){try{
 
 ENTRY_SUPPORT = r'''
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <cstdarg>
 #include <stdexcept>
+#if defined(__APPLE__)
+#include <execinfo.h>
+#endif
 static bool allowed=false;static int mutations=0,checks=0,observed=0,logged=0;
 #define TEST(x) do{++checks;if(!(x))throw std::runtime_error(#x);}while(0)
 bool R_ImagePolicyOperationAllowed(){return allowed;}
