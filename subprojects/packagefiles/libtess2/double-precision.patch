@@ -1,7 +1,10 @@
 diff --git a/Include/tesselator.h b/Include/tesselator.h
 --- a/Include/tesselator.h
 +++ b/Include/tesselator.h
-@@ -132,4 +132,5 @@ enum TessOption
+@@ -129,7 +129,8 @@ enum TessOption
+ 	TESS_REVERSE_CONTOURS
+ };
+ 
 -typedef float TESSreal;
 +/* openQ4: preserve thin path topology through pixel coverage extraction. */
 +typedef double TESSreal;
@@ -11,7 +14,9 @@ diff --git a/Include/tesselator.h b/Include/tesselator.h
 diff --git a/Source/sweep.c b/Source/sweep.c
 --- a/Source/sweep.c
 +++ b/Source/sweep.c
-@@ -612,7 +613,7 @@ static int CheckForIntersect( TESStesselator *tess, ActiveRegion *regUp )
+@@ -610,10 +610,10 @@ static int CheckForIntersect( TESStesselator *tess, ActiveRegion *regUp )
+ 	 * The following properties are guaranteed (with a little wiggle-room to
+ 	 * account for loss of precision if the values are subnormal.)
  	 */
 -	assert( MIN( orgUp->t, dstUp->t ) <= isect.t + FLT_MIN);
 -	assert( isect.t <= MAX( orgLo->t, dstLo->t ) + FLT_MIN);
@@ -23,3 +28,4 @@ diff --git a/Source/sweep.c b/Source/sweep.c
 +	assert( isect.s <= MAX( orgLo->s, orgUp->s ) + DBL_MIN);
  
  	if( VertLeq( &isect, tess->event )) {
+ 		/* The intersection point lies slightly to the left of the sweep line,
