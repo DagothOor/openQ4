@@ -335,5 +335,8 @@ Recorded because each one changed what "support" means here.
 - For interactive testing the expansion's content sits in the development savepath,
   `.home/q4xbase/`, copied from the drop without its leaked `gamex86.dll` and never
   committed. The `(SP) Awakening ...` and `(MP) Awakening ...` launch configurations run
-  it from there, with retail content from the Steam install; `launch_entry_check.py`
-  (local) runs an entry's arguments headlessly against an isolated copy.
+  it from there, with retail content from the Steam install. Like the stock entries, they
+  cover the menus and every map the expansion carries (13 campaign maps, 19 multiplayer
+  maps), each on GL and on Vulkan, and the multiplayer ones start at the join screen
+  (`ui_autoJoin 0`). `launch_entry_check.py` (local) runs a map entry's arguments headlessly
+  against an isolated copy, and `launch_menu_check.py` does the same for a menu entry.
