@@ -146,7 +146,8 @@ bool R_ImagePolicyContentMutation(){return allowed;}
 void R_ImagePolicyObserveError(const char*,int){++observed;}
 struct idImage{void ActuallyLoadImage(bool);void Reload(bool);void PurgeGL();void PurgeVK();};
 struct idImageManager{void ReloadImages(bool,bool=false);};
-struct Common{void Printf(const char*,...){++logged;}} commonObject;static Common* common=&commonObject;
+// Apple builds follow each report with backtrace frame lines; count reports.
+struct Common{void Printf(const char* format,...){if(!std::strncmp(format,"GL_CheckErrors:",15))++logged;}} commonObject;static Common* common=&commonObject;
 struct idStr{static void snPrintf(char* o,int n,const char* f,...){va_list a;va_start(a,f);std::vsnprintf(o,n,f,a);va_end(a);}};
 enum{GL_NO_ERROR,GL_INVALID_ENUM,GL_INVALID_VALUE,GL_INVALID_OPERATION,GL_STACK_OVERFLOW,GL_STACK_UNDERFLOW,GL_OUT_OF_MEMORY};
 static int pending=0;int glGetError(){int n=pending;pending=0;return n;}
