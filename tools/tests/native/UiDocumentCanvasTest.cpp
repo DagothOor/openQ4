@@ -20,6 +20,13 @@ void operator delete(void* p,std::size_t) noexcept{std::free(p);}
 void* operator new[](std::size_t n){return ::operator new(n);}
 void operator delete[](void* p) noexcept{std::free(p);}
 void operator delete[](void* p,std::size_t) noexcept{std::free(p);}
+// Keep the nothrow forms on malloc/free too: std::stable_sort takes its buffer
+// from them, and a sanitizer runtime's own nothrow new would otherwise reach the
+// free() above (ASan alloc-dealloc-mismatch). A denied allocation returns null.
+void* operator new(std::size_t size,const std::nothrow_t&) noexcept{return deny?nullptr:std::malloc(size?size:1);}
+void* operator new[](std::size_t n,const std::nothrow_t&) noexcept{return ::operator new(n,std::nothrow);}
+void operator delete(void* p,const std::nothrow_t&) noexcept{std::free(p);}
+void operator delete[](void* p,const std::nothrow_t&) noexcept{std::free(p);}
 static void Check(bool value,const char* why){++checks;if(!value){std::fprintf(stderr,"FAIL: %s\n",why);std::exit(1);}}
 struct CanvasHost final:Host {
     unsigned calls=0,draws=0,resets=0;std::function<void()> callback,onLog;bool failFont=false;
