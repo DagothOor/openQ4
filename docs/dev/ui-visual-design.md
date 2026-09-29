@@ -1,8 +1,8 @@
 # openQ4 UI Visual Design
 
-Specification version 1.8, 29 September 2026 (1.7 the same day, 1.6 on 28
-September, 1.4 and 1.5 on 27 September, 1.1 to 1.3 on 26 September, 1.0 on 8
-September 2026). Status:
+Specification version 1.9, 29 September 2026 (1.7 and 1.8 the same day, 1.6 on
+28 September, 1.4 and 1.5 on 27 September, 1.1 to 1.3 on 26 September, 1.0 on
+8 September 2026). Status:
 implementation target; the replacement has not shipped. Applies to every
 player-facing GUI and to the visual editor's Quake 4 preview. Implementation and
 evidence are tracked in [the replacement plan](plans/idtech5-ui.md).
@@ -26,7 +26,8 @@ loading screens and the tabbed multiplayer menus, and redraws the EKG and the
 transmission waveform from their textures. Version 1.7 restores the Quake
 emblem to the title screen, sets the single-player pause menu apart from it and
 adds a Strogg pause menu. Version 1.8 rebuilds the initializing screen from
-separate layers and turns its rings slowly.
+separate layers and turns its rings slowly. Version 1.9 replaces the modal
+scrim with a soft focus of the screen beneath.
 [Appendix C](#appendix-c-change-record) lists every change and the
 requirement-register rows it affects.
 
@@ -310,7 +311,8 @@ is white at reduced alpha.
 | `marine.sort` | `#9BA545` | Sortable column hover highlight |
 | `marine.plinth` | `#3E4A21`, alpha 0.30 | Plinth under the secondary links |
 | `marine.progress` | `#E06C00`; track 30%, fill 50% | Loading and refresh progress |
-| `marine.scrim` | `#000000`, alpha 0.94 | Front-end modal scrim |
+| `marine.scrim` | `#000000`, alpha 0.94 | The stock modal scrim; openQ4 draws it only for the opaque-backing option and where soft focus is unavailable |
+| `modal.softfocus` | A 5 u (7.5 dp) Gaussian blur and 0.80 saturation of the screen beneath; never dimmed | Modal backdrop (openQ4) |
 | `text.title` | `#FFFFFF`, alpha 0.50 | Screen titles, secondary links |
 | `text.heading` | `#FFFFFF`, alpha 0.40 | Section and column headings |
 
@@ -330,7 +332,7 @@ plates are black art with `marine.rail.dark` rails. Both rest at 40%.
 | Separators | Olive 0.26 on pages and 0.32 in cards; white 0.10 in multiplayer tables and entry dialogs, up to 0.30 in the HUD statistics panel | Never compete with labels |
 | Card frame | 0.94 black body inside its rail | Stable |
 | Modal frame | 0.70 black silhouette over the glow field | Stable |
-| Modal scrim | 0.94 black | Fades in over 200 ms, out over 250 ms |
+| Modal backdrop | The screen beneath in `modal.softfocus`, never dimmed; the 0.94 `marine.scrim` only with the opaque-backing option | Ramps in over 200 ms, out over 250 ms |
 | Framing bands | 1.00 in the front end; 0.40 in the in-game MP menu | Move; never fade |
 | Table header band | 0.60 olive | Stable; no perpetual pulsing |
 
@@ -568,19 +570,23 @@ inside the rail. Footer actions have 16 dp separation and align to the
 action edge. Small cards keep the 12 dp major cut; only one-line hints shrink
 it, to 10 dp.
 
-**Modal** (front-end confirmations, entry, list and advanced-settings
-dialogs): the `marine.scrim` covers the screen; an additive glow column peaking
-in `marine.glow.modal`, exactly as wide as the dialog, stands behind it; the
-dialog is a black 0.70 silhouette. Along its top edge a 6 dp leading tooth, a
-title slot opening across about 73% of the width with 45-degree flanks down to
-a floor about 66% wide, and a raised trailing section; a deep lower-leading
-chamfer; square trailing corners; no rail lines, because the glow outlines the
-silhouette. The title (Marine 20 dp, tracking -0.075 em) starts at the foot of
-the slot's leading flank with its baseline on the raised sections' top line, so
-its capitals stand in the lit slot above the empty floor. Body text is inset
-33 dp. Actions sit 30 dp from the leading edge and 33 dp from the trailing edge,
-about 16 dp above the bottom, the affirmative action leading. Stock dialogs come
-in five widths, and the art stretches with them:
+**Modal** (front-end confirmations, entry, list and advanced-settings dialogs):
+the screen beneath stays in view, in `modal.softfocus`, where the stock covered
+it with the `marine.scrim`. An additive glow peaking in `marine.glow.modal`
+stands behind the dialog, exactly as wide as the dialog plus the 6 dp lit
+margin. It is at half strength at the dialog's top and bottom edges and gone
+24 dp beyond them, so the lit slot and margin outline the silhouette without a
+strip of light across the softened screen; over the scrim it keeps the stock
+column. The dialog is a black 0.70 silhouette. Along its top edge a 6 dp leading
+tooth, a title slot opening across about 73% of the width with 45-degree flanks
+down to a floor about 66% wide, and a raised trailing section; a deep
+lower-leading chamfer; square trailing corners; no rail lines, because the glow
+outlines the silhouette. The title (Marine 20 dp, tracking -0.075 em) starts at
+the foot of the slot's leading flank with its baseline on the raised sections'
+top line, so its capitals stand in the lit slot above the empty floor. Body text
+is inset 33 dp. Actions sit 30 dp from the leading edge and 33 dp from the
+trailing edge, about 16 dp above the bottom, the affirmative action leading.
+Stock dialogs come in five widths, and the art stretches with them:
 
 | Dialog | Width | Slot depth | Chamfer |
 | --- | --- | --- | --- |
@@ -628,7 +634,7 @@ measured constructions; openQ4 rows reuse stock parts.
 
 | Frame | Construction | Placement | Motion | Dismissal |
 | --- | --- | --- | --- | --- |
-| Modal (stock) | Modal silhouette over the scrim and glow column | Centered horizontally, 17 u above center; one of the five stock widths; the body scrolls beyond 70% of the safe height | `modal.enter`, `modal.leave` | An explicit choice, or Back as the negative action; never an outside click |
+| Modal (stock) | Modal silhouette and its glow over the soft-focused screen | Centered horizontally, 17 u above center; one of the five stock widths; the body scrolls beyond 70% of the safe height | `modal.enter`, `modal.leave` | An explicit choice, or Back as the negative action; never an outside click |
 | Card (stock) | Card | Anchored to its invoker, or docked as the detail area | `content.in`, `content.out` | Focus leaves the invoker, or Back |
 | Hover card (stock) | Card with a 10 dp inset | 6 dp from the pointer, moving to its leading side near the trailing edge | Appears at once | The pointer leaves |
 | Tooltip | Small popover | 12 dp after and 15 dp below the pointer | `tooltip` after 300 ms | The pointer leaves, or any input |
@@ -647,7 +653,10 @@ to the pointer.
 
 **Layering.** From bottom to top: HUD, in-game partial panels, menu screens,
 cards and popovers, modals, notices, and the pointer. One modal shows at a
-time; a second request waits until the first closes.
+time; a second request waits until the first closes. No frame blacks out
+what it covers: a modal soft-focuses everything beneath it, whether a menu
+screen, the view or a panel over the view, and cards, popovers and tooltips
+cover only their own area.
 
 **Focus.** A modal contains focus and returns it to its invoker. A popover
 opened from the keyboard or a controller takes focus and returns it on close.
@@ -941,8 +950,8 @@ presented frame.
 | `row.flash` | 250 ms | Linear; row plates settle from 0.60 to rest when a Controls tab changes (stock) |
 | `page.enter` | 220 ms | Cubic (0.16, 1, 0.3, 1); 12 dp slide and opacity, between sibling pages of one screen (openQ4) |
 | `page.leave` | 140 ms | Cubic (0.4, 0, 1, 1); 8 dp departure and opacity (openQ4) |
-| `modal.enter` | 200 ms | Scrim to 0.94, glow field brightens from black, frame to 0.70; title, body and actions appear together at 200 ms, because their stock fades ran while hidden; no scale (stock) |
-| `modal.leave` | 50 + 250 ms | Contents hide at once; after 50 ms the scrim and glow fade over 250 ms and the frame over 200 ms (Exit, Load Defaults, Delete, Disconnect and Overwrite) or 250 ms (other dialogs) (stock) |
+| `modal.enter` | 200 ms | The soft focus comes in, the glow brightens from black and the frame rises to 0.70; title, body and actions appear together at 200 ms, because their stock fades ran while hidden; no scale (stock) |
+| `modal.leave` | 50 + 250 ms | Contents hide at once; after 50 ms the soft focus and glow release over 250 ms and the frame over 200 ms (Exit, Load Defaults, Delete, Disconnect and Overwrite) or 250 ms (other dialogs) (stock) |
 | `light.up` | 150 ms in, 250 ms out | Logos and glow fields fade from and to black rather than transparency (stock) |
 | `row.reveal` | 120 ms | Opacity, optional 15 ms stagger capped at 90 ms total (openQ4) |
 | `value.change` | 100 ms | Local emphasis; no perpetual blinking |
@@ -1151,10 +1160,10 @@ where needed and offer a recoverable video-mode confirmation countdown.
 
 Pause retains the world and correct semantics: SP may pause; MP must not pretend
 to pause the server. Partial in-game panels use established scene softening
-rather than an indiscriminate full-screen dimmer. Front-end confirmation
-modals keep the stock `marine.scrim`. Effect ownership survives stacked panels
-and releases on every exit/shutdown. Offer opaque local backing as an
-accessibility alternative.
+rather than an indiscriminate full-screen dimmer. Modals soft-focus the screen
+beneath them instead of the stock `marine.scrim` (section 6). Effect ownership
+survives stacked panels and releases on every exit/shutdown. Offer opaque local
+backing as an accessibility alternative.
 
 Save/load shows slot title, timestamp and complex preview, with overwrite/delete
 confirmation. Preserve selection through refresh and show failures in context.
@@ -1630,11 +1639,12 @@ overlay back. A pointer device, as on ChromeOS or a tablet with a mouse,
 enables hover.
 
 **Mobile rendering.** The GLES renderer omits some desktop post effects, so no
-interface element depends on them. Where scene softening is unavailable or too
-costly, partial panels use a darkening scrim and vignette instead. Keep to two
-full-screen blended layers on tile-based GPUs by merging the backdrop's light
-band and vignette. A static menu redraws only on change, at most 30 times per
-second. The Phone profile starts with ambient loops and parallax off.
+interface element depends on them. Where scene softening or soft focus is
+unavailable or too costly, partial panels and modals use a darkening scrim and
+vignette instead. Keep to two full-screen blended layers on tile-based GPUs by
+merging the backdrop's light band and vignette. A static menu redraws only on
+change, at most 30 times per second. The Phone profile starts with ambient loops
+and parallax off.
 
 ### 13.7 Screen patterns
 
@@ -2734,7 +2744,7 @@ page and a prompt bar.
   on the back button, Tabs on the previous and next glyphs, and Select on the
   accept button. Main Menu and Disconnect (Escape) or Leave Server (Welcome)
   trail it. The destructive action comes last and asks first in the stock
-  modal over the marine.scrim (section 6).
+  modal, which soft-focuses the card and the view beneath it (section 6).
 - **Unavailable actions.** They stay in place, dimmed to 0.38, with a lock after
   the label and the reason on the plate in the error color. Choosing one shakes
   the plate for 300 ms and announces the reason; nothing else happens.
@@ -3116,3 +3126,15 @@ rings slowly.
 
 Register schema 7 appends FLOW-049 (the initializing screen) and ART-031 (its
 layers and the traced lettering). It supersedes no row.
+
+### Version 1.9
+
+Version 1.9 replaces the modal scrim with a soft focus of the screen beneath.
+
+| Area | 1.8 | 1.9 | Basis |
+| --- | --- | --- | --- |
+| Modal backdrop | The stock `marine.scrim`, 0.94 black over the whole screen | The screen beneath in soft focus (a 5 u blur and 0.80 saturation, never dimmed), ramping with `modal.enter` and `modal.leave`; the scrim only with the opaque-backing option or where soft focus is unavailable | The product owner's review |
+| Modal glow | The stock column, 87 u above and 108 u below the dialog | Cut to the dialog over the soft focus: the 6 dp lit margin, half strength at the dialog's edges and gone 24 dp beyond | The column read as a strip of light across the softened screen |
+
+Register schema 8 supersedes ART-023 and ART-024, which quoted the 0.94 scrim,
+with ART-032 and ART-033, and appends REN-016 (backdrop soft focus).
