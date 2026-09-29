@@ -1,8 +1,8 @@
 # UI product requirement register
 
 9 September 2026, revised 26, 27, 28 and 29 September 2026. The
-[machine-readable register](product-requirements.json) contains **312
-requirements** for the complete UI product: 292 that define acceptance and 20
+[machine-readable register](product-requirements.json) contains **314
+requirements** for the complete UI product: 294 that define acceptance and 20
 superseded rows kept for history. It expands
 the [completion plan](../plans/ui-product-completion.md), the
 [original delivery scope](../plans/idtech5-ui.md) and the normative
@@ -72,6 +72,12 @@ supersedes no row and appends two: the title screen and the Marine and Strogg
 single-player pause menus, which share one frame but never look alike
 (`FLOW-048`), and the Quake emblem watermark with its rim light and glint
 (`ART-030`). Every appended requirement is pending.
+
+Register schema 7 (29 September 2026) follows visual specification 1.8. It
+supersedes no row and appends two: the initializing screen, whose rings turn
+slowly beneath the emblem and lettering while the engine starts (`FLOW-049`),
+and its picture rebuilt as separate vector layers with the traced QUAKE 4
+lettering (`ART-031`). Every appended requirement is pending.
 
 The [17 September implementation audit](masked-input-review.md) records current
 delivery gaps and the shared vector-mask input repair. `INP-007` remains partial;
@@ -390,7 +396,7 @@ The [full renderer shutdown increment](image-recovery-ownership.md), based on en
 
 The [editor file publication increment](editor-file-safety.md), based on engine `a11a00181b5997993bb9e225bad63a6422386311`, adds actual native creation of complete new files without replacing an existing or racing document. Windows Clang and MSVC each pass 340 checks, GCC with sanitizers passes 344, and all three reject seven compiled mutations. The full engine build and 78 UI suites pass. Windows symlink and DrvFS FIFO limitations are recorded. This file-only increment has no new game captures. Save As/autosave UI, live document association, overwrite/conflict handling and crash/relaunch recovery remain required. No requirement status, migration acceptance or final gate changes. Evidence: `.tmp/ui/editor-new-file/validation-evidence.json`, SHA-256 `846413e35eb34ed965a57005aa6eb724b5c8d3dbc2fb46f65ba30711a509cc63`.
 
-There are **71 partial, 240 pending and one verified requirement**, counting the
+There are **71 partial, 242 pending and one verified requirement**, counting the
 20 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock
@@ -464,9 +470,9 @@ complete source-bound mappings and evidence.
 | `WID-001`–`032` | Every named functional widget: actions, checkbox, radio, slider, choice, text, binding, tabs, lists, scrolling, progress, tooltip, modal, status, tree, path/color controls, prompt bar, detail area, radial wheel, on-screen keyboard, cycling values, the weapon wheel and its transitions, the pop-up frame catalogue and the modern components | M2, M3, M5 |
 | `REN-001`–`015` | Editable paths/paints/strokes/SVG, coverage/color, isolated opacity/masks/clips, additive, darkening and masked additive composition and recovery | M3, M6 |
 | `RES-001`–`005` | Full material/movie/model operations, generated images and actual renderer resource accounting | M3, M4 |
-| `ART-001`–`030` | Measured component/icon libraries, exact visual tokens, panel/plate anatomy, all eight distinct families, complex-image exceptions, device glyphs, modern refinements, detailing, HUD gauge constructions, the crosshair and item icon catalogues, the traced HUD instruments and the title screen's emblem | M2–M5 |
+| `ART-001`–`031` | Measured component/icon libraries, exact visual tokens, panel/plate anatomy, all eight distinct families, complex-image exceptions, device glyphs, modern refinements, detailing, HUD gauge constructions, the crosshair and item icon catalogues, the traced HUD instruments, the title screen's emblem and the initializing screen's layers | M2–M5 |
 | `MOT-001`–`015` | Continuous clocks, normative timing/easing, reversal/ownership, page/modal orchestration, stock choreography, sound, ambient loops/alarms, reduced motion, band motion, HUD alarms and the translation and transmission effects | M1–M6 |
-| `FLOW-001`–`048` | Every menu/MP flow, HUD, communications, scope/vehicle, cinematic and scripted/world GUI; lifecycle, first-run setup, touch controls and editor, terminal input, modern screen patterns, HUD presets and layouts; the HUD's composition, gauges, strip, crosshair, messages and multiplayer HUD; objectives, boss, vehicle, scope and weapon displays; the scoreboard; the Remastered multiplayer top and chat; the multiplayer menus, the loading screens and the title and pause menus | M2, M4, M5 |
+| `FLOW-001`–`049` | Every menu/MP flow, HUD, communications, scope/vehicle, cinematic and scripted/world GUI; lifecycle, first-run setup, touch controls and editor, terminal input, modern screen patterns, HUD presets and layouts; the HUD's composition, gauges, strip, crosshair, messages and multiplayer HUD; objectives, boss, vehicle, scope and weapon displays; the scoreboard; the Remastered multiplayer top and chat; the multiplayer menus, the loading screens, the title and pause menus and the initializing screen | M2, M4, M5 |
 | `ED-001`–`030` | Native workspace, canvas/constraints, components, vectors, motion/behavior, persistence/recovery, diagnostics and complete SP/MP delivery | M2, M3 |
 | `PERF-001`–`009` | Named optimized baselines, separate CPU/GPU telemetry, warm/cold runs, budgets, long-run plateau, measured optimization and mobile power limits | M3, M6 |
 | `QUAL-001`–`011` | Display/text/input/refresh/language/world extremes, independent visual review, stock parity, input/profile/device matrix, actual platforms and evidence provenance | M6 |
@@ -506,16 +512,17 @@ as in an increment, document hashes may be re-bound:
 
 ```powershell
 python tools/ui/validate_product_requirements.py `
-  --baseline 8f88cba208eb5e6f099b020d8163923aaa07f208 `
+  --baseline d655a34acd74eae08948e4756f718504737fbeae `
   --revision `
-  --output .tmp/ui/register-revision-6/register-validation-final.json
+  --output .tmp/ui/register-revision-7/register-validation-final.json
 ```
 
 Use a new output path for each audit. The optional `--defer-hashes` preparation
 mode explicitly reports incomplete source bindings and cannot serve as the
-final audit. The schema 6 revision audit is recorded at
-`.tmp/ui/register-revision-6/register-validation-final.json`, the schema 5 audit
-at `.tmp/ui/register-revision-5/register-validation-final.json`, the schema 4
+final audit. The schema 7 revision audit is recorded at
+`.tmp/ui/register-revision-7/register-validation-final.json`, the schema 6 audit
+at `.tmp/ui/register-revision-6/register-validation-final.json`, the schema 5
+audit at `.tmp/ui/register-revision-5/register-validation-final.json`, the schema 4
 audit at `.tmp/ui/register-revision-4/register-validation-final.json`, and the schema 3
 audit at `.tmp/ui/register-revision-3/register-validation-final.json`. The schema 2 revision audit is recorded at
 `.tmp/ui/register-revision-2/register-validation-final.json`, and the rejected

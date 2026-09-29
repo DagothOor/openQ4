@@ -39,7 +39,9 @@ It also traces the EKG and the transmission waveform from their textures.
 Register schema 5 appends three rows for it. Version 1.7 restores the Quake
 emblem to the title screen and sets the single-player pause menu apart from it,
 with the current level block in the emblem's place and a Strogg variant after
-Kane's stroggification. Register schema 6 appends two rows for it.
+Kane's stroggification. Register schema 6 appends two rows for it. Version
+1.8 rebuilds the initializing screen from separate layers, and its rings turn
+slowly while the engine starts. Register schema 7 appends two rows for it.
 
 The controller weapon wheel already in openQ4-game (`356dfe56`: 12 slots,
 centered at 77% of the width, cursor selection) differs from section 14.6

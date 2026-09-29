@@ -1,10 +1,10 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "id_namespace": "openq4.ui.product",
   "date": "2026-09-29",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "8f88cba208eb5e6f099b020d8163923aaa07f208",
+    "engine_revision": "d655a34acd74eae08948e4756f718504737fbeae",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -14,17 +14,17 @@
     "visual": {
       "path": "docs/dev/ui-visual-design.md",
       "authority": "normative visual, interaction and editor contract",
-      "sha256": "33cb70501d335d46e4ebcdad5a3b43f0d80d13ff2dc81954030dbca1089abeb2"
+      "sha256": "dc5b084d90d60cca2db912a2f72886ffa9117e496ddee0d14baf78e002334713"
     },
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "da9bbbe0113d0269d2d8d36c7f66ee504c6ab7aaf37ff0f98161ff495b4379b9"
+      "sha256": "1cab91824fa0c5e5beae1fa9cbc2f56ea04f2f652e409f25e166490662aeec99"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "3699b912a6b2014da7684e67516ff3078a76d24fceba5d74f04eb532a3cab26c"
+      "sha256": "0fea1a31067df4100b4ed4975e64b41a3881025bd35a5761d8e276012ecb1d3f"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -102,7 +102,7 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "da9bbbe0113d0269d2d8d36c7f66ee504c6ab7aaf37ff0f98161ff495b4379b9"
+      "sha256": "1cab91824fa0c5e5beae1fa9cbc2f56ea04f2f652e409f25e166490662aeec99"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
@@ -11363,6 +11363,139 @@
         "strogg_title_translate_ms": 500,
         "strogg_row_translate_ms": 200,
         "strogg_row_stagger_ms": 45
+      }
+    },
+    {
+      "id": "ART-031",
+      "title": "Initializing screen artwork",
+      "milestone_owner": "M4",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Rebuild the stock initializing picture (gfx/splashScreen, splash.tga) as separate vector layers on the 640x480 canvas, never as the bitmap: the field in #171A09 rising in soft steps to #1C1F0A by 141 u from the rings' center at 319,214.5 u (the center of the emblem's own ring); the inner ring at 169-175 u over a soft edge from 161 u; the plate band at 175-204 u with two framed plates 90 degrees wide at the top and bottom and an 8 u frame; the rim at 204-210 u fading into the teeth ring by 222 u; eight teeth at 211-247 u, 22.5 degrees wide on a 45-degree pitch; the grooves out to 300 u; the clamps' shade at 3 and 9 o'clock; the traced emblem in #0E1000 in its 260 u box centered on the canvas; and QUAKE 4 in the q4text letterforms traced from the texture's white core, #F2F0EC at 0.367 u per texel from 129.4,148.8 u, with its halo as vector light (the letters dilated 5.5 u, blurred with a 2.25 u sigma and added in #FF8340 at 0.10). The title screen's wordmark uses the same traced letterforms with the texture's own halo: dilated 3.7 u, a 4.4 u sigma, #FF8F40 at 0.40.",
+      "dependencies": [
+        "ART-030",
+        "REN-014",
+        "ART-001"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures of each layer alone and composed against the stock picture on the 4:3 canvas at 100% and 300% with the difference measured, and of the title screen's wordmark against q4text."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "ring_center_u": [
+          319,
+          214.5
+        ],
+        "inner_ring_u": [
+          169,
+          175
+        ],
+        "plate_band_u": [
+          175,
+          204
+        ],
+        "plate_width_deg": 90,
+        "plate_frame_u": 8,
+        "rim_u": [
+          204,
+          210
+        ],
+        "teeth_u": [
+          211,
+          247
+        ],
+        "teeth": 8,
+        "tooth_width_deg": 22.5,
+        "grooves_outer_u": 300,
+        "emblem_box_u": [
+          190.07,
+          110.19,
+          260
+        ],
+        "wordmark_origin_u": [
+          129.42,
+          148.76
+        ],
+        "wordmark_u_per_texel": 0.3667,
+        "initializing_halo": {
+          "dilate_u": 5.5,
+          "sigma_u": 2.25,
+          "color": "#FF8340",
+          "gain": 0.1
+        },
+        "title_halo": {
+          "dilate_u": 3.7,
+          "sigma_u": 4.4,
+          "color": "#FF8F40",
+          "gain": 0.4
+        }
+      }
+    },
+    {
+      "id": "FLOW-049",
+      "title": "Initializing screen",
+      "milestone_owner": "M4",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14",
+        "visual:8"
+      ],
+      "requirement": "Show the initializing screen from the first frame the renderer can draw until the menus are ready, with the stock status line for each step, localized: LOADING... twice, then INITIALIZING SOUND..., NETWORK..., RENDER SYSTEM... and USER INTERFACE..., LOADING GAME... and INITIALIZING MENUS... (#str_104343 to #str_104351). Classic keeps the stock picture stretched over the canvas, pillarboxed in #181A08 under aspect correction, with the console's 8x16 u line in #F09E0D centered across the canvas with its top at 410 u. Remastered draws the ART-031 layers, extends the field and rings to any view, and sets the line in Marine 16 dp in #F09E0D on the stock line's middle at 418 u, replacing it at once on each step, over a 168 u rule of one segment per step (done 0.55, current 0.95, pending 0.15). It turns the plate band counterclockwise once every 180 s and the teeth clockwise once every 120 s on the presentation clock, beneath the fixed clamps, emblem and lettering, and repaints at each step and, during a long step, whenever the engine can, at most 30 times a second. Reduced motion holds the rings still.",
+      "dependencies": [
+        "FLOW-047",
+        "ART-031",
+        "MOT-001",
+        "MOT-005",
+        "TXT-005"
+      ],
+      "acceptance_evidence_needed": [
+        "Startup captures on GL, Vulkan and the GLES fallback at 4:3, 16:9 and 21:9 in Classic and Remastered for every step, a trace of the repaint cadence and ring angles across a slow start, and a reduced-motion run."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "band_turn_ms": 180000,
+        "teeth_turn_ms": 120000,
+        "max_repaint_hz": 30,
+        "classic_line_top_u": 410,
+        "remastered_line_middle_u": 418,
+        "status_color": "#F09E0D",
+        "rule_u": 168,
+        "rule_alpha": {
+          "done": 0.55,
+          "current": 0.95,
+          "pending": 0.15
+        },
+        "pillarbox": "#181A08",
+        "steps": [
+          "#str_104343",
+          "#str_104346",
+          "#str_104347",
+          "#str_104348",
+          "#str_104349",
+          "#str_104350",
+          "#str_104351"
+        ]
       }
     }
   ]

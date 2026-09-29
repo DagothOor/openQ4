@@ -65,6 +65,12 @@ declaring that choice proven for the whole product.
 
 ### Current implementation progress
 
+A second [29 September register revision](../ui/product-requirements.md)
+follows [visual specification](../ui-visual-design.md) 1.8. Register schema 7
+appends two rows and supersedes none: the initializing screen and its picture
+rebuilt as separate layers. The register now holds 314 rows, of which 294
+define acceptance.
+
 A [29 September register revision](../ui/product-requirements.md) follows
 [visual specification](../ui-visual-design.md) 1.7. Register schema 6 appends
 two rows and supersedes none: the title and pause menus, including the Strogg
