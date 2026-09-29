@@ -1,7 +1,8 @@
 # openQ4 UI Visual Design
 
-Specification version 1.7, 29 September 2026 (1.6 on 28 September, 1.4 and 1.5
-on 27 September, 1.1 to 1.3 on 26 September, 1.0 on 8 September 2026). Status:
+Specification version 1.8, 29 September 2026 (1.7 the same day, 1.6 on 28
+September, 1.4 and 1.5 on 27 September, 1.1 to 1.3 on 26 September, 1.0 on 8
+September 2026). Status:
 implementation target; the replacement has not shipped. Applies to every
 player-facing GUI and to the visual editor's Quake 4 preview. Implementation and
 evidence are tracked in [the replacement plan](plans/idtech5-ui.md).
@@ -24,7 +25,8 @@ wheels the stock's translation and transmission effects. Version 1.6 adds the
 loading screens and the tabbed multiplayer menus, and redraws the EKG and the
 transmission waveform from their textures. Version 1.7 restores the Quake
 emblem to the title screen, sets the single-player pause menu apart from it and
-adds a Strogg pause menu.
+adds a Strogg pause menu. Version 1.8 rebuilds the initializing screen from
+separate layers and turns its rings slowly.
 [Appendix C](#appendix-c-change-record) lists every change and the
 requirement-register rows it affects.
 
@@ -761,7 +763,8 @@ frames, reticles and checkboxes require vector work.
 | MP award medals; publisher logos (id, Raven, Activision, Miles) | Bitmap exception |
 | Multiplayer symbols: flags, stopwatch, infinity, ready, speaker, friend, skull, swirl, Quake emblem | Vector |
 | Weapon renders (`gun_*`), powerup emblems, crosshairs and context cursors | Vector (sections 14.15 and 14.16), by the product owner's decision; the use hand and the medic and tech badges included |
-| Quake 4 wordmark (`q4text`) | Classify individually: textured glowing letterforms; its glow may become vector light |
+| Quake 4 wordmark (`q4text`) | Vector: flat letterforms traced from the texture's white core. The orange halo becomes vector light: the letters dilated 3.7 u, blurred with a 4.4 u sigma and added in #FF8F40 at 0.40 (the initializing screen's halo is dimmer, section 14.17) |
+| Initializing picture (`gfx/splashScreen`) | Vector, rebuilt as separate layers (section 14.17) |
 | Quake emblem, faction marks, simple HUD silhouettes | Vector |
 | CRT dirt, scratches, glass reflections | Bitmap exception |
 | Static grain | Procedural noise; a bitmap only where the look depends on the stock grain |
@@ -2646,6 +2649,46 @@ keeps.
     gives way to the Welcome menu (section 14.18) without a click.
 - **Classic** keeps the stock screens on the 4:3 canvas.
 
+**Initializing screen.** While the engine starts, before any menu exists,
+`PrintLoadingMessage` paints one frame for each step: the `gfx/splashScreen`
+picture stretched over the canvas and one status line. The line reads
+LOADING... twice, then INITIALIZING SOUND..., INITIALIZING NETWORK...,
+INITIALIZING RENDER SYSTEM..., INITIALIZING USER INTERFACE..., LOADING GAME...
+and INITIALIZING MENUS... (`#str_104343` to `#str_104351`). It is set in the
+console's 8x16 u characters (`bigchars`) in #F09E0D and centered at 410 u. The
+screen repaints only when the step changes. openQ4's aspect correction
+pillarboxes the picture in #181A08.
+
+The picture (`splash.tga`, 512 texels square) is drawn pre-squashed, so its
+rings are circles on the 640x480 canvas. Its parts, measured on the canvas:
+
+| Layer | Stock construction |
+| --- | --- |
+| Field | #171A09, rising in soft steps to #1C1F0A by 141 u from the rings' center at 319,214.5 u, which is the center of the emblem's own ring |
+| Rings | An inner ring at 169–175 u over a soft edge from 161 u; the plate band at 175–204 u, with two framed plates 90 degrees wide at the top and bottom and an 8 u frame; the rim at 204–210 u, fading into the teeth ring by 222 u; eight teeth at 211–247 u, 22.5 degrees wide on a 45-degree pitch; grooves out to 300 u. Tones step between #171A09 and #21270C |
+| Clamps | Shade at 3 and 9 o'clock, 80 u tall from 183 u and darker again over the grooves from 246 u |
+| Emblem | The Quake emblem in #0E1000, in its 260 u box centered on the canvas |
+| Lettering | QUAKE 4 in the `q4text` letterforms, #F2F0EC, cap height 26 u: the texture's layout at 0.367 u per texel from 129.4,148.8 u, with an orange halo |
+
+**Remastered initializing screen.**
+
+- **Layers.** Each part is its own vector layer at native resolution: the
+  rings from the table, the traced emblem (section 6) and the `q4text`
+  letterforms traced from the texture's white core. The halo becomes vector
+  light: the letters dilated 5.5 u, blurred with a 2.25 u sigma and added in
+  #FF8340 at 0.10. The picture stays centered on the canvas, and the field and
+  rings extend to any view instead of a pillarbox.
+- **Motion.** The stock never moves. openQ4 turns the plate band
+  counterclockwise once every 180 s and the teeth clockwise once every 120 s,
+  beneath the fixed clamps, emblem and lettering. They turn on the presentation
+  clock (section 8), so every repaint finds them where continuous motion would
+  have. The screen repaints at each step and, during a long step, whenever the
+  engine can, at most 30 times a second. Reduced motion holds them still.
+- **Status.** The line is Marine 16 dp in #F09E0D, centered at 418 u, and a new
+  step replaces it at once. A 168 u rule under it holds one segment per step:
+  done at 0.55, current at 0.95 and pending at 0.15.
+- **Classic** keeps the stock picture and line.
+
 ### 14.18 Multiplayer menus
 
 The stock multiplayer menu takes the whole screen. A column of buttons runs down
@@ -3060,3 +3103,16 @@ single-player pause menu apart from it and adds a Strogg pause menu.
 
 Register schema 6 appends FLOW-048 (title and pause menus) and ART-030 (the
 emblem watermark). It supersedes no row.
+
+### Version 1.8
+
+Version 1.8 rebuilds the initializing screen from separate layers and turns its
+rings slowly.
+
+| Area | 1.7 | 1.8 | Basis |
+| --- | --- | --- | --- |
+| Initializing screen | Not specified | The stock picture measured and rebuilt as separate vector layers; the plate band and the teeth turn slowly in opposite directions; a Marine status line with a step rule | `splash.tga`, `PrintLoadingMessage`, the product owner's request |
+| Quake 4 wordmark | Classified individually | Vector letterforms traced from `q4text`, with their halo as vector light | `q4text.tga` |
+
+Register schema 7 appends FLOW-049 (the initializing screen) and ART-031 (its
+layers and the traced lettering). It supersedes no row.
