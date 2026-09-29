@@ -65,6 +65,12 @@ declaring that choice proven for the whole product.
 
 ### Current implementation progress
 
+A [29 September register revision](../ui/product-requirements.md) follows
+[visual specification](../ui-visual-design.md) 1.7. Register schema 6 appends
+two rows and supersedes none: the title and pause menus, including the Strogg
+pause menu, and the Quake emblem watermark. The register now holds 312 rows, of
+which 292 define acceptance.
+
 A [28 September register revision](../ui/product-requirements.md) follows
 [visual specification](../ui-visual-design.md) 1.6. Register schema 5 appends
 three rows and supersedes none: the Welcome and Escape multiplayer menus, the

@@ -1,10 +1,10 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "id_namespace": "openq4.ui.product",
-  "date": "2026-09-28",
+  "date": "2026-09-29",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "8bd0eddf2074226773322181a89afafcd892c016",
+    "engine_revision": "8f88cba208eb5e6f099b020d8163923aaa07f208",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -14,17 +14,17 @@
     "visual": {
       "path": "docs/dev/ui-visual-design.md",
       "authority": "normative visual, interaction and editor contract",
-      "sha256": "7bc42723eb3beb35ba343ad5d6aff13a8b1f6750abecdf1fa063b66653fd3be2"
+      "sha256": "33cb70501d335d46e4ebcdad5a3b43f0d80d13ff2dc81954030dbca1089abeb2"
     },
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "c5d69538d0e2f0ae151364d7bba7fc58eb15e3673155ef706fc99084a5b0e318"
+      "sha256": "da9bbbe0113d0269d2d8d36c7f66ee504c6ab7aaf37ff0f98161ff495b4379b9"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "0abe18afd079008582bfd1024a3b48bf1d6f0925d6764c6315d88342a97d2ced"
+      "sha256": "3699b912a6b2014da7684e67516ff3078a76d24fceba5d74f04eb532a3cab26c"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -102,13 +102,13 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "c5d69538d0e2f0ae151364d7bba7fc58eb15e3673155ef706fc99084a5b0e318"
+      "sha256": "da9bbbe0113d0269d2d8d36c7f66ee504c6ab7aaf37ff0f98161ff495b4379b9"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/document-format.md",
       "scope": "Typed JSONC, stable IDs, value edits and motion only; components, structure editing and full model unfinished.",
-      "sha256": "74a5e636994e7858b03cf9c2ea2587e60e888601583404bbc324ee1ff5213d73"
+      "sha256": "1a1c9c87ebf3a3afe2b784e3d1dadff4df4dabaa8ae8d14ba005546b927bb1c1"
     },
     "binding-foundation": {
       "kind": "implementation_checkpoint",
@@ -11262,6 +11262,107 @@
         "waveform_table_step_ms": 79.4,
         "voice_spike_max": 2.35,
         "emblem_shrink_ms": 500
+      }
+    },
+    {
+      "id": "ART-030",
+      "title": "Quake emblem watermark",
+      "milestone_owner": "M4",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:13",
+        "visual:9"
+      ],
+      "requirement": "Reconstruct the stock Quake emblem (q4logo) as one vector silhouette on the title screen's trailing side at 380,125 u (260x260 u), composited with the stock darkening blend (GL_ZERO, GL_ONE_MINUS_SRC_COLOR) so it multiplies the lit field by the inverse of its color, and fading and lighting up with the stock home choreography. A rim light follows its outline additively at 0.20, and a glint 12% of the outline long runs around it every 9 s on the presentation clock; reduced motion keeps only the rim. The emblem never appears on the pause menus.",
+      "dependencies": [
+        "REN-014",
+        "ART-022",
+        "ART-008",
+        "MOT-001"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures of the title screen's emblem against the stock q4logo over the lit field at 100% and 300% on GL, Vulkan and the GLES fallback, a trace of the glint's period across refresh rates, and a reduced-motion capture showing only the rim."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "position_u": [
+          380,
+          125
+        ],
+        "size_u": [
+          260,
+          260
+        ],
+        "blend": "darkening",
+        "rim_alpha": 0.2,
+        "glint_fraction": 0.12,
+        "glint_period_ms": 9000
+      }
+    },
+    {
+      "id": "FLOW-048",
+      "title": "Title and pause menus",
+      "milestone_owner": "M4",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:13",
+        "visual:8"
+      ],
+      "requirement": "Keep the title screen and the single-player pause menu in one frame but never alike. The title screen shows the emblem watermark (ART-030) and the wordmark, and its message line at 44,364 u explains the focused item; for Continue it shows a levelshot thumbnail, the mission, difficulty and play time. The pause menu replaces the wordmark with GAME PAUSED and the emblem with the current level block (the levelshot, mission and difficulty, the objectives with their state, and the time in the mission, the total time and the last save) over the softened scene, leads with Resume, lists Save Game, Load Game, Restart Level, Objectives, Settings and Quit to Menu from 172 u, and keeps only EXIT on the plinth. After Kane's stroggification the pause menu takes the Strogg family: the bands keep their frame with 30-degree shoulders and downward teeth in place of the 45-degree notches, rails, rim light and the circuit traces in the bands are #F59512, plates end in a 30-degree shoulder with slanted markers, and labels are R_Strogg in #FCFFC8, #FFCC00 on focus. Every Strogg label arrives in runes and plays a short form of the credits translation (the title over 500 ms under the scan bar, the actions over 200 ms each and 45 ms apart, then the level block's lines), the focused plate runs the scan bar under its label, and the level block takes a chamfered frame with the masked grain. Input works from the first frame, and reduced motion shows the translated labels at once.",
+      "dependencies": [
+        "FLOW-024",
+        "FLOW-001",
+        "BEH-007",
+        "MOT-015",
+        "ART-024",
+        "ART-010",
+        "ART-030"
+      ],
+      "acceptance_evidence_needed": [
+        "SP captures of the title screen with and without a save, the Marine pause menu in a mission and the Strogg pause menu after stroggification at 4:3, 16:9 and 21:9 with keyboard, controller and touch prompts, the focused-item detail line, a timing trace of the Strogg translation, a reduced-motion capture, and a check that Resume, Save Game and Quit to Menu act during the Strogg opening."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "message_line_u": [
+          44,
+          364
+        ],
+        "pause_nav_top_u": 172,
+        "pause_actions": [
+          "Resume",
+          "Save Game",
+          "Load Game",
+          "Restart Level",
+          "Objectives",
+          "Settings",
+          "Quit to Menu"
+        ],
+        "strogg_shoulder_deg": 30,
+        "strogg_rail": "#F59512",
+        "strogg_label": "#FCFFC8",
+        "strogg_focus": "#FFCC00",
+        "strogg_title_translate_ms": 500,
+        "strogg_row_translate_ms": 200,
+        "strogg_row_stagger_ms": 45
       }
     }
   ]
