@@ -65,6 +65,13 @@ declaring that choice proven for the whole product.
 
 ### Current implementation progress
 
+A third [29 September register revision](../ui/product-requirements.md) follows
+[visual specification](../ui-visual-design.md) 1.9, in which modals soft-focus
+the screen beneath them instead of blacking it out. Register schema 8
+supersedes two rows and appends three: the tokens and the modal construction
+are restated without the 0.94 scrim, and backdrop soft focus becomes a renderer
+capability. The register now holds 317 rows, of which 295 define acceptance.
+
 A second [29 September register revision](../ui/product-requirements.md)
 follows [visual specification](../ui-visual-design.md) 1.8. Register schema 7
 appends two rows and supersedes none: the initializing screen and its picture

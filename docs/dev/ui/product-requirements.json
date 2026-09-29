@@ -1,10 +1,10 @@
 {
-  "schema_version": 7,
+  "schema_version": 8,
   "id_namespace": "openq4.ui.product",
   "date": "2026-09-29",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "d655a34acd74eae08948e4756f718504737fbeae",
+    "engine_revision": "0c9e798fa0e373caecddef8a1a5a16db108f732c",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -14,12 +14,12 @@
     "visual": {
       "path": "docs/dev/ui-visual-design.md",
       "authority": "normative visual, interaction and editor contract",
-      "sha256": "dc5b084d90d60cca2db912a2f72886ffa9117e496ddee0d14baf78e002334713"
+      "sha256": "371e0425cf0b8f360ab32c6fb7f7b38633b0670eaaf333f9a4d722afea447d8c"
     },
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "1cab91824fa0c5e5beae1fa9cbc2f56ea04f2f652e409f25e166490662aeec99"
+      "sha256": "618d136e0b70a7184241a989682b126ebd9d802845be9f08b06c48791cbf0b68"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
@@ -102,7 +102,7 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "1cab91824fa0c5e5beae1fa9cbc2f56ea04f2f652e409f25e166490662aeec99"
+      "sha256": "618d136e0b70a7184241a989682b126ebd9d802845be9f08b06c48791cbf0b68"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
@@ -996,7 +996,9 @@
       "ART-019",
       "ART-020",
       "ART-023",
-      "ART-024"
+      "ART-024",
+      "ART-032",
+      "ART-033"
     ],
     "UI-12": [
       "LAY-003",
@@ -1238,6 +1240,29 @@
       "source_refs": [
         "visual:13",
         "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "ART-023",
+      "successors": [
+        "ART-032"
+      ],
+      "normative_change": "Visual 1.9 replaces the 0.94 modal scrim with a soft focus of the screen beneath (modal.softfocus: a 5 u blur at 0.80 saturation, never dimmed); the scrim remains only for the opaque-backing option and where soft focus is unavailable.",
+      "source_refs": [
+        "visual:4",
+        "visual:6"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "ART-024",
+      "successors": [
+        "ART-033"
+      ],
+      "normative_change": "Visual 1.9 sets modals over the soft-focused screen instead of the 0.94 scrim and cuts their glow to the dialog: the 6 dp lit margin, half strength at the dialog's top and bottom edges and gone 24 dp beyond; the stock column remains over the opaque-backing scrim.",
+      "source_refs": [
+        "visual:6"
       ],
       "carried_evidence": []
     }
@@ -11496,6 +11521,246 @@
           "#str_104350",
           "#str_104351"
         ]
+      }
+    },
+    {
+      "id": "ART-032",
+      "title": "Measured Marine tokens and state alpha",
+      "milestone_owner": "M2",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14",
+        "visual:9"
+      ],
+      "requirement": "Use the Marine, surface, text, status and measured tokens with the stock alpha ladder of visual 1.3: plates 0.40 at rest, 0.80 or 1.00 on hover or focus and 1.00 for the current page; markers 0.40, orange at 1.00 with the label; labels 0.80 white; titles 0.50; headings 0.40; cards 0.94; modal frames 0.70 over the soft-focused screen (modal.softfocus: a 5 u blur at 0.80 saturation, never dimmed), with the 0.94 marine.scrim only for the opaque-backing option and where soft focus is unavailable; bands 1.00, or 0.40 in the in-game multiplayer and buy menus over a 0.80 black scrim and 0.80 backing; table header bands 0.60. Menu lists use marine.list at 16% hover and 41% selection with a white 50% hairline; server and multiplayer lists use a #9A9C6E line band at 8%, hover at 29%, selection in marine.list at 50% and a #787E87 greyed band at 41%, without a hairline. The band rim light is #626934 falling from 37% to zero across 19 u. Separators are olive 0.26 on pages and 0.32 in cards and white 0.10 in multiplayer tables and entry dialogs. Join-card values stay limited to in-game partial panels, and status colors keep icon, explanation and non-color cues.",
+      "dependencies": [
+        "ART-001",
+        "REN-005",
+        "REN-014",
+        "REN-016"
+      ],
+      "acceptance_evidence_needed": [
+        "Token source comparison against the survey values plus composited contrast and all-state gallery review. Include the modal backdrop over a menu, the view and a panel over the view."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "marine.list": {
+          "color": "#FF9C00",
+          "hover_alpha": 0.16,
+          "selection_alpha": 0.41,
+          "server_list_selection_alpha": 0.5,
+          "hairline": {
+            "color": "#FFFFFF",
+            "alpha": 0.5
+          }
+        },
+        "server_list_bands": {
+          "line": [
+            "#9A9C6E",
+            0.08
+          ],
+          "hover": [
+            "#9A9C6E",
+            0.29
+          ],
+          "greyed": [
+            "#787E87",
+            0.41
+          ],
+          "end_fade_fraction": 0.22
+        },
+        "marine.rim": {
+          "color": "#626934",
+          "alpha": [
+            0.37,
+            0
+          ],
+          "linear_width_u": 19,
+          "tail_u": 25
+        },
+        "separator_alpha": {
+          "page_olive": 0.26,
+          "card_olive": 0.32,
+          "mp_and_entry_dialog_white": 0.1,
+          "hud_stats_white": 0.3
+        },
+        "in_game_menu": {
+          "band_alpha": 0.4,
+          "scrim_alpha": 0.8,
+          "backing_alpha": 0.8
+        },
+        "plate_alpha": {
+          "rest": 0.4,
+          "hover_primary": 0.8,
+          "hover_section_and_value_row": 1.0,
+          "current_page": 1.0
+        },
+        "card_body_alpha": 0.94,
+        "modal_frame_alpha": 0.7,
+        "table_header_band_alpha": 0.6,
+        "modal_backdrop": {
+          "blur_u": 5,
+          "saturation": 0.8,
+          "dim": 0
+        },
+        "opaque_backing_scrim_alpha": 0.94
+      }
+    },
+    {
+      "id": "ART-033",
+      "title": "Panel, pop-up and band constructions",
+      "milestone_owner": "M2",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Cards use one marine.rail.card rail around a 0.94 black body with 12 dp cuts at the top-trailing and bottom-leading corners and 3 dp at the other two; small cards keep the 12 dp cut and only one-line hints use 10 dp. Modals are a 0.70 black silhouette over the soft-focused screen with an additive glow as wide as the dialog plus the 6 dp lit margin, graded only vertically, at half strength at the dialog's top and bottom edges and gone 24 dp beyond them (over the opaque-backing scrim it keeps the stock column, 87 u above and 108 u below), with a leading tooth, a title slot about 73% wide, a raised trailing section, a deep lower-leading chamfer, square trailing corners and no rails; the five stock widths keep their slot depths and chamfers, the title's baseline sits on the raised top line from the foot of the slot's leading flank, and actions sit 30 dp and 33 dp from the edges. The chat box, tab strip, header band, framing and loading bands and corner brackets follow their measured constructions, lengthening only straight spans.",
+      "dependencies": [
+        "ART-001",
+        "REN-001",
+        "REN-014",
+        "REN-016"
+      ],
+      "acceptance_evidence_needed": [
+        "Measured geometry and overlays against the stock at 4:3 and across widths and DPI for every construction; a generic beveled rectangle is insufficient. Include each modal width over the soft focus and over the opaque-backing scrim."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "card": {
+          "major_cut_dp": 12,
+          "minor_cut_dp": 3,
+          "one_line_hint_major_cut_dp": 10,
+          "rail_dp": 1.5,
+          "body_alpha": 0.94,
+          "art_inset_u": 2
+        },
+        "modal_widths_dp": {
+          "confirmation_entry_list": {
+            "width": 480,
+            "slot_depth": 17,
+            "chamfer": 38
+          },
+          "system_message_connection_death": {
+            "width": 540,
+            "slot_depth": 20,
+            "chamfer": 46
+          },
+          "ban_list": {
+            "width": 548,
+            "slot_depth": 22,
+            "chamfer": 50
+          },
+          "advanced_options": {
+            "width": [
+              612,
+              642
+            ],
+            "slot_depth": 25,
+            "chamfer": 56
+          }
+        },
+        "modal": {
+          "frame_alpha": 0.7,
+          "leading_tooth_dp": 6,
+          "slot_opening_fraction": 0.73,
+          "slot_floor_fraction": 0.66,
+          "action_inset_dp": [
+            30,
+            33
+          ],
+          "lit_margin_dp": 6,
+          "standard_top_u": 155,
+          "standard_height_u": 136,
+          "backdrop": "modal.softfocus",
+          "soft_focus_glow": {
+            "lit_margin_dp": 6,
+            "half_at": "dialog_top_and_bottom_edges",
+            "extent_beyond_dp": 24
+          },
+          "scrim_glow": {
+            "half_at_height_fraction": [
+              0.28,
+              0.72
+            ],
+            "extent_u": {
+              "above": 87,
+              "below": 108
+            }
+          }
+        },
+        "header_band": {
+          "cut_texels": 8,
+          "fill_full_to_fraction": 0.5,
+          "half_at_fraction": 0.75
+        },
+        "bands": {
+          "flank_degrees": 45,
+          "notch_height_u": 9,
+          "notch_top_u": 36,
+          "notch_pitch_u": 97,
+          "top_riser_u": 35,
+          "rim_light_u": 19,
+          "silhouettes": "visual Appendix B.2"
+        }
+      }
+    },
+    {
+      "id": "REN-016",
+      "title": "Backdrop soft focus",
+      "milestone_owner": "M3",
+      "implementation_owner": "Vector compiler and renderer adapters",
+      "source_refs": [
+        "visual:4",
+        "visual:6",
+        "product:2 UI-07",
+        "product:2 UI-08",
+        "product:3 Visual quality and motion",
+        "original:Stage 3",
+        "visual:8",
+        "visual:9",
+        "visual:13"
+      ],
+      "requirement": "Provide backdrop soft focus on every backend: a layer blurs and desaturates the composed frame beneath it, whether that is a menu, the view or a panel over the view, with a 5 u (7.5 dp at the reference scale) Gaussian blur and 0.80 saturation, never dimming it. The blur follows the view's scale so it looks the same at every resolution. Its strength ramps with the owning transition (modal.enter over 200 ms; modal.leave over 250 ms after a 50 ms hold) and releases on every way out, including map shutdown and a renderer restart. Where the backend or power profile cannot afford it, the darkening scrim and vignette stand in, and the opaque-backing option draws the stock 0.94 scrim.",
+      "dependencies": [
+        "REN-014",
+        "REN-015",
+        "MOT-001",
+        "BEH-007"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures of modals over the title screen, a settings page, the live view and the multiplayer menus on GL, Vulkan and the GLES fallback at 100% and 200% scale, a trace of the backdrop strength through modal.enter and modal.leave, the pass's frame-time cost, and the fallback and opaque-backing captures."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "blur_u": 5,
+        "blur_dp": 7.5,
+        "saturation": 0.8,
+        "dim": 0,
+        "enter_ms": 200,
+        "leave_hold_ms": 50,
+        "leave_ms": 250,
+        "opaque_scrim_alpha": 0.94
       }
     }
   ]
