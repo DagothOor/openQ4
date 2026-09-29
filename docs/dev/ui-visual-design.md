@@ -1,7 +1,7 @@
 # openQ4 UI Visual Design
 
-Specification version 1.6, 28 September 2026 (1.4 and 1.5 on 27 September, 1.1
-to 1.3 on 26 September, 1.0 on 8 September 2026). Status:
+Specification version 1.7, 29 September 2026 (1.6 on 28 September, 1.4 and 1.5
+on 27 September, 1.1 to 1.3 on 26 September, 1.0 on 8 September 2026). Status:
 implementation target; the replacement has not shipped. Applies to every
 player-facing GUI and to the visual editor's Quake 4 preview. Implementation and
 evidence are tracked in [the replacement plan](plans/idtech5-ui.md).
@@ -22,7 +22,9 @@ the status bar, rebuilds the multiplayer HUD's top, chat and kill feed,
 catalogues every crosshair and item icon as vector art, and gives both weapon
 wheels the stock's translation and transmission effects. Version 1.6 adds the
 loading screens and the tabbed multiplayer menus, and redraws the EKG and the
-transmission waveform from their textures.
+transmission waveform from their textures. Version 1.7 restores the Quake
+emblem to the title screen, sets the single-player pause menu apart from it and
+adds a Strogg pause menu.
 [Appendix C](#appendix-c-change-record) lists every change and the
 requirement-register rows it affects.
 
@@ -1633,15 +1635,34 @@ second. The Phone profile starts with ambient loops and parallax off.
 
 ### 13.7 Screen patterns
 
-- **Title.** When a save exists, Continue leads the navigation, and its detail
-  shows the levelshot, mission, difficulty and play time. SINGLE PLAYER (Mission
-  and Arena), LOAD GAME, MULTIPLAYER and SETTINGS follow, and the secondary links
-  stay on the plinth.
+- **Title.** The emblem watermark keeps the trailing side (section 13.8). When
+  a save exists, Continue leads the navigation, and the message line under it
+  (the stock message-of-the-day slot at 44,364 u) shows its detail: a levelshot
+  thumbnail, the mission, difficulty and play time. The same line explains
+  whichever item has focus. SINGLE PLAYER (Mission and Arena), LOAD GAME,
+  MULTIPLAYER and SETTINGS follow, and the secondary links stay on the plinth.
 - **Pause.** Resume leads. Single player offers Save, Load, Settings, Restart
   Level, Objectives and Quit to Menu. Multiplayer uses the tabbed Escape menu
   of section 14.18 (Team, Players, Vote, Match, Settings, Voice, Server and
   Admin) and never pauses the server. The panel sits over the softened scene
   (section 9).
+  - **Single player.** The pause menu keeps the title screen's frame but never
+    reads as the title screen. GAME PAUSED replaces the wordmark, the
+    navigation starts at 172 u to hold its seven actions, and only EXIT stays on
+    the plinth. The current level block takes the emblem's place: a card with
+    the levelshot, the mission and difficulty, the objectives with their state,
+    and the time in the mission, the total time and the last save.
+  - **Strogg.** After Kane's stroggification the pause menu takes the Strogg
+    family. The bands keep their frame but trade the 45-degree notches for
+    30-degree shoulders and downward teeth. Rails, rim light and the circuit
+    traces etched in the bands are #F59512, plates end in a 30-degree shoulder,
+    markers are slanted, and labels are R_Strogg in #FCFFC8, #FFCC00 on focus.
+    Every label arrives in runes and plays a short form of the credits
+    translation (section 8): the title over 500 ms under the scan bar, the
+    actions over 200 ms each and 45 ms apart, and the level block's lines after
+    them. The focused plate runs the scan bar under its label, and the level
+    block takes a chamfered frame with the masked grain. Input works from the
+    first frame, and reduced motion shows the translated labels at once.
 - **Settings.** Categories are tabs switched with the bumpers or a swipe, and
   sections keep their picker. Search runs across every category when the player
   types, presses north, or taps the search symbol, and each result shows its
@@ -1682,6 +1703,10 @@ second. The Phone profile starts with ambient loops and parallax off.
 - **Focus light.** The focused plate gains a soft additive glow in
   `marine.glow`, about 24 dp across, beside its focus rail. High-contrast mode
   replaces the glow with a solid rail.
+- **Emblem light.** The title screen's emblem watermark keeps the stock
+  darkening blend (section 4). A rim light follows its outline at 0.20, and a
+  glint 12% of the outline long runs around it every 9 s. Reduced motion keeps
+  only the rim.
 - **Title continuity.** Activating a navigation item carries its label into the
   screen-title slot, where it becomes the path title, within the stock
   choreography timings.
@@ -1849,7 +1874,10 @@ y 419. Remastered centers the three gauges as one status bar (section 14.4).
   (Chain 36 dp), the reserve small (Chain 23 dp), and the fill shows the clip.
   Otherwise the total shows alone and the fill shows it against the maximum.
   Weapons with unlimited ammunition show no number and a full fill. The
-  weapon's shaded render sits behind the clip count at #C7BD78, 0.40.
+  selected weapon's own shaded render (its `mtr_icon`, section 14.16) sits
+  behind the clip count at #C7BD78, 0.40, where the stock draws its
+  right-aligned texture into the 106x26 u window, and changes with the weapon;
+  the multiplayer gauge has none.
   Multiplayer always shows the total and tints the ammo fill in the weapon's
   color at 20% and 50%.
 - **Numerals.** Chain, aligned to a fixed trailing edge. Stock Chain digits are
@@ -3017,3 +3045,18 @@ column headings out of the first row.
 
 Register schema 5 appends FLOW-046 (multiplayer menus), FLOW-047 (loading
 screens) and ART-029 (instrument traces). It supersedes no row.
+
+### Version 1.7
+
+Version 1.7 restores the Quake emblem to the title screen, sets the
+single-player pause menu apart from it and adds a Strogg pause menu.
+
+| Area | 1.6 | 1.7 | Basis |
+| --- | --- | --- | --- |
+| Title screen | Continue's detail in the emblem's place | The emblem watermark as vector art with a rim light and a glint; Continue's detail in the message line | `mainmenu.gui`, `q4logo`, the product owner's review |
+| Single-player pause | The title screen with in-game actions | GAME PAUSED, seven actions from 172 u, and the current level block in the emblem's place | The product owner's review |
+| Strogg pause | None | The Strogg family's bands, plates and labels, translating from runes | Strogg HUD, credits translation |
+| Ammo gauge | The weapon's render | The selected weapon's own render, placed as the stock places it; none in multiplayer | `hud.gui`, weapon `mtr_icon` |
+
+Register schema 6 appends FLOW-048 (title and pause menus) and ART-030 (the
+emblem watermark). It supersedes no row.
