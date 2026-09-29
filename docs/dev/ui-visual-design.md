@@ -2651,13 +2651,13 @@ keeps.
 
 **Initializing screen.** While the engine starts, before any menu exists,
 `PrintLoadingMessage` paints one frame for each step: the `gfx/splashScreen`
-picture stretched over the canvas and one status line. The line reads
-LOADING... twice, then INITIALIZING SOUND..., INITIALIZING NETWORK...,
-INITIALIZING RENDER SYSTEM..., INITIALIZING USER INTERFACE..., LOADING GAME...
-and INITIALIZING MENUS... (`#str_104343` to `#str_104351`). It is set in the
-console's 8x16 u characters (`bigchars`) in #F09E0D and centered at 410 u. The
-screen repaints only when the step changes. openQ4's aspect correction
-pillarboxes the picture in #181A08.
+picture stretched over the canvas and one status line. The line reads LOADING...
+twice, then INITIALIZING SOUND..., INITIALIZING NETWORK..., INITIALIZING RENDER
+SYSTEM..., INITIALIZING USER INTERFACE..., LOADING GAME... and INITIALIZING
+MENUS... (`#str_104343` to `#str_104351`). It is set in the console's 8x16 u
+characters (`bigchars`) in #F09E0D, centered across the canvas with its top at
+410 u. The screen repaints only when the step changes. openQ4's aspect
+correction pillarboxes the picture in #181A08.
 
 The picture (`splash.tga`, 512 texels square) is drawn pre-squashed, so its
 rings are circles on the 640x480 canvas. Its parts, measured on the canvas:
@@ -2684,9 +2684,9 @@ rings are circles on the 640x480 canvas. Its parts, measured on the canvas:
   clock (section 8), so every repaint finds them where continuous motion would
   have. The screen repaints at each step and, during a long step, whenever the
   engine can, at most 30 times a second. Reduced motion holds them still.
-- **Status.** The line is Marine 16 dp in #F09E0D, centered at 418 u, and a new
-  step replaces it at once. A 168 u rule under it holds one segment per step:
-  done at 0.55, current at 0.95 and pending at 0.15.
+- **Status.** The line is Marine 16 dp in #F09E0D, centered on the stock line's
+  middle at 418 u, and a new step replaces it at once. A 168 u rule under it
+  holds one segment per step: done at 0.55, current at 0.95 and pending at 0.15.
 - **Classic** keeps the stock picture and line.
 
 ### 14.18 Multiplayer menus
