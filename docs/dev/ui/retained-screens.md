@@ -55,9 +55,16 @@ after editing the script; `--check` fails when an output is stale.
 - **Loading** (section 14.17). Replaces the stock `generic`, `splevel`,
   `mplevel` and `intro` loading GUIs; a map's own loading GUI stays. The
   levelshot, reticle grid, framing bands, brackets and dot matrix frame the
-  level name and the objectives plate. The progress bar fills with
-  `map_loading`, and LOADING turns into the continue prompt when the load
-  finishes. Multiplayer shows the server lines and raises the bottom band and
+  level name, its message line (the difficulty in single player, the game type
+  in multiplayer) and the objectives plate. The levelshot drifts in by 3% over
+  the load unless motion is reduced. The Remastered progress sits in the thick
+  part of the bottom band: LOADING above a 240 u bar and, under the bar, the
+  loader's phase with its place among the four phases (map, world, assets,
+  finishing) or the asset queue's count, and the percentage in the value
+  color. When the load finishes, the phase line reports the load time and
+  LOADING becomes the continue prompt for the last-used device: the desktop
+  prompt, or the south button and CONTINUE after controller input. Multiplayer
+  shows the server lines and keeps the Classic raise of the bottom band and
   the bar.
 
 Band motion follows the stock choreography (section 8): opening reveals the
@@ -118,18 +125,31 @@ loads on demand and reports it once.
 opt-in, the presented home screen, which home documents are loaded, whether a
 hand-off is in progress and the number of live retained views (0 while the gate
 is off). `ui_retainedTrace 1` also logs each session request with whether the
-adapter accepted it.
+adapter accepted it, and each loading phase as `RETAINED_LOADING_PHASE`.
+
+## Loading phase line
+
+The session publishes the loader's phases to the retained loading screen
+only while that screen presents the load: MAP before the render world loads,
+WORLD before the game builds the level, ASSETS while the renderer works
+through its model and image queues (their own loaded and total counts replace
+the phase's place), FINISHING after the renderer's level load, and the load
+time once the level is ready. The continue prompt follows
+`idKeyInput::LastInputWasController`, which reports the input family the key
+bindings already track; the wait for continue republishes it, so touching a
+controller or the mouse switches the prompt.
 
 ## Validation
 
 - `openq4-ui-retained-screens` (native) loads the three production documents,
   lays them out at 1280x720 (the title also at 1920x1080) and drives their
   state. It checks the schema additions, the additive and multiplied draws,
-  the transformed clip, the emblem glint and its reduced-motion rule, and that
-  every action is an allowlisted session verb.
+  the transformed clip, the emblem glint and its reduced-motion rule, the
+  levelshot drift, the phase line, the percentage and the controller prompt,
+  and that every action is an allowlisted session verb.
 - `tools/tests/ui_retained_gate.py` qualifies the gate as described above,
-  including the startup preload and level-load precache, and pins the frame
-  pump order that lets RESUME retire the pause screen.
+  including the startup preload, the level-load precache and the loading phase
+  line, and pins the frame pump order that lets RESUME retire the pause screen.
 - `tools/ui/capture_retained_screens.py` captures the screens in the engine
   from a hidden window with engine screenshots and semantic
   `openq4_retainedGui` operations, never OS input. With `--gate 0` the title
@@ -153,6 +173,15 @@ Vulkan title and loading screens, and the stock title with the gate off. All
 Python list pass. Evidence: `.tmp/ui/retained-screens/validation-evidence.json`,
 SHA-256 `e645a25b3daae42e1b4cc5a6301fc67cfc8c31c85895759f92fb4a179697d5b9`.
 
+The Remastered loading progress was captured the same way. Real single-player
+loads traced MAP 1/4, WORLD 2/4, ASSETS 3/4, FINISHING 4/4 and the load time,
+in that order, on OpenGL and Vulkan at 1280x720 and on OpenGL at 1024x768.
+The loading scenario rendered the phase with its asset count, the percentage,
+the load time and the controller prompt on both backends; the gate-off runs
+loaded no retained document. Evidence:
+`.tmp/ui/retained-loading/validation-evidence.json`, SHA-256
+`9961bf8402d8897d4d95be20ab20f780ccd371c674c0b7371b676c4bdcce2fc8`.
+
 ## Known limitations
 
 - The pause menu has no OBJECTIVES action yet, so the navigation holds six of
@@ -167,3 +196,7 @@ SHA-256 `e645a25b3daae42e1b4cc5a6301fc67cfc8c31c85895759f92fb4a179697d5b9`.
   visual specification 1.9: the scrim with the stock glow column.
 - The multiplayer Escape and Welcome menus (section 14.18) keep the stock
   menus: the retained home screen is never presented in a multiplayer game.
+- The loading screen has no tips and no touch prompt (touch counts as desktop
+  input), and multiplayer keeps the Classic composition rather than the
+  Remastered one: the band kept low, the server card, the arsenal filling in
+  and the JOINING hand-off.

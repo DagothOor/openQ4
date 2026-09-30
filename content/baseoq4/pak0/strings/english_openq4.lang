@@ -1067,4 +1067,9 @@
 	"#str_230029"	"Controls, display, audio and game options."
 	"#str_230030"	"CURRENT MISSION"
 	"#str_230031"	"GAME PAUSED"
+	"#str_230032"	"WORLD"
+	"#str_230033"	"ASSETS"
+	"#str_230034"	"FINISHING"
+	"#str_230035"	"LOAD TIME"
+	"#str_230036"	"%"
 }

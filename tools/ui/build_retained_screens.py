@@ -945,6 +945,10 @@ def loading_document() -> dict:
         "loading_mp": {"type": "boolean", "initial": False},
         "loading_intro": {"type": "boolean", "initial": False},
         "loading_ready": {"type": "boolean", "initial": False},
+        "motion_reduced": {"type": "boolean", "initial": False, "cvar": "ui_retainedReducedMotion"},
+        "loading_phase": {"type": "string", "initial": ""},
+        "loading_count": {"type": "string", "initial": ""},
+        "loading_controller": {"type": "boolean", "initial": False},
     })
     doc.events["FinishedLoading"] = [{"op": "setState", "values": {"loading_ready": True}},
                                      {"op": "playTimeline", "timeline": "continuePulse"}]
@@ -969,8 +973,13 @@ def loading_document() -> dict:
         path("band", bottom_edge + [(edge(1), U * 480 + 400), (edge(0), U * 480 + 400)], fill=solid([0, 0, 0, 0.8]))])
     doc.bind("load-bottom.transform", "load-bottom", "transform",
              [0, {"op": "select", "args": [{"state": "loading_mp"}, U * (227 - 345), 0]}, 1, 1, 0])
-    shot = picture("load-shot", "", dict(FULL))
+    shot = picture("load-shot", "", {**FULL, "transform": transform()})
     doc.bind("load-shot.image", "load-shot", "image", {"state": "loading_levelshot"})
+    # Remastered: the levelshot drifts in by 3% over the load; reduced motion
+    # holds it still (section 14.17).
+    drift = {"op": "select", "args": [{"state": "motion_reduced"}, 1, {"op": "+", "args": [
+        1, {"op": "*", "args": [0.03, {"op": "clamp", "args": [{"state": "map_loading"}, 0, 1]}]}]}]}
+    doc.bind("load-shot.transform", "load-shot", "transform", [0, 0, drift, drift, 0])
 
     brackets = group("brackets", {"display": keyword("block"), **absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"), "margin-left": length(-CANVAS_W / 2)}, [
         corner_bracket("bracket-tl", 8, 28, False, False), corner_bracket("bracket-tr", 580, 28, True, False),
@@ -1037,36 +1046,80 @@ def loading_document() -> dict:
     doc.bind("server-rules.text", "server-rules", "text", {"state": "server_limit"})
     doc.bind("server.display", "server", "display", {"op": "select", "args": [{"state": "loading_mp"}, "block", "none"]})
 
-    # Progress: the bar from 235 to 640 u at 431 u (313 u in multiplayer),
-    # marine.progress track 0.30 and fill 0.50, LOADING trailing across it.
-    bar_w = U * 405
-    progress = group("progress", {**absolute(top=U * 431, width=CANVAS_W, height=U * 40), "left": length(50, "%"),
+    # Remastered progress (section 14.17): the thick part of the bottom band
+    # holds LOADING above a 240 u bar ending at 632 u; under the bar run the
+    # loader's phase with its count and, trailing, the percentage in the value
+    # color. When the level is ready LOADING becomes the continue prompt for
+    # the active device: the south button and CONTINUE on a controller. The
+    # multiplayer raise still lifts the band and its bar by 118 u.
+    bar_x, bar_w, tail = U * 392, U * 240, U * 8
+    prompt = {"op": "select", "args": [{"state": "loading_ready"},
+              {"op": "select", "args": [{"state": "loading_controller"}, "#str_200984", "#str_200937"]}, "#str_200938"]}
+    glyph_shown = {"op": "select", "args": [{"op": "&&", "args": [{"state": "loading_ready"}, {"state": "loading_controller"}]},
+                                            "block", "none"]}
+
+    def south_button(ident: str, tint: list) -> dict:
+        """The controller's face buttons as a diamond with the south one
+        filled: the platform-neutral confirm glyph."""
+        def ring(cx: float, cy: float, radius: float, sides: int = 12) -> list:
+            return [(round(cx + radius * math.cos(2 * math.pi * i / sides), 3), round(cy + radius * math.sin(2 * math.pi * i / sides), 3))
+                    for i in range(sides)]
+        paths = [path(name, ring(cx, cy, 2.6), stroke=stroke(solid(tint), 1.2, minimum=1))
+                 for name, (cx, cy) in (("north", (9, 3.5)), ("west", (3.5, 9)), ("east", (14.5, 9)))]
+        paths.append(path("south", ring(9, 14.5, 3.2), fill=solid(tint)))
+        return vector(ident, {"position": keyword("relative"), "display": keyword("none"), "width": length(18),
+                              "height": length(18), "margin-right": length(8)}, paths)
+
+    def prompt_row(ident: str, offset: float, tint: list) -> dict:
+        return group(ident, {**absolute(top=U * 2 + offset, height=U * 22, right=tail - offset), "display": keyword("flex"),
+                             "flex-direction": keyword("row"), "align-items": keyword("center")}, [
+            south_button(f"{ident}-glyph", tint),
+            label(f"{ident}-text", "#str_200938", {"position": keyword("relative"), "display": keyword("block"),
+                  **typeface("marine", 29, U * 22, tint), "white-space": keyword("nowrap")}),
+        ])
+
+    def stage_label(ident: str, key: str, tint: list, **more) -> dict:
+        return label(ident, key, {"position": keyword("relative"), "display": keyword("block"),
+                                  **typeface("lowpixel", 14, U * 10, tint), "white-space": keyword("nowrap"), **more})
+
+    progress = group("progress", {**absolute(top=U * 426, width=CANVAS_W, height=U * 54), "left": length(50, "%"),
                                   "margin-left": length(-CANVAS_W / 2), "transform": transform()}, [
-        vector("progress-track", absolute(left=U * 235, top=U * 8, width=bar_w, height=U * 6), [
+        prompt_row("progress-prompt-shadow", 1.5, [0, 0, 0, 0.8]),
+        prompt_row("progress-prompt", 0, [1, 1, 1, 1]),
+        vector("progress-track", absolute(left=bar_x, top=U * 26, width=bar_w, height=U * 6), [
             path("track", [(U * 6, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1}), (0, U * 6)],
                  fill=linear((0, 0), (0, {"fraction": 1}), [(0, rgb(PROGRESS, 0.2)), (0.5, rgb(PROGRESS, 0.3)), (1, rgb(PROGRESS, 0.2))]))]),
-        group("progress-fill-clip", {**absolute(left=U * 235, top=U * 8, width=0, height=U * 6), "overflow": keyword("hidden")}, [
+        group("progress-fill-clip", {**absolute(left=bar_x, top=U * 26, width=0, height=U * 6), "overflow": keyword("hidden")}, [
             vector("progress-fill", absolute(left=0, top=0, width=bar_w, height=U * 6), [
                 path("fill", [(U * 6, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1}), (0, U * 6)],
                      fill=linear((0, 0), (0, {"fraction": 1}), [(0, rgb(PROGRESS, 0.35)), (0.5, rgb(PROGRESS, 0.6)), (1, rgb(PROGRESS, 0.35))])),
                 path("core", [(U * 3, U * 3), ({"fraction": 1}, U * 3)], closed=False, stroke=stroke(solid(rgb("#FFC070", 0.5)), 1, minimum=1)),
             ])]),
-        label("progress-label-shadow", "#str_200938", {**absolute(left=U * 235 + 1.5, top=U * 15 + 1.5, width=bar_w, height=U * 22),
-              **typeface("marine", 29, U * 22, [0, 0, 0, 0.8]), "text-align": keyword("right"), "white-space": keyword("nowrap")}),
-        label("progress-label", "#str_200938", {**absolute(left=U * 235, top=U * 15, width=bar_w, height=U * 22),
-              **typeface("marine", 29, U * 22, [1, 1, 1, 1]), "text-align": keyword("right"), "white-space": keyword("nowrap")}),
+        group("progress-stage", {**absolute(left=bar_x, top=U * 34.5, height=U * 10), "display": keyword("flex"),
+                                 "flex-direction": keyword("row")}, [
+            stage_label("progress-phase", "#str_230030", [1, 1, 1, 0.62]),
+            stage_label("progress-count", "#str_230030", [1, 1, 1, 0.42], **{"margin-left": length(8)}),
+        ]),
+        group("progress-percent", {**absolute(top=U * 34.5, height=U * 10, right=tail), "display": keyword("flex"),
+                                   "flex-direction": keyword("row")}, [
+            stage_label("progress-percent-value", "#str_230030", rgb(VALUE)),
+            stage_label("progress-percent-sign", "#str_230036", rgb(VALUE)),
+        ]),
     ])
     doc.bind("progress-fill-clip.width", "progress-fill-clip", "width",
              {"op": "*", "args": [{"op": "clamp", "args": [{"state": "map_loading"}, 0, 1]}, bar_w]})
     doc.bind("progress.transform", "progress", "transform",
              [0, {"op": "select", "args": [{"state": "loading_mp"}, U * (313 - 431), 0]}, 1, 1, 0])
-    doc.bind("progress-label.text", "progress-label", "text",
-             {"op": "select", "args": [{"state": "loading_ready"}, "#str_200937", "#str_200938"]})
-    doc.bind("progress-label-shadow.text", "progress-label-shadow", "text",
-             {"op": "select", "args": [{"state": "loading_ready"}, "#str_200937", "#str_200938"]})
-    # LOADING pulses from 100 % to 50 % over 500 ms and back over 200 ms (section 8).
+    for row in ("progress-prompt", "progress-prompt-shadow"):
+        doc.bind(f"{row}-text.text", f"{row}-text", "text", prompt)
+        doc.bind(f"{row}-glyph.display", f"{row}-glyph", "display", glyph_shown)
+    doc.bind("progress-phase.text", "progress-phase", "text", {"state": "loading_phase"})
+    doc.bind("progress-count.text", "progress-count", "text", {"state": "loading_count"})
+    doc.bind("progress-percent-value.text", "progress-percent-value", "text", {"op": "numberText", "decimals": 0, "args": [
+        {"op": "round", "args": [{"op": "*", "args": [{"op": "clamp", "args": [{"state": "map_loading"}, 0, 1]}, 100]}]}]})
+    # The prompt pulses from 100 % to 50 % over 500 ms and back over 200 ms (section 8).
     doc.timelines.add("continuePulse", 700, [
-        track("progress-label", "color", [(0, colour([1, 1, 1, 1])), (500, colour([1, 1, 1, 0.5])), (700, colour([1, 1, 1, 1]))])],
+        track("progress-prompt-text", "color", [(0, colour([1, 1, 1, 1])), (500, colour([1, 1, 1, 0.5])), (700, colour([1, 1, 1, 1]))])],
         iterations=0)
     root = group("screen", {**FULL, "background-color": colour([0, 0, 0, 1]), "font-family": font("marine"),
                             "font-size": length(16), "color": colour([1, 1, 1, 0.8])}, [

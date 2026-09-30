@@ -466,8 +466,11 @@
   only the SYSTEM page. The new screens follow the visual specification's
   framing bands, lighting and motion, hand off to the stock pages for anything
   they do not replace yet, and fall back to the stock screen if one cannot load.
-  The pause menu's Objectives action, the Strogg variant, a softened backdrop
-  and the multiplayer menus remain in development.
+  While a level loads, its picture drifts slowly closer, the bar shows what is
+  loading and how far along it is, the finished load reports how long it took,
+  and the continue prompt shows your controller's button once you use one.
+  The pause menu's Objectives action, the Strogg variant, a softened backdrop,
+  loading tips and the multiplayer menus remain in development.
 
 - The experimental SYSTEM page adds window and custom fullscreen width/height
   fields with localized whole-pixel validation. Custom dimensions select Custom

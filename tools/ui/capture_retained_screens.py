@@ -50,9 +50,15 @@ SCENARIOS = {
         'openq4_retainedGui pending loading_levelshot gfx/guis/loadscreens/airdefense',
         'openq4_retainedGui pending loading_levelname "Air Defense Trenches"',
         'openq4_retainedGui pending loading_objectives "Fight through the trench network to the anti-aircraft battery."',
+        'openq4_retainedGui pending loading_detail Corporal', 'openq4_retainedGui pending loading_phase ASSETS',
+        'openq4_retainedGui pending loading_count "412/1630"',
         'openq4_retainedGui state map_loading 0.62', 'waitMsec 600', 'screenshot "screenshots/loading.tga"',
+        # Pending values commit with the next state operation.
+        'openq4_retainedGui pending loading_phase "LOAD TIME"', 'openq4_retainedGui pending loading_count "12.4 s"',
         'openq4_retainedGui event FinishedLoading', 'openq4_retainedGui state map_loading 1', 'waitMsec 600',
         'screenshot "screenshots/loading-ready.tga"',
+        'openq4_retainedGui state loading_controller 1', 'waitMsec 300', 'screenshot "screenshots/loading-controller.tga"',
+        'openq4_retainedGui state loading_controller 0',
         'openq4_retainedGui pending server_name "openQ4 Test Server"', 'openq4_retainedGui pending server_ip "192.168.1.20:28004"',
         'openq4_retainedGui pending server_limit "Frag limit 30 - Time limit 10"',
         'openq4_retainedGui pending loading_levelshot gfx/guis/loadscreens/q4dm1',
@@ -131,6 +137,7 @@ def run(args, scenario: str) -> dict:
         'seconds': round(time.monotonic() - started, 1), 'complete': DONE in log, 'status': status,
         'retained_loaded': re.findall(r'RETAINED_GUI_LOADED (\S+)', log),
         'session_requests': re.findall(r'RETAINED_GUI_SESSION .*', log),
+        'loading_phases': re.findall(r'RETAINED_LOADING_PHASE .*', log),
         'retained_warnings': [line for line in log.splitlines() if 'retained' in line.lower() and ('WARNING' in line or 'ERROR' in line)],
         'errors': [line for line in log.splitlines() if 'ERROR:' in line or 'FATAL:' in line],
         'screenshots': shots, 'command': command, 'log': str(log_path.relative_to(ROOT)) if log_path.is_file() else None,
@@ -162,6 +169,8 @@ def main() -> int:
               f"loaded={result['retained_loaded']} shots={len(result['screenshots'])} errors={len(result['errors'])}")
         for line in result['status']:
             print('   ', line)
+        for line in result['loading_phases']:
+            print('    ~', line)
         for line in result['retained_warnings'][:10]:
             print('    !', line)
     return 0 if all(result['complete'] and result['returncode'] == 0 for result in results) else 1

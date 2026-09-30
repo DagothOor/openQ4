@@ -202,6 +202,7 @@ public:
 	static void			PreliminaryMouseEvent( int deltaX, int deltaY );
 	static void			PreliminaryJoystickEvent( int value );
 	static bool			IsDown( int keyNum );
+	static bool			LastInputWasController( void );
 	static int			GetUsercmdAction( int keyNum );
 	static bool			GetOverstrikeMode( void );
 	static void			SetOverstrikeMode( bool state );

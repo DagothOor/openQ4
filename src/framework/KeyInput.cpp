@@ -315,6 +315,18 @@ bool idKeyInput::IsDown( int keynum ) {
 
 /*
 ===================
+idKeyInput::LastInputWasController
+
+Whether the latest key, button or axis input came from a controller, for
+prompts that show the active device's glyphs.
+===================
+*/
+bool idKeyInput::LastInputWasController( void ) {
+	return key_lastInputFamily == KEY_INPUT_FAMILY_CONTROLLER;
+}
+
+/*
+===================
 idKeyInput::StringToKeyNum
 
 Returns a key number to be used to index keys[] by looking at

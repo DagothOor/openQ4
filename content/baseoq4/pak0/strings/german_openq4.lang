@@ -1067,4 +1067,9 @@
 	"#str_230029"	"Steuerung, Anzeige, Audio und Spieloptionen."
 	"#str_230030"	"AKTUELLE MISSION"
 	"#str_230031"	"SPIEL PAUSIERT"
+	"#str_230032"	"WELT"
+	"#str_230033"	"RESSOURCEN"
+	"#str_230034"	"ABSCHLUSS"
+	"#str_230035"	"LADEZEIT"
+	"#str_230036"	"%"
 }

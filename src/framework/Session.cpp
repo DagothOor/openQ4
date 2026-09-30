@@ -2625,6 +2625,13 @@ static void Session_DrawLevelshotBounds() {
 	renderSystem->SetUseUIViewportFor2D( previousUIViewportMode );
 }
 
+// The current difficulty's localized name, as the retained pause and loading
+// screens show it.
+static const char *Session_GetSkillName( void ) {
+	static const char *skills[] = { "#str_200014", "#str_200015", "#str_200016", "#str_200017", "#str_42063" };
+	return common->GetLanguageDict()->GetString( skills[ idMath::ClampInt( 0, 4, cvarSystem->GetCVarInteger( "g_skill" ) ) ] );
+}
+
 static const char *Session_GetLongMPGameTypeName( const char *gametype ) {
 	if ( !gametype || !gametype[ 0 ] ) {
 		return "";
@@ -3771,6 +3778,9 @@ void idSessionLocal::Clear() {
 	guiRetainedHome = guiRetainedTitle = guiRetainedPause = NULL;
 	retainedHomeReturning = retainedTitleFailed = retainedPauseFailed = retainedLoadingFailed = false;
 	retainedHandoffUntil = 0;
+	retainedLoadingActive = false;
+	retainedLoadingPhase = 0;
+	retainedLoadingLoaded = retainedLoadingTotal = retainedLoadingDevice = -1;
 	demoReturnGui = NULL;
 	demoOverlayVisible = false;
 	demoBrowserMode = true;
@@ -5735,6 +5745,77 @@ static void Session_BuildLevelLoadCacheSettings( idStr &settings ) {
 
 /*
 ===============
+The retained loading screen's phase line (section 14.17)
+
+The loader's phases in order, each shown with its place among them. While the
+renderer loads its model and image queues, the queue's own count replaces the
+place, and Ready reports the load time.
+===============
+*/
+enum {
+	RETAINED_LOAD_IDLE,
+	RETAINED_LOAD_MAP,
+	RETAINED_LOAD_WORLD,
+	RETAINED_LOAD_ASSETS,
+	RETAINED_LOAD_FINISHING,
+	RETAINED_LOAD_READY
+};
+static const int RETAINED_LOAD_PHASES = RETAINED_LOAD_FINISHING;
+static const char *const retainedLoadPhaseNames[] = { "", "#str_200040", "#str_230032", "#str_230033", "#str_230034", "#str_230035" };
+
+void idSessionLocal::SetRetainedLoadingPhase( int phase, const char *count ) {
+	if ( !retainedLoadingActive || guiLoading == NULL || phase < RETAINED_LOAD_IDLE || phase > RETAINED_LOAD_READY ) {
+		return;
+	}
+	retainedLoadingPhase = phase;
+	retainedLoadingLoaded = retainedLoadingTotal = -1;
+	idStr place;
+	if ( count != NULL ) {
+		place = count;
+	} else if ( phase != RETAINED_LOAD_IDLE && phase <= RETAINED_LOAD_PHASES ) {
+		place = va( "%d/%d", phase, RETAINED_LOAD_PHASES );
+	}
+	guiLoading->SetStateString( "loading_phase", phase != RETAINED_LOAD_IDLE ?
+		common->GetLanguageDict()->GetString( retainedLoadPhaseNames[ phase ] ) : "" );
+	guiLoading->SetStateString( "loading_count", place.c_str() );
+	guiLoading->StateChanged( common->GetPresentationTime() );
+	if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+		common->Printf( "RETAINED_LOADING_PHASE phase=%d count=%s\n", phase, place.c_str() );
+	}
+}
+
+void idSessionLocal::PublishRetainedLoadingCount() {
+	if ( !retainedLoadingActive || guiLoading == NULL || !loadingAssetQueueActive ) {
+		return;
+	}
+	if ( retainedLoadingPhase != RETAINED_LOAD_ASSETS ) {
+		SetRetainedLoadingPhase( RETAINED_LOAD_ASSETS );
+	}
+	if ( loadingAssetQueueLoaded == retainedLoadingLoaded && loadingAssetQueueTotal == retainedLoadingTotal ) {
+		return;
+	}
+	retainedLoadingLoaded = loadingAssetQueueLoaded;
+	retainedLoadingTotal = loadingAssetQueueTotal;
+	guiLoading->SetStateString( "loading_count", va( "%d/%d", loadingAssetQueueLoaded, loadingAssetQueueTotal ) );
+}
+
+void idSessionLocal::PublishRetainedLoadingDevice() {
+	// The continue prompt shows the active device: a controller's south button
+	// once a controller was used last, the desktop prompt otherwise.
+	if ( !retainedLoadingActive || guiLoading == NULL ) {
+		return;
+	}
+	const int device = idKeyInput::LastInputWasController() ? 1 : 0;
+	if ( device == retainedLoadingDevice ) {
+		return;
+	}
+	retainedLoadingDevice = device;
+	guiLoading->SetStateBool( "loading_controller", device != 0 );
+	guiLoading->StateChanged( common->GetPresentationTime() );
+}
+
+/*
+===============
 idSessionLocal::LoadLoadingGui
 ===============
 */
@@ -5900,10 +5981,17 @@ void idSessionLocal::LoadLoadingGui( const char *mapName ) {
 			// must be a plain VFS image name; anything else keeps the generic art.
 			guiLoading->SetStateString( "loading_levelshot", UI_RetainedImageSource( loadingBackground.c_str() ) ?
 				loadingBackground.c_str() : fallbackLoadingBackground );
+			// The message line under the level name: the game type in
+			// multiplayer, the difficulty in single player (section 14.17).
 			const char *entryDetail = isMultiplayerLoad ? Session_GetLongMPGameTypeName(
-				mapSpawnData.serverInfo.GetString( "si_gameType", cvarSystem->GetCVarString( "si_gameType" ) ) ) : "";
+				mapSpawnData.serverInfo.GetString( "si_gameType", cvarSystem->GetCVarString( "si_gameType" ) ) ) : Session_GetSkillName();
 			guiLoading->SetStateString( "loading_detail", entryDetail ? entryDetail : "" );
 			guiLoading->StateChanged( common->GetPresentationTime() );
+			// The shared document keeps its last load's line until reset.
+			retainedLoadingActive = true;
+			retainedLoadingDevice = -1;
+			SetRetainedLoadingPhase( RETAINED_LOAD_IDLE );
+			PublishRetainedLoadingDevice();
 		}
 	}
 }
@@ -5927,10 +6015,8 @@ void idSessionLocal::PublishRetainedPauseState( idUserInterface *gui ) {
 	const bool known = Session_GetMapDeclDict( mapPath, entityFilter, mapDeclDict );
 	const char *level = known ? common->GetLanguageDict()->GetString( mapDeclDict.GetString( "name", mapPath ) ) : mapPath;
 	const char *objectives = known ? common->GetLanguageDict()->GetString( mapDeclDict.GetString( "objectives", "" ) ) : "";
-	static const char *skills[] = { "#str_200014", "#str_200015", "#str_200016", "#str_200017", "#str_42063" };
-	const int skill = idMath::ClampInt( 0, 4, cvarSystem->GetCVarInteger( "g_skill" ) );
 	gui->SetStateString( "pause_level", level );
-	gui->SetStateString( "pause_detail", common->GetLanguageDict()->GetString( skills[ skill ] ) );
+	gui->SetStateString( "pause_detail", Session_GetSkillName() );
 	gui->SetStateString( "pause_objectives", objectives );
 	gui->SetStateString( "pause_shot", RetainedPauseShot( mapPath ).c_str() );
 	gui->StateChanged( common->GetPresentationTime() );
@@ -6020,6 +6106,8 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 	loadingAssetQueueTotal = 0;
 	loadingAssetQueueLoaded = 0;
 	loadingAssetQueueStartPct = 0.0f;
+	// LoadLoadingGui turns it on when the retained loading screen presents.
+	retainedLoadingActive = false;
 
 	// Start each load from a clean pacifier budget so a hitch recorded during the
 	// previous map change cannot keep throttling this one.
@@ -6171,6 +6259,7 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 	common->Printf( "Map: %s\n", mapString.c_str() );
 
 	// let the renderSystem load all the geometry
+	SetRetainedLoadingPhase( RETAINED_LOAD_MAP );
 	if ( !rw->InitFromMap( fullMapName ) ) {
 		common->Error( "couldn't load %s", fullMapName.c_str() );
 	}
@@ -6189,6 +6278,7 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 	}
 
 	// load and spawn all other entities ( from a savegame possibly )
+	SetRetainedLoadingPhase( RETAINED_LOAD_WORLD );
 	if ( loadingSaveGame && savegameFile ) {
 		if ( game->InitFromSaveGame( fullMapName, rw, savegameFile ) == false ) {
 			// If the loadgame failed, restart the map with the player persistent data
@@ -6223,6 +6313,7 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 	int mediaPhaseStart = phaseStart;
 	if ( !reloadingSameMap ) {
 		renderSystem->EndLevelLoad();
+		SetRetainedLoadingPhase( RETAINED_LOAD_FINISHING );
 		mediaRenderMsec = Sys_Milliseconds() - mediaPhaseStart;
 		mediaPhaseStart = Sys_Milliseconds();
 		soundSystem->EndLevelLoad();
@@ -6300,6 +6391,8 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 
 	common->PrintWarnings();
 
+	// The phase line reports the load time once the level is ready.
+	SetRetainedLoadingPhase( RETAINED_LOAD_READY, va( "%.1f s", msec * 0.001f ) );
 	if ( guiLoading ) {
 		float pct = idMath::ClampFloat( 0.0f, 1.0f, guiLoading->State().GetFloat( "map_loading" ) );
 		while ( pct < 1.0f ) {
@@ -6335,6 +6428,7 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 	}
 	if ( waitForSPContinue ) {
 		Session_BeginBlockingLoadPresentationFrame();
+		PublishRetainedLoadingDevice();
 		guiLoading->HandleNamedEvent( "FinishedLoading" );
 		guiLoading->StateChanged( common->GetPresentationTime() );
 		UpdateScreen();
@@ -6392,6 +6486,8 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 				if ( Session_FindPresentationCap() > 0 ) {
 					Session_BeginBlockingLoadPresentationFrame();
 				}
+				// Touching a controller, or the mouse, switches the prompt.
+				PublishRetainedLoadingDevice();
 				UpdateScreen();
 				if ( Session_FindPresentationCap() <= 0 ) {
 					Sys_Sleep( static_cast<int>( idMath::Ceil( common->GetUserCmdMsecFloat() ) ) );
@@ -6433,6 +6529,7 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 	// stop drawing the laoding screen
 	openq4::NativeInputBeforeSessionChange();
 	insideExecuteMapChange = false;
+	retainedLoadingActive = false;
 
 	Sys_SetPhysicalWorkMemory( -1, -1 );
 
@@ -7660,6 +7757,7 @@ void idSessionLocal::PacifierUpdate() {
 
 		// Loading bars should be monotonic.
 		targetPct = Max( targetPct, shownPct );
+		PublishRetainedLoadingCount();
 
 		// Keep progress accurate, but smooth visual jumps when read-count deltas arrive in bursts.
 		const float alpha = idMath::ClampFloat( 0.0f, 1.0f, ( elapsedMs * 0.001f ) * 20.0f );

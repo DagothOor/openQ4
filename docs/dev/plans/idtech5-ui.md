@@ -88,8 +88,11 @@ visual specification 1.7 and the design atlas, behind one `ui_retained` gate
 (default off; `ui_retainedSystem` still opts into only SYSTEM). It adds image
 nodes, additive and multiply path blends, a view-height canvas, typed session
 menu requests and exact overflow clipping under translation and scale. The
-pause menu's Objectives action and live objectives, the Strogg variant, the
-softened backdrop and the multiplayer Escape and Welcome menus remain. No gate
+loading screen shows the Remastered progress: the loader's phase with its
+place or asset count, the percentage, the load time and a controller continue
+prompt. The pause menu's Objectives action and live objectives, the Strogg
+variant, the softened backdrop, loading tips, the Remastered multiplayer
+loading screen and the multiplayer Escape and Welcome menus remain. No gate
 closes.
 
 ## Objective and immutable completion scope

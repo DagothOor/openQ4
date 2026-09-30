@@ -51,6 +51,7 @@ struct idSessionLocal {
     float loadingAssetQueueStartPct=0.1f;
     GUI gui,*guiLoading=&gui;
     void UpdateScreen(){++redraws;NestedOffer(0);}
+    void PublishRetainedLoadingCount(){}
     void PacifierUpdate();
 } session;
 void NestedOffer(int stage) {

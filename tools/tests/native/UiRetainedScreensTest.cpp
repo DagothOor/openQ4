@@ -270,16 +270,48 @@ int main(int argc, char** argv) {
 		Check(runtime.SetState({{"map_loading",0.5},{"loading_levelshot",std::string("gfx/guis/loadscreens/airdefense1")}},error,1),"publish progress");
 		runtime.Frame(viewport,1);
 		Bounds fill, labelSp, labelMp;
-		Check(runtime.GetBounds("progress-fill-clip",fill) && Near(fill.width,607.5f*.5f,1.5f),"the bar fills with map_loading");
+		// Remastered: a 240 u bar (360 dp) from 392 u, 160 px into a 16:9 view.
+		Check(runtime.GetBounds("progress-fill-clip",fill) && Near(fill.width,360*.5f,1.5f) && Near(fill.x,160+588,1.5f),
+			"the bar fills with map_loading");
+		const auto percent = runtime.PresentedValue("progress-percent-value","text");
+		Check(percent && percent->text == "50","the percentage follows map_loading");
+		Check(runtime.SetState({{"loading_phase",std::string("ASSETS")},{"loading_count",std::string("412/1630")}},error,1.1),
+			"publish the loader's phase");
+		runtime.Frame(viewport,1.1);
+		const auto phase = runtime.PresentedValue("progress-phase","text");
+		const auto count = runtime.PresentedValue("progress-count","text");
+		Check(phase && phase->text == "ASSETS" && count && count->text == "412/1630","the phase line shows the phase and its count");
+		Bounds phaseBox, countBox;
+		Check(runtime.GetBounds("progress-phase",phaseBox) && runtime.GetBounds("progress-count",countBox) &&
+			countBox.x >= phaseBox.x+phaseBox.width,"the count follows its phase");
 		// The bar's group carries the multiplayer raise transform, so the fill
 		// is clipped through the clip mask, never left whole.
 		const auto statistics = runtime.Statistics();
 		Check(statistics.clipMasks > 0 && statistics.clipMaskFallbacks == 0,"the fill clips exactly under the raise transform");
-		Check(runtime.GetBounds("progress-label",labelSp),"LOADING laid out");
+		// Remastered: the levelshot drifts in by 3% over the load, unless
+		// motion is reduced.
+		const auto drift = runtime.PresentedValue("load-shot","transform");
+		Check(drift && Near(static_cast<float>(drift->data[2]),1.015f,.0005f) && Near(static_cast<float>(drift->data[3]),1.015f,.0005f),
+			"half way through the load the levelshot has drifted 1.5%");
+		host.reducedMotion = true;
+		runtime.Frame(viewport,1.5);
+		const auto held = runtime.PresentedValue("load-shot","transform");
+		Check(held && Near(static_cast<float>(held->data[2]),1,.0005f),"reduced motion holds the levelshot still");
+		host.reducedMotion = false;
+		Check(runtime.GetBounds("progress-prompt-text",labelSp) && labelSp.y+labelSp.height <= fill.y,"LOADING stands above the bar");
+		const auto hiddenGlyph = runtime.PresentedValue("progress-prompt-glyph","display");
+		Check(hiddenGlyph && hiddenGlyph->text == "none","no device glyph while loading");
 		Runtime::EventEffects effects;
 		Check(runtime.RunEvent("FinishedLoading",2,effects,error),"FinishedLoading turns LOADING into the continue prompt");
-		const auto prompt = runtime.PresentedValue("progress-label","text");
-		Check(prompt && prompt->text == "#str_200937","the continue prompt replaces LOADING");
+		const auto prompt = runtime.PresentedValue("progress-prompt-text","text");
+		Check(prompt && prompt->text == "#str_200937","the desktop continue prompt replaces LOADING");
+		Check(runtime.SetState({{"loading_controller",true}},error,2.1),"a controller was used last");
+		runtime.Frame(viewport,2.1);
+		const auto controllerPrompt = runtime.PresentedValue("progress-prompt-text","text");
+		const auto glyph = runtime.PresentedValue("progress-prompt-glyph","display");
+		Check(controllerPrompt && controllerPrompt->text == "#str_200984" && glyph && glyph->text == "block",
+			"a controller shows the south button and CONTINUE");
+		Check(runtime.SetState({{"loading_controller",false}},error,2.2),"back to the desktop prompt");
 		Check(runtime.SetState({{"loading_mp",true}},error,3),"multiplayer composition");
 		runtime.Frame(viewport,3);
 		// Transforms move presentation, not layout boxes: read the presented value.
@@ -287,7 +319,7 @@ int main(int argc, char** argv) {
 		const auto band = runtime.PresentedValue("load-bottom","transform");
 		Check(raised && Near(static_cast<float>(raised->data[1]),-177,.01f) && band && Near(static_cast<float>(band->data[1]),-177,.01f),
 			"multiplayer raises the bottom band to 227 u and the bar to 313 u");
-		Check(runtime.GetBounds("progress-label",labelMp) && Near(labelSp.y,labelMp.y),"the raise leaves layout untouched");
+		Check(runtime.GetBounds("progress-prompt-text",labelMp) && Near(labelSp.y,labelMp.y),"the raise leaves layout untouched");
 	}
 	Check(host.errors == 0,"no retained diagnostics");
 	std::printf("retained screens: %d checks passed\n",checks);

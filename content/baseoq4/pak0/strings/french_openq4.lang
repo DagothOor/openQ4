@@ -1067,4 +1067,9 @@
 	"#str_230029"	"Commandes, affichage, audio et options de jeu."
 	"#str_230030"	"MISSION EN COURS"
 	"#str_230031"	"JEU EN PAUSE"
+	"#str_230032"	"MONDE"
+	"#str_230033"	"RESSOURCES"
+	"#str_230034"	"FINALISATION"
+	"#str_230035"	"TEMPS DE CHARGEMENT"
+	"#str_230036"	"%"
 }

@@ -231,6 +231,11 @@ public:
 	// theirs: at startup, and inside each single-player level load.
 	void				PreloadRetainedScreens();
 	void				PrepareRetainedLevel( const char *mapPath, bool multiplayer );
+	// The loader's phase and its place, or the asset queue's count, under the
+	// retained loading bar; and the device whose continue prompt it shows.
+	void				SetRetainedLoadingPhase( int phase, const char *count = NULL );
+	void				PublishRetainedLoadingCount();
+	void				PublishRetainedLoadingDevice();
 
 	virtual const char *MessageBox( msgBoxType_t type, const char *message, const char *title = NULL, bool wait = false, const char *fire_yes = NULL, const char *fire_no = NULL, bool network = false  );
 	virtual void		StopBox( void );
@@ -413,6 +418,13 @@ public:
 	bool				retainedPauseFailed;
 	bool				retainedLoadingFailed;
 	int					retainedHandoffUntil;
+	// The retained loading screen's phase line and prompt device, published
+	// only while that screen presents the load (-1: not published yet).
+	bool				retainedLoadingActive;
+	int					retainedLoadingPhase;
+	int					retainedLoadingLoaded;
+	int					retainedLoadingTotal;
+	int					retainedLoadingDevice;
 	idListGUI *			guiMainMenu_MapList;		// easy map list handling
 	idUserInterface *	guiDemoMenu;
 	idListGUI *			guiDemoList;

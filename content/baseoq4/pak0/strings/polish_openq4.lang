@@ -1076,4 +1076,9 @@
 	"#str_230029"	"Sterowanie, obraz, dźwięk i opcje gry."
 	"#str_230030"	"BIEŻĄCA MISJA"
 	"#str_230031"	"GRA WSTRZYMANA"
+	"#str_230032"	"ŚWIAT"
+	"#str_230033"	"ZASOBY"
+	"#str_230034"	"KOŃCZENIE"
+	"#str_230035"	"CZAS ŁADOWANIA"
+	"#str_230036"	"%"
 }

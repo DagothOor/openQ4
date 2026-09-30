@@ -1067,4 +1067,9 @@
 	"#str_230029"	"Controlli, schermo, audio e opzioni di gioco."
 	"#str_230030"	"MISSIONE ATTUALE"
 	"#str_230031"	"GIOCO IN PAUSA"
+	"#str_230032"	"MONDO"
+	"#str_230033"	"RISORSE"
+	"#str_230034"	"COMPLETAMENTO"
+	"#str_230035"	"TEMPO DI CARICAMENTO"
+	"#str_230036"	"%"
 }

@@ -35,6 +35,7 @@ SUPPORT = r'''
 #include <cctype>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <map>
@@ -280,6 +281,13 @@ def main() -> int:
     for signature in ('void idSessionLocal::PreloadRetainedScreens(', 'void idSessionLocal::PrepareRetainedLevel('):
         assert 'if ( !Session_RetainedScreensEnabled()' in function_body(menu, signature), f'{signature} must be gated'
     assert 'PreloadRetainedScreens();' in function_body(session, 'void idSessionLocal::Init(')
+    # The loading phase line and prompt device publish only while the retained
+    # loading screen presents the load, which only the gate can select.
+    for signature in ('void idSessionLocal::SetRetainedLoadingPhase(', 'void idSessionLocal::PublishRetainedLoadingCount(',
+                      'void idSessionLocal::PublishRetainedLoadingDevice('):
+        assert 'if ( !retainedLoadingActive || guiLoading == NULL' in function_body(session, signature), signature
+    loading = function_body(session, 'void idSessionLocal::LoadLoadingGui(')
+    assert session.count('retainedLoadingActive = true;') == 1 and loading.index('if ( retainedLoading ) {') < loading.index('retainedLoadingActive = true;')
     assert 'PrepareRetainedLevel( spawnMapPath, isMultiplayerLoad );' in function_body(session, 'void idSessionLocal::LoadLoadingGui(')
     update = function_body(menu, 'void idSessionLocal::UpdateRetainedHome(')
     assert 'const bool context = Session_RetainedScreensEnabled() &&' in update
