@@ -1165,7 +1165,10 @@ def main() -> int:
         output = OUTPUTS[name]
         rendered = render(document)
         if args.check:
-            if not output.exists() or output.read_bytes().decode("utf-8") != rendered:
+            # Git normalizes these text files, so a checkout may hold either
+            # line ending; compare the content, not the convention.
+            current = output.read_bytes().decode("utf-8").replace("\r\n", "\n") if output.exists() else None
+            if current != rendered.replace("\r\n", "\n"):
                 stale.append(str(output.relative_to(ROOT)))
             continue
         output.parent.mkdir(parents=True, exist_ok=True)
