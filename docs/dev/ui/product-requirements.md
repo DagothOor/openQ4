@@ -129,6 +129,8 @@ The retained title carry, based on engine `2ad097f515aa39c3df6c3a0a55ce950964fb8
 
 The retained title's depth lean, based on engine `cb15ae91a93de5cd43f89487baf8ef3f85025e9a`, leans the backdrop, light and grid, and frame up to 6 dp away from the pointer while content stays fixed, and holds still under reduced motion. `ART-022` gains partial evidence without a status change; the stick and tilt inputs remain. Evidence: `.tmp/ui/retained-title-depth/validation-evidence.json`, SHA-256 `938294a3434fcd14513e9c5b54fa3efa7c53913a7544700e62a0f4d4d9f835ce`.
 
+On engine `d491aa476c82c42e0828f06b5ff7b74caf22384b` the retained title's depth lean also follows a held look stick, which leads while deflected. `ART-022` gains partial evidence without a status change; device tilt remains. The session code is qualified by `ui_retained_gate.py`, not by an engine capture.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial

@@ -85,6 +85,10 @@ struct idUserInterface {
     float CursorY() { return cursorY; }
     void StateChanged(int) {}
 };
+enum { AXIS_SIDE = 0, AXIS_FORWARD = 1 };
+static int stickX = 0, stickY = 0;
+static bool Sys_GetJoystickAxisState(int axis, int& value) { value = axis == AXIS_SIDE ? stickX : stickY; return true; }
+static int MenuControllerAbs(int value) { return value < 0 ? -value : value; }
 struct idMath {
     static float ClampFloat(float low, float high, float value) { return value < low ? low : value > high ? high : value; }
     static float Fabs(float value) { return value < 0 ? -value : value; }
@@ -156,7 +160,7 @@ public:
 
 MAIN = r'''
 static idSessionLocal Session(bool gate, bool inGame = false) {
-    managerObject = Manager{}; commonObject = Common{}; commands = CommandSystem{}; legacy.clear(); legacyActions.clear(); precached.clear();
+    managerObject = Manager{}; commonObject = Common{}; commands = CommandSystem{}; legacy.clear(); legacyActions.clear(); precached.clear(); stickX = stickY = 0;
     legacyActionAvailable = true; preview = false; ui_retained.value = gate; ui_retainedSystem.value = false;
     static idUserInterface menu("guis/mainmenu.gui"); menu = idUserInterface("guis/mainmenu.gui");
     idSessionLocal session; session.guiActive = session.guiMainMenu = &menu; session.mapSpawned = inGame;
@@ -196,6 +200,9 @@ int main() {
         title->cursorX = 640; title->cursorY = 120; s.RetainedHomeFrameEvent();
         CHECK(title->state["pointer_x"] == std::to_string(1.0f) && title->state["pointer_y"] == std::to_string(-0.5f));
         title->state.erase("pointer_x"); s.RetainedHomeFrameEvent(); CHECK(!title->state.count("pointer_x"));
+        // A held look stick leads; released, the lean returns to the pointer.
+        stickX = -127; s.RetainedHomeFrameEvent(); CHECK(title->state["pointer_x"] == std::to_string(-1.0f));
+        stickX = 10; s.RetainedHomeFrameEvent(); CHECK(title->state["pointer_x"] == std::to_string(1.0f));
         // A page hand-off runs the legacy home button's own action.
         s.HandleRetainedSessionRequest(title, "loadGame");
         CHECK(legacyActions.back() == "main_b_loadgame" && title->named.back() == "depart");

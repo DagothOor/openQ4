@@ -43,8 +43,9 @@ after editing the script; `--check` fails when an output is stale.
   keeps the rim. The backdrop, the light and grid, and the framing bands lean
   up to 6 dp away from the pointer, deeper layers further, while the content
   stays fixed (section 13.8 depth). The session publishes the pointer's
-  place, and reduced motion holds the layers still. CONTINUE leads the
-  navigation when a save exists and its
+  place, or a held look stick's deflection while it leads (menu focus moves
+  with the other stick), and reduced motion holds the layers still.
+  CONTINUE leads the navigation when a save exists and its
   message line shows the save's levelshot, name and time; the same line explains
   whichever item has focus. SINGLE PLAYER, LOAD GAME, MULTIPLAYER and SETTINGS
   follow, and the secondary links and EXIT stay on the plinth. EXIT asks before

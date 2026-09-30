@@ -4795,9 +4795,17 @@ void idSessionLocal::RetainedHomeFrameEvent() {
 	ev.evType = SE_NONE;
 	idUserInterface *gui = guiRetainedHome;
 	// Depth (section 13.8): the pointer's place in the view, -1..1 on each
-	// axis, for the title's backdrop layers to lean away from.
-	const float pointerX = idMath::ClampFloat( -1.0f, 1.0f, ( gui->CursorX() - 320.0f ) / 320.0f );
-	const float pointerY = idMath::ClampFloat( -1.0f, 1.0f, ( gui->CursorY() - 240.0f ) / 240.0f );
+	// axis, for the title's backdrop layers to lean away from. A deflected
+	// look stick leads while it is held; menu focus moves with the other.
+	float pointerX = idMath::ClampFloat( -1.0f, 1.0f, ( gui->CursorX() - 320.0f ) / 320.0f );
+	float pointerY = idMath::ClampFloat( -1.0f, 1.0f, ( gui->CursorY() - 240.0f ) / 240.0f );
+	int lookX = 0;
+	int lookY = 0;
+	if ( Sys_GetJoystickAxisState( AXIS_SIDE, lookX ) && Sys_GetJoystickAxisState( AXIS_FORWARD, lookY ) &&
+			( MenuControllerAbs( lookX ) > 16 || MenuControllerAbs( lookY ) > 16 ) ) {
+		pointerX = idMath::ClampFloat( -1.0f, 1.0f, lookX / 127.0f );
+		pointerY = idMath::ClampFloat( -1.0f, 1.0f, lookY / 127.0f );
+	}
 	if ( idMath::Fabs( pointerX - retainedPointerX ) > 0.005f || idMath::Fabs( pointerY - retainedPointerY ) > 0.005f ) {
 		retainedPointerX = pointerX;
 		retainedPointerY = pointerY;

@@ -4,7 +4,7 @@
   "date": "2026-09-29",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "cb15ae91a93de5cd43f89487baf8ef3f85025e9a",
+    "engine_revision": "d491aa476c82c42e0828f06b5ff7b74caf22384b",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -634,31 +634,37 @@
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Opt-in retained title, single-player pause and stock loading screens behind the single ui_retained gate, with image nodes, additive and multiply path blends, a view-height canvas, typed session menu requests and exact overflow clipping under translation and scale. Windowed OpenGL/Vulkan 16:9, OpenGL 4:3 and gate-off engine captures only; the Objectives action, the Strogg variant, soft focus, Remastered loading details, multiplayer menus, GLES and complete product acceptance stay open.",
-      "sha256": "526cc558d26cbcc8c16bff9d161cbd6b6272af11736d2e49383d457255c3e529"
+      "sha256": "fd792433d7a5e35cd06e5c36e2b1cbd8e9a969328e0db85beabd529f73ee55e7"
     },
     "retained-loading-progress": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained loading screen's Remastered progress behind ui_retained: the levelshot drift, the difficulty line, LOADING over a 240 u bar with the loader's phase and its place or asset count, the percentage, the load time and a continue prompt that follows the last input family. Real single-player loads traced the phases in order on OpenGL and Vulkan; the rendered line was captured through testGUI. Tips, touch and device-family glyphs, the Remastered multiplayer screen and complete product acceptance stay open.",
-      "sha256": "526cc558d26cbcc8c16bff9d161cbd6b6272af11736d2e49383d457255c3e529"
+      "sha256": "fd792433d7a5e35cd06e5c36e2b1cbd8e9a969328e0db85beabd529f73ee55e7"
     },
     "retained-loading-multiplayer": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained loading screen's Remastered multiplayer composition behind ui_retained: the bottom band kept low, a section 6 server card on the leading side with the server name, address, mode and limits, JOINING when a multiplayer load ends, and the name strip darkening the message line. Captured through testGUI on OpenGL and Vulkan; players by team, the server message, the arsenal, the Welcome hand-off and complete product acceptance stay open.",
-      "sha256": "526cc558d26cbcc8c16bff9d161cbd6b6272af11736d2e49383d457255c3e529"
+      "sha256": "fd792433d7a5e35cd06e5c36e2b1cbd8e9a969328e0db85beabd529f73ee55e7"
     },
     "retained-title-carry": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Section 13.8 refinements on the retained title and single-player pause menus behind ui_retained: the soft additive focus glow beside the focus rail, the emblem's rim light and glint, and the title carry, in which a page hand-off carries the chosen navigation label into the page title slot as the bands dock. Captured on OpenGL and Vulkan; the depth shift, the high-contrast rail, symbols, tags, HDR rules and complete product acceptance stay open.",
-      "sha256": "526cc558d26cbcc8c16bff9d161cbd6b6272af11736d2e49383d457255c3e529"
+      "sha256": "fd792433d7a5e35cd06e5c36e2b1cbd8e9a969328e0db85beabd529f73ee55e7"
     },
     "retained-title-depth": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Section 13.8 depth on the retained title behind ui_retained: the backdrop, the light and grid, and the framing bands lean up to 6 dp away from the pointer the session publishes, deeper layers further, while content stays fixed; reduced motion holds them still. Captured on OpenGL and Vulkan; the right stick, device tilt, the Phone default and complete product acceptance stay open.",
-      "sha256": "526cc558d26cbcc8c16bff9d161cbd6b6272af11736d2e49383d457255c3e529"
+      "sha256": "fd792433d7a5e35cd06e5c36e2b1cbd8e9a969328e0db85beabd529f73ee55e7"
+    },
+    "retained-title-depth-stick": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/retained-screens.md",
+      "scope": "The retained title's depth lean follows a held look stick while it leads and the pointer otherwise. Qualified by ui_retained_gate.py compiling the production session frame code against counted doubles, not by an engine capture, since no input is injected. Device tilt, the Phone default and complete product acceptance stay open.",
+      "sha256": "fd792433d7a5e35cd06e5c36e2b1cbd8e9a969328e0db85beabd529f73ee55e7"
     }
   },
   "groups": {
@@ -8755,10 +8761,11 @@
       "status": "partial",
       "current_evidence": [
         "retained-title-carry",
-        "retained-title-depth"
+        "retained-title-depth",
+        "retained-title-depth-stick"
       ],
       "acceptance_evidence": [],
-      "remaining": "Behind ui_retained, the title and single-player pause menus have the soft additive focus glow beside the focus rail and carry the chosen navigation label into the page title slot as the bands dock; the title's emblem has its rim light and glint, and its backdrop, light and grid, and frame lean up to 6 dp away from the pointer while content stays fixed, held still under reduced motion. The lean from the right stick and device tilt and its Phone default, the solid rail in high contrast, the extended symbol set, tags as header-band plates, standard-range compositing with paper-white rules for HDR output, and reviewed on/off, reduced-motion and high-contrast captures remain.",
+      "remaining": "Behind ui_retained, the title and single-player pause menus have the soft additive focus glow beside the focus rail and carry the chosen navigation label into the page title slot as the bands dock; the title's emblem has its rim light and glint, and its backdrop, light and grid, and frame lean up to 6 dp away from the pointer or a held look stick while content stays fixed, held still under reduced motion. The lean from device tilt and its Phone default, the solid rail in high contrast, the extended symbol set, tags as header-band plates, standard-range compositing with paper-white rules for HDR output, and reviewed on/off, reduced-motion and high-contrast captures remain.",
       "constraints": {
         "parallax_max_dp": 6,
         "focus_glow_dp": 24
