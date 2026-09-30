@@ -1060,4 +1060,11 @@
 	"#str_230022"	"Geben Sie eine ganze Zahl von 240 bis 16384 ein."
 	"#str_230023"	"Wählen Sie vor dem Anwenden einen unterstützten Bildschirm, eine Auflösung und eine Bildwiederholrate."
 	"#str_230024"	"Die eigene Auflösung gilt für exklusives Vollbild. Beim Bearbeiten wird die eigene Auflösung ausgewählt."
+	"#str_230025"	"ZURÜCK ZUM MENÜ"
+	"#str_230026"	"Starte die Kampagne oder spiele in der Arena."
+	"#str_230027"	"Setze ein gespeichertes Spiel fort."
+	"#str_230028"	"Finde einen Server, eröffne ein Match oder spiele mit Bots."
+	"#str_230029"	"Steuerung, Anzeige, Audio und Spieloptionen."
+	"#str_230030"	"AKTUELLE MISSION"
+	"#str_230031"	"SPIEL PAUSIERT"
 }

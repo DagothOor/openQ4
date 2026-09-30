@@ -68,6 +68,13 @@ void RetainedUI_LanguageChanged();
 // the engine thread. Preview documents do not acquire application input.
 bool RetainedUI_IsOpen();
 unsigned RetainedUI_InputGeneration();
+// Registered retained views (documents holding an RmlUi context), for the
+// ui_retained gate report: zero while the stock interface presents everything.
+int RetainedUI_ViewCount();
+// Resolve a picture's retained material ahead of its first draw. Called at
+// startup or inside a level load, so opening a screen neither reads the file
+// mid-frame nor warns about a non-precached declaration.
+void RetainedUI_PrecacheImage(const std::string& source, bool additive);
 void RetainedUI_FrameInput();
 bool RetainedUI_ProcessEvent(const sysEvent_s* event);
 void RetainedUI_QueueInput(const retainedUIInput_t& input, int time);

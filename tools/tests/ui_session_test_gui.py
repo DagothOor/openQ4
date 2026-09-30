@@ -104,6 +104,9 @@ struct idSessionLocal {
     void GuiFrameEvents();
     // Pending typed-action delivery has its own production-method harness.
     void PumpApplicationActions(idUserInterface* = nullptr) {}
+    // ui_retained home screens never present while a test GUI owns the session.
+    void UpdateRetainedHome() {}
+    void RetainedHomeFrameEvent() {}
     void DispatchCommand(idUserInterface* gui,const char* command) {
         assert(gui && !gui->retired && command && *command);
         ++dispatches;

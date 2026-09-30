@@ -1060,4 +1060,11 @@
 	"#str_230022"	"Introduce un número entero de 240 a 16384."
 	"#str_230023"	"Elige una pantalla, un tamaño y una frecuencia compatibles antes de aplicar."
 	"#str_230024"	"El tamaño personalizado se usa en pantalla completa exclusiva. Al editarlo se selecciona la resolución personalizada."
+	"#str_230025"	"SALIR AL MENÚ"
+	"#str_230026"	"Empieza la campaña o juega en la Arena."
+	"#str_230027"	"Continúa desde una partida guardada."
+	"#str_230028"	"Busca un servidor, crea una partida o juega con bots."
+	"#str_230029"	"Controles, pantalla, audio y opciones de juego."
+	"#str_230030"	"MISIÓN ACTUAL"
+	"#str_230031"	"JUEGO EN PAUSA"
 }

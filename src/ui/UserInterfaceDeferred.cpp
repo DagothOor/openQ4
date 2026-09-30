@@ -167,6 +167,9 @@ void idUserInterfaceDeferred::RunTimeEvents( int newTime ) {
 bool idUserInterfaceDeferred::DispatchApplicationActions( const char *command, bool &closeRequested ) {
 	return backend != NULL && backend->DispatchApplicationActions( command, closeRequested );
 }
+bool idUserInterfaceDeferred::TakeSessionRequest( const char *command, idStr &out ) {
+	return backend != NULL && backend->TakeSessionRequest( command, out );
+}
 const char *idUserInterfaceDeferred::PendingApplicationCommand() const {
 	return backend != NULL ? backend->PendingApplicationCommand() : "";
 }

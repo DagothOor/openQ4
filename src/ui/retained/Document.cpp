@@ -25,10 +25,12 @@ bool ValidProperty(const std::string& name, const Value& value) {
 	}
 
 		static const std::set<std::string> lengths = {"left","right","top","bottom","width","height","min-width","max-width","min-height","max-height","padding","padding-left","padding-right","padding-top","padding-bottom","margin","margin-left","margin-right","margin-top","margin-bottom","font-size","line-height","letter-spacing","border-width","border-left-width","border-right-width","border-top-width","border-bottom-width","row-gap","column-gap"};
-		static const std::set<std::string> colours = {"color","background-color","border-color","border-left-color","border-right-color","border-top-color","border-bottom-color"};
+		static const std::set<std::string> colours = {"color","background-color","border-color","border-left-color","border-right-color","border-top-color","border-bottom-color","image-color"};
 		static const std::map<std::string,std::set<std::string>> keywords = {
 			{"position",{"absolute","relative"}}, {"display",{"block","inline","inline-block","flex","none"}},
 			{"pointer-events",{"auto","none"}},
+			{"image-fit",{"fill","contain","cover","scale-none","scale-down"}}, {"image-blend",{"normal","additive"}},
+			{"image-align-x",{"left","center","right"}}, {"image-align-y",{"top","center","bottom"}},
 			{"overflow",{"visible","hidden","auto","scroll"}}, {"text-align",{"left","center","right"}},
 			{"white-space",{"normal","pre","nowrap","pre-wrap","pre-line"}},
 			{"word-break",{"normal","break-all","break-word"}},
@@ -51,8 +53,17 @@ bool ValidProperty(const std::string& name, const Value& value) {
 		else if (name == "font-family") valid = value.type == ValueType::Font;
 		else if (name == "text") valid = value.type == ValueType::Text;
 		else if (name == "transform") valid = value.type == ValueType::Transform;
+		else if (name == "image") valid = value.type == ValueType::Image && ValidImageSource(value.text);
 		return valid;
 	}
+bool ValidImageSource(const std::string& source) {
+	if (source.empty()) return true;
+	if (source.size() > 256 || source.front() == '/' || source.back() == '/' || source.front() == '.' ||
+		source.find("..") != std::string::npos || source.find("//") != std::string::npos) return false;
+	for (unsigned char c : source) if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.' || c == '/')) return false;
+	return true;
+}
 namespace {
 constexpr size_t MaxSourceBytes = 16 * 1024 * 1024;
 std::string Number(double value) {
@@ -204,11 +215,16 @@ public:
 	Validator(const std::string& text, std::vector<Diagnostic>& errors) : source(text), diagnostics(errors) {}
 	DocumentModel Read(const Json::Value& root) {
 		FiniteTree(root,"");
-		Fields(root,"",{"format","version","id","tokens","root","timelines","state","bindings","actions","presentationVariables","aliases","events","editor","extensions"});
+		Fields(root,"",{"format","version","id","canvas","tokens","root","timelines","state","bindings","actions","presentationVariables","aliases","events","editor","extensions"});
 		Require(root["format"] == "openq4-ui",root,"/format","Expected format 'openq4-ui'");
 		Require(root["version"].isUInt() && root["version"].asUInt() == 1,root["version"],"/version","Unsupported document version; expected 1");
 		model.id = Id(root["id"],"/id");
 		if (root.isMember("editor")) Require(root["editor"].isObject(),root["editor"],"/editor","Editor metadata must be an object");
+		if (root.isMember("canvas")) {
+			// A view-height canvas: the document's dp scale follows the view's height.
+			Fields(root["canvas"],"/canvas",{"height","extensions"});
+			model.canvasHeight = Numeric(root["canvas"]["height"],"/canvas/height",240,4320);
+		}
 		if (root.isMember("tokens")) {
 			Require(root["tokens"].isObject(),root["tokens"],"/tokens","Expected a token object");
 			for (const auto& name : root["tokens"].getMemberNames()) {
@@ -567,6 +583,13 @@ private:
 		for (const auto& name : events.getMemberNames())
 			model.events.at(PresentationAliasKey(name)).steps = ReadSteps(events[name],"/events/"+PointerPart(name),0);
 	}
+	// Application strings are checked when a binding evaluates; literals here.
+	bool ImageSourceResult(const Expression& expression) const {
+		if (!expression.state.empty() || !expression.presentation.empty()) return true;
+		if (expression.op == "select") return ImageSourceResult(expression.args[1]) && ImageSourceResult(expression.args[2]);
+		if (!expression.op.empty() || expression.type != 2) return false;
+		return ValidImageSource(std::get<std::string>(expression.literal));
+	}
 	bool LocalizedTextResult(const Expression& expression) const {
 		if (!expression.state.empty() || !expression.presentation.empty() || expression.op == "numberText") return true;
 		if (expression.op == "select") return LocalizedTextResult(expression.args[1]) && LocalizedTextResult(expression.args[2]);
@@ -597,7 +620,7 @@ private:
 				Binding effective = binding; effective.property = property;
 				if (!enabled) effective.prototype = node->properties.at(property);
 				const auto type = effective.prototype.type;
-				const size_t expected = enabled ? 1 : (type == ValueType::Text || type == ValueType::Keyword || type == ValueType::Font) ? 2 : 0;
+				const size_t expected = enabled ? 1 : (type == ValueType::Text || type == ValueType::Keyword || type == ValueType::Font || type == ValueType::Image) ? 2 : 0;
 				const size_t count = !enabled && type == ValueType::Colour ? 4 : !enabled && type == ValueType::Transform ? 5 : 1;
 				Require(count == 1 || (value["value"].isArray() && value["value"].size() == count),value["value"],path+"/value","Binding component count does not match its target");
 				for (size_t component = 0; component < count; ++component) {
@@ -605,6 +628,7 @@ private:
 					auto expression = ReadExpression(count == 1 ? value["value"] : value["value"][static_cast<Json::ArrayIndex>(component)],at);
 					Require(expression.type == expected,value["value"],at,"Expression type does not match its target");
 					if (!enabled && type == ValueType::Text) Require(LocalizedTextResult(expression),value["value"],at,"Literal display text must use localization keys");
+					if (!enabled && type == ValueType::Image) Require(ImageSourceResult(expression),value["value"],at,"Literal image sources must be relative VFS image paths");
 					effective.values.push_back(std::move(expression));
 				}
 				model.bindings.push_back(std::move(effective));
@@ -675,11 +699,13 @@ private:
 			Require(value["value"].isArray() && value["value"].size() == count,value["value"],path+"/value","Incorrect component count");
 			for (unsigned i = 0; i < count; ++i) result.data[i] = Numeric(value["value"][i],path+"/value/"+std::to_string(i),type == "color" ? 0 : -1000000,type == "color" ? 1 : 1000000);
 		} else {
-			Require(type == "keyword" || type == "font" || type == "text",value,path+"/type","Unsupported value type '"+type+"'");
+			Require(type == "keyword" || type == "font" || type == "text" || type == "image",value,path+"/type","Unsupported value type '"+type+"'");
 			Require(value["value"].isString(),value["value"],path+"/value","Expected a string");
 			result.text = value["value"].asString();
-			result.type = type == "keyword" ? ValueType::Keyword : type == "font" ? ValueType::Font : ValueType::Text;
+			result.type = type == "keyword" ? ValueType::Keyword : type == "font" ? ValueType::Font :
+				type == "image" ? ValueType::Image : ValueType::Text;
 			if (type == "text") Require(result.text.starts_with("#str_") && Identifier(result.text.substr(1)),value["value"],path+"/value","Display text must reference a #str_ localization key");
+			else if (type == "image") Require(ValidImageSource(result.text),value["value"],path+"/value","Image sources are empty or a relative VFS image path of letters, digits, '_', '-', '.' and '/'");
 			else Require(Identifier(result.text),value["value"],path+"/value","Expected a single keyword or font identifier");
 		}
 		return result;
@@ -725,13 +751,19 @@ private:
 		} else Require(false,value["type"],path+"/type","Unsupported paint type; expected none, solid or linear");
 		return result;
 	}
-	VectorPath ReadPath(const Json::Value& value, const std::string& path) {
-		Fields(value,path,{"id","commands","fillRule","fill","stroke","extensions"});
+	VectorPath ReadPath(const Json::Value& value, const std::string& path, bool mask = false) {
+		Fields(value,path,{"id","commands","fillRule","fill","stroke","blend","extensions"});
 		VectorPath result;
 		result.id = Id(value["id"],path+"/id");
 		if (value.isMember("fillRule")) {
 			Require(value["fillRule"] == "nonzero" || value["fillRule"] == "evenodd",value["fillRule"],path+"/fillRule","Expected nonzero or evenodd fill rule");
 			if (value["fillRule"] == "evenodd") result.fillRule = FillRule::EvenOdd;
+		}
+		if (value.isMember("blend")) {
+			Require(value["blend"] == "normal" || value["blend"] == "additive" || value["blend"] == "multiply",value["blend"],path+"/blend","Expected normal, additive or multiply blend");
+			// Mask coverage is alpha only; a composition mode cannot apply to it.
+			Require(!mask || value["blend"] == "normal",value["blend"],path+"/blend","Mask paths contribute alpha only and cannot blend");
+			result.blend = value["blend"] == "additive" ? PathBlend::Additive : value["blend"] == "multiply" ? PathBlend::Multiply : PathBlend::Normal;
 		}
 		if (value.isMember("fill")) result.fill = Paint(value["fill"],path+"/fill");
 		if (value.isMember("stroke")) {
@@ -782,7 +814,7 @@ private:
 		Node result;
 		result.id = Id(value["id"],path+"/id");
 		Require(nodeIds.insert(result.id).second,value["id"],path+"/id","Duplicate node ID '"+result.id+"'");
-		Require(value["type"] == "group" || value["type"] == "text" || value["type"] == "vector",value["type"],path+"/type","Supported node types are group, text and vector; unsupported nodes cannot be silently rendered");
+		Require(value["type"] == "group" || value["type"] == "text" || value["type"] == "vector" || value["type"] == "image",value["type"],path+"/type","Supported node types are group, text, vector and image; unsupported nodes cannot be silently rendered");
 		result.type = value["type"].asString();
 		if (value.isMember("modal")) {
 			const auto& modal = value["modal"]; const auto p = path+"/modal";
@@ -965,7 +997,7 @@ private:
 			std::set<std::string> ids;
 			for (Json::ArrayIndex i = 0; i < mask["paths"].size(); ++i) {
 				const auto at = p+"/paths/"+std::to_string(i);
-				auto shape = ReadPath(mask["paths"][i],at);
+				auto shape = ReadPath(mask["paths"][i],at,true);
 				Require(ids.insert(shape.id).second,mask["paths"][i]["id"],at+"/id","Duplicate path ID within mask");
 				result.mask->push_back(std::move(shape));
 			}
@@ -977,6 +1009,9 @@ private:
 				auto property = Typed(value["properties"][name],propertyPath);
 				Property(name,property,value["properties"][name],propertyPath);
 				Require(name != "text" || result.type == "text",value["properties"][name],propertyPath,"Text content requires a text node");
+				// Pictorial content is the specification's bitmap exception: levelshots,
+				// backdrops and previews. Furniture stays vector art on other nodes.
+				Require(!name.starts_with("image") || result.type == "image",value["properties"][name],propertyPath,"Image properties require an image node");
 				result.properties[name] = std::move(property);
 			}
 			// JSON member order is not cascade order. Resolve shorthands first,
@@ -990,6 +1025,8 @@ private:
 				if (ExpandedProperties(name).size() == 1) resolved[name] = property;
 			result.properties = std::move(resolved);
 		}
+		Require(result.type != "image" || result.properties.contains("image"),value,path,
+			"An image node requires an explicit image source property; an empty source shows no picture");
 		if (value.isMember("children")) {
 			Require(value["children"].isArray(),value["children"],path+"/children","Expected a child array");
 			Require(result.type != "text" || value["children"].empty(),value["children"],path+"/children","Text nodes cannot own child nodes");
@@ -1389,6 +1426,8 @@ void MarkupNode(const Node& node, std::string& output) {
 	if (node.mask) output += "mask-image:q4-mask(alpha);";
 	for (const auto& [name,value] : node.properties) if (name != "text") {
 		if (name == "opacity") { if (value.data[0] < 1) output += "filter:opacity("+value.Css()+");"; }
+		else if (name == "image") output += "decorator:"+ImageDecorator(node,value.text)+";";
+		else if (name == "image-fit" || name == "image-align-x" || name == "image-align-y" || name == "image-blend") continue; // Folded into the decorator.
 		else output += name+":"+value.Css()+";";
 	}
 	output += "\">";
@@ -1458,6 +1497,18 @@ bool ParseStateValues(const std::string& source, StateValues& values, std::vecto
 	values = std::move(candidate); return true;
 }
 const Node* DocumentModel::FindNode(const std::string& id) const { return Find(root,id); }
+std::string ImageDecorator(const Node& node, const std::string& source) {
+	if (source.empty() || !ValidImageSource(source)) return "none";
+	auto keyword = [&](const char* name, const char* fallback) {
+		const auto found = node.properties.find(name);
+		return found != node.properties.end() ? found->second.text : std::string(fallback);
+	};
+	// material: names resolve from the VFS root, never relative to the document.
+	// Additive pictures (the stock wordmark's light) use the host's additive material.
+	const std::string prefix = keyword("image-blend","normal") == "additive" ? "material:q4-add/" : "material:";
+	return "image("+prefix+source+" none "+keyword("image-fit","fill")+" "+
+		keyword("image-align-x","center")+" "+keyword("image-align-y","center")+")";
+}
 std::optional<PresentationType> PresentationAliasType(const DocumentModel& model, const std::string& name) {
 	const auto key = PresentationAliasKey(name);
 	if (key.empty()) return std::nullopt;
@@ -1494,7 +1545,7 @@ std::optional<PresentationType> PresentationAliasType(const DocumentModel& model
 	}
 	if (base.type == ValueType::Number || (base.type == ValueType::Length && (base.unit == "dp" || base.unit == "px"))) return PresentationType::Number;
 	if (base.type == ValueType::Colour) return PresentationType::Vector4;
-	if (base.type == ValueType::Text || base.type == ValueType::Keyword || base.type == ValueType::Font) return PresentationType::String;
+	if (base.type == ValueType::Text || base.type == ValueType::Keyword || base.type == ValueType::Font || base.type == ValueType::Image) return PresentationType::String;
 	return std::nullopt;
 }
 bool detail::ParseDocumentSource(const std::string& source, Json::Value& root, std::vector<Diagnostic>& diagnostics) {

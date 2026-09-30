@@ -4804,18 +4804,28 @@ bool idMaterial::SetDefaultText( void ) {
 		SetText("material _retainedSolid { sort gui twoSided { blend gl_one, gl_one_minus_src_alpha vertexColor map _white } }");
 		return true;
 	}
+	if ( idStr::Icmp(GetName(),"_retainedMultiply") == 0 ) {
+		// Retained multiply paths: the destination takes the vertex colour as a
+		// factor (white leaves it unchanged), like the stock darkening emblem.
+		SetText("material _retainedMultiply { sort gui twoSided { blend gl_dst_color, gl_zero vertexColor map _white } }");
+		return true;
+	}
 	// Process-local retained UI image material. Do not mutate the original
 	// material's vertex colour/blending or add a networked content declaration.
 	// The runtime's first integration path accepts direct images and generated
 	// font atlas image identities here, not arbitrary multi-stage materials.
-	if ( idStr::Icmpn( GetName(), "_retained/", 10 ) == 0 ) {
-		const char* imageName = GetName() + 10;
+	// _retainedAdd/ is the same image added to the target, for pictures whose
+	// stock material is additive light, such as the Quake 4 wordmark.
+	const bool retainedAdditive = idStr::Icmpn( GetName(), "_retainedAdd/", 13 ) == 0;
+	if ( retainedAdditive || idStr::Icmpn( GetName(), "_retained/", 10 ) == 0 ) {
+		const char* imageName = GetName() + ( retainedAdditive ? 13 : 10 );
 		if ( !imageName[0] ) return false;
 		for ( const char* p = imageName; *p; ++p ) {
 			if ( !( (*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') ||
 				*p == '_' || *p == '-' || *p == '/' || *p == '.' ) ) return false;
 		}
-		idStr generated = va( "material %s { sort gui twoSided { blend blend vertexColor nopicmip linear clamp map \"%s\" } }", GetName(), imageName );
+		idStr generated = va( "material %s { sort gui twoSided { blend %s vertexColor nopicmip linear clamp map \"%s\" } }", GetName(),
+			retainedAdditive ? "add" : "blend", imageName );
 		SetText( generated.c_str() );
 		return true;
 	}

@@ -62,6 +62,11 @@ struct idSessionLocal {
     void ReturnSystemSettings() { assert(false); }
     void CloseSystemSettings() { assert(false); }
     void StartMenu() { assert(false); }
+    // ui_retained home screens are covered by the retained screens suite.
+    idUserInterface* guiRetainedHome=nullptr;
+    void UpdateRetainedHome() {}
+    void RetainedHomeFrameEvent() {}
+    void HandleRetainedSessionRequest(idUserInterface*,const char*) { assert(false); }
 };
 static void PumpControllerMenuNavigation(idSessionLocal*) {}
 static void SyncMainMenuSettingsScrollPages(idUserInterface* gui) {

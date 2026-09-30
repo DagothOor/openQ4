@@ -13,7 +13,7 @@
 
 namespace openq4::ui {
 
-enum class ValueType { Number, Length, Colour, Keyword, Font, Text, Transform };
+enum class ValueType { Number, Length, Colour, Keyword, Font, Text, Transform, Image };
 // Colours are straight sRGB RGBA, 0..1. Transform is translation x/y,
 // scale x/y and rotation in degrees, composed in that order by the renderer.
 struct Value {
@@ -95,6 +95,9 @@ struct Binding {
 };
 bool ValidProperty(const std::string& name, const Value& value);
 bool ValidStateValue(const StateValue& value);
+// Image sources are engine VFS image names: empty (no picture) or a relative
+// path of letters, digits, '_', '-', '.' and '/', without '..' or '//'.
+bool ValidImageSource(const std::string& source);
 enum class ControlState { Default, Hover, Focus, Pressed, Disabled };
 enum class ControlRole { Button, Toggle, Slider, Choice, Number, Scrollbar };
 struct ToggleSpec {
@@ -197,6 +200,10 @@ struct DocumentModel {
 	// Alias keys are ASCII case-folded public names; targets retain exact IDs.
 	std::map<std::string, PresentationAlias> aliases;
 	std::map<std::string, EventProgram> events; // Case-folded public event names.
+	// Reference height in dp of a view-height canvas. A stock-composition screen
+	// (title, pause, loading) lays its 4:3 canvas out at this height and scales
+	// with the view's height; zero keeps display-density layout.
+	double canvasHeight = 0;
 	const Node* FindNode(const std::string& id) const;
 	// Resolve a compiled descriptor against one supplied state snapshot.
 	// No side effects; failure preserves the caller's invocation unchanged.
@@ -205,6 +212,8 @@ struct DocumentModel {
 		const StateValue* input = nullptr) const;
 };
 std::optional<PresentationType> PresentationAliasType(const DocumentModel& model, const std::string& name);
+// RmlUi decorator for an image node's source with its authored fit/alignment.
+std::string ImageDecorator(const Node& node, const std::string& source);
 struct Diagnostic {
 	std::string pointer, message;
 	size_t byte = 0, line = 1, column = 1;

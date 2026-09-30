@@ -162,6 +162,8 @@ public:
 	virtual void				RunAlwaysThinkGUIs( int time );
 	virtual void				RegisterIcon( const char *code, const char *shader, int x = -1, int y = -1, int w = -1, int h = -1 );
 	bool DispatchApplicationActions( idUserInterface *gui, const char *command, bool &closeRequested );
+	bool TakeSessionRequest( idUserInterface *gui, const char *command, idStr &request );
+	void RunTimeEvents( idUserInterface *gui, int time );
 	void PumpApplicationActions( UI_ApplicationCommandCallback callback, void *context, idUserInterface *only );
 	openq4::ui::TextBrokerContext QueryTextContext(idUserInterface* current,
 		std::uint64_t nativeWindow, std::uint64_t nativeSession);

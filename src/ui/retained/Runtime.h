@@ -25,6 +25,10 @@ struct Viewport {
 	// Optional root-menu safety fit, separate from the saved preferences.
 	// Surface/editor viewports retain 1 unless their owner requests fitting.
 	float fitScale = 1;
+	// A document's view-height canvas (DocumentModel::canvasHeight): when
+	// positive, one canvas height of dp spans the physical height, replacing
+	// display density and user scale. Typography keeps its own text scale.
+	float canvasHeight = 0;
 	float DpRatio() const;
 	float TextRatio() const;
 	void FitToMinimum(float widthDp, float heightDp);
@@ -79,6 +83,9 @@ struct RuntimeStatistics {
 	std::uint64_t visibleVectorCacheBytes = 0;
 	std::uint64_t layerPushes = 0, layerComposites = 0, peakLayerDepth = 0;
 	std::uint64_t maskSnapshots = 0, maskApplications = 0, peakLayerTargets = 0;
+	std::uint64_t multiplyFallbacks = 0; // Multiply paths drawn as luminance darkening.
+	// Overflow clips under a transform: exact rectangles, and shapes clipped to their bounds.
+	std::uint64_t clipMasks = 0, clipMaskFallbacks = 0;
 	// Shared service residency, sampled by Statistics(); idle backends are reused.
 	std::uint64_t activeContexts = 0, residentBackends = 0;
 };
@@ -112,6 +119,10 @@ public:
 	virtual void EndLayer(std::uint32_t restore) = 0;
 	virtual FontMetrics GetFontMetrics(const std::string& family, int pixelSize) = 0;
 	virtual Glyph GetGlyph(const std::string& family, int pixelSize, std::uint32_t codepoint) = 0;
+	// Untextured material that multiplies the destination by each vertex colour
+	// (straight RGB; white leaves it unchanged). Zero means unsupported: the
+	// runtime then darkens by the colour's luminance with ordinary composition.
+	virtual std::uintptr_t MultiplyMaterial() { return 0; }
 private:
 	// Target identities must survive a last-context close/reopen within one
 	// host submission frame, even though RmlUi services can be shut down then.

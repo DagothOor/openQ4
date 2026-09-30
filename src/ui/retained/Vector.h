@@ -49,12 +49,17 @@ struct VectorStroke {
 	StrokeCap cap = StrokeCap::Butt;
 	StrokeJoin join = StrokeJoin::Miter;
 };
+// How a path's paint composes with what is already drawn (specification
+// section 4). Additive light brightens the destination by the premultiplied
+// paint; multiply darkens it toward the paint colour, as the stock emblem does.
+enum class PathBlend { Normal, Additive, Multiply };
 struct VectorPath {
 	std::string id;
 	std::vector<PathCommand> commands;
 	FillRule fillRule = FillRule::NonZero;
 	VectorPaint fill;
 	VectorStroke stroke;
+	PathBlend blend = PathBlend::Normal;
 };
 struct VectorVertex {
 	double x = 0, y = 0;

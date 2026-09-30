@@ -66,9 +66,24 @@ bool ApplicationState(const DocumentModel& model, const idDict& dictionary, Stat
 	return true;
 }
 
+// Session navigation verbs a retained screen may request. They name session
+// operations, never console commands; the session maps each one explicitly.
+bool SessionMenuCommand(const std::string& command) {
+	static const std::set<std::string> commands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
+		"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu"};
+	return commands.contains(command);
+}
+
 bool ValidOperation(const Action& action) {
 	if (action.operation.starts_with("settings.system.")) { std::string error; return UI_SettingsOperation(action,error); }
 	if (action.operation == "ui.dismiss" || action.operation == "ui.numberDrafts.focus") return action.arguments.empty();
+	if (action.operation == "session.menu") {
+		const auto command = action.arguments.find("command");
+		if (action.arguments.size() != 1 || command == action.arguments.end() || command->second.type != 2) return false;
+		const auto& expression = command->second;
+		const bool literal = expression.op.empty() && expression.state.empty() && expression.presentation.empty() && !expression.inputValue;
+		return !literal || SessionMenuCommand(std::get<std::string>(expression.literal));
+	}
 	const auto value = action.arguments.find("value");
 	if (action.arguments.size() != 1 || value == action.arguments.end()) return false;
 	return (action.operation == "settings.brightness.set" && value->second.type == 0) ||
@@ -78,6 +93,12 @@ bool ValidOperation(const Action& action) {
 bool ValidInvocation(const ActionInvocation& invocation, std::string& error) {
 	if (invocation.operation.starts_with("settings.system.")) return UI_SettingsInvocation(invocation,error);
 	if ((invocation.operation == "ui.dismiss" || invocation.operation == "ui.numberDrafts.focus") && invocation.arguments.empty()) return true;
+	if (invocation.operation == "session.menu") {
+		const auto command = invocation.arguments.find("command");
+		if (invocation.arguments.size() == 1 && command != invocation.arguments.end() &&
+			std::holds_alternative<std::string>(command->second) && SessionMenuCommand(std::get<std::string>(command->second))) return true;
+		error = "Unsupported session menu request: "+invocation.action; return false;
+	}
 	const auto value = invocation.arguments.find("value");
 	if (invocation.arguments.size() == 1 && value != invocation.arguments.end() && ValidStateValue(value->second)) {
 		if (invocation.operation == "settings.brightness.set" && std::holds_alternative<double>(value->second)) {
@@ -163,6 +184,17 @@ bool HasControls(const Node& node) {
 	return false;
 }
 
+// Pictures the document names itself resolve when it loads; bound sources
+// are precached by whoever publishes them (UI_RetainedPrecacheImage).
+void PrecacheImages(const Node& node) {
+	const auto image = node.properties.find("image");
+	if (image != node.properties.end() && image->second.type == ValueType::Image && !image->second.text.empty()) {
+		const auto blend = node.properties.find("image-blend");
+		RetainedUI_PrecacheImage(image->second.text,blend != node.properties.end() && blend->second.text == "additive");
+	}
+	for (const auto& child : node.children) PrecacheImages(child);
+}
+
 bool NonInteractive(const idDict& dictionary) {
 	StateValue value;
 	if (ConvertState(dictionary.GetString("noninteractive","0"),1,value)) return std::get<bool>(value);
@@ -218,6 +250,9 @@ struct idUserInterfaceRetained::Impl {
 		std::optional<uiClipboardRequest_t> clipboard;
 	};
 	std::vector<PendingAction> actions;
+	// Accepted session.menu verbs, in order, for the session to take after a
+	// dispatch; they never survive a source, save or resource replacement.
+	std::vector<std::string> sessionRequests;
 	bool interactive = true, interactiveSet = false, unique = false, active = false;
 	bool suspended = false, pointerVisible = false, close = false, worldReported = false;
 	bool unavailable = false;
@@ -257,6 +292,7 @@ struct idUserInterfaceRetained::Impl {
 				runtime->AcknowledgeControlProposal(action.control,action.proposalToken,false);
 			return discard;
 		}),actions.end());
+		if (discardPrograms) sessionRequests.clear();
 		if (auto* runtime = RuntimeView()) {
 			if (cancelRuntime) runtime->CancelInput(RetainedUI_PresentationTime());
 			runtime->ReleaseInputSources(); runtime->TakeActions();
@@ -586,6 +622,7 @@ bool idUserInterfaceRetained::InitFromFile(const char* qpath, bool rebuild, bool
 	impl->state.Set("name",path.c_str()); impl->lastError.clear();
 	if (!impl->interactiveSet) impl->interactive = HasControls(impl->document.Model().root) && !NonInteractive(impl->state);
 	RegisterLoaded(); RefreshThinking();
+	PrecacheImages(impl->document.Model().root);
 	common->Printf("RETAINED_GUI_LOADED %s\n",path.c_str());
 	return true;
 }
@@ -762,6 +799,11 @@ void idUserInterfaceRetained::Redraw(int time, bool useAspectCorrection) {
 	}
 	Viewport viewport;
 	if (!RetainedUI_DefaultViewport(viewport) || !impl->Prepare()) return;
+	// A view-height canvas (title, pause and loading screens) follows the view
+	// height instead of display density; the safety fit is irrelevant to it.
+	if (impl->document.Model().canvasHeight > 0) {
+		viewport.canvasHeight = static_cast<float>(impl->document.Model().canvasHeight); viewport.fitScale = 1;
+	}
 	if (!impl->initialized) {
 		if (!impl->RuntimeView()->HasEvent("onInit") || impl->RunEvent("onInit")) impl->initialized = true;
 	}
@@ -780,6 +822,7 @@ void idUserInterfaceRetained::DrawCursor() {
 	if (!RetainedUI_DefaultViewport(viewport)) return;
 	const CursorTransform transform(viewport);
 	const float px = impl->cursorX*transform.sx+transform.ox, py = impl->cursorY*transform.sy+transform.oy;
+	if (impl->document.Model().canvasHeight > 0) viewport.canvasHeight = static_cast<float>(impl->document.Model().canvasHeight);
 	const float size = 20.f*viewport.DpRatio();
 	const float x = px*640.f/viewport.width, y = py*480.f/viewport.height;
 	const float dx = size*640.f/viewport.width, dy = size*480.f/viewport.height;
@@ -844,6 +887,17 @@ bool idUserInterfaceRetained::DispatchApplicationActions(const char* command, bo
 			closeRequested = true;
 			if (pending.proposalToken) impl->RuntimeView()->AcknowledgeControlProposal(pending.control,pending.proposalToken,true);
 			TraceInvocation(Name(),invocation,true); continue;
+		}
+		if (invocation.operation == "session.menu") {
+			// Validated again at resolution; the session maps the verb itself.
+			const auto& command = std::get<std::string>(invocation.arguments.at("command"));
+			const bool accepted = impl->sessionRequests.size() < 64;
+			if (accepted) impl->sessionRequests.push_back(command);
+			else impl->Error("Session menu request queue exceeded 64 requests");
+			if (pending.proposalToken) impl->RuntimeView()->AcknowledgeControlProposal(pending.control,pending.proposalToken,accepted);
+			if (cvarSystem->GetCVarBool("ui_retainedTrace")) common->Printf("RETAINED_GUI_SESSION path=%s command=%s accepted=%d\n",
+				Name(),command.c_str(),accepted ? 1 : 0);
+			continue;
 		}
 		if (invocation.operation.starts_with("settings.system.")) {
 			std::string error;
@@ -916,6 +970,10 @@ bool idUserInterfaceRetained::DispatchApplicationActions(const char* command, bo
 	return true;
 }
 
+bool idUserInterfaceRetained::TakeSessionRequest(const char* command, idStr& out) {
+	if (!command || idStr::Cmp(command,ActionMarker) || impl->sessionRequests.empty()) return false;
+	out = impl->sessionRequests.front().c_str(); impl->sessionRequests.erase(impl->sessionRequests.begin()); return true;
+}
 bool idUserInterfaceRetained::TakeClipboardRequest(const char* command, uiClipboardRequest_t& out) {
 	if (!command || idStr::Cmp(command,ActionMarker) || impl->actions.empty() || !impl->actions.front().clipboard) return false;
 	out = *impl->actions.front().clipboard; impl->actions.erase(impl->actions.begin()); return true;
@@ -1279,4 +1337,15 @@ bool UI_RetainedDiagnostic(idUserInterface* gui, const idCmdArgs& args) {
 	return okay;
 }
 
+bool UI_RetainedImageSource( const char *source ) {
+	return source != NULL && openq4::ui::ValidImageSource( source );
+}
+
+void UI_RetainedPrecacheImage( const char *source ) {
+	if ( source != NULL ) RetainedUI_PrecacheImage( source, false );
+}
+
+#else
+bool UI_RetainedImageSource( const char * ) { return false; }
+void UI_RetainedPrecacheImage( const char * ) {}
 #endif

@@ -136,6 +136,8 @@ public:
     void RemoveAlwaysThinkGui(idUserInterfaceManaged*);
     void RunAlwaysThinkGUIs(int);
     bool DispatchApplicationActions(idUserInterface*,const char*,bool&);
+    bool TakeSessionRequest(idUserInterface*,const char*,idStr&);
+    void RunTimeEvents(idUserInterface*,int);
     void PumpApplicationActions(UI_ApplicationCommandCallback,void*,idUserInterface*);
     idList<idUserInterfaceManaged*> allocations,guis,alwaysThinkGUIs,demoGuis;
     unsigned long long nextAllocationId=0;
@@ -589,6 +591,10 @@ def production_source():
         'bool UI_IsRetainedPath(',
         'bool UI_DispatchApplicationActions(',
         'bool idUserInterfaceManagerLocal::DispatchApplicationActions(',
+        'bool UI_TakeSessionRequest(',
+        'bool idUserInterfaceManagerLocal::TakeSessionRequest(',
+        'void UI_RunTimeEvents(',
+        'void idUserInterfaceManagerLocal::RunTimeEvents(',
         'void UI_PumpApplicationActions(',
         'void idUserInterfaceManagerLocal::PumpApplicationActions(',
         'void idUserInterfaceManagerLocal::Shutdown()',

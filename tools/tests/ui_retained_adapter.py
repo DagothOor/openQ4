@@ -151,7 +151,8 @@ struct Bounds { float x=0,y=0,width=0,height=0; };
 struct Viewport {
     int width=1920,height=1080;
     float displayScale=1,userScale=1,pixelDensityX=2,pixelDensityY=2,originX=80,originY=40;
-    float DpRatio() const { return displayScale*userScale; }
+    float fitScale=1,canvasHeight=0;
+    float DpRatio() const { return canvasHeight>0&&height>0 ? height/canvasHeight : displayScale*userScale; }
 };
 static DocumentModel modelTemplate;
 struct Document::Impl { std::string source; DocumentModel model; };
@@ -590,6 +591,7 @@ bool RetainedUI_PrepareView(retainedUIView_t* view) { return view && view->runti
 bool RetainedUI_LoadView(retainedUIView_t*,const std::string&,const std::string&,std::vector<openq4::ui::Diagnostic>&) { return !rejectLoad; }
 bool RetainedUI_DefaultViewport(openq4::ui::Viewport& result) { result=viewport; return viewport.width>0 && viewport.height>0; }
 double RetainedUI_PresentationTime() { return presentationTime; }
+void RetainedUI_PrecacheImage(const std::string&,bool) {}
 bool RetainedUI_DrawViewRoot(retainedUIView_t* view,const openq4::ui::Viewport&) {
     ++view->runtime.frames; view->runtime.pointerTransport.push_back("frame"); return !rejectDraw;
 }

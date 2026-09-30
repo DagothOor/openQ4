@@ -56,6 +56,7 @@ public:
 	int NumTransitions() override;
 	bool DispatchApplicationActions( const char *command, bool &closeRequested ) override;
 	const char *PendingApplicationCommand() const override;
+	bool TakeSessionRequest( const char *command, idStr &out ) override;
 	openq4::ui::TextBrokerContext QueryTextContext(std::uint64_t allocation,
 		std::uint64_t window, std::uint64_t session) override;
 	bool ApplyTextInput(const openq4::ui::TextBrokerContext& expected,

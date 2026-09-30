@@ -51,7 +51,23 @@ idCVar	idSessionLocal::gui_configServerRate( "gui_configServerRate", "0", CVAR_G
 idCVar gui_set_sys_scroll( "gui_set_sys_scroll", "0", CVAR_GUI | CVAR_INTEGER, "display menu scroll step", 0, 28 );
 idCVar gui_set_audio_scroll( "gui_set_audio_scroll", "0", CVAR_GUI | CVAR_INTEGER, "audio menu scroll step", 0.0f, 0.0f );
 idCVar gui_set_game_scroll( "gui_set_game_scroll", "0", CVAR_GUI | CVAR_INTEGER, "game menu scroll step", 0, 48 );
-idCVar ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL, "opt in to the in-development retained SYSTEM page" );
+idCVar ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL, "opt in to only the in-development retained SYSTEM page; ui_retained includes it" );
+// The single gate for the in-development retained (RmlUi) interface. While it
+// is 0 no session route creates a retained view: the stock GUIs present every
+// screen. Not archived, so a restart always returns to the stock interface.
+idCVar ui_retained( "ui_retained", "0", CVAR_GUI | CVAR_BOOL, "opt in to the in-development retained interface: title, pause, loading and SYSTEM screens" );
+
+static bool Session_RetainedScreensEnabled( void ) {
+#ifdef ID_DEDICATED
+	return false;
+#else
+	return ui_retained.GetBool();
+#endif
+}
+
+static bool Session_RetainedSystemEnabled( void ) {
+	return Session_RetainedScreensEnabled() || ui_retainedSystem.GetBool();
+}
 
 static const int MENU_CONTROLLER_AXIS_THRESHOLD = 50;
 static const int MENU_CONTROLLER_REPEAT_INITIAL_MSEC = 320;
@@ -194,6 +210,12 @@ static void PumpControllerMenuNavigation( idSessionLocal *session ) {
 	event.evValue2 = 1;
 
 	session->MenuEvent( &event );
+	if ( session->RetainedHomePresenting() ) {
+		// Retained controls pair every press with its release; this pump emits
+		// one navigation step per repeat, so complete the step at once.
+		event.evValue2 = 0;
+		session->MenuEvent( &event );
+	}
 	menuControllerRepeat.nextTime = now + MENU_CONTROLLER_REPEAT_MSEC;
 }
 
@@ -1700,7 +1722,7 @@ bool idSessionLocal::OpenSystemSettings() {
 #ifdef ID_DEDICATED
 	return false;
 #else
-	if ( !ui_retainedSystem.GetBool() || systemGuiTransition || guiTest != NULL || RetainedUI_IsOpen() ) return false;
+	if ( !Session_RetainedSystemEnabled() || systemGuiTransition || guiTest != NULL || RetainedUI_IsOpen() ) return false;
 	if ( guiSystem != NULL ) return guiActive == guiSystem;
 	if ( guiMainMenu == NULL || guiActive != guiMainMenu || guiMsgRestore != NULL ) return false;
 	// The canonical source may not exist while this opt-in route is developed.
@@ -1770,7 +1792,7 @@ void idSessionLocal::ReportSystemSettings() {
 	canReturn = guiSystem != NULL && UI_RetainedSettingsCanReturn( guiSystem );
 #endif
 	common->Printf( "OPENQ4_SYSTEM enabled=%d active=%s parent=%s child=%d guiTest=%d menu=%d map=%d multiplayer=%d menuSound=%d canReturn=%d\n",
-		ui_retainedSystem.GetBool() ? 1 : 0, guiActive ? guiActive->Name() : "-",
+		Session_RetainedSystemEnabled() ? 1 : 0, guiActive ? guiActive->Name() : "-",
 		guiSystemParent ? guiSystemParent->Name() : "-", guiSystem != NULL && guiActive == guiSystem ? 1 : 0,
 		guiTest != NULL ? 1 : 0, guiActive != NULL ? 1 : 0, mapSpawned ? 1 : 0, IsMultiplayer() ? 1 : 0,
 		menuSoundWorld != NULL && requestedSoundWorld == menuSoundWorld ? 1 : 0, canReturn ? 1 : 0 );
@@ -2328,7 +2350,7 @@ idSessionLocal::SetMainMenuGuiVars
 ===============
 */
 void idSessionLocal::SetMainMenuGuiVars( bool refreshCatalogs ) {
-	guiMainMenu->SetStateBool( "retainedSystem", ui_retainedSystem.GetBool() );
+	guiMainMenu->SetStateBool( "retainedSystem", Session_RetainedSystemEnabled() );
 
 	guiMainMenu->SetStateString( "serverlist_sel_0", "-1" );
 	guiMainMenu->SetStateString( "serverlist_selid_0", "-1" ); 
@@ -3611,9 +3633,16 @@ void idSessionLocal::DispatchCommand( idUserInterface *gui, const char *menuComm
 	}
 	bool closeRequested = false;
 	if ( UI_DispatchApplicationActions( gui, menuCommand, closeRequested ) ) {
+		// A retained screen's accepted verbs, in order. Each names a session
+		// operation; nothing here reaches the console command buffer as text.
+		idStr sessionRequest;
+		while ( UI_TakeSessionRequest( gui, menuCommand, sessionRequest ) ) {
+			HandleRetainedSessionRequest( gui, sessionRequest.c_str() );
+		}
 		if ( closeRequested ) {
 			if ( gui == guiSystem ) ReturnSystemSettings();
 			else if ( gui == guiTest ) TestGUI( NULL );
+			else if ( gui == guiRetainedHome ) HandleRetainedSessionRequest( gui, "resume" );
 			else if ( gui == guiActive ) ExitMenu();
 		}
 		return;
@@ -4001,6 +4030,20 @@ void idSessionLocal::MenuEvent( const sysEvent_t *event ) {
 		return;
 	}
 
+	if ( guiRetainedHome != NULL && guiActive == guiMainMenu ) {
+		// The retained screen owns input while it covers the legacy home state.
+		// During a hand-off the legacy page is not presented yet; like the stock
+		// choreography's input lock, nothing reaches either GUI until it is.
+		if ( RetainedHomeInputBlocked() ) {
+			return;
+		}
+		menuCommand = guiRetainedHome->HandleEvent( event, common->GetPresentationTime() );
+		if ( menuCommand && menuCommand[0] ) {
+			DispatchCommand( guiRetainedHome, menuCommand );
+		}
+		return;
+	}
+
 	if ( event->evType == SE_KEY && event->evValue2 == 1 ) {
 		if ( HandleMainMenuSettingsScrollInput( guiActive, event->evValue ) ) {
 			return;
@@ -4054,6 +4097,11 @@ void idSessionLocal::GuiFrameEvents() {
 		ClearMenuControllerRepeatState();
 		return;
 	}
+
+	// Before the no-GUI return: closing the menu must retire the retained
+	// home, or the pause screen would outlive a resume.
+	UpdateRetainedHome();
+	RetainedHomeFrameEvent();
 
 	if ( guiTest ) {
 		gui = guiTest;
@@ -4580,4 +4628,313 @@ void idSessionLocal::HandleNoteCommands( const char *menuCommand ) {
 		cmdSystem->BufferCommandText( CMD_EXEC_NOW, "closeViewNotes\n" );
 		cvarSystem->SetCVarBool( "con_noPrint", bCon );
 	}
+}
+
+/*
+===============================================================================
+
+	Retained screens (ui_retained)
+
+	The title and single-player pause screens are retained documents that
+	cover the legacy main menu while it rests at its home state. The legacy
+	menu stays active underneath and keeps every page: choosing a page runs
+	the legacy home button's own action, and the retained screen covers the
+	legacy departure until the page appears. Back on a legacy page returns
+	to the retained screen as soon as the page starts to leave.
+
+===============================================================================
+*/
+
+#ifndef ID_DEDICATED
+static const char *const RETAINED_TITLE_GUI = "guis/menu/title.q4ui";
+static const char *const RETAINED_PAUSE_GUI = "guis/menu/pause.q4ui";
+static const char *const RETAINED_LOADING_GUI = "guis/loading/loading.q4ui";
+// The stock choreography shows a page 550 ms after its activation and a
+// home-state pop-up at once (specification section 8); the retained screen
+// covers the legacy departure for that long before the page takes over.
+static const int RETAINED_PAGE_HANDOFF_MSEC = 550;
+static const int RETAINED_POPUP_HANDOFF_MSEC = 200;
+
+typedef struct retainedHandoff_s {
+	const char *	request;
+	const char *	window;		// the legacy home button whose action opens the page
+	bool			popup;		// a pop-up over the home state, not a page
+} retainedHandoff_t;
+
+static const retainedHandoff_t RETAINED_HANDOFFS[] = {
+	{ "singlePlayer",	"main_b_newgame",		false },
+	{ "loadGame",		"main_b_loadgame",		false },
+	{ "saveGame",		"main_b_savegame",		false },
+	{ "multiplayer",	"main_b_multiplayer",	false },
+	{ "settings",		"main_b_settings",		false },
+	{ "credits",		"main_b_credits",		false },
+	{ "demos",			"main_b_demos",			false },
+	{ "restartLevel",	"main_b_difficulty",	false },
+	{ "mods",			"main_b_mods",			true },
+	{ "updates",		"main_b_updates",		true },
+};
+
+// Legacy pop-ups drawn over the home state keep the framing bands at home.
+static bool Session_RetainedHomePopup( idUserInterface *gui ) {
+	static const int popups[] = { 5, 6, 8, 27 };
+	for ( int i = 0; i < static_cast<int>( sizeof( popups ) / sizeof( popups[0] ) ); ++i ) {
+		if ( MainMenuWindowStateEqualsInt( gui, "desktop::curr", popups[i] ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static idUserInterface *Session_FindRetainedGui( const char *path, bool shared, bool &failed ) {
+	if ( failed ) {
+		return NULL;
+	}
+	idUserInterface *gui = uiManager->FindGui( path, true, !shared, shared );
+	if ( gui == NULL ) {
+		// Reported once; the stock interface keeps presenting that screen.
+		failed = true;
+		common->Warning( "retained UI: '%s' could not be loaded; the stock interface stays in use", path );
+	}
+	return gui;
+}
+
+// The title screen's CONTINUE resumes the newest save and describes it.
+static void Session_PublishRetainedTitleState( idUserInterface *gui, idSessionLocal *session ) {
+	idStrList fileList;
+	idList<fileTIME_T> fileTimes;
+	session->GetSaveGameList( fileList, fileTimes );
+	const bool hasSave = fileTimes.Num() > 0;
+	idStr title, detail, shot;
+	if ( hasSave ) {
+		const idStr &slot = fileList[ fileTimes[0].index ];
+		sessionMenuSaveDescription_t description;
+		const bool described = Session_MenuReadSaveDescription( slot, description );
+		title = described && description.description.Length() > 0 ? description.description : slot;
+		detail = Sys_TimeStampToStr( fileTimes[0].timeStamp );
+		if ( described && UI_RetainedImageSource( description.screenshot.c_str() ) ) {
+			shot = description.screenshot;
+		}
+	}
+	gui->SetStateBool( "menu_continue", hasSave );
+	gui->SetStateString( "menu_continue_title", title.c_str() );
+	gui->SetStateString( "menu_continue_detail", detail.c_str() );
+	gui->SetStateString( "menu_continue_shot", shot.c_str() );
+	gui->StateChanged( common->GetPresentationTime() );
+}
+#endif
+
+bool idSessionLocal::RetainedHomeInputBlocked() const {
+	return guiRetainedHome != NULL && common->GetPresentationTime() < retainedHandoffUntil;
+}
+
+void idSessionLocal::UpdateRetainedHome() {
+#ifndef ID_DEDICATED
+	idUserInterface *want = NULL;
+	bool returning = false;
+	bool fromPopup = false;
+	const int now = common->GetPresentationTime();
+	const bool context = Session_RetainedScreensEnabled() && guiMainMenu != NULL && guiActive == guiMainMenu &&
+		guiTest == NULL && !RetainedUI_IsOpen() && ( !mapSpawned || !IsMultiplayer() );
+	if ( context && !MainMenuWindowStateIsNonZero( guiMainMenu, "desktop::video_check" ) ) {
+		const bool atHome = MainMenuWindowStateEqualsInt( guiMainMenu, "desktop::curr", 0 ) &&
+			MainMenuWindowStateEqualsInt( guiMainMenu, "desktop::active", 0 );
+		// Back on a legacy page: the page is leaving for the home state.
+		returning = !MainMenuWindowStateEqualsInt( guiMainMenu, "desktop::curr", 0 ) &&
+			MainMenuWindowStateIsNonZero( guiMainMenu, "desktop::active" ) &&
+			MainMenuWindowStateEqualsInt( guiMainMenu, "desktop::dest", 0 );
+		fromPopup = returning && Session_RetainedHomePopup( guiMainMenu );
+		const bool handoff = guiRetainedHome != NULL && now < retainedHandoffUntil;
+		if ( atHome || returning || handoff ) {
+			if ( mapSpawned ) {
+				if ( guiRetainedPause == NULL ) {
+					guiRetainedPause = Session_FindRetainedGui( RETAINED_PAUSE_GUI, false, retainedPauseFailed );
+				}
+				want = guiRetainedPause;
+			} else {
+				if ( guiRetainedTitle == NULL ) {
+					guiRetainedTitle = Session_FindRetainedGui( RETAINED_TITLE_GUI, false, retainedTitleFailed );
+				}
+				want = guiRetainedTitle;
+			}
+		}
+	}
+	if ( want == guiRetainedHome ) {
+		retainedHomeReturning = returning;
+		return;
+	}
+	idUserInterface *previous = guiRetainedHome;
+	guiRetainedHome = NULL;
+	retainedHandoffUntil = 0;
+	if ( previous != NULL ) {
+		previous->Activate( false, now );
+		PumpApplicationActions( previous );
+	}
+	if ( want != NULL ) {
+		if ( want == guiRetainedPause ) {
+			PublishRetainedPauseState( want );
+		} else {
+			Session_PublishRetainedTitleState( want, this );
+		}
+		guiRetainedHome = want;
+		want->Activate( true, now );
+		// A page leaving for home brings the bands back from their page dock;
+		// opening the menu, or closing a home pop-up, only reveals the content.
+		want->HandleNamedEvent( returning && !fromPopup ? "returnHome" : "open" );
+		PumpApplicationActions( want );
+	}
+	retainedHomeReturning = returning;
+#endif
+}
+
+void idSessionLocal::RetainedHomeFrameEvent() {
+	if ( guiRetainedHome == NULL || guiActive != guiMainMenu ) {
+		return;
+	}
+	sysEvent_t ev;
+	memset( &ev, 0, sizeof( ev ) );
+	ev.evType = SE_NONE;
+	idUserInterface *gui = guiRetainedHome;
+	const char *cmd = gui->HandleEvent( &ev, common->GetPresentationTime() );
+	if ( cmd && cmd[0] ) {
+		DispatchCommand( gui, cmd );
+	}
+}
+
+void idSessionLocal::DrawRetainedHome( int presentationTime ) {
+	// The legacy menu keeps its timelines, music and hand-off choreography
+	// running unseen; only the retained screen reaches the output.
+	UI_RunTimeEvents( guiMainMenu, presentationTime );
+	if ( guiRetainedHome == guiRetainedPause && mapSpawned && !com_skipGameDraw.GetBool() && GetLocalClientNum() >= 0 ) {
+		// The paused view stays behind the pause screen, under its scrim.
+		if ( !game->Draw( GetLocalClientNum() ) ) {
+			renderSystem->SetColor( colorBlack );
+			renderSystem->DrawStretchPic( 0, 0, 640, 480, 0, 0, 1, 1, declManager->FindMaterial( "_white" ) );
+		}
+	}
+	guiRetainedHome->Redraw( presentationTime );
+}
+
+void idSessionLocal::HandleRetainedSessionRequest( idUserInterface *gui, const char *request ) {
+#ifndef ID_DEDICATED
+	if ( gui == NULL || request == NULL || gui != guiRetainedHome || guiActive != guiMainMenu ) {
+		return;
+	}
+	const int now = common->GetPresentationTime();
+	if ( !idStr::Icmp( request, "resume" ) ) {
+		// Single-player RETURN TO GAME closes at once (section 8).
+		if ( mapSpawned ) {
+			ExitMenu();
+		}
+		return;
+	}
+	if ( !idStr::Icmp( request, "quit" ) ) {
+		HandleMainMenuCommands( "play main_menu_selection" );
+		ExitMenu();
+		common->Quit();
+		return;
+	}
+	if ( !idStr::Icmp( request, "quitToMenu" ) ) {
+		if ( mapSpawned ) {
+			cmdSystem->BufferCommandText( CMD_EXEC_APPEND, "disconnect\n" );
+		}
+		return;
+	}
+	if ( !idStr::Icmp( request, "continue" ) ) {
+		idStrList fileList;
+		idList<fileTIME_T> fileTimes;
+		GetSaveGameList( fileList, fileTimes );
+		if ( fileTimes.Num() > 0 ) {
+			HandleMainMenuCommands( "play main_menu_selection" );
+			const idStr slot = fileList[ fileTimes[0].index ];
+			LoadGame( slot.c_str() );
+		}
+		return;
+	}
+	for ( int i = 0; i < static_cast<int>( sizeof( RETAINED_HANDOFFS ) / sizeof( RETAINED_HANDOFFS[0] ) ); ++i ) {
+		const retainedHandoff_t &handoff = RETAINED_HANDOFFS[i];
+		if ( idStr::Icmp( request, handoff.request ) ) {
+			continue;
+		}
+		idStr command;
+		if ( !UI_RunLegacyWindowAction( guiMainMenu, handoff.window, false, command ) ) {
+			common->Warning( "retained UI: '%s' is unavailable from the current menu", request );
+			return;
+		}
+		retainedHandoffUntil = now + ( handoff.popup ? RETAINED_POPUP_HANDOFF_MSEC : RETAINED_PAGE_HANDOFF_MSEC );
+		guiRetainedHome->HandleNamedEvent( handoff.popup ? "departPopup" : "depart" );
+		if ( command.Length() > 0 ) {
+			// The legacy action's own command, such as its selection sound.
+			DispatchCommand( guiMainMenu, command.c_str() );
+		}
+		return;
+	}
+	common->Warning( "retained UI: unhandled session request '%s'", request );
+#endif
+}
+
+idUserInterface *idSessionLocal::SelectRetainedLoadingGui( idUserInterface *legacy, bool multiplayer ) {
+#ifdef ID_DEDICATED
+	return legacy;
+#else
+	if ( !Session_RetainedScreensEnabled() || legacy == NULL ) {
+		return legacy;
+	}
+	// Only the stock loading screens are replaced; a map's own GUI stays.
+	static const char *stockScreens[] = {
+		"guis/loading/generic.gui", "guis/loading/splevel.gui", "guis/loading/mplevel.gui", "guis/loading/intro.gui"
+	};
+	bool stock = false;
+	for ( int i = 0; i < static_cast<int>( sizeof( stockScreens ) / sizeof( stockScreens[0] ) ); ++i ) {
+		stock |= idStr::Icmp( legacy->Name(), stockScreens[i] ) == 0;
+	}
+	if ( !stock ) {
+		return legacy;
+	}
+	idUserInterface *retained = Session_FindRetainedGui( RETAINED_LOADING_GUI, true, retainedLoadingFailed );
+	if ( retained == NULL ) {
+		return legacy;
+	}
+	retained->SetStateBool( "loading_mp", multiplayer );
+	retained->SetStateBool( "loading_intro", idStr::Icmp( legacy->Name(), "guis/loading/intro.gui" ) == 0 );
+	retained->SetStateBool( "loading_ready", false );
+	return retained;
+#endif
+}
+
+void idSessionLocal::PreloadRetainedScreens() {
+#ifndef ID_DEDICATED
+	// Loaded with the stock menus, so a document's own pictures resolve
+	// before the first menu opens.
+	if ( !Session_RetainedScreensEnabled() ) {
+		return;
+	}
+	if ( guiRetainedTitle == NULL ) {
+		guiRetainedTitle = Session_FindRetainedGui( RETAINED_TITLE_GUI, false, retainedTitleFailed );
+	}
+	if ( guiRetainedPause == NULL ) {
+		guiRetainedPause = Session_FindRetainedGui( RETAINED_PAUSE_GUI, false, retainedPauseFailed );
+	}
+#endif
+}
+
+void idSessionLocal::PrepareRetainedLevel( const char *mapPath, bool multiplayer ) {
+#ifndef ID_DEDICATED
+	// Inside the level load: opening the pause menu later then reads no file
+	// mid-frame, even when the gate was switched on after startup.
+	if ( !Session_RetainedScreensEnabled() || multiplayer ) {
+		return;
+	}
+	if ( guiRetainedPause == NULL ) {
+		guiRetainedPause = Session_FindRetainedGui( RETAINED_PAUSE_GUI, false, retainedPauseFailed );
+	}
+	UI_RetainedPrecacheImage( RetainedPauseShot( mapPath ).c_str() );
+#endif
+}
+
+void idSessionLocal::ReportRetainedScreens() {
+	common->Printf( "OPENQ4_RETAINED enabled=%d system=%d home=%s title=%d pause=%d handoff=%d views=%d\n",
+		Session_RetainedScreensEnabled() ? 1 : 0, Session_RetainedSystemEnabled() ? 1 : 0,
+		guiRetainedHome != NULL ? guiRetainedHome->Name() : "-",
+		guiRetainedTitle != NULL ? 1 : 0, guiRetainedPause != NULL ? 1 : 0,
+		RetainedHomeInputBlocked() ? 1 : 0, RetainedUI_ViewCount() );
 }

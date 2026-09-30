@@ -119,6 +119,8 @@ requirement counts, migration acceptance or final gates.
 Its expanded-language matrix also repairs focus reveal for oversized numeric
 fields, adding partial `LAY-004` evidence while preserving deliberate scrolling.
 
+The [retained screen increment](retained-screens.md), based on engine `f5503259a5a2f618e5dd1cebab9adc55c2513f79`, builds the title, single-player pause and stock loading screens behind the single `ui_retained` gate. It adds image nodes, additive and multiply path blends, a view-height canvas and exact overflow clipping under translation and scale. Twelve windowed engine runs passed on OpenGL and Vulkan at 16:9, OpenGL at 4:3 and with the gate off; the gate-off runs and the gate test show that nothing retained loads. `FLOW-024`, `FLOW-047`, `FLOW-048`, `ART-030` and `REN-014` move from pending to partial, with acceptance evidence still empty. The Objectives action, the Strogg variant, soft focus, the Remastered loading details and the multiplayer menus remain. No migration acceptance or final gate changes. Evidence: `.tmp/ui/retained-screens/validation-evidence.json`, SHA-256 `e645a25b3daae42e1b4cc5a6301fc67cfc8c31c85895759f92fb4a179697d5b9`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial
@@ -403,7 +405,7 @@ The [full renderer shutdown increment](image-recovery-ownership.md), based on en
 
 The [editor file publication increment](editor-file-safety.md), based on engine `a11a00181b5997993bb9e225bad63a6422386311`, adds actual native creation of complete new files without replacing an existing or racing document. Windows Clang and MSVC each pass 340 checks, GCC with sanitizers passes 344, and all three reject seven compiled mutations. The full engine build and 78 UI suites pass. Windows symlink and DrvFS FIFO limitations are recorded. This file-only increment has no new game captures. Save As/autosave UI, live document association, overwrite/conflict handling and crash/relaunch recovery remain required. No requirement status, migration acceptance or final gate changes. Evidence: `.tmp/ui/editor-new-file/validation-evidence.json`, SHA-256 `846413e35eb34ed965a57005aa6eb724b5c8d3dbc2fb46f65ba30711a509cc63`.
 
-There are **71 partial, 245 pending and one verified requirement**, counting the
+There are **76 partial, 240 pending and one verified requirement**, counting the
 22 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock

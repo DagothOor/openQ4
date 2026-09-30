@@ -1060,4 +1060,11 @@
 	"#str_230022"	"Inserisci un numero intero da 240 a 16384."
 	"#str_230023"	"Scegli schermo, dimensioni e frequenza supportati prima di applicare."
 	"#str_230024"	"Le dimensioni personalizzate si usano a schermo intero esclusivo. Modificarle seleziona la risoluzione personalizzata."
+	"#str_230025"	"ESCI AL MENU"
+	"#str_230026"	"Avvia la campagna o gioca nell’Arena."
+	"#str_230027"	"Riprendi una partita salvata."
+	"#str_230028"	"Trova un server, ospita una partita o gioca con i bot."
+	"#str_230029"	"Controlli, schermo, audio e opzioni di gioco."
+	"#str_230030"	"MISSIONE ATTUALE"
+	"#str_230031"	"GIOCO IN PAUSA"
 }

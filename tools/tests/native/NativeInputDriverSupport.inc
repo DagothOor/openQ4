@@ -43,6 +43,9 @@ struct ConsoleEndpoint {
 class idSessionLocal {
 public:
     idUserInterface* guiActive=&guiEndpoint;idUserInterface* guiTest=nullptr;
+    // ui_retained home screens never present here; MenuEvent keeps its legacy route.
+    idUserInterface* guiRetainedHome=nullptr;idUserInterface* guiMainMenu=nullptr;
+    bool RetainedHomeInputBlocked() const{return false;}
     bool mapSpawned=true;GameEndpoint* game=nullptr;std::function<void()> callback;
     unsigned setGuiCalls=0,startMenuCalls=0;
     bool ProcessEvent(const sysEvent_t*);void MenuEvent(const sysEvent_t*);

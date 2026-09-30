@@ -125,6 +125,10 @@ tracks the complete scope and required acceptance evidence.
 [OpenGL UI-only frames retain their native detail](docs/dev/ui/native-output.md)
 with ordinary resolution scaling. Legacy crop mode and remaining renderer
 effect/parity work retain their documented limits.
+Setting `ui_retained 1` opts into the in-development
+[retained title, pause and loading screens](docs/dev/ui/retained-screens.md),
+built from the visual specification; with the default `0` the stock screens
+present everything.
 
 The [text-entry foundation](docs/dev/ui/text-entry-foundation.md) provides
 validated Unicode editing, exact numeric parsing and checked clipboard services
@@ -145,6 +149,7 @@ The [0.13.1 patch notes](docs/dev/releases/v0.13.1.md) cover the release save fi
 
 - **Modern display support** for widescreen, ultrawide, multi-monitor, borderless, and fullscreen setups.
 - **Optional visual upgrades** such as bloom, HDR, anti-aliasing, baked light grids, and enhanced shadow options, plus soft particles that fade effects into the world instead of cutting a hard edge against it.
+- **Cleaner outdoor shadow maps** remove repeating terrain lines, preserve distant-light detail, and restore object shadows as you approach in scenes such as Sandstorm and Air Defense 1. See the [shadow settings guide](docs/user/shadow-mapping.md).
 - **Smoother motion at high refresh rates.** The camera, weapons, movers, and everything riding them are drawn on an interpolated presentation clock between the game's 60 Hz ticks, so a 144 Hz or 240 Hz display shows motion at its own rate. Simulation, networking, collision, demos, and saves keep their original timing.
 - **Real liquids** with wading, swimming, drowning, and damaging slime and lava, plus underwater visuals and audio. Retail Quake 4 has none of this, so liquids are something you author - see the [Liquids guide](docs/user/liquids.md).
 - **Reliable OpenAL audio** with compatibility-first voice handling; macOS packages bundle OpenAL Soft so large stock levels are not constrained by Apple's legacy buffer pool.

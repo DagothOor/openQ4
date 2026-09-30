@@ -82,6 +82,16 @@ availability. Intermediate dimensions remain drafts; complete capability checks
 guard Apply. Dynamic display/resolution/refresh choices, visible fullscreen,
 native input, complete effects and the editor remain required. No gate closes.
 
+The [retained screen increment](../ui/retained-screens.md) builds the title
+screen, the single-player pause menu and the stock loading screens from
+visual specification 1.7 and the design atlas, behind one `ui_retained` gate
+(default off; `ui_retainedSystem` still opts into only SYSTEM). It adds image
+nodes, additive and multiply path blends, a view-height canvas, typed session
+menu requests and exact overflow clipping under translation and scale. The
+pause menu's Objectives action and live objectives, the Strogg variant, the
+softened backdrop and the multiplayer Escape and Welcome menus remain. No gate
+closes.
+
 ## Objective and immutable completion scope
 
 Plan, implement and publish a complete idTech 5-esque replacement for openQ4's

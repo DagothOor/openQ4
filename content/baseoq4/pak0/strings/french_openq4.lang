@@ -1060,4 +1060,11 @@
 	"#str_230022"	"Entrez un nombre entier de 240 à 16384."
 	"#str_230023"	"Choisissez un écran, une taille et une fréquence compatibles avant d’appliquer."
 	"#str_230024"	"La taille personnalisée sert au plein écran exclusif. La modifier sélectionne la résolution personnalisée."
+	"#str_230025"	"QUITTER VERS LE MENU"
+	"#str_230026"	"Lancez la campagne ou jouez dans l’Arène."
+	"#str_230027"	"Reprenez une partie sauvegardée."
+	"#str_230028"	"Trouvez un serveur, hébergez une partie ou jouez contre des bots."
+	"#str_230029"	"Commandes, affichage, audio et options de jeu."
+	"#str_230030"	"MISSION EN COURS"
+	"#str_230031"	"JEU EN PAUSE"
 }

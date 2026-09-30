@@ -56,7 +56,7 @@ bool ReadPresentationAlias(const DocumentModel& model, const State& state, const
 			candidate.type = PresentationType::Number; candidate.data[0] = property->data[0];
 		} else if (property->type == ValueType::Colour) {
 			candidate.type = PresentationType::Vector4; std::copy_n(property->data.begin(),4,candidate.data.begin());
-		} else if (property->type == ValueType::Text || property->type == ValueType::Keyword || property->type == ValueType::Font) {
+		} else if (property->type == ValueType::Text || property->type == ValueType::Keyword || property->type == ValueType::Font || property->type == ValueType::Image) {
 			candidate.type = PresentationType::String; candidate.text = property->text;
 		} else return false;
 	}

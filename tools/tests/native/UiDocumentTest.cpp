@@ -413,7 +413,7 @@ int main() {
 	Check(errors[0].line == 3 && errors[0].byte > 0,"syntax diagnostic source position");
 	Check(document.Source() == beforeInvalid,"failed whole-document load is transactional");
 	Check(document.Load(Source,errors),"reload authored model");
-	Check(!document.ReplaceValue("/root/type","\"image\"",errors),"unsupported features fail instead of silently disappearing");
+	Check(!document.ReplaceValue("/root/type","\"video\"",errors),"unsupported features fail instead of silently disappearing");
 	Check(errors[0].pointer == "/root/type" && errors[0].line > 1 && errors[0].column > 1,"semantic diagnostic pointer and source location");
 	std::string windowsSource = "\xef\xbb\xbf";
 	for (char c : std::string(Source)) windowsSource += c == '\n' ? "\r\n" : std::string(1,c);

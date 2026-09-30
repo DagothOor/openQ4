@@ -459,6 +459,16 @@
 
 ## Unreleased — `idtech5-ui` development
 
+- The experimental modern interface can now present the title screen, the
+  single-player pause menu and the loading screens. Set `ui_retained 1` to try
+  them, together with the modern SYSTEM page; with the default `0` the stock
+  screens present everything as before, and `ui_retainedSystem 1` still enables
+  only the SYSTEM page. The new screens follow the visual specification's
+  framing bands, lighting and motion, hand off to the stock pages for anything
+  they do not replace yet, and fall back to the stock screen if one cannot load.
+  The pause menu's Objectives action, the Strogg variant, a softened backdrop
+  and the multiplayer menus remain in development.
+
 - The experimental SYSTEM page adds window and custom fullscreen width/height
   fields with localized whole-pixel validation. Custom dimensions select Custom
   resolution automatically. Unsupported display combinations remain editable

@@ -55,7 +55,9 @@ struct Common {
     }
     void DPrintf(const char*,...) {}
 } commonObject,*common=&commonObject;
-struct CVar {bool value=false;bool GetBool() const{return value;}} ui_retainedSystem;
+struct CVar {bool value=false;bool GetBool() const{return value;}} ui_retainedSystem,ui_retained;
+// The master ui_retained gate includes the SYSTEM page; ui_retainedSystem alone opts into only it.
+static bool Session_RetainedSystemEnabled(){return ui_retained.GetBool() || ui_retainedSystem.GetBool();}
 enum {SE_NONE=0,INHIBIT_SESSION=1};
 struct sysEvent_t {int evType=SE_NONE;};
 using HandleGuiCommand_t=bool (*)(const char*);
@@ -123,6 +125,10 @@ struct idSessionLocal {
     void SetGUI(idUserInterface*,HandleGuiCommand_t);void ExitMenu();void GuiFrameEvents();
     void SetPlayingSoundWorld();void SetPlayingSoundWorld(Sound* sound){requestedSoundWorld=sound;}
     bool IsMultiplayer(){return multiplayer;}
+    // Retained home screens are outside this route: they never present in these scenarios.
+    idUserInterface* guiRetainedHome=nullptr;int retainedHomeUpdates=0;
+    void UpdateRetainedHome(){++retainedHomeUpdates;}void RetainedHomeFrameEvent(){CHECK(guiRetainedHome==nullptr);}
+    void HandleRetainedSessionRequest(idUserInterface*,const char*){CHECK(false);}
     void SetSaveGameGuiVars(){}void SetMainMenuGuiVars(bool){++mainRefresh;}
     void PumpApplicationActions(idUserInterface* only=nullptr) {
         std::vector<idUserInterface*> work;
@@ -135,12 +141,13 @@ struct idSessionLocal {
 static void PumpControllerMenuNavigation(idSessionLocal*){}
 static void SyncMainMenuSettingsScrollPages(idUserInterface* gui){CHECK(!gui || !gui->retired);}
 static bool UI_DispatchApplicationActions(idUserInterface*,const char* command,bool& close){close=std::string(command)=="typed";return true;}
+static bool UI_TakeSessionRequest(idUserInterface*,const char*,idStr&){return false;}
 static bool ParentHandler(const char*){return true;}
 struct Scenario {
     Manager manager;Sound gameSound,menuSound;
     idSessionLocal& session=sessLocal;
     idUserInterface* parent;
-    Scenario(){sessLocal=idSessionLocal{};uiManager=&manager;preview=false;ui_retainedSystem.value=true;common->output.clear();events.clear();userCommands.inhibited=false;
+    Scenario(){sessLocal=idSessionLocal{};uiManager=&manager;preview=false;ui_retainedSystem.value=true;ui_retained.value=false;common->output.clear();events.clear();userCommands.inhibited=false;
         parent=manager.Make("guis/mainmenu.gui");parent->active=true;
         session.guiActive=session.guiMainMenu=parent;session.guiHandle=ParentHandler;
         session.guiMsg=manager.Make("guis/msg.gui");session.sw=&gameSound;session.menuSoundWorld=&menuSound;session.requestedSoundWorld=&menuSound;
@@ -153,6 +160,8 @@ MAIN = r'''
 int main(){
     {
         Scenario s;ui_retainedSystem.value=false;CHECK(!s.session.OpenSystemSettings());CHECK(s.manager.loads==0 && s.parent->deactivates==0);
+        ui_retained.value=true;CHECK(s.session.OpenSystemSettings() && s.manager.loads==1);CHECK(s.session.ReturnSystemSettings());ui_retained.value=false;
+        s.manager.loads=0;s.manager.frees=0;s.parent->deactivates=0;
         ui_retainedSystem.value=true;s.session.guiTest=s.parent;CHECK(!s.session.OpenSystemSettings());s.session.guiTest=nullptr;
         preview=true;CHECK(!s.session.OpenSystemSettings());preview=false;
         s.session.guiActive=nullptr;CHECK(!s.session.OpenSystemSettings());s.session.guiActive=s.parent;
@@ -166,7 +175,7 @@ int main(){
         CHECK(s.session.guiSystemParent==s.parent && s.session.guiSystemParentHandle==ParentHandler && s.session.guiHandle==nullptr);
         CHECK(events[0]=="load" && events[1]=="deactivate:guis/mainmenu.gui" && events[2]=="drain:guis/mainmenu.gui");
         CHECK(s.session.OpenSystemSettings() && s.manager.loads==1);
-        s.session.GuiFrameEvents();CHECK(userCommands.inhibited && child->frames==2);
+        s.session.GuiFrameEvents();CHECK(userCommands.inhibited && child->frames==2 && s.session.retainedHomeUpdates==1);
         s.session.ReportSystemSettings();CHECK(common->output.find("child=1 guiTest=0 menu=1 map=1 multiplayer=0 menuSound=1 canReturn=1")!=std::string::npos);
         child->onDeactivate=[&]{CHECK(!s.session.guiSystem && !s.session.guiSystemParent && s.session.guiActive!=child);CHECK(!s.session.OpenSystemSettings());};
         s.manager.onFree=[&](auto* gui){CHECK(gui==child && child->deactivates==1 && child->drains==2);};
@@ -240,6 +249,8 @@ def main():
     main_menu = function_body(menu, 'void idSessionLocal::HandleMainMenuCommands(')
     assert 'if ( !idStr::Icmp( cmd, "openRetainedSystem" ) ) {\n\t\t\tOpenSystemSettings();\n\t\t\treturn;' in main_menu
     assert 'ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL' in menu
+    assert 'ui_retained( "ui_retained", "0", CVAR_GUI | CVAR_BOOL,' in menu
+    assert 'return Session_RetainedScreensEnabled() || ui_retainedSystem.GetBool();' in menu
     assert 'ReturnSystemSettings();' in function_body(menu, 'void idSessionLocal::StartMenu(')
     unload = function_body(session, 'void idSessionLocal::UnloadMap(')
     assert unload.index('CloseSystemSettings();') < unload.index('game->MapShutdown();')

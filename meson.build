@@ -857,6 +857,19 @@ if build_engine or get_option('build_native_tests')
     test('openq4-retained-ui', openq4_retained_test,
       args: [meson.project_source_root() / 'tools/ui/fixtures/interaction-smoke.q4ui',
              meson.project_source_root() / 'tools/ui/fixtures/binding-smoke.q4ui'], timeout: 30)
+    # Image nodes, path blends and view-height canvases, then the production
+    # retained title, pause and loading screens (ui_retained).
+    openq4_ui_retained_screens_test = executable(
+      'openq4-ui-retained-screens-test',
+      files('tools/tests/native/UiRetainedScreensTest.cpp'),
+      include_directories: root_include_dir,
+      dependencies: openq4_retained_dep,
+      install: false,
+    )
+    test('openq4-ui-retained-screens', openq4_ui_retained_screens_test,
+      args: [meson.project_source_root() / 'content/baseoq4/pak0/guis/menu/title.q4ui',
+             meson.project_source_root() / 'content/baseoq4/pak0/guis/menu/pause.q4ui',
+             meson.project_source_root() / 'content/baseoq4/pak0/guis/loading/loading.q4ui'], timeout: 60)
     openq4_ui_value_schema_test = executable(
       'openq4-ui-value-schema-test',
       files('tools/tests/native/UiValueControlSchemaTest.cpp'),

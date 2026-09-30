@@ -214,6 +214,24 @@ public:
 	void				ReportSystemSettings();
 	void				CloseSystemSettings();
 
+	// Opt-in retained (RmlUi) screens, gated by ui_retained. The title and the
+	// single-player pause screens cover the legacy main menu while it rests at
+	// its home state; its pages stay legacy and are reached by hand-off.
+	void				UpdateRetainedHome();
+	bool				RetainedHomePresenting() const { return guiRetainedHome != NULL; }
+	bool				RetainedHomeInputBlocked() const;
+	void				RetainedHomeFrameEvent();
+	void				DrawRetainedHome( int presentationTime );
+	void				HandleRetainedSessionRequest( idUserInterface *gui, const char *request );
+	void				PublishRetainedPauseState( idUserInterface *gui );
+	idStr				RetainedPauseShot( const char *mapPath ) const;
+	void				ReportRetainedScreens();
+	idUserInterface *	SelectRetainedLoadingGui( idUserInterface *legacy, bool multiplayer );
+	// Resolve the screens and their pictures where the stock menus resolve
+	// theirs: at startup, and inside each single-player level load.
+	void				PreloadRetainedScreens();
+	void				PrepareRetainedLevel( const char *mapPath, bool multiplayer );
+
 	virtual const char *MessageBox( msgBoxType_t type, const char *message, const char *title = NULL, bool wait = false, const char *fire_yes = NULL, const char *fire_no = NULL, bool network = false  );
 	virtual void		StopBox( void );
 	virtual void		DownloadProgressBox( backgroundDownload_t *bgl, const char *title, int progress_start = 0, int progress_end = 100 );
@@ -384,6 +402,17 @@ public:
 	HandleGuiCommand_t	guiSystemParentHandle;
 	bool				systemGuiTransition;
 	bool				systemGuiBackEvent;
+	// Retained screens (ui_retained): the home document presenting now, the
+	// cached title/pause documents, and the hand-off window during which the
+	// retained screen still covers a legacy page transition.
+	idUserInterface *	guiRetainedHome;
+	idUserInterface *	guiRetainedTitle;
+	idUserInterface *	guiRetainedPause;
+	bool				retainedHomeReturning;
+	bool				retainedTitleFailed;
+	bool				retainedPauseFailed;
+	bool				retainedLoadingFailed;
+	int					retainedHandoffUntil;
 	idListGUI *			guiMainMenu_MapList;		// easy map list handling
 	idUserInterface *	guiDemoMenu;
 	idListGUI *			guiDemoList;

@@ -3768,6 +3768,9 @@ void idSessionLocal::Clear() {
 	guiSystem = guiSystemParent = NULL;
 	guiSystemParentHandle = NULL;
 	systemGuiTransition = systemGuiBackEvent = false;
+	guiRetainedHome = guiRetainedTitle = guiRetainedPause = NULL;
+	retainedHomeReturning = retainedTitleFailed = retainedPauseFailed = retainedLoadingFailed = false;
+	retainedHandoffUntil = 0;
 	demoReturnGui = NULL;
 	demoOverlayVisible = false;
 	demoBrowserMode = true;
@@ -4340,7 +4343,12 @@ static void Session_OpenQ4GuiAction_f( const idCmdArgs &args ) {
 
 static void Session_RetainedGui_f( const idCmdArgs &args ) {
 #ifndef ID_DEDICATED
+	// While a retained home screen covers the legacy menu it is the GUI that
+	// receives input, so the semantic diagnostics address it.
 	idUserInterface* gui = sessLocal.GetActiveGUI();
+	if ( sessLocal.guiRetainedHome != NULL && gui == sessLocal.guiMainMenu ) {
+		gui = sessLocal.guiRetainedHome;
+	}
 	if ( UI_RetainedDiagnostic( gui, args ) ) {
 		sessLocal.DispatchCommand( gui, "openq4-retained-actions" );
 		return;
@@ -4366,7 +4374,13 @@ static void Session_SystemSettings_f( const idCmdArgs &args ) {
 			return;
 		}
 	}
-	common->Printf( "usage: openq4_system open | report | back (requires ui_retainedSystem 1 and the normal main menu)\n" );
+	common->Printf( "usage: openq4_system open | report | back (requires ui_retained 1 or ui_retainedSystem 1 and the normal main menu)\n" );
+}
+
+// Reports the ui_retained gate, the retained screen presenting now and the
+// number of live retained views; with the gate off that number stays zero.
+static void Session_RetainedStatus_f( const idCmdArgs & ) {
+	sessLocal.ReportRetainedScreens();
 }
 
 static void Session_OpenQ4GuiSet_f( const idCmdArgs &args ) {
@@ -5745,6 +5759,7 @@ void idSessionLocal::LoadLoadingGui( const char *mapName ) {
 	const char *spawnEntityFilter = mapSpawnData.serverInfo.GetString( "si_entityFilter", "" );
 	const bool mapLooksMultiplayer = !idStr::Icmpn( spawnMapPath, "mp/", 3 );
 	const bool isMultiplayerLoad = mapLooksMultiplayer || ( spawnGameType[ 0 ] != '\0' && idStr::Icmp( spawnGameType, "singleplayer" ) != 0 );
+	PrepareRetainedLevel( spawnMapPath, isMultiplayerLoad );
 
 	idDict mapDeclDict;
 	const idDict *mapDef = Session_GetMapDeclDict( spawnMapPath, spawnEntityFilter, mapDeclDict ) ? &mapDeclDict : NULL;
@@ -5801,6 +5816,10 @@ void idSessionLocal::LoadLoadingGui( const char *mapName ) {
 	} else {
 		guiLoading = uiManager->FindGui("guis/loading/generic.gui", true, false, true);
 	}
+	// ui_retained replaces the stock loading screens; map-specific GUIs stay.
+	idUserInterface *legacyLoading = guiLoading;
+	guiLoading = SelectRetainedLoadingGui( guiLoading, isMultiplayerLoad );
+	const bool retainedLoading = guiLoading != legacyLoading;
 
 	if ( guiLoading ) {
 		guiLoading->SetStateFloat( "map_loading", 0.0f );
@@ -5876,7 +5895,54 @@ void idSessionLocal::LoadLoadingGui( const char *mapName ) {
 		if ( mat != NULL && !mat->TestMaterialFlag( MF_DEFAULTED ) ) {
 			mat->SetSort( SS_GUI );
 		}
+		if ( retainedLoading ) {
+			// The retained screen draws the levelshot as an image node. Its source
+			// must be a plain VFS image name; anything else keeps the generic art.
+			guiLoading->SetStateString( "loading_levelshot", UI_RetainedImageSource( loadingBackground.c_str() ) ?
+				loadingBackground.c_str() : fallbackLoadingBackground );
+			const char *entryDetail = isMultiplayerLoad ? Session_GetLongMPGameTypeName(
+				mapSpawnData.serverInfo.GetString( "si_gameType", cvarSystem->GetCVarString( "si_gameType" ) ) ) : "";
+			guiLoading->SetStateString( "loading_detail", entryDetail ? entryDetail : "" );
+			guiLoading->StateChanged( common->GetPresentationTime() );
+		}
 	}
+}
+
+/*
+===============
+idSessionLocal::PublishRetainedPauseState
+
+The retained pause screen's level block: the level, difficulty, the map's
+objectives summary and its levelshot.
+===============
+*/
+void idSessionLocal::PublishRetainedPauseState( idUserInterface *gui ) {
+#ifndef ID_DEDICATED
+	if ( gui == NULL ) {
+		return;
+	}
+	const char *mapPath = mapSpawnData.serverInfo.GetString( "si_map", currentMapName.c_str() );
+	const char *entityFilter = mapSpawnData.serverInfo.GetString( "si_entityFilter", "" );
+	idDict mapDeclDict;
+	const bool known = Session_GetMapDeclDict( mapPath, entityFilter, mapDeclDict );
+	const char *level = known ? common->GetLanguageDict()->GetString( mapDeclDict.GetString( "name", mapPath ) ) : mapPath;
+	const char *objectives = known ? common->GetLanguageDict()->GetString( mapDeclDict.GetString( "objectives", "" ) ) : "";
+	static const char *skills[] = { "#str_200014", "#str_200015", "#str_200016", "#str_200017", "#str_42063" };
+	const int skill = idMath::ClampInt( 0, 4, cvarSystem->GetCVarInteger( "g_skill" ) );
+	gui->SetStateString( "pause_level", level );
+	gui->SetStateString( "pause_detail", common->GetLanguageDict()->GetString( skills[ skill ] ) );
+	gui->SetStateString( "pause_objectives", objectives );
+	gui->SetStateString( "pause_shot", RetainedPauseShot( mapPath ).c_str() );
+	gui->StateChanged( common->GetPresentationTime() );
+#endif
+}
+
+// The level block's levelshot: the map's menu levelshot, or the generic art
+// when that is not a plain image name.
+idStr idSessionLocal::RetainedPauseShot( const char *mapPath ) const {
+	char screenshot[ MAX_STRING_CHARS ];
+	fileSystem->FindMapScreenshot( mapPath, screenshot, sizeof( screenshot ) );
+	return UI_RetainedImageSource( screenshot ) ? screenshot : "gfx/guis/loadscreens/generic";
 }
 
 /*
@@ -7683,7 +7749,13 @@ void idSessionLocal::Draw() {
 			}
 		}
 
-		guiActive->Redraw( presentationTime );
+		if ( guiRetainedHome != NULL && guiActive == guiMainMenu ) {
+			// ui_retained: the retained title or pause screen covers the legacy
+			// menu while it rests at home or hands a page over.
+			DrawRetainedHome( presentationTime );
+		} else {
+			guiActive->Redraw( presentationTime );
+		}
 
 		if ( guiActive == guiMainMenu ) {
 			if ( menuIntroBlackoutActive ) {
@@ -8366,6 +8438,7 @@ void idSessionLocal::Init() {
 #ifndef ID_DEDICATED
 	cmdSystem->AddCommand( "openq4_retainedGui", Session_RetainedGui_f, CMD_FL_SYSTEM, "inspect a normal retained GUI or submit semantic diagnostics without device input" );
 	cmdSystem->AddCommand( "openq4_system", Session_SystemSettings_f, CMD_FL_SYSTEM, "open, return or inspect the opt-in normal SYSTEM child without device input" );
+	cmdSystem->AddCommand( "ui_retainedStatus", Session_RetainedStatus_f, CMD_FL_SYSTEM, "report the ui_retained gate and the live retained screens" );
 #endif
 	// A rejected recoverable restart can leave no device until the next safe
 	// settings frame restores it. Never issue drawing commands into that gap.
@@ -8410,6 +8483,7 @@ void idSessionLocal::Init() {
 	// this synchronously from StartMenu made the first ESC press wait on image,
 	// material, and sound lookup before the GUI could be activated.
 	PrimeMainMenuGuiResources();
+	PreloadRetainedScreens();
 	guiMainMenu_MapList = uiManager->AllocListGUI();
 	guiMainMenu_MapList->Config( guiMainMenu, "mapList" );
 	idAsyncNetwork::client.serverList.GUIConfig( guiMainMenu, "serverList" );

@@ -97,13 +97,29 @@ public:
 		else common->DPrintf("retained UI: %s\n", message.c_str());
 	}
 	std::uintptr_t LoadMaterial(const std::string& name, int& width, int& height) override {
-		const std::string source = name.compare(0,9,"material:") == 0 ? name.substr(9) : name;
+		std::string source = name.compare(0,9,"material:") == 0 ? name.substr(9) : name;
 		// The spike's images are direct image paths/generated font pages. Full
 		// legacy multi-stage materials and movies need their own draw operation.
-		const idMaterial* material = declManager->FindMaterial(("_retained/" + source).c_str());
+		// Additive pictures (image-blend additive) add their light to the target.
+		const bool additive = source.compare(0,7,"q4-add/") == 0;
+		if (additive) source = source.substr(7);
+		const idMaterial* material = declManager->FindMaterial(((additive ? "_retainedAdd/" : "_retained/") + source).c_str());
 		if (material == NULL || material->GetState() == DS_DEFAULTED) return 0;
 		width = material->GetImageWidth(); height = material->GetImageHeight();
+		if (width <= 0 || height <= 0) {
+			// Inside a level load the image manager defers file reads to the first
+			// bind. Fitted pictures (a levelshot covering the view) need their real
+			// dimensions now, so bind the stage once to load it.
+			materialImageInfo_t info;
+			renderSystem->GetMaterialStageImageInfo(material,0,info);
+			width = material->GetImageWidth(); height = material->GetImageHeight();
+			if (width <= 0 || height <= 0) return 0;
+		}
 		return reinterpret_cast<std::uintptr_t>(material);
+	}
+	std::uintptr_t MultiplyMaterial() override {
+		const idMaterial* material = declManager->FindMaterial("_retainedMultiply");
+		return material != NULL && material->GetState() != DS_DEFAULTED ? reinterpret_cast<std::uintptr_t>(material) : 0;
 	}
 	void Draw(const std::vector<openq4::ui::Vertex>& vertices, const std::vector<int>& indices, std::uintptr_t handle) override {
 		const idMaterial* material = handle ? reinterpret_cast<const idMaterial*>(handle) : declManager->FindMaterial("_retainedSolid");
@@ -125,7 +141,10 @@ public:
 				// Untextured vectors use premultiplied blending all the way to
 				// the target. Current engine font images store straight coverage;
 				// their uniform text tint is unpremultiplied at this boundary.
-				const bool straightImage = handle && idStr::Icmpn(material->GetName(),"_retainedLayer/",15) != 0;
+				// Multiply factors are plain colours for a dst*src blend.
+				// Additive pictures keep premultiplied tints: the tint scales their light.
+				const bool straightImage = handle && idStr::Icmpn(material->GetName(),"_retainedLayer/",15) != 0 &&
+					idStr::Icmp(material->GetName(),"_retainedMultiply") != 0 && idStr::Icmpn(material->GetName(),"_retainedAdd/",13) != 0;
 				const float inverseAlpha = straightImage ? (source.a > 0 ? 1.f/source.a : 0) : 1.f;
 				const float components[4] = {source.r*inverseAlpha, source.g*inverseAlpha, source.b*inverseAlpha, source.a};
 				for (int channel = 0; channel < 4; ++channel) {
@@ -917,6 +936,11 @@ void RetainedUI_Draw() {
 	if (RetainedUI_DrawViewRoot(previewView,viewport)) RecordProfile(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-profileStart).count());
 }
 bool RetainedUI_IsOpen() { return applicationOpen.load(std::memory_order_acquire); }
+int RetainedUI_ViewCount() { return static_cast<int>(views.size()); }
+void RetainedUI_PrecacheImage(const std::string& source, bool additive) {
+	if (source.empty() || !openq4::ui::ValidImageSource(source)) return;
+	declManager->FindMaterial(((additive ? "_retainedAdd/" : "_retained/") + source).c_str());
+}
 void RetainedUI_LanguageChanged() { ++languageRevision;TouchEditResources(); }
 unsigned RetainedUI_InputGeneration() { return inputGeneration; }
 void RetainedUI_Close() { Close(); }
@@ -1034,6 +1058,8 @@ void RetainedUI_Draw() {}
 void RetainedUI_Close() {}
 void RetainedUI_LanguageChanged() {}
 bool RetainedUI_IsOpen() { return false; }
+int RetainedUI_ViewCount() { return 0; }
+void RetainedUI_PrecacheImage(const std::string&, bool) {}
 unsigned RetainedUI_InputGeneration() { return 0; }
 void RetainedUI_FrameInput() {}
 bool RetainedUI_ProcessEvent(const sysEvent_s*) { return false; }

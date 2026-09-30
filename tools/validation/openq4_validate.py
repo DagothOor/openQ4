@@ -648,6 +648,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         (root / "tools" / "tests" / 'ui_list_selection_safety.py', []),
         (root / "tools" / "tests" / 'ui_session_test_gui.py', []),
         (root / "tools" / "tests" / 'ui_system_session_route.py', []),
+        (root / "tools" / "tests" / 'ui_retained_gate.py', []),
         (root / "tools" / "tests" / 'ui_retained_resource_lifecycle.py', []),
         (root / "tools" / "tests" / 'ui_retained_adapter.py', []),
         (root / "tools" / "tests" / 'ui_scrollbar_interaction.py', ['--mutations']),

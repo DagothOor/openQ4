@@ -86,7 +86,7 @@ Json::Value SnapshotValue(const Value& value) {
 	return result;
 }
 bool ReadSnapshotValue(const Json::Value& source, Value& value) {
-	if (!SnapshotFields(source,{"type","unit","text","data"}) || !source["type"].isUInt() || source["type"].asUInt() > unsigned(ValueType::Transform) ||
+	if (!SnapshotFields(source,{"type","unit","text","data"}) || !source["type"].isUInt() || source["type"].asUInt() > unsigned(ValueType::Image) ||
 		!source["unit"].isString() || !source["text"].isString() || !source["data"].isArray() || source["data"].size() != 5) return false;
 	value.type = ValueType(source["type"].asUInt()); value.unit = source["unit"].asString(); value.text = source["text"].asString();
 	for (Json::ArrayIndex i = 0; i < 5; ++i) {
@@ -176,10 +176,9 @@ Vertex Interpolate(const Vertex& a, const Vertex& b, float t) {
 		a.b + (b.b-a.b)*t, a.a + (b.a-a.a)*t};
 }
 
-void Clip(std::vector<Vertex>& polygon, int axis, float edge, bool greater) {
+void Clip(std::vector<Vertex>& polygon, std::vector<Vertex>& output, int axis, float edge, bool greater) {
 	if (polygon.empty()) return;
-	std::vector<Vertex> output;
-	output.reserve(polygon.size() + 1);
+	output.clear();
 	auto distance = [&](const Vertex& v) { return ((axis == 0 ? v.x : v.y) - edge) * (greater ? 1 : -1); };
 	Vertex previous = polygon.back();
 	float previousDistance = distance(previous);
@@ -252,10 +251,13 @@ public:
 		delete geometry;
 	}
 	void RenderGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector2f translation, Rml::TextureHandle texture) override {
-		if (failed || !handle || (scissorEnabled && (scissor.Width() <= 0 || scissor.Height() <= 0))) return;
+		float left = 0, top = 0, right = 0, bottom = 0;
+		const bool clipping = ActiveClip(left, top, right, bottom);
+		if (failed || !handle || (clipping && (right <= left || bottom <= top))) return;
 		const Geometry& geometry = *reinterpret_cast<const Geometry*>(handle);
 		std::vector<Vertex> vertices;
 		vertices.reserve(geometry.vertices.size());
+		float minX = OpenClip, minY = OpenClip, maxX = -OpenClip, maxY = -OpenClip;
 		for (const auto& source : geometry.vertices) {
 			const Rml::Vector4f p(source.position.x + translation.x, source.position.y + translation.y, 0, 1);
 			const auto transformed = hasTransform ? transform * p : p;
@@ -263,16 +265,37 @@ public:
 			vertices.push_back({transformed.x / transformed.w, transformed.y / transformed.w,
 				source.tex_coord.x, source.tex_coord.y,
 				source.colour.red / 255.f, source.colour.green / 255.f, source.colour.blue / 255.f, source.colour.alpha / 255.f});
+			minX = std::min(minX,vertices.back().x); maxX = std::max(maxX,vertices.back().x);
+			minY = std::min(minY,vertices.back().y); maxY = std::max(maxY,vertices.back().y);
 		}
-		if (!scissorEnabled) { Submit(vertices, geometry.indices, texture); return; }
-		std::vector<Vertex> clipped;
+		// Whole geometry outside the clip draws nothing; inside, it needs no cut.
+		if (clipping && (maxX <= left || minX >= right || maxY <= top || minY >= bottom)) return;
+		const bool inside = !clipping || (minX >= left && maxX <= right && minY >= top && maxY <= bottom);
+		if (texture == MultiplyTexture) {
+			// Multiply vertices carry the factor each pixel's destination takes.
+			// That is exact only against the caller's own target: an isolated
+			// layer starts transparent, and its composite is premultiplied over.
+			// There, and on hosts without the material, darken by the factor's
+			// luminance so the element still reads as a shadow cast in the light.
+			const auto material = layers.empty() ? host.MultiplyMaterial() : 0;
+			if (material) texture = material;
+			else {
+				texture = 0; ++statistics.multiplyFallbacks;
+				for (auto& vertex : vertices) {
+					const float factor = .2126f*vertex.r + .7152f*vertex.g + .0722f*vertex.b;
+					vertex.r = vertex.g = vertex.b = 0; vertex.a = std::clamp(1-factor,0.f,1.f);
+				}
+			}
+		}
+		if (inside) { Submit(vertices, geometry.indices, texture); return; }
+		std::vector<Vertex> clipped, polygon, scratch;
 		std::vector<int> indices;
 		for (size_t i = 0; i < geometry.indices.size(); i += 3) {
-			std::vector<Vertex> polygon = {vertices[geometry.indices[i]], vertices[geometry.indices[i+1]], vertices[geometry.indices[i+2]]};
-			Clip(polygon, 0, static_cast<float>(scissor.Left()), true);
-			Clip(polygon, 0, static_cast<float>(scissor.Right()), false);
-			Clip(polygon, 1, static_cast<float>(scissor.Top()), true);
-			Clip(polygon, 1, static_cast<float>(scissor.Bottom()), false);
+			polygon.assign({vertices[geometry.indices[i]], vertices[geometry.indices[i+1]], vertices[geometry.indices[i+2]]});
+			Clip(polygon, scratch, 0, left, true);
+			Clip(polygon, scratch, 0, right, false);
+			Clip(polygon, scratch, 1, top, true);
+			Clip(polygon, scratch, 1, bottom, false);
 			if (polygon.size() < 3) continue;
 			const int base = static_cast<int>(clipped.size());
 			clipped.insert(clipped.end(), polygon.begin(), polygon.end());
@@ -283,6 +306,7 @@ public:
 		if (!indices.empty()) Submit(clipped, indices, texture);
 	}
 	Rml::TextureHandle LoadTexture(Rml::Vector2i& dimensions, const Rml::String& source) override {
+		if (source == MultiplySource) { dimensions = {1,1}; return MultiplyTexture; }
 		return host.LoadMaterial(source, dimensions.x, dimensions.y);
 	}
 	Rml::TextureHandle GenerateTexture(Rml::Span<const Rml::byte>, Rml::Vector2i) override {
@@ -292,6 +316,47 @@ public:
 	void ReleaseTexture(Rml::TextureHandle) override {} // Host material manager owns them.
 	void EnableScissorRegion(bool enable) override { scissorEnabled = enable; }
 	void SetScissorRegion(Rml::Rectanglei region) override { scissor = region; }
+	// Under a transform RmlUi clips overflow with the clipping box's geometry
+	// instead of a scissor. Translate and scale keep that box axis-aligned, so
+	// the rectangle clip in RenderGeometry applies it exactly. Shapes a
+	// rectangle cannot represent (rotation, rounded corners, inverse masks)
+	// clip to their bounds instead and are counted.
+	void EnableClipMask(bool enable) override { clipMaskEnabled = enable; }
+	void RenderToClipMask(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle handle, Rml::Vector2f translation) override {
+		if (!handle) return;
+		if (operation == Rml::ClipMaskOperation::SetInverse) {
+			clipMask = {-OpenClip,-OpenClip,OpenClip,OpenClip}; ++statistics.clipMaskFallbacks; return;
+		}
+		const Geometry& geometry = *reinterpret_cast<const Geometry*>(handle);
+		ClipRectangle bounds{OpenClip,OpenClip,-OpenClip,-OpenClip};
+		std::vector<Rml::Vector2f> points;
+		points.reserve(geometry.vertices.size());
+		bool exact = true;
+		for (const auto& source : geometry.vertices) {
+			const Rml::Vector4f p(source.position.x + translation.x, source.position.y + translation.y, 0, 1);
+			const auto transformed = hasTransform ? transform * p : p;
+			if (!std::isfinite(transformed.x) || !std::isfinite(transformed.y) || !std::isfinite(transformed.w) || transformed.w <= 0) {
+				exact = false; bounds = {}; points.clear(); break;
+			}
+			const Rml::Vector2f point(transformed.x / transformed.w, transformed.y / transformed.w);
+			bounds = {std::min(bounds.left,point.x),std::min(bounds.top,point.y),std::max(bounds.right,point.x),std::max(bounds.bottom,point.y)};
+			points.push_back(point);
+		}
+		if (points.empty()) bounds = {};
+		else {
+			// The triangles cover their bounds exactly only for an axis-aligned rectangle.
+			double area = 0;
+			for (size_t i = 0; i + 2 < geometry.indices.size(); i += 3) {
+				const auto& a = points[geometry.indices[i]]; const auto& b = points[geometry.indices[i+1]]; const auto& c = points[geometry.indices[i+2]];
+				area += std::abs(double(b.x-a.x)*double(c.y-a.y) - double(c.x-a.x)*double(b.y-a.y)) / 2;
+			}
+			const double box = double(bounds.right-bounds.left)*double(bounds.bottom-bounds.top);
+			exact = std::abs(area-box) <= std::max(.5, box*1e-4);
+		}
+		++(exact ? statistics.clipMasks : statistics.clipMaskFallbacks);
+		clipMask = operation == Rml::ClipMaskOperation::Set ? bounds : ClipRectangle{std::max(clipMask.left,bounds.left),
+			std::max(clipMask.top,bounds.top),std::min(clipMask.right,bounds.right),std::min(clipMask.bottom,bounds.bottom)};
+	}
 	void SetTransform(const Rml::Matrix4f* value) override {
 		hasTransform = value != nullptr;
 		if (value) transform = *value;
@@ -401,11 +466,25 @@ private:
 	void ReleaseSlot(std::uint32_t id) {
 		if (pool && id && id < pool->slots.size() && pool->slots[id].owner == this) pool->slots[id].owner = nullptr;
 	}
+	// The scissor and clip mask intersected; false when neither applies.
+	bool ActiveClip(float& left, float& top, float& right, float& bottom) const {
+		if (!scissorEnabled && !clipMaskEnabled) return false;
+		left = top = -OpenClip; right = bottom = OpenClip;
+		if (scissorEnabled) {
+			left = float(scissor.Left()); top = float(scissor.Top()); right = float(scissor.Right()); bottom = float(scissor.Bottom());
+		}
+		if (clipMaskEnabled) {
+			left = std::max(left,clipMask.left); top = std::max(top,clipMask.top);
+			right = std::min(right,clipMask.right); bottom = std::min(bottom,clipMask.bottom);
+		}
+		return true;
+	}
 	Bounds ClipBounds() const {
-		const float left = scissorEnabled ? std::clamp(float(scissor.Left()),0.f,float(viewportWidth)) : 0;
-		const float top = scissorEnabled ? std::clamp(float(scissor.Top()),0.f,float(viewportHeight)) : 0;
-		const float right = scissorEnabled ? std::clamp(float(scissor.Right()),left,float(viewportWidth)) : float(viewportWidth);
-		const float bottom = scissorEnabled ? std::clamp(float(scissor.Bottom()),top,float(viewportHeight)) : float(viewportHeight);
+		float left = 0, top = 0, right = float(viewportWidth), bottom = float(viewportHeight);
+		if (ActiveClip(left,top,right,bottom)) {
+			left = std::clamp(left,0.f,float(viewportWidth)); top = std::clamp(top,0.f,float(viewportHeight));
+			right = std::clamp(right,left,float(viewportWidth)); bottom = std::clamp(bottom,top,float(viewportHeight));
+		}
 		return {left,top,right-left,bottom-top};
 	}
 	static size_t Bytes(const Geometry& geometry) {
@@ -417,8 +496,11 @@ private:
 	}
 	Host& host;
 	RuntimeStatistics& statistics;
-	bool scissorEnabled = false, hasTransform = false;
+	struct ClipRectangle { float left = 0, top = 0, right = 0, bottom = 0; };
+	static constexpr float OpenClip = 1e30f;
+	bool scissorEnabled = false, hasTransform = false, clipMaskEnabled = false;
 	Rml::Rectanglei scissor;
+	ClipRectangle clipMask;
 	Rml::Matrix4f transform;
 	int viewportWidth = 0, viewportHeight = 0;
 	std::uint64_t viewportGeneration = 0;
@@ -655,7 +737,12 @@ struct Host::Shared { LayerPool layers; };
 Host::Host() = default;
 Host::~Host() = default;
 
-float Viewport::DpRatio() const { return Positive(displayScale) * std::clamp(Positive(userScale), .75f, 2.f) * std::min(Positive(fitScale), 1.f); }
+float Viewport::DpRatio() const {
+	// A view-height canvas follows the view like the HUD's center screen; the
+	// 4:3 stock composition always fills the height and widens with the aspect.
+	if (canvasHeight > 0 && std::isfinite(canvasHeight) && height > 0) return static_cast<float>(height) / canvasHeight;
+	return Positive(displayScale) * std::clamp(Positive(userScale), .75f, 2.f) * std::min(Positive(fitScale), 1.f);
+}
 void Viewport::FitToMinimum(float widthDp, float heightDp) {
 	fitScale = 1;
 	if (width <= 0 || height <= 0 || !std::isfinite(widthDp) || !std::isfinite(heightDp) || widthDp <= 0 || heightDp <= 0) return;
@@ -1039,9 +1126,15 @@ struct Runtime::Impl {
 			if(!current())return false;
 			auto previous = applied.find(key);
 			if (previous != applied.end() && previous->second == string) continue;
+			// Fit and alignment are authored once and folded into the decorator.
+			if (key.second == "image-fit" || key.second == "image-align-x" || key.second == "image-align-y" || key.second == "image-blend") { applied[key] = string; continue; }
 			auto* element = document->GetElementById(key.first);
 			if (!element) continue;
 			if (value.type == ValueType::Text) element->SetInnerRML(Rml::StringUtilities::EncodeRml(string));
+			else if (value.type == ValueType::Image) {
+				const auto* node = canonical->Model().FindNode(key.first);
+				if (!node || !element->SetProperty("decorator",ImageDecorator(*node,value.text))) host.Log(true,"Canonical image rejected: "+key.first);
+			}
 			else if (!element->SetProperty(opacity ? "filter" : key.second,string)) host.Log(true,"Canonical property rejected: "+key.first+"."+key.second);
 			if(!current())return false;
 			applied[key] = string;
@@ -1112,6 +1205,7 @@ std::unique_ptr<Runtime::PreparedDocument> Runtime::PrepareDocument(RuntimeCanva
             !std::isfinite(options.viewport.userScale) || options.viewport.userScale<=0 ||
             !std::isfinite(options.viewport.textScale) || options.viewport.textScale<=0 ||
             !std::isfinite(options.viewport.fitScale) || options.viewport.fitScale<=0 ||
+            !std::isfinite(options.viewport.canvasHeight) || options.viewport.canvasHeight<0 ||
             !std::isfinite(options.viewport.pixelDensityX) || options.viewport.pixelDensityX<=0 ||
             !std::isfinite(options.viewport.pixelDensityY) || options.viewport.pixelDensityY<=0 ||
             !std::isfinite(options.viewport.originX) || !std::isfinite(options.viewport.originY))return {};

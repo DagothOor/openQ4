@@ -13,12 +13,12 @@
 namespace openq4::ui {
 void VectorGeometry::Configure(const std::vector<VectorPath>& source, Host& owner, RuntimeStatistics& measurements) {
 	paths = source; host = &owner; statistics = &measurements;
-	compiled.clear(); geometry.clear(); valid = false; previousOpacity = -1;
+	compiled.clear(); compiledBlends.clear(); geometry.clear(); geometryBlends.clear(); valid = false; previousOpacity = -1;
 	hitGeometry.clear(); hitPrepared = hitValid = hitArea = false;
 }
 void VectorGeometry::CopyArtworkFrom(const VectorGeometry& source) {
-	paths = source.paths; host = source.host; statistics = source.statistics;
-	compiled.clear(); geometry.clear(); valid = false; previousOpacity = -1;
+	paths = source.paths; host = source.host; statistics = source.statistics; multiply = {};
+	compiled.clear(); compiledBlends.clear(); geometry.clear(); geometryBlends.clear(); valid = false; previousOpacity = -1;
 	hitGeometry.clear(); hitPrepared = hitValid = hitArea = false;
 }
 void VectorElement::CopyArtworkFrom(const VectorElement& source) {
@@ -46,6 +46,8 @@ bool VectorGeometry::PrepareHitGeometry(Rml::Element& element, Rml::Vector2f& or
 	if (hitPrepared && signature == hitSignature) { ++statistics->vectorHitCacheHits; return hitValid; }
 	hitSignature = signature; hitPrepared = true; hitValid = hitArea = false; hitGeometry.clear();
 	for (const auto& path : paths) {
+		// Light and shadow layers are decoration; they never enlarge a target.
+		if (path.blend != PathBlend::Normal) continue;
 		VectorMesh mesh; std::string error;
 		++statistics->vectorHitPathsCompiled;
 		if (!TessellatePath(path,options,mesh,error)) {
@@ -127,7 +129,7 @@ void VectorGeometry::Render(Rml::Element& element, bool inheritOpacity) {
 		static_cast<double>(cachedBounds.left),static_cast<double>(cachedBounds.top),static_cast<double>(cachedBounds.right),static_cast<double>(cachedBounds.bottom)};
 	const bool rebuild = !valid || signature != previous;
 	if (rebuild) {
-		compiled.clear(); previous = signature; valid = true;
+		compiled.clear(); compiledBlends.clear(); previous = signature; valid = true;
 		for (const auto& path : paths) {
 			VectorMesh result; std::string error;
 			const auto start = std::chrono::steady_clock::now();
@@ -135,30 +137,49 @@ void VectorGeometry::Render(Rml::Element& element, bool inheritOpacity) {
 			statistics->vectorCompileMilliseconds += std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
 			++statistics->vectorPathsCompiled;
 			if (!success) { host->Log(true,"Vector "+element.GetId()+"/"+error); continue; }
-			if (!result.indices.empty()) compiled.push_back(std::move(result));
+			if (!result.indices.empty()) { compiled.push_back(std::move(result)); compiledBlends.push_back(path.blend); }
 		}
 	} else ++statistics->vectorCacheHits;
 	for (const auto& mesh : compiled) statistics->visibleVectorCacheBytes += mesh.vertices.capacity()*sizeof(VectorVertex)+mesh.indices.capacity()*sizeof(int);
 	if (rebuild || opacity != previousOpacity) {
-		geometry.clear(); previousOpacity = opacity;
-		for (const auto& cached : compiled) {
+		geometry.clear(); geometryBlends.clear(); previousOpacity = opacity;
+		for (size_t index = 0; index < compiled.size(); ++index) {
+			const auto& cached = compiled[index];
+			const auto blend = compiledBlends[index];
 			const auto upload = std::chrono::steady_clock::now();
 			Rml::Mesh mesh;
 			mesh.vertices.reserve(cached.vertices.size());
 			auto channel = [&](double value) { return static_cast<Rml::byte>(std::round(std::clamp(value*opacity,0.0,1.0)*255)); };
-			for (const auto& v : cached.vertices) mesh.vertices.push_back({
-				{static_cast<float>(v.x),static_cast<float>(v.y)},
-				Rml::ColourbPremultiplied(channel(v.r),channel(v.g),channel(v.b),channel(v.a)),{0,0}});
+			auto unit = [](double value) { return static_cast<Rml::byte>(std::round(std::clamp(value,0.0,1.0)*255)); };
+			for (const auto& v : cached.vertices) {
+				Rml::ColourbPremultiplied colour(channel(v.r),channel(v.g),channel(v.b),channel(v.a));
+				// Premultiplied colour with zero alpha is pure addition under the
+				// ordinary over operator, in the caller's target and in layers.
+				if (blend == PathBlend::Additive) colour.alpha = 0;
+				else if (blend == PathBlend::Multiply) {
+					// Coverage and opacity lerp the factor from white toward the paint.
+					const double alpha = std::clamp(v.a*opacity,0.0,1.0);
+					colour = Rml::ColourbPremultiplied(unit(1-alpha+v.r*opacity),unit(1-alpha+v.g*opacity),unit(1-alpha+v.b*opacity),unit(alpha));
+				}
+				mesh.vertices.push_back({{static_cast<float>(v.x),static_cast<float>(v.y)},colour,{0,0}});
+			}
 			mesh.indices.assign(cached.indices.begin(),cached.indices.end());
 			geometry.push_back(manager->MakeGeometry(std::move(mesh)));
+			geometryBlends.push_back(blend);
 			++statistics->vectorUploads;
 			statistics->vectorUploadMilliseconds += std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-upload).count();
 		}
 	}
+	if (!multiply && std::find(geometryBlends.begin(),geometryBlends.end(),PathBlend::Multiply) != geometryBlends.end())
+		multiply = manager->LoadTexture(std::string("material:")+MultiplySource);
 	// Geometry is already in output pixels. Submit through the render manager
 	// to retain its clipping/lifetime/order contract without a second transform.
 	manager->SetTransform(nullptr);
-	for (const auto& mesh : geometry) mesh.Render({static_cast<float>(offsetX),static_cast<float>(offsetY)});
+	for (size_t index = 0; index < geometry.size(); ++index) {
+		const Rml::Vector2f translation{static_cast<float>(offsetX),static_cast<float>(offsetY)};
+		if (geometryBlends[index] == PathBlend::Multiply) geometry[index].Render(translation,multiply);
+		else geometry[index].Render(translation);
+	}
 	manager->SetState(state);
 }
 void VectorElement::Configure(const Node& node, Host& owner, RuntimeStatistics& measurements) {

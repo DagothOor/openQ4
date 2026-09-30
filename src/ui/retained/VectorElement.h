@@ -4,11 +4,16 @@
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/Geometry.h>
 #include <RmlUi/Core/Decorator.h>
+#include <RmlUi/Core/Texture.h>
 
 namespace openq4::ui {
 class Host;
 struct Node;
 struct RuntimeStatistics;
+// Multiply-blended paths submit through this reserved texture source. The
+// renderer resolves it to the host's multiply material, never to an image.
+inline constexpr const char* MultiplySource = "q4-blend-multiply";
+inline constexpr Rml::TextureHandle MultiplyTexture = ~static_cast<Rml::TextureHandle>(0);
 class VectorGeometry {
 public:
 	void Configure(const std::vector<VectorPath>& paths, Host& host, RuntimeStatistics& statistics);
@@ -25,7 +30,10 @@ private:
 	bool hitPrepared = false, hitValid = false, hitArea = false;
 	std::vector<VectorPath> paths;
 	std::vector<VectorMesh> compiled;
+	std::vector<PathBlend> compiledBlends; // Parallel to compiled.
 	std::vector<Rml::Geometry> geometry;
+	std::vector<PathBlend> geometryBlends; // Parallel to geometry.
+	Rml::Texture multiply;
 	Host* host = nullptr;
 	RuntimeStatistics* statistics = nullptr;
 	std::array<double,12> previous{};

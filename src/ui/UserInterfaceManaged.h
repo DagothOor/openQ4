@@ -32,6 +32,9 @@ public:
 	// typed invocations inside the engine instead of console command strings.
 	virtual bool DispatchApplicationActions( const char *command, bool &closeRequested ) { return false; }
 	virtual const char *PendingApplicationCommand() const { return ""; }
+	// Front accepted session.menu verb of this exact dispatch marker, FIFO.
+	// Verbs name session operations; they are never console command text.
+	virtual bool TakeSessionRequest( const char *command, idStr &out ) { return false; }
 	// Only the manager calls these with an already checked outer allocation.
 	// Deferred wrappers forward that identity to their unregistered backend.
 	virtual openq4::ui::TextBrokerContext QueryTextContext(std::uint64_t allocation,
@@ -94,6 +97,16 @@ private:
 idUserInterfaceManaged *UI_CreateForPath( const char *qpath, bool managed = true );
 bool UI_IsRetainedPath( const char *qpath );
 bool UI_DispatchApplicationActions( idUserInterface *gui, const char *command, bool &closeRequested );
+// Take the next session verb a retained GUI accepted during the dispatch of
+// `command`. The manager checks the allocation is live before delegating.
+bool UI_TakeSessionRequest( idUserInterface *gui, const char *command, idStr &request );
+// Validates a VFS image name for a retained image node (see ValidImageSource).
+bool UI_RetainedImageSource( const char *source );
+// Resolves a bound picture ahead of its first draw; call it at startup or
+// inside a level load (see RetainedUI_PrecacheImage).
+void UI_RetainedPrecacheImage( const char *source );
+// Advance a live GUI's timelines and time events without drawing it.
+void UI_RunTimeEvents( idUserInterface *gui, int time );
 // Engine-scripted validation for classic GUIs: runs a window's onAction script,
 // or its onBackAction when back is set, as a click on the window would, and
 // returns the command it issued. No device input is read or synthesized.

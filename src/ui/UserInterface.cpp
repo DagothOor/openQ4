@@ -117,6 +117,28 @@ bool UI_DispatchApplicationActions( idUserInterface *gui, const char *command, b
 	return uiManagerLocal.DispatchApplicationActions( gui, command, closeRequested );
 }
 
+bool UI_TakeSessionRequest( idUserInterface *gui, const char *command, idStr &request ) {
+	return uiManagerLocal.TakeSessionRequest( gui, command, request );
+}
+
+void UI_RunTimeEvents( idUserInterface *gui, int time ) {
+	uiManagerLocal.RunTimeEvents( gui, time );
+}
+
+void idUserInterfaceManagerLocal::RunTimeEvents( idUserInterface *gui, int time ) {
+	for ( int i = 0; i < allocations.Num(); ++i ) {
+		if ( allocations[i] == gui ) { allocations[i]->RunTimeEvents( time ); return; }
+	}
+}
+
+bool idUserInterfaceManagerLocal::TakeSessionRequest( idUserInterface *gui, const char *command, idStr &request ) {
+	// Only a live allocation may hand its accepted verbs to the session.
+	for ( int i = 0; i < allocations.Num(); ++i ) {
+		if ( allocations[i] == gui ) return allocations[i]->TakeSessionRequest( command, request );
+	}
+	return false;
+}
+
 std::uint64_t UI_NextTextLifetime() {
 	// Engine-thread confined; never reset on manager or renderer shutdown.
 	static std::uint64_t next = 0;

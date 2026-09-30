@@ -1069,4 +1069,11 @@
 	"#str_230022"	"Wpisz liczbę całkowitą od 240 do 16384."
 	"#str_230023"	"Przed zastosowaniem wybierz obsługiwany ekran, rozmiar i częstotliwość odświeżania."
 	"#str_230024"	"Własny rozmiar dotyczy wyłącznego pełnego ekranu. Jego edycja wybiera własną rozdzielczość."
+	"#str_230025"	"WYJDŹ DO MENU"
+	"#str_230026"	"Rozpocznij kampanię lub zagraj na Arenie."
+	"#str_230027"	"Kontynuuj z zapisanej gry."
+	"#str_230028"	"Znajdź serwer, załóż mecz lub zagraj z botami."
+	"#str_230029"	"Sterowanie, obraz, dźwięk i opcje gry."
+	"#str_230030"	"BIEŻĄCA MISJA"
+	"#str_230031"	"GRA WSTRZYMANA"
 }

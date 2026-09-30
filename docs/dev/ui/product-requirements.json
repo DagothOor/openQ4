@@ -4,7 +4,7 @@
   "date": "2026-09-29",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "0c9e798fa0e373caecddef8a1a5a16db108f732c",
+    "engine_revision": "f5503259a5a2f618e5dd1cebab9adc55c2513f79",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -24,7 +24,7 @@
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "0fea1a31067df4100b4ed4975e64b41a3881025bd35a5761d8e276012ecb1d3f"
+      "sha256": "bb13f777a2b84d4bf90723b40d25d7334c00e317190390dd82ab8bc967e9859b"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -629,6 +629,12 @@
       "path": "docs/dev/ui/dimension-controls.md",
       "scope": "Four production SYSTEM window/custom fullscreen dimension fields use exact decimal-integer validation, dependent availability and owned typed drafts. Custom edits select Custom mode atomically. Separate intrinsic draft validation allows intermediate tuples while full capability checks still guard Apply, preparation and execution. Bounded native and hidden/windowed gameplay qualification only; dynamic display/resolution/refresh catalogs, visible fullscreen/platform behavior, native input, remaining effects, editor and complete product acceptance stay open.",
       "sha256": "336d30920bf71a3acb590f4dce9ce9d56b2b0cd36a12c2d6b4f17c63fc3b08bd"
+    },
+    "retained-screens": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/retained-screens.md",
+      "scope": "Opt-in retained title, single-player pause and stock loading screens behind the single ui_retained gate, with image nodes, additive and multiply path blends, a view-height canvas, typed session menu requests and exact overflow clipping under translation and scale. Windowed OpenGL/Vulkan 16:9, OpenGL 4:3 and gate-off engine captures only; the Objectives action, the Strogg variant, soft focus, Remastered loading details, multiplayer menus, GLES and complete product acceptance stay open.",
+      "sha256": "aae1fc5eb73fa4b6e79b691352a3b839c20f622ae96f64afaff67c4e2498d522"
     }
   },
   "groups": {
@@ -8421,10 +8427,12 @@
       "acceptance_evidence_needed": [
         "Backend parity captures of additive light bands, darkening emblems and nested group fades against reference compositions."
       ],
-      "status": "pending",
-      "current_evidence": [],
+      "status": "partial",
+      "current_evidence": [
+        "retained-screens"
+      ],
       "acceptance_evidence": [],
-      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required."
+      "remaining": "Per-primitive additive paths and pictures and multiply paths render through the retained renderer on OpenGL and Vulkan. Inside a composition layer a multiply path falls back to luminance darkening, so exact darkening under group opacity and layers, GLES, and backend parity captures against reference compositions remain."
     },
     {
       "id": "ART-018",
@@ -9122,10 +9130,12 @@
       "acceptance_evidence_needed": [
         "Normal-route title, pause, loading and notice cases on each device and profile."
       ],
-      "status": "pending",
-      "current_evidence": [],
+      "status": "partial",
+      "current_evidence": [
+        "retained-screens"
+      ],
       "acceptance_evidence": [],
-      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required."
+      "remaining": "Behind ui_retained, Continue leads the title when a save exists, with its levelshot, name and save time; the single-player pause leads with Resume; loading shows the level identity. Difficulty and play time in Continue's detail, multiplayer pause actions, loading tips and device-appropriate continue prompts, notices, and normal-route cases on each device and profile remain."
     },
     {
       "id": "FLOW-025",
@@ -11217,10 +11227,12 @@
       "acceptance_evidence_needed": [
         "SP, intro and MP loading captures at 4:3, 16:9 and 21:9 through a full load with each device's continue prompt, Classic against the stock screens, and a timing trace of the phase readout, tips and hand-off."
       ],
-      "status": "pending",
-      "current_evidence": [],
+      "status": "partial",
+      "current_evidence": [
+        "retained-screens"
+      ],
       "acceptance_evidence": [],
-      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "remaining": "Behind ui_retained, the stock single-player, intro and multiplayer loading compositions exist: levelshot, bands, brackets, dot matrix, grid, level name, the objectives plate, the #E06C00 bar with LOADING, the continue pulse, the server lines and the raised multiplayer band. The levelshot drift, the 240 u bar with phase, count and percentage, tips, device glyph prompts, the message line, item icon row, server card and arsenal, the Welcome hand-off, stock sounds, and 4:3/16:9/21:9 captures against the stock screens remain.",
       "constraints": {
         "band_alpha": 0.8,
         "mp_stock_band_y_u": 227,
@@ -11314,10 +11326,12 @@
       "acceptance_evidence_needed": [
         "Captures of the title screen's emblem against the stock q4logo over the lit field at 100% and 300% on GL, Vulkan and the GLES fallback, a trace of the glint's period across refresh rates, and a reduced-motion capture showing only the rim."
       ],
-      "status": "pending",
-      "current_evidence": [],
+      "status": "partial",
+      "current_evidence": [
+        "retained-screens"
+      ],
       "acceptance_evidence": [],
-      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "remaining": "Behind ui_retained, the emblem is one vector silhouette at 380,125 u (260x260 u), multiplied by its inverted color, with an additive 0.20 rim and a glint that turns once every 9 s under a wedge 12% of a turn wide about the ring's center; reduced motion hides the glint, and the emblem stays off the pause menu. A glint measured along the outline's length, the lighting-up choreography, the GLES fallback, 100%/300% comparisons with q4logo and refresh-rate traces remain.",
       "constraints": {
         "position_u": [
           380,
@@ -11362,10 +11376,12 @@
       "acceptance_evidence_needed": [
         "SP captures of the title screen with and without a save, the Marine pause menu in a mission and the Strogg pause menu after stroggification at 4:3, 16:9 and 21:9 with keyboard, controller and touch prompts, the focused-item detail line, a timing trace of the Strogg translation, a reduced-motion capture, and a check that Resume, Save Game and Quit to Menu act during the Strogg opening."
       ],
-      "status": "pending",
-      "current_evidence": [],
+      "status": "partial",
+      "current_evidence": [
+        "retained-screens"
+      ],
       "acceptance_evidence": [],
-      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "remaining": "Behind ui_retained, the title shows the emblem watermark, the wordmark and the message line explaining the focused item, and the single-player pause replaces them with GAME PAUSED and the level block (levelshot, mission, difficulty and the map's objective summary), leads with Resume and keeps only EXIT on the plinth. The Objectives action and live objectives with their state, times and last save, the softened scene, the navigation start at 172 u, the Strogg variant with its translation reveal, and complete qualification remain.",
       "constraints": {
         "message_line_u": [
           44,
