@@ -469,8 +469,10 @@
   While a level loads, its picture drifts slowly closer, the bar shows what is
   loading and how far along it is, the finished load reports how long it took,
   and the continue prompt shows your controller's button once you use one.
-  The pause menu's Objectives action, the Strogg variant, a softened backdrop,
-  loading tips and the multiplayer menus remain in development.
+  Multiplayer loads show the server's name, address, mode and limits on a card
+  and read JOINING when done. The pause menu's Objectives action, the Strogg
+  variant, a softened backdrop, loading tips and the multiplayer menus remain
+  in development.
 
 - The experimental SYSTEM page adds window and custom fullscreen width/height
   fields with localized whole-pixel validation. Custom dimensions select Custom

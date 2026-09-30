@@ -928,8 +928,9 @@ def corner_bracket(ident: str, left_u: float, top_u: float, flip_x: bool, flip_y
 
 
 def loading_document() -> dict:
-    """Section 14.17: the stock loading screens, with the Remastered detail
-    line; multiplayer raises the bottom band to 227 u and the bar to 313 u."""
+    """Section 14.17: the stock loading screens in their Remastered form: the
+    drifting levelshot, the detail line, the progress with the loader's phase,
+    and in multiplayer the band kept low under the server card."""
     doc = Document("openq4.loading")
     doc.state.update({
         "map_loading": {"type": "number", "initial": 0},
@@ -969,10 +970,8 @@ def loading_document() -> dict:
 
     top_band = vector("load-top", dict(FULL), spill(top_edge, True) + [
         path("band", [(edge(1), -400), (edge(0), -400)] + top_edge, fill=solid([0, 0, 0, 0.8]))])
-    bottom_band = vector("load-bottom", {**FULL, "transform": transform()}, spill(bottom_edge, False) + [
+    bottom_band = vector("load-bottom", dict(FULL), spill(bottom_edge, False) + [
         path("band", bottom_edge + [(edge(1), U * 480 + 400), (edge(0), U * 480 + 400)], fill=solid([0, 0, 0, 0.8]))])
-    doc.bind("load-bottom.transform", "load-bottom", "transform",
-             [0, {"op": "select", "args": [{"state": "loading_mp"}, U * (227 - 345), 0]}, 1, 1, 0])
     shot = picture("load-shot", "", {**FULL, "transform": transform()})
     doc.bind("load-shot.image", "load-shot", "image", {"state": "loading_levelshot"})
     # Remastered: the levelshot drifts in by 3% over the load; reduced motion
@@ -983,12 +982,10 @@ def loading_document() -> dict:
 
     brackets = group("brackets", {"display": keyword("block"), **absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"), "margin-left": length(-CANVAS_W / 2)}, [
         corner_bracket("bracket-tl", 8, 28, False, False), corner_bracket("bracket-tr", 580, 28, True, False),
-        group("brackets-low", {**absolute(left=0, top=0, width=CANVAS_W, height=720), "transform": transform()}, [
+        group("brackets-low", absolute(left=0, top=0, width=CANVAS_W, height=720), [
             corner_bracket("bracket-bl", 8, 374, False, True), corner_bracket("bracket-br", 580, 374, True, True)]),
     ])
     doc.bind("brackets.display", "brackets", "display", {"op": "select", "args": [{"state": "loading_intro"}, "none", "block"]})
-    doc.bind("brackets-low.transform", "brackets-low", "transform",
-             [0, {"op": "select", "args": [{"state": "loading_mp"}, U * (256 - 374), 0]}, 1, 1, 0])
     # The dot matrix: ten by two 4 u squares on a 9 u pitch, top-leading.
     dots = []
     for column in range(10):
@@ -1000,7 +997,8 @@ def loading_document() -> dict:
 
     # Identity: the level name trails at the top over a name strip (section 9).
     identity = group("identity", {"display": keyword("block"), **absolute(top=U * 34, width=CANVAS_W, height=U * 60), "left": length(50, "%"), "margin-left": length(-CANVAS_W / 2)}, [
-        vector("name-strip", absolute(left=U * 300, top=0, width=U * 340, height=U * 26), [
+        # The strip also darkens the message line, which must read over any levelshot.
+        vector("name-strip", absolute(left=U * 300, top=0, width=U * 340, height=U * 44), [
             path("strip", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})],
                  fill=linear((0, 0), ({"fraction": 1}, 0), [(0, [0, 0, 0, 0]), (0.5, [0, 0, 0, 0.55]), (1, [0, 0, 0, 0.8])]))]),
         label("level-name", "#str_230030", {**absolute(left=U * 100, top=0, width=U * 532, height=U * 26), **typeface("marine", 26, U * 26, [1, 1, 1, 0.8]),
@@ -1032,17 +1030,38 @@ def loading_document() -> dict:
         {"op": "||", "args": [{"state": "loading_mp"}, {"op": "||", "args": [{"state": "loading_intro"},
                                                                               {"op": "==", "args": [{"state": "loading_objectives"}, ""]}]}]}, "none", "block"]})
 
-    # Multiplayer server lines, trailing (section 14.17).
-    server = group("server", {"display": keyword("block"), **absolute(top=U * 250, width=CANVAS_W, height=U * 50), "left": length(50, "%"), "margin-left": length(-CANVAS_W / 2)}, [
-        label("server-name", "#str_230030", {**absolute(left=U * 100, top=0, width=U * 532, height=U * 16), **typeface("lowpixel", 18, U * 16, [1, 1, 1, 0.8]),
-              "text-align": keyword("right"), "white-space": keyword("nowrap")}),
-        label("server-address", "#str_230030", {**absolute(left=U * 100, top=U * 16, width=U * 532, height=U * 14), **typeface("lowpixel", 16, U * 14, [1, 1, 1, 0.52]),
-              "text-align": keyword("right"), "white-space": keyword("nowrap")}),
-        label("server-rules", "#str_230030", {**absolute(left=U * 100, top=U * 30, width=U * 532, height=U * 14), **typeface("lowpixel", 16, U * 14, [1, 1, 1, 0.52]),
-              "text-align": keyword("right"), "white-space": keyword("nowrap")}),
+    # Remastered multiplayer (section 14.17): the bottom band stays low and a
+    # section 6 card on the leading side, above the band's thin part, holds
+    # the server's name in its header, then its address, mode and limits.
+    cw, ch, major, minor, header = U * 250, U * 80, 12.0, 3.0, 40.0
+    outline = [(minor, 0), (cw - major, 0), (cw, major), (cw, ch - minor), (cw - minor, ch), (major, ch), (0, ch - major), (0, minor)]
+
+    def card_line(ident: str, top: float, tint: list) -> dict:
+        return label(ident, "#str_230030", {**absolute(left=15, top=top, width=cw - 30, height=20),
+                                            **typeface("lowpixel", 17, 20, tint), "white-space": keyword("nowrap")})
+
+    # It ends at 384 u, clear of the lower corner bracket (388-412 u).
+    server = group("server", {"display": keyword("block"), **absolute(top=U * 304, width=CANVAS_W, height=ch), "left": length(50, "%"),
+                              "margin-left": length(-CANVAS_W / 2)}, [
+        group("server-card", absolute(left=U * 18, top=0, width=cw, height=ch), [
+            vector("server-frame", absolute(left=0, top=0, width=cw, height=ch), [
+                path("body", outline, fill=solid([0, 0, 0, 0.94])),
+                path("wash", [(minor, 0.75), (cw - major, 0.75), (cw - major + header * 0.3, header), (0.75, header), (0.75, minor)],
+                     fill=linear((0, 0), (cw, 0), [(0, [1, 1, 1, 0.08]), (0.5, [1, 1, 1, 0.08]), (1, [1, 1, 1, 0])])),
+                path("rule", [(0, header), (cw, header)], closed=False, stroke=stroke(solid(rgb(RAIL_CARD, 0.5)), 1)),
+                path("rail", outline, stroke=stroke(solid(rgb(RAIL_CARD)), 1.5)),
+                marker_path("mark", 14, 16, 8, rgb(MARKER)),
+            ]),
+            label("server-name", "#str_230030", {**absolute(left=30, top=0, width=cw - 45, height=header),
+                  **typeface("marine", 14, header, [1, 1, 1, 0.9]), "white-space": keyword("nowrap")}),
+            card_line("server-address", header + 8, [1, 1, 1, 0.62]),
+            card_line("server-mode", header + 28, [1, 1, 1, 0.8]),
+            card_line("server-rules", header + 48, [1, 1, 1, 0.62]),
+        ]),
     ])
     doc.bind("server-name.text", "server-name", "text", {"state": "server_name"})
     doc.bind("server-address.text", "server-address", "text", {"state": "server_ip"})
+    doc.bind("server-mode.text", "server-mode", "text", {"state": "server_gametype"})
     doc.bind("server-rules.text", "server-rules", "text", {"state": "server_limit"})
     doc.bind("server.display", "server", "display", {"op": "select", "args": [{"state": "loading_mp"}, "block", "none"]})
 
@@ -1050,11 +1069,13 @@ def loading_document() -> dict:
     # holds LOADING above a 240 u bar ending at 632 u; under the bar run the
     # loader's phase with its count and, trailing, the percentage in the value
     # color. When the level is ready LOADING becomes the continue prompt for
-    # the active device: the south button and CONTINUE on a controller. The
-    # multiplayer raise still lifts the band and its bar by 118 u.
+    # the active device: the south button and CONTINUE on a controller.
     bar_x, bar_w, tail = U * 392, U * 240, U * 8
+    # Multiplayer never waits: when its load ends the prompt reads JOINING.
+    joining = {"op": "&&", "args": [{"state": "loading_mp"}, {"op": ">=", "args": [{"state": "map_loading"}, 1]}]}
     prompt = {"op": "select", "args": [{"state": "loading_ready"},
-              {"op": "select", "args": [{"state": "loading_controller"}, "#str_200984", "#str_200937"]}, "#str_200938"]}
+              {"op": "select", "args": [{"state": "loading_controller"}, "#str_200984", "#str_200937"]},
+              {"op": "select", "args": [joining, "#str_230037", "#str_200938"]}]}
     glyph_shown = {"op": "select", "args": [{"op": "&&", "args": [{"state": "loading_ready"}, {"state": "loading_controller"}]},
                                             "block", "none"]}
 
@@ -1083,7 +1104,7 @@ def loading_document() -> dict:
                                   **typeface("lowpixel", 14, U * 10, tint), "white-space": keyword("nowrap"), **more})
 
     progress = group("progress", {**absolute(top=U * 426, width=CANVAS_W, height=U * 54), "left": length(50, "%"),
-                                  "margin-left": length(-CANVAS_W / 2), "transform": transform()}, [
+                                  "margin-left": length(-CANVAS_W / 2)}, [
         prompt_row("progress-prompt-shadow", 1.5, [0, 0, 0, 0.8]),
         prompt_row("progress-prompt", 0, [1, 1, 1, 1]),
         vector("progress-track", absolute(left=bar_x, top=U * 26, width=bar_w, height=U * 6), [
@@ -1108,8 +1129,6 @@ def loading_document() -> dict:
     ])
     doc.bind("progress-fill-clip.width", "progress-fill-clip", "width",
              {"op": "*", "args": [{"op": "clamp", "args": [{"state": "map_loading"}, 0, 1]}, bar_w]})
-    doc.bind("progress.transform", "progress", "transform",
-             [0, {"op": "select", "args": [{"state": "loading_mp"}, U * (313 - 431), 0]}, 1, 1, 0])
     for row in ("progress-prompt", "progress-prompt-shadow"):
         doc.bind(f"{row}-text.text", f"{row}-text", "text", prompt)
         doc.bind(f"{row}-glyph.display", f"{row}-glyph", "display", glyph_shown)

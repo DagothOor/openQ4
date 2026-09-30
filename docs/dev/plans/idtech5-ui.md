@@ -90,10 +90,10 @@ nodes, additive and multiply path blends, a view-height canvas, typed session
 menu requests and exact overflow clipping under translation and scale. The
 loading screen shows the Remastered progress: the loader's phase with its
 place or asset count, the percentage, the load time and a controller continue
-prompt. The pause menu's Objectives action and live objectives, the Strogg
-variant, the softened backdrop, loading tips, the Remastered multiplayer
-loading screen and the multiplayer Escape and Welcome menus remain. No gate
-closes.
+prompt, and in multiplayer the server card and JOINING. The pause menu's
+Objectives action and live objectives, the Strogg variant, the softened
+backdrop, loading tips, the multiplayer arsenal and the Escape and Welcome
+menus remain. No gate closes.
 
 ## Objective and immutable completion scope
 

@@ -123,6 +123,8 @@ The [retained screen increment](retained-screens.md), based on engine `f5503259a
 
 The retained loading screen's Remastered progress, based on engine `9417f8bbd1465dc54ed63f16e917cdac823e60fb`, adds the levelshot drift, the difficulty line, LOADING over a 240 u bar with the loader's phase and its place or asset count, the percentage, the load time and a continue prompt that follows the last input family. Real single-player loads traced the phases in order on OpenGL and Vulkan. `FLOW-024` and `FLOW-047` gain partial evidence without a status change; tips, touch prompts and the Remastered multiplayer screen remain. Evidence: `.tmp/ui/retained-loading/validation-evidence.json`, SHA-256 `9961bf8402d8897d4d95be20ab20f780ccd371c674c0b7371b676c4bdcce2fc8`.
 
+The retained loading screen's Remastered multiplayer composition, based on engine `f1b696db3965e90792d5275718c94f4e64d1ef56`, keeps the band low under a server card with the server name, address, mode and limits, and reads JOINING when a multiplayer load ends. `FLOW-047` gains partial evidence without a status change; players by team, the server message, the arsenal and the Welcome hand-off remain. Evidence: `.tmp/ui/retained-loading-mp/validation-evidence.json`, SHA-256 `238cca71ae82b18ded323317822f1e770b3db55f4ebeea9afc58753cb73994db`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial

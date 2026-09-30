@@ -4,7 +4,7 @@
   "date": "2026-09-29",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "9417f8bbd1465dc54ed63f16e917cdac823e60fb",
+    "engine_revision": "f1b696db3965e90792d5275718c94f4e64d1ef56",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -24,7 +24,7 @@
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "05258dec44afe455de8237c718f3a5192b03b04caf341a2c5c86f9d45038a149"
+      "sha256": "b5e5f6daf25c2f3b7938cf23c780c8a425364fbddce27a0debdc3b0050e4ac6c"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -634,13 +634,19 @@
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Opt-in retained title, single-player pause and stock loading screens behind the single ui_retained gate, with image nodes, additive and multiply path blends, a view-height canvas, typed session menu requests and exact overflow clipping under translation and scale. Windowed OpenGL/Vulkan 16:9, OpenGL 4:3 and gate-off engine captures only; the Objectives action, the Strogg variant, soft focus, Remastered loading details, multiplayer menus, GLES and complete product acceptance stay open.",
-      "sha256": "7616c23cfa2bb6afb7fd99fb53f977abd09e6edbf0918a3d497ed10f12723ba8"
+      "sha256": "9c2a3595ede56b30ca3363986fd1dd417c308d24f4176df45af67201b8d9d726"
     },
     "retained-loading-progress": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained loading screen's Remastered progress behind ui_retained: the levelshot drift, the difficulty line, LOADING over a 240 u bar with the loader's phase and its place or asset count, the percentage, the load time and a continue prompt that follows the last input family. Real single-player loads traced the phases in order on OpenGL and Vulkan; the rendered line was captured through testGUI. Tips, touch and device-family glyphs, the Remastered multiplayer screen and complete product acceptance stay open.",
-      "sha256": "7616c23cfa2bb6afb7fd99fb53f977abd09e6edbf0918a3d497ed10f12723ba8"
+      "sha256": "9c2a3595ede56b30ca3363986fd1dd417c308d24f4176df45af67201b8d9d726"
+    },
+    "retained-loading-multiplayer": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/retained-screens.md",
+      "scope": "The retained loading screen's Remastered multiplayer composition behind ui_retained: the bottom band kept low, a section 6 server card on the leading side with the server name, address, mode and limits, JOINING when a multiplayer load ends, and the name strip darkening the message line. Captured through testGUI on OpenGL and Vulkan; players by team, the server message, the arsenal, the Welcome hand-off and complete product acceptance stay open.",
+      "sha256": "9c2a3595ede56b30ca3363986fd1dd417c308d24f4176df45af67201b8d9d726"
     }
   },
   "groups": {
@@ -11237,10 +11243,11 @@
       "status": "partial",
       "current_evidence": [
         "retained-screens",
-        "retained-loading-progress"
+        "retained-loading-progress",
+        "retained-loading-multiplayer"
       ],
       "acceptance_evidence": [],
-      "remaining": "Behind ui_retained, the stock single-player, intro and multiplayer loading compositions exist (levelshot, bands, brackets, dot matrix, grid, level name, the objectives plate, the #E06C00 bar, the continue pulse, the server lines and the raised multiplayer band), with the Remastered levelshot drift, the difficulty line, LOADING over a 240 u bar with the loader's phase and its place or asset count and the percentage, the load time when ready, and a continue prompt that switches to the south button after controller input. Tips, the touch prompt and device-family glyphs, the message line, item icon row and stock sounds, the Remastered multiplayer screen (band kept low, server card, arsenal, Welcome hand-off), and 4:3/16:9/21:9 captures against the stock screens with a timing trace through a full load remain.",
+      "remaining": "Behind ui_retained, the stock single-player, intro and multiplayer loading screens exist in their Remastered form: the levelshot with its 3% drift, bands, brackets, dot matrix, grid, level name and message line, the objectives plate, LOADING over a 240 u bar with the loader's phase and its place or asset count and the percentage, the load time and continue pulse when ready, a continue prompt that switches to the south button after controller input, and in multiplayer the band kept low under a server card with JOINING at the end. Tips, the touch prompt and device-family glyphs, players by team and the server message on the card, the arsenal filling in, the Welcome hand-off, the Classic variant with its item icon row and stock sounds, and 4:3/16:9/21:9 captures against the stock screens with a timing trace through a full load remain.",
       "constraints": {
         "band_alpha": 0.8,
         "mp_stock_band_y_u": 227,

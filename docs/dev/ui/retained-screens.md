@@ -63,9 +63,12 @@ after editing the script; `--check` fails when an output is stale.
   finishing) or the asset queue's count, and the percentage in the value
   color. When the load finishes, the phase line reports the load time and
   LOADING becomes the continue prompt for the last-used device: the desktop
-  prompt, or the south button and CONTINUE after controller input. Multiplayer
-  shows the server lines and keeps the Classic raise of the bottom band and
-  the bar.
+  prompt, or the south button and CONTINUE after controller input.
+  Multiplayer keeps the band low: a card on the leading side holds the
+  server's name in its header, then its address, mode and limits, and a
+  finished multiplayer load reads JOINING, since multiplayer never waits for
+  a click. The name strip darkens the message line so it reads over any
+  levelshot.
 
 Band motion follows the stock choreography (section 8): opening reveals the
 content, choosing a page sends the bands to the page dock (`depart`), a
@@ -146,7 +149,8 @@ controller or the mouse switches the prompt.
   state. It checks the schema additions, the additive and multiplied draws,
   the transformed clip, the emblem glint and its reduced-motion rule, the
   levelshot drift, the phase line, the percentage and the controller prompt,
-  and that every action is an allowlisted session verb.
+  the multiplayer server card and JOINING, and that every action is an
+  allowlisted session verb.
 - `tools/tests/ui_retained_gate.py` qualifies the gate as described above,
   including the startup preload, the level-load precache and the loading phase
   line, and pins the frame pump order that lets RESUME retire the pause screen.
@@ -182,6 +186,13 @@ loaded no retained document. Evidence:
 `.tmp/ui/retained-loading/validation-evidence.json`, SHA-256
 `9961bf8402d8897d4d95be20ab20f780ccd371c674c0b7371b676c4bdcce2fc8`.
 
+The Remastered multiplayer composition was captured on OpenGL and Vulkan at
+1280x720 and on OpenGL at 1024x768: the band stays low, the server card stands
+clear of the lower corner bracket, the message line reads over a bright
+levelshot, and a finished multiplayer load reads JOINING. Evidence:
+`.tmp/ui/retained-loading-mp/validation-evidence.json`, SHA-256
+`238cca71ae82b18ded323317822f1e770b3db55f4ebeea9afc58753cb73994db`.
+
 ## Known limitations
 
 - The pause menu has no OBJECTIVES action yet, so the navigation holds six of
@@ -197,6 +208,7 @@ loaded no retained document. Evidence:
 - The multiplayer Escape and Welcome menus (section 14.18) keep the stock
   menus: the retained home screen is never presented in a multiplayer game.
 - The loading screen has no tips and no touch prompt (touch counts as desktop
-  input), and multiplayer keeps the Classic composition rather than the
-  Remastered one: the band kept low, the server card, the arsenal filling in
-  and the JOINING hand-off.
+  input). The multiplayer server card lacks the players by team and the
+  server's message, the arsenal does not fill in (the game publishes no item
+  spawns to the loading screen), and JOINING does not yet hand over to a
+  Welcome menu.

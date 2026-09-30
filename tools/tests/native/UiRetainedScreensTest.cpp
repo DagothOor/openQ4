@@ -258,7 +258,7 @@ int main(int argc, char** argv) {
 		ActionInvocation invocation;
 		Check(runtime.ResolveAction("resume",invocation,error) && std::get<std::string>(invocation.arguments.at("command")) == "resume","RESUME returns to the game");
 	}
-	// Loading: progress, the continue prompt and the multiplayer composition.
+	// Loading: progress, the continue prompt and the multiplayer server card.
 	{
 		const auto source = Read(argv[3]);
 		Document document; std::vector<Diagnostic> diagnostics;
@@ -284,10 +284,8 @@ int main(int argc, char** argv) {
 		Bounds phaseBox, countBox;
 		Check(runtime.GetBounds("progress-phase",phaseBox) && runtime.GetBounds("progress-count",countBox) &&
 			countBox.x >= phaseBox.x+phaseBox.width,"the count follows its phase");
-		// The bar's group carries the multiplayer raise transform, so the fill
-		// is clipped through the clip mask, never left whole.
-		const auto statistics = runtime.Statistics();
-		Check(statistics.clipMasks > 0 && statistics.clipMaskFallbacks == 0,"the fill clips exactly under the raise transform");
+		// The fill's clip is exact: no clip is approximated by its bounds.
+		Check(runtime.Statistics().clipMaskFallbacks == 0,"the fill clips exactly");
 		// Remastered: the levelshot drifts in by 3% over the load, unless
 		// motion is reduced.
 		const auto drift = runtime.PresentedValue("load-shot","transform");
@@ -312,14 +310,22 @@ int main(int argc, char** argv) {
 		Check(controllerPrompt && controllerPrompt->text == "#str_200984" && glyph && glyph->text == "block",
 			"a controller shows the south button and CONTINUE");
 		Check(runtime.SetState({{"loading_controller",false}},error,2.2),"back to the desktop prompt");
-		Check(runtime.SetState({{"loading_mp",true}},error,3),"multiplayer composition");
+		const auto spCard = runtime.PresentedValue("server","display");
+		Check(spCard && spCard->text == "none","single player shows no server card");
+		Check(runtime.SetState({{"loading_mp",true},{"loading_ready",false},{"map_loading",1.0},{"server_name",std::string("openQ4 Test Server")},
+			{"server_gametype",std::string("Deathmatch")}},error,3),"multiplayer composition");
 		runtime.Frame(viewport,3);
-		// Transforms move presentation, not layout boxes: read the presented value.
-		const auto raised = runtime.PresentedValue("progress","transform");
-		const auto band = runtime.PresentedValue("load-bottom","transform");
-		Check(raised && Near(static_cast<float>(raised->data[1]),-177,.01f) && band && Near(static_cast<float>(band->data[1]),-177,.01f),
-			"multiplayer raises the bottom band to 227 u and the bar to 313 u");
-		Check(runtime.GetBounds("progress-prompt-text",labelMp) && Near(labelSp.y,labelMp.y),"the raise leaves layout untouched");
+		// Remastered multiplayer keeps the band low, with the server card on the
+		// leading side, clear of the lower corner bracket (388 u, 582 dp).
+		const auto card = runtime.PresentedValue("server","display");
+		const auto mode = runtime.PresentedValue("server-mode","text");
+		Bounds cardBox;
+		Check(card && card->text == "block" && mode && mode->text == "Deathmatch","multiplayer shows the server card");
+		const auto joining = runtime.PresentedValue("progress-prompt-text","text");
+		Check(joining && joining->text == "#str_230037","a finished multiplayer load reads JOINING");
+		Check(runtime.GetBounds("server-card",cardBox) && Near(cardBox.x,160+27) && cardBox.y+cardBox.height <= 582,
+			"the card stands on the leading side above the bracket and the band");
+		Check(runtime.GetBounds("progress-prompt-text",labelMp) && Near(labelSp.y,labelMp.y),"the band and the bar stay low");
 	}
 	Check(host.errors == 0,"no retained diagnostics");
 	std::printf("retained screens: %d checks passed\n",checks);
