@@ -125,6 +125,8 @@ The retained loading screen's Remastered progress, based on engine `9417f8bbd146
 
 The retained loading screen's Remastered multiplayer composition, based on engine `f1b696db3965e90792d5275718c94f4e64d1ef56`, keeps the band low under a server card with the server name, address, mode and limits, and reads JOINING when a multiplayer load ends. `FLOW-047` gains partial evidence without a status change; players by team, the server message, the arsenal and the Welcome hand-off remain. Evidence: `.tmp/ui/retained-loading-mp/validation-evidence.json`, SHA-256 `238cca71ae82b18ded323317822f1e770b3db55f4ebeea9afc58753cb73994db`.
 
+The retained title carry, based on engine `2ad097f515aa39c3df6c3a0a55ce950964fb8342`, carries the chosen navigation label into the page title slot as the bands dock, on the title and single-player pause menus. With the focus glow and the emblem light already present, `ART-022` moves from pending to partial, with acceptance evidence still empty; the depth shift, high-contrast rail, symbols, tags and HDR rules remain. Evidence: `.tmp/ui/retained-title-carry/validation-evidence.json`, SHA-256 `36aa73558fb395d333351f52102d070871fc69352136a168137f07cd57785b69`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial
@@ -409,7 +411,7 @@ The [full renderer shutdown increment](image-recovery-ownership.md), based on en
 
 The [editor file publication increment](editor-file-safety.md), based on engine `a11a00181b5997993bb9e225bad63a6422386311`, adds actual native creation of complete new files without replacing an existing or racing document. Windows Clang and MSVC each pass 340 checks, GCC with sanitizers passes 344, and all three reject seven compiled mutations. The full engine build and 78 UI suites pass. Windows symlink and DrvFS FIFO limitations are recorded. This file-only increment has no new game captures. Save As/autosave UI, live document association, overwrite/conflict handling and crash/relaunch recovery remain required. No requirement status, migration acceptance or final gate changes. Evidence: `.tmp/ui/editor-new-file/validation-evidence.json`, SHA-256 `846413e35eb34ed965a57005aa6eb724b5c8d3dbc2fb46f65ba30711a509cc63`.
 
-There are **76 partial, 240 pending and one verified requirement**, counting the
+There are **77 partial, 239 pending and one verified requirement**, counting the
 22 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock

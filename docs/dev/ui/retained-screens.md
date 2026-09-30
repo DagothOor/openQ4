@@ -73,7 +73,11 @@ after editing the script; `--check` fails when an output is stale.
 Band motion follows the stock choreography (section 8): opening reveals the
 content, choosing a page sends the bands to the page dock (`depart`), a
 pop-up only dims the content (`departPopup`), and returning from a page
-brings the bands back (`returnHome`).
+brings the bands back (`returnHome`). As the bands dock, the chosen
+navigation label travels from its row into the page's title slot at 39,19 u
+and settles at the 18 dp screen-title size (`title.carry`, section 13.8),
+where the stock page then shows its own title; the session plays it only for
+a real page hand-off, and the home state starts without it.
 
 ## Hand-off to the stock pages
 
@@ -149,8 +153,8 @@ controller or the mouse switches the prompt.
   state. It checks the schema additions, the additive and multiplied draws,
   the transformed clip, the emblem glint and its reduced-motion rule, the
   levelshot drift, the phase line, the percentage and the controller prompt,
-  the multiplayer server card and JOINING, and that every action is an
-  allowlisted session verb.
+  the multiplayer server card and JOINING, the title carry on both menus, and
+  that every action is an allowlisted session verb.
 - `tools/tests/ui_retained_gate.py` qualifies the gate as described above,
   including the startup preload, the level-load precache and the loading phase
   line, and pins the frame pump order that lets RESUME retire the pause screen.
@@ -192,6 +196,13 @@ clear of the lower corner bracket, the message line reads over a bright
 levelshot, and a finished multiplayer load reads JOINING. Evidence:
 `.tmp/ui/retained-loading-mp/validation-evidence.json`, SHA-256
 `238cca71ae82b18ded323317822f1e770b3db55f4ebeea9afc58753cb73994db`.
+
+The title carry was captured on OpenGL and Vulkan at 1280x720 and on OpenGL
+at 1024x768: SETTINGS travels toward the title slot as the bands dock, and
+the stock Settings page then shows its own title in that slot. The gate-off
+title and pause runs loaded no retained document. Evidence:
+`.tmp/ui/retained-title-carry/validation-evidence.json`, SHA-256
+`36aa73558fb395d333351f52102d070871fc69352136a168137f07cd57785b69`.
 
 ## Known limitations
 

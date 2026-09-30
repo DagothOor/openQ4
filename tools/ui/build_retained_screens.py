@@ -606,6 +606,68 @@ def band_motion(doc: Document, prefix: str, content: str, extra_home: list) -> N
     ] + [track(node, prop, [(0, dark), (500, dark), (650, lit)]) for node, prop, lit, dark in lights])
 
 
+# ------------------------------------------------------------- title carry
+
+TITLE_SLOT = (39.0, 19.0)   # the page state's screen title (section 9)
+
+
+def title_carry(doc: Document, items: list, continue_rows: bool = False) -> dict:
+    """Section 13.8 title continuity (title.carry, section 8): during
+    frame.dock the activated navigation label travels from its row into the
+    page's title slot at 39,19 u and scales from the 24 dp label to the 18 dp
+    screen title in text.title, where the stock page then shows its title.
+    `items` lists (session request, label key, row top in u); with
+    `continue_rows` the rows sit one pitch lower while CONTINUE is shown. The
+    session plays carry_<request> only for a real page hand-off."""
+    width, height, scale = U * 314, U * 24.4, 0.75
+    # Scaling acts about the box center: keep the left and top edges in place.
+    end = {"type": "transform", "unit": "dp", "value": [round(-(1 - scale) * width / 2, 3), round(-(1 - scale) * height / 2, 3),
+                                                         scale, scale, 0]}
+    text_value = items[-1][1]
+    for index, (_, key, _) in reversed(list(enumerate(items[:-1], start=1))):
+        text_value = {"op": "select", "args": [{"op": "==", "args": [{"state": "carry_item"}, index]}, key, text_value]}
+    doc.state["carry_item"] = {"type": "number", "initial": 0}
+
+    def carry_timeline(ident: str, top_u: float) -> str:
+        start = {"type": "transform", "unit": "dp", "value": [round(U * (44 - TITLE_SLOT[0]), 3),
+                                                               round(U * (top_u + 2.8 - TITLE_SLOT[1]), 3), 1, 1, 0]}
+        # A play retargets its first key to the current value, so the label
+        # reaches its row by 1 ms, then travels with frame.dock from 50 ms.
+        return doc.timelines.add(ident, 550, [
+            track("title-carry", "opacity", [(0, number(1)), (1, number(1)), (550, number(1))]),
+            track("title-carry", "transform", [(0, start), (1, start), (50, start, ACCEL), (550, end)]),
+            track("title-carry", "color", [(0, colour(rgb(ORANGE))), (1, colour(rgb(ORANGE))), (50, colour(rgb(ORANGE)), ACCEL),
+                                           (550, colour([1, 1, 1, 0.5]))]),
+        ])
+
+    for index, (request, _, top_u) in enumerate(items, start=1):
+        steps = [{"op": "setState", "values": {"carry_item": index}}]
+        plain = carry_timeline(f"carry-{request}", top_u)
+        if continue_rows:
+            lowered = carry_timeline(f"carry-{request}-continue", top_u + 30)
+            steps.append({"op": "if", "condition": {"state": "menu_continue"},
+                          "then": [{"op": "playTimeline", "timeline": lowered}],
+                          "else": [{"op": "playTimeline", "timeline": plain}]})
+        else:
+            steps.append({"op": "playTimeline", "timeline": plain})
+        doc.events[f"carry_{request}"] = steps
+    doc.bind("title-carry.text", "title-carry", "text", text_value)
+    return group("carry", {**absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"),
+                           "margin-left": length(-CANVAS_W / 2), "pointer-events": keyword("none")}, [
+        label("title-carry", items[-1][1], {**absolute(left=U * TITLE_SLOT[0], top=U * TITLE_SLOT[1], width=width, height=height),
+              **typeface("marine", 24, height, rgb(ORANGE)), "white-space": keyword("nowrap"), "opacity": number(0),
+              "transform": transform()}),
+    ])
+
+
+def hide_carry_at_home(doc: Document) -> None:
+    """Opening the menu, or coming back from a page, starts without a carried
+    title; the page's own title has taken over by then."""
+    for timeline in doc.timelines.items:
+        if timeline["id"] in ("open", "returnHome"):
+            timeline["tracks"].append(track("title-carry", "opacity", [(0, number(0)), (timeline["durationMs"], number(0))]))
+
+
 # ------------------------------------------------------------------ the emblem
 
 # The Quake emblem traced from q4logo in its 260x260 u window at 380,125 u
@@ -798,11 +860,14 @@ def title_document() -> dict:
         *framing_bands("band"),
         content,
         prompt_bar(doc, [("#str_107019", "#str_200747"), ("#str_107020", "#str_200013")]),
+        title_carry(doc, [("singlePlayer", "#str_42000", 212.2), ("loadGame", "#str_200001", 242.2),
+                          ("multiplayer", "#str_200002", 272.2), ("settings", "#str_200009", 302.2)], continue_rows=True),
         exit_modal,
         group("fade", {**FULL, "background-color": colour([0, 0, 0, 0]), "pointer-events": keyword("none")}),
     ])
     band_motion(doc, "band", "home", [("wordmark", "image-color", colour([1, 1, 1, 1]), colour([1, 1, 1, 0])),
                                       ("home-stage", "opacity", number(1), number(0))])
+    hide_carry_at_home(doc)
     return doc.build(root)
 
 
@@ -901,11 +966,14 @@ def pause_document() -> dict:
         *framing_bands("band"),
         content,
         prompt_bar(doc, [("#str_107019", "#str_200747"), ("#str_107020", "#str_200381")]),
+        title_carry(doc, [("saveGame", "#str_200003", 212.2), ("loadGame", "#str_200001", 242.2),
+                          ("restartLevel", "#str_229983", 272.2), ("settings", "#str_200009", 302.2)]),
         quit_modal,
         exit_modal,
         group("fade", {**FULL, "background-color": colour([0, 0, 0, 0]), "pointer-events": keyword("none")}),
     ])
     band_motion(doc, "band", "home", [])
+    hide_carry_at_home(doc)
     return doc.build(root)
 
 

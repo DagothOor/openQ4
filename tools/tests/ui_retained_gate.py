@@ -111,6 +111,9 @@ struct sessionMenuSaveDescription_t { idStr saveName, description, screenshot; b
 static bool Session_MenuReadSaveDescription(const idStr& slot, sessionMenuSaveDescription_t& out) {
     out.saveName = slot; out.description = "Air Defense Bunker"; out.screenshot = "savegames/quick.tga"; return true;
 }
+static const char* va(const char* fmt, ...) {
+    static char text[1024]; va_list args; va_start(args, fmt); std::vsnprintf(text, sizeof(text), fmt, args); va_end(args); return text;
+}
 static bool Session_RetainedScreensEnabled() { return ui_retained.GetBool(); }
 static bool Session_RetainedSystemEnabled() { return Session_RetainedScreensEnabled() || ui_retainedSystem.GetBool(); }
 class idSessionLocal {
@@ -183,6 +186,8 @@ int main() {
         // A page hand-off runs the legacy home button's own action.
         s.HandleRetainedSessionRequest(title, "loadGame");
         CHECK(legacyActions.back() == "main_b_loadgame" && title->named.back() == "depart");
+        // Its label carries into the page's title slot as the bands dock.
+        CHECK(title->named.size() >= 2 && title->named[title->named.size() - 2] == "carry_loadGame");
         CHECK(s.dispatched.back() == "play main_menu_selection" && s.RetainedHomeInputBlocked());
         legacy["desktop::active"] = 1; legacy["desktop::dest"] = 2;
         commonObject.time += 549; s.UpdateRetainedHome(); CHECK(s.guiRetainedHome == title);
@@ -194,6 +199,7 @@ int main() {
         CHECK(managerObject.loads.size() == 1);
         // Closing a home pop-up only reveals the content.
         s.HandleRetainedSessionRequest(title, "mods"); CHECK(legacyActions.back() == "main_b_mods" && title->named.back() == "departPopup");
+        CHECK(title->named[title->named.size() - 2] != "carry_mods"); // a pop-up leaves the title where it is
         commonObject.time += 201; legacy["desktop::curr"] = 5; legacy["desktop::active"] = 0; s.UpdateRetainedHome(); CHECK(s.guiRetainedHome == nullptr);
         legacy["desktop::active"] = 1; legacy["desktop::dest"] = 0; s.UpdateRetainedHome(); CHECK(s.guiRetainedHome == title && title->named.back() == "open");
         // Session verbs never become console text; quit uses the stock path.

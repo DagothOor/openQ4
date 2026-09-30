@@ -233,6 +233,27 @@ int main(int argc, char** argv) {
 		Check(shown && shown->text == "block" && hidden && hidden->text == "none" && runtime.Statistics().maskApplications == 0,
 			"reduced motion hides the glint");
 		host.reducedMotion = false;
+		// Title carry (section 13.8): SETTINGS travels from its row into the
+		// page's title slot at 39,19 u and settles at the 18 dp title size.
+		// With a save shown its row is the fifth: 212.2 + 4 * 30 u.
+		Runtime::EventEffects carry;
+		Check(runtime.RunEvent("carry_settings",12,carry,error),"a page hand-off carries its label");
+		runtime.Frame(viewport,12.002);
+		const auto begin = runtime.PresentedValue("title-carry","transform");
+		const auto carried = runtime.PresentedValue("title-carry","text");
+		Check(begin && Near(static_cast<float>(begin->data[0]),7.5f,.1f) && Near(static_cast<float>(begin->data[1]),(212.2f+120+2.8f-19)*1.5f,.2f),
+			"the carry starts on the chosen row");
+		Check(carried && carried->text == "#str_200009","the carried title is the chosen item's label");
+		runtime.Frame(viewport,12.6);
+		const auto landed = runtime.PresentedValue("title-carry","transform");
+		const auto visible = runtime.PresentedValue("title-carry","opacity");
+		Check(landed && Near(static_cast<float>(landed->data[1]),-(1-.75f)*24.4f*1.5f/2,.1f) && Near(static_cast<float>(landed->data[2]),.75f,.001f) &&
+			visible && Near(static_cast<float>(visible->data[0]),1,.001f),"it lands in the title slot at the title size");
+		Runtime::EventEffects home;
+		Check(runtime.RunEvent("returnHome",13,home,error) || runtime.PlayTimeline("returnHome",13),"back home");
+		runtime.Frame(viewport,13.7);
+		const auto gone = runtime.PresentedValue("title-carry","opacity");
+		Check(gone && Near(static_cast<float>(gone->data[0]),0,.001f),"home starts without a carried title");
 	}
 	// Pause: the level block binds the mission, difficulty, objectives and shot.
 	{
@@ -257,6 +278,14 @@ int main(int argc, char** argv) {
 		Check(shown && shown->text == "block","objectives bring their heading");
 		ActionInvocation invocation;
 		Check(runtime.ResolveAction("resume",invocation,error) && std::get<std::string>(invocation.arguments.at("command")) == "resume","RESUME returns to the game");
+		// SAVE GAME's label carries from its row at 212.2 u into the title slot.
+		Runtime::EventEffects carry;
+		Check(runtime.RunEvent("carry_saveGame",2,carry,error),"a pause page hand-off carries its label");
+		runtime.Frame(viewport,2.002);
+		const auto begin = runtime.PresentedValue("title-carry","transform");
+		const auto carried = runtime.PresentedValue("title-carry","text");
+		Check(begin && Near(static_cast<float>(begin->data[1]),(212.2f+2.8f-19)*1.5f,.2f) && carried && carried->text == "#str_200003",
+			"SAVE GAME starts on its row");
 	}
 	// Loading: progress, the continue prompt and the multiplayer server card.
 	{

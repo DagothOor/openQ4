@@ -4861,6 +4861,10 @@ void idSessionLocal::HandleRetainedSessionRequest( idUserInterface *gui, const c
 			return;
 		}
 		retainedHandoffUntil = now + ( handoff.popup ? RETAINED_POPUP_HANDOFF_MSEC : RETAINED_PAGE_HANDOFF_MSEC );
+		if ( !handoff.popup ) {
+			// The chosen label travels into the page's title slot (section 13.8).
+			guiRetainedHome->HandleNamedEvent( va( "carry_%s", handoff.request ) );
+		}
 		guiRetainedHome->HandleNamedEvent( handoff.popup ? "departPopup" : "depart" );
 		if ( command.Length() > 0 ) {
 			// The legacy action's own command, such as its selection sound.

@@ -12,7 +12,8 @@
   "pause_objectives": {"type": "string", "initial": ""},
   "pause_shot": {"type": "string", "initial": ""},
   "quitModal.visible": {"type": "boolean", "initial": false},
-  "exitModal.visible": {"type": "boolean", "initial": false}
+  "exitModal.visible": {"type": "boolean", "initial": false},
+  "carry_item": {"type": "number", "initial": 0}
  },
  "actions": {
   "resume": {"operation": "session.menu", "arguments": {"command": "resume"}},
@@ -28,7 +29,11 @@
   "quitModalHide": [{"op": "setState", "values": {"quitModal.visible": false}}],
   "exitModalShow": [{"op": "setState", "values": {"exitModal.visible": true}}],
   "exitModalHide": [{"op": "setState", "values": {"exitModal.visible": false}}],
-  "onBack": [{"op": "action", "action": "resume"}]
+  "onBack": [{"op": "action", "action": "resume"}],
+  "carry_saveGame": [{"op": "setState", "values": {"carry_item": 1}}, {"op": "playTimeline", "timeline": "carry-saveGame"}],
+  "carry_loadGame": [{"op": "setState", "values": {"carry_item": 2}}, {"op": "playTimeline", "timeline": "carry-loadGame"}],
+  "carry_restartLevel": [{"op": "setState", "values": {"carry_item": 3}}, {"op": "playTimeline", "timeline": "carry-restartLevel"}],
+  "carry_settings": [{"op": "setState", "values": {"carry_item": 4}}, {"op": "playTimeline", "timeline": "carry-settings"}]
  },
  "bindings": [
   {
@@ -57,6 +62,26 @@
    "node": "level-objectives-head",
    "property": "display",
    "value": {"op": "select", "args": [{"op": "==", "args": [{"state": "pause_objectives"}, ""]}, "none", "block"]}
+  },
+  {
+   "id": "title-carry.text",
+   "node": "title-carry",
+   "property": "text",
+   "value": {
+    "op": "select",
+    "args": [
+     {"op": "==", "args": [{"state": "carry_item"}, 1]},
+     "#str_200003",
+     {
+      "op": "select",
+      "args": [
+       {"op": "==", "args": [{"state": "carry_item"}, 2]},
+       "#str_200001",
+       {"op": "select", "args": [{"op": "==", "args": [{"state": "carry_item"}, 3]}, "#str_229983", "#str_200009"]}
+      ]
+     }
+    ]
+   }
   }
  ],
  "timelines": [
@@ -3008,6 +3033,178 @@
    ]
   },
   {
+   "id": "carry-saveGame",
+   "durationMs": 550,
+   "tracks": [
+    {
+     "node": "title-carry",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 1}},
+      {"atMs": 1, "value": {"type": "number", "value": 1}},
+      {"atMs": 550, "value": {"type": "number", "value": 1}}
+     ]
+    },
+    {
+     "node": "title-carry",
+     "property": "transform",
+     "keys": [
+      {"atMs": 0, "value": {"type": "transform", "unit": "dp", "value": [7.5, 294.0, 1, 1, 0]}},
+      {"atMs": 1, "value": {"type": "transform", "unit": "dp", "value": [7.5, 294.0, 1, 1, 0]}},
+      {
+       "atMs": 50,
+       "value": {"type": "transform", "unit": "dp", "value": [7.5, 294.0, 1, 1, 0]},
+       "easing": [0.455, 0.03, 0.515, 0.955]
+      },
+      {"atMs": 550, "value": {"type": "transform", "unit": "dp", "value": [-58.875, -4.575, 0.75, 0.75, 0]}}
+     ]
+    },
+    {
+     "node": "title-carry",
+     "property": "color",
+     "keys": [
+      {"atMs": 0, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
+      {"atMs": 1, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
+      {
+       "atMs": 50,
+       "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]},
+       "easing": [0.455, 0.03, 0.515, 0.955]
+      },
+      {"atMs": 550, "value": {"type": "color", "value": [1, 1, 1, 0.5]}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "carry-loadGame",
+   "durationMs": 550,
+   "tracks": [
+    {
+     "node": "title-carry",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 1}},
+      {"atMs": 1, "value": {"type": "number", "value": 1}},
+      {"atMs": 550, "value": {"type": "number", "value": 1}}
+     ]
+    },
+    {
+     "node": "title-carry",
+     "property": "transform",
+     "keys": [
+      {"atMs": 0, "value": {"type": "transform", "unit": "dp", "value": [7.5, 339.0, 1, 1, 0]}},
+      {"atMs": 1, "value": {"type": "transform", "unit": "dp", "value": [7.5, 339.0, 1, 1, 0]}},
+      {
+       "atMs": 50,
+       "value": {"type": "transform", "unit": "dp", "value": [7.5, 339.0, 1, 1, 0]},
+       "easing": [0.455, 0.03, 0.515, 0.955]
+      },
+      {"atMs": 550, "value": {"type": "transform", "unit": "dp", "value": [-58.875, -4.575, 0.75, 0.75, 0]}}
+     ]
+    },
+    {
+     "node": "title-carry",
+     "property": "color",
+     "keys": [
+      {"atMs": 0, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
+      {"atMs": 1, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
+      {
+       "atMs": 50,
+       "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]},
+       "easing": [0.455, 0.03, 0.515, 0.955]
+      },
+      {"atMs": 550, "value": {"type": "color", "value": [1, 1, 1, 0.5]}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "carry-restartLevel",
+   "durationMs": 550,
+   "tracks": [
+    {
+     "node": "title-carry",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 1}},
+      {"atMs": 1, "value": {"type": "number", "value": 1}},
+      {"atMs": 550, "value": {"type": "number", "value": 1}}
+     ]
+    },
+    {
+     "node": "title-carry",
+     "property": "transform",
+     "keys": [
+      {"atMs": 0, "value": {"type": "transform", "unit": "dp", "value": [7.5, 384.0, 1, 1, 0]}},
+      {"atMs": 1, "value": {"type": "transform", "unit": "dp", "value": [7.5, 384.0, 1, 1, 0]}},
+      {
+       "atMs": 50,
+       "value": {"type": "transform", "unit": "dp", "value": [7.5, 384.0, 1, 1, 0]},
+       "easing": [0.455, 0.03, 0.515, 0.955]
+      },
+      {"atMs": 550, "value": {"type": "transform", "unit": "dp", "value": [-58.875, -4.575, 0.75, 0.75, 0]}}
+     ]
+    },
+    {
+     "node": "title-carry",
+     "property": "color",
+     "keys": [
+      {"atMs": 0, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
+      {"atMs": 1, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
+      {
+       "atMs": 50,
+       "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]},
+       "easing": [0.455, 0.03, 0.515, 0.955]
+      },
+      {"atMs": 550, "value": {"type": "color", "value": [1, 1, 1, 0.5]}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "carry-settings",
+   "durationMs": 550,
+   "tracks": [
+    {
+     "node": "title-carry",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 1}},
+      {"atMs": 1, "value": {"type": "number", "value": 1}},
+      {"atMs": 550, "value": {"type": "number", "value": 1}}
+     ]
+    },
+    {
+     "node": "title-carry",
+     "property": "transform",
+     "keys": [
+      {"atMs": 0, "value": {"type": "transform", "unit": "dp", "value": [7.5, 429.0, 1, 1, 0]}},
+      {"atMs": 1, "value": {"type": "transform", "unit": "dp", "value": [7.5, 429.0, 1, 1, 0]}},
+      {
+       "atMs": 50,
+       "value": {"type": "transform", "unit": "dp", "value": [7.5, 429.0, 1, 1, 0]},
+       "easing": [0.455, 0.03, 0.515, 0.955]
+      },
+      {"atMs": 550, "value": {"type": "transform", "unit": "dp", "value": [-58.875, -4.575, 0.75, 0.75, 0]}}
+     ]
+    },
+    {
+     "node": "title-carry",
+     "property": "color",
+     "keys": [
+      {"atMs": 0, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
+      {"atMs": 1, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
+      {
+       "atMs": 50,
+       "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]},
+       "easing": [0.455, 0.03, 0.515, 0.955]
+      },
+      {"atMs": 550, "value": {"type": "color", "value": [1, 1, 1, 0.5]}}
+     ]
+    }
+   ]
+  },
+  {
    "id": "open",
    "durationMs": 250,
    "tracks": [
@@ -3047,6 +3244,11 @@
       {"atMs": 0, "value": {"type": "transform", "unit": "dp", "value": [0, 0, 1, 1, 0]}},
       {"atMs": 250, "value": {"type": "transform", "unit": "dp", "value": [0, 0, 1, 1, 0]}}
      ]
+    },
+    {
+     "node": "title-carry",
+     "property": "opacity",
+     "keys": [{"atMs": 0, "value": {"type": "number", "value": 0}}, {"atMs": 250, "value": {"type": "number", "value": 0}}]
     }
    ]
   },
@@ -3181,6 +3383,11 @@
       {"atMs": 0, "value": {"type": "color", "value": [0, 0, 0, 0]}},
       {"atMs": 650, "value": {"type": "color", "value": [0, 0, 0, 0]}}
      ]
+    },
+    {
+     "node": "title-carry",
+     "property": "opacity",
+     "keys": [{"atMs": 0, "value": {"type": "number", "value": 0}}, {"atMs": 650, "value": {"type": "number", "value": 0}}]
     }
    ]
   }
@@ -8017,6 +8224,40 @@
        "line-height": {"type": "length", "value": 22, "unit": "dp"},
        "color": {"type": "color", "value": [1, 1, 1, 0.8]},
        "white-space": {"type": "keyword", "value": "nowrap"}
+      }
+     }
+    ]
+   },
+   {
+    "id": "carry",
+    "type": "group",
+    "properties": {
+     "position": {"type": "keyword", "value": "absolute"},
+     "top": {"type": "length", "value": 0, "unit": "dp"},
+     "width": {"type": "length", "value": 960.0, "unit": "dp"},
+     "height": {"type": "length", "value": 720, "unit": "dp"},
+     "left": {"type": "length", "value": 50, "unit": "%"},
+     "margin-left": {"type": "length", "value": -480.0, "unit": "dp"},
+     "pointer-events": {"type": "keyword", "value": "none"}
+    },
+    "children": [
+     {
+      "id": "title-carry",
+      "type": "text",
+      "properties": {
+       "text": {"type": "text", "value": "#str_200009"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 58.5, "unit": "dp"},
+       "top": {"type": "length", "value": 28.5, "unit": "dp"},
+       "width": {"type": "length", "value": 471.0, "unit": "dp"},
+       "height": {"type": "length", "value": 36.6, "unit": "dp"},
+       "font-family": {"type": "font", "value": "marine"},
+       "font-size": {"type": "length", "value": 24, "unit": "dp"},
+       "line-height": {"type": "length", "value": 36.6, "unit": "dp"},
+       "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]},
+       "white-space": {"type": "keyword", "value": "nowrap"},
+       "opacity": {"type": "number", "value": 0},
+       "transform": {"type": "transform", "unit": "dp", "value": [0, 0, 1, 1, 0]}
       }
      }
     ]
