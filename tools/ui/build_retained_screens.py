@@ -606,6 +606,26 @@ def band_motion(doc: Document, prefix: str, content: str, extra_home: list) -> N
     ] + [track(node, prop, [(0, dark), (500, dark), (650, lit)]) for node, prop, lit, dark in lights])
 
 
+# ------------------------------------------------------------------- depth
+
+def depth_layer(doc: Document, ident: str, depth: float, children: list) -> dict:
+    """Section 13.8 depth: the backdrop, light, grid and frame layers lean up
+    to 6 dp away from the pointer, deeper layers further; content never
+    moves. The session publishes pointer_x and pointer_y in -1..1. Reduced
+    motion holds every layer still. A wrapper group carries the lean, so a
+    band's own dock timelines keep their transform."""
+    if "pointer_x" not in doc.state:
+        doc.state["pointer_x"] = {"type": "number", "initial": 0}
+        doc.state["pointer_y"] = {"type": "number", "initial": 0}
+    if "motion_reduced" not in doc.state:
+        doc.state["motion_reduced"] = {"type": "boolean", "initial": False, "cvar": "ui_retainedReducedMotion"}
+
+    def axis(state: str) -> dict:
+        return {"op": "select", "args": [{"state": "motion_reduced"}, 0, {"op": "*", "args": [{"state": state}, round(-6 * depth, 3)]}]}
+    doc.bind(f"{ident}.transform", ident, "transform", [axis("pointer_x"), axis("pointer_y"), 1, 1, 0])
+    return group(ident, {**FULL, "transform": transform(), "pointer-events": keyword("none")}, children)
+
+
 # ------------------------------------------------------------- title carry
 
 TITLE_SLOT = (39.0, 19.0)   # the page state's screen title (section 9)
@@ -854,10 +874,10 @@ def title_document() -> dict:
     ])
     root = group("screen", {**FULL, "background-color": colour([0, 0, 0, 1]), "font-family": font("marine"),
                             "font-size": length(16), "color": colour([1, 1, 1, 0.8])}, [
-        montage(doc),
-        *lit_field("field", 0.7),
+        depth_layer(doc, "depth-backdrop", 1.0, [montage(doc)]),
+        depth_layer(doc, "depth-light", 0.66, lit_field("field", 0.7)),
         stage,
-        *framing_bands("band"),
+        depth_layer(doc, "depth-frame", 0.33, framing_bands("band")),
         content,
         prompt_bar(doc, [("#str_107019", "#str_200747"), ("#str_107020", "#str_200013")]),
         title_carry(doc, [("singlePlayer", "#str_42000", 212.2), ("loadGame", "#str_200001", 242.2),

@@ -233,6 +233,20 @@ int main(int argc, char** argv) {
 		Check(shown && shown->text == "block" && hidden && hidden->text == "none" && runtime.Statistics().maskApplications == 0,
 			"reduced motion hides the glint");
 		host.reducedMotion = false;
+		// Depth (section 13.8): the backdrop leans 6 dp away from the pointer and
+		// the frame a third of that; reduced motion holds both still.
+		Check(runtime.SetState({{"pointer_x",1.0},{"pointer_y",-0.5}},error,11.5),"publish the pointer");
+		runtime.Frame(viewport,11.6);
+		const auto backdrop = runtime.PresentedValue("depth-backdrop","transform");
+		const auto frameLean = runtime.PresentedValue("depth-frame","transform");
+		Check(backdrop && Near(static_cast<float>(backdrop->data[0]),-6,.01f) && Near(static_cast<float>(backdrop->data[1]),3,.01f) &&
+			frameLean && Near(static_cast<float>(frameLean->data[0]),-1.98f,.01f),"the layers lean away from the pointer, deeper further");
+		host.reducedMotion = true;
+		runtime.Frame(viewport,11.7);
+		const auto still = runtime.PresentedValue("depth-backdrop","transform");
+		Check(still && Near(static_cast<float>(still->data[0]),0,.001f) && Near(static_cast<float>(still->data[1]),0,.001f),
+			"reduced motion holds the layers still");
+		host.reducedMotion = false;
 		// Title carry (section 13.8): SETTINGS travels from its row into the
 		// page's title slot at 39,19 u and settles at the 18 dp title size.
 		// With a save shown its row is the fifth: 212.2 + 4 * 30 u.

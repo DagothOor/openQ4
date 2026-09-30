@@ -127,6 +127,8 @@ The retained loading screen's Remastered multiplayer composition, based on engin
 
 The retained title carry, based on engine `2ad097f515aa39c3df6c3a0a55ce950964fb8342`, carries the chosen navigation label into the page title slot as the bands dock, on the title and single-player pause menus. With the focus glow and the emblem light already present, `ART-022` moves from pending to partial, with acceptance evidence still empty; the depth shift, high-contrast rail, symbols, tags and HDR rules remain. Evidence: `.tmp/ui/retained-title-carry/validation-evidence.json`, SHA-256 `36aa73558fb395d333351f52102d070871fc69352136a168137f07cd57785b69`.
 
+The retained title's depth lean, based on engine `cb15ae91a93de5cd43f89487baf8ef3f85025e9a`, leans the backdrop, light and grid, and frame up to 6 dp away from the pointer while content stays fixed, and holds still under reduced motion. `ART-022` gains partial evidence without a status change; the stick and tilt inputs remain. Evidence: `.tmp/ui/retained-title-depth/validation-evidence.json`, SHA-256 `938294a3434fcd14513e9c5b54fa3efa7c53913a7544700e62a0f4d4d9f835ce`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial

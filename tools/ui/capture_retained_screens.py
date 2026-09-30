@@ -30,6 +30,9 @@ DONE = 'RETAINED_SCREENS_CAPTURE_COMPLETE'
 SCENARIOS = {
     'title': (None, [
         'waitMsec 4000', 'ui_retainedStatus', 'screenshot "screenshots/title.tga"',
+        # Depth: with the pointer at the top-trailing corner the backdrop layers lean away.
+        'openq4_retainedGui state pointer_x 1', 'openq4_retainedGui state pointer_y -1', 'waitMsec 300',
+        'screenshot "screenshots/title-depth.tga"', 'openq4_retainedGui state pointer_x 0', 'openq4_retainedGui state pointer_y 0',
         'openq4_retainedGui focus nav_loadgame', 'waitMsec 500', 'screenshot "screenshots/title-focus.tga"',
         'openq4_retainedGui event exitModalShow', 'waitMsec 500', 'ui_retainedStatus', 'screenshot "screenshots/title-exit.tga"',
         'openq4_retainedGui event exitModalHide', 'waitMsec 400',

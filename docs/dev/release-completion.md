@@ -466,7 +466,9 @@
   only the SYSTEM page. The new screens follow the visual specification's
   framing bands, lighting and motion, hand off to the stock pages for anything
   they do not replace yet, and fall back to the stock screen if one cannot load.
-  Choosing a page carries its name up into the page title as the frame docks.
+  Choosing a page carries its name up into the page title as the frame docks,
+  and the title screen's backdrop leans slightly away from the pointer (off
+  with reduced motion).
   While a level loads, its picture drifts slowly closer, the bar shows what is
   loading and how far along it is, the finished load reports how long it took,
   and the continue prompt shows your controller's button once you use one.

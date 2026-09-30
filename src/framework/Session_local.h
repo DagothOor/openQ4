@@ -420,6 +420,8 @@ public:
 	int					retainedHandoffUntil;
 	// The retained loading screen's phase line and prompt device, published
 	// only while that screen presents the load (-1: not published yet).
+	float				retainedPointerX;		// the home screen's last published pointer
+	float				retainedPointerY;
 	bool				retainedLoadingActive;
 	int					retainedLoadingPhase;
 	int					retainedLoadingLoaded;

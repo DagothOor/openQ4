@@ -3778,6 +3778,7 @@ void idSessionLocal::Clear() {
 	guiRetainedHome = guiRetainedTitle = guiRetainedPause = NULL;
 	retainedHomeReturning = retainedTitleFailed = retainedPauseFailed = retainedLoadingFailed = false;
 	retainedHandoffUntil = 0;
+	retainedPointerX = retainedPointerY = 0.0f;
 	retainedLoadingActive = false;
 	retainedLoadingPhase = 0;
 	retainedLoadingLoaded = retainedLoadingTotal = retainedLoadingDevice = -1;

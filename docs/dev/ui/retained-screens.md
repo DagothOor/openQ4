@@ -40,7 +40,11 @@ after editing the script; `--check` fails when an output is stale.
   9 s: the rim drawn bright under a wedge mask 12% of a turn wide that turns
   about the ring's center, while the rim inside it turns back so the outline
   stays put. Reduced motion (`ui_retainedReducedMotion`) hides the glint and
-  keeps the rim. CONTINUE leads the navigation when a save exists and its
+  keeps the rim. The backdrop, the light and grid, and the framing bands lean
+  up to 6 dp away from the pointer, deeper layers further, while the content
+  stays fixed (section 13.8 depth). The session publishes the pointer's
+  place, and reduced motion holds the layers still. CONTINUE leads the
+  navigation when a save exists and its
   message line shows the save's levelshot, name and time; the same line explains
   whichever item has focus. SINGLE PLAYER, LOAD GAME, MULTIPLAYER and SETTINGS
   follow, and the secondary links and EXIT stay on the plinth. EXIT asks before
@@ -153,11 +157,13 @@ controller or the mouse switches the prompt.
   state. It checks the schema additions, the additive and multiplied draws,
   the transformed clip, the emblem glint and its reduced-motion rule, the
   levelshot drift, the phase line, the percentage and the controller prompt,
-  the multiplayer server card and JOINING, the title carry on both menus, and
-  that every action is an allowlisted session verb.
+  the multiplayer server card and JOINING, the title carry on both menus, the
+  depth lean and its reduced-motion hold, and that every action is an
+  allowlisted session verb.
 - `tools/tests/ui_retained_gate.py` qualifies the gate as described above,
-  including the startup preload, the level-load precache and the loading phase
-  line, and pins the frame pump order that lets RESUME retire the pause screen.
+  including the startup preload, the level-load precache, the loading phase
+  line and the published pointer, and pins the frame pump order that lets
+  RESUME retire the pause screen.
 - `tools/ui/capture_retained_screens.py` captures the screens in the engine
   from a hidden window with engine screenshots and semantic
   `openq4_retainedGui` operations, never OS input. With `--gate 0` the title
@@ -203,6 +209,12 @@ the stock Settings page then shows its own title in that slot. The gate-off
 title and pause runs loaded no retained document. Evidence:
 `.tmp/ui/retained-title-carry/validation-evidence.json`, SHA-256
 `36aa73558fb395d333351f52102d070871fc69352136a168137f07cd57785b69`.
+
+The title's depth lean was captured on OpenGL and Vulkan at 1280x720 and on
+OpenGL at 1024x768: with the pointer at the top-trailing corner the bands
+and backdrop lean while the wordmark and navigation stay in place. Evidence:
+`.tmp/ui/retained-title-depth/validation-evidence.json`, SHA-256
+`938294a3434fcd14513e9c5b54fa3efa7c53913a7544700e62a0f4d4d9f835ce`.
 
 ## Known limitations
 

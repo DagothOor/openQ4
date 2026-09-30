@@ -4794,6 +4794,17 @@ void idSessionLocal::RetainedHomeFrameEvent() {
 	memset( &ev, 0, sizeof( ev ) );
 	ev.evType = SE_NONE;
 	idUserInterface *gui = guiRetainedHome;
+	// Depth (section 13.8): the pointer's place in the view, -1..1 on each
+	// axis, for the title's backdrop layers to lean away from.
+	const float pointerX = idMath::ClampFloat( -1.0f, 1.0f, ( gui->CursorX() - 320.0f ) / 320.0f );
+	const float pointerY = idMath::ClampFloat( -1.0f, 1.0f, ( gui->CursorY() - 240.0f ) / 240.0f );
+	if ( idMath::Fabs( pointerX - retainedPointerX ) > 0.005f || idMath::Fabs( pointerY - retainedPointerY ) > 0.005f ) {
+		retainedPointerX = pointerX;
+		retainedPointerY = pointerY;
+		gui->SetStateFloat( "pointer_x", pointerX );
+		gui->SetStateFloat( "pointer_y", pointerY );
+		gui->StateChanged( common->GetPresentationTime() );
+	}
 	const char *cmd = gui->HandleEvent( &ev, common->GetPresentationTime() );
 	if ( cmd && cmd[0] ) {
 		DispatchCommand( gui, cmd );

@@ -79,7 +79,15 @@ struct idUserInterface {
     const char* HandleEvent(const sysEvent_t*, int) { return ""; }
     void SetStateBool(const char* key, bool value) { state[key] = value ? "1" : "0"; }
     void SetStateString(const char* key, const char* value) { state[key] = value; }
+    void SetStateFloat(const char* key, float value) { state[key] = std::to_string(value); }
+    float cursorX = 320, cursorY = 240;
+    float CursorX() { return cursorX; }
+    float CursorY() { return cursorY; }
     void StateChanged(int) {}
+};
+struct idMath {
+    static float ClampFloat(float low, float high, float value) { return value < low ? low : value > high ? high : value; }
+    static float Fabs(float value) { return value < 0 ? -value : value; }
 };
 struct Manager {
     std::vector<std::unique_ptr<idUserInterface>> storage; std::vector<std::string> loads; bool fail = false;
@@ -122,6 +130,7 @@ public:
     idUserInterface *guiRetainedHome = nullptr, *guiRetainedTitle = nullptr, *guiRetainedPause = nullptr;
     bool retainedHomeReturning = false, retainedTitleFailed = false, retainedPauseFailed = false, retainedLoadingFailed = false;
     int retainedHandoffUntil = 0;
+    float retainedPointerX = 0, retainedPointerY = 0;
     bool mapSpawned = false, multiplayer = false;
     int exits = 0, pauseStates = 0, drains = 0;
     std::vector<std::string> dispatched, loadedGames, played;
@@ -183,6 +192,10 @@ int main() {
         CHECK(s.guiRetainedHome->state["menu_continue_shot"] == "savegames/quick.tga");
         s.UpdateRetainedHome(); CHECK(managerObject.loads.size() == 1 && s.guiRetainedHome->activations == 1);
         auto* title = s.guiRetainedHome;
+        // Depth: the pointer reaches the title in -1..1, and only when it moves.
+        title->cursorX = 640; title->cursorY = 120; s.RetainedHomeFrameEvent();
+        CHECK(title->state["pointer_x"] == std::to_string(1.0f) && title->state["pointer_y"] == std::to_string(-0.5f));
+        title->state.erase("pointer_x"); s.RetainedHomeFrameEvent(); CHECK(!title->state.count("pointer_x"));
         // A page hand-off runs the legacy home button's own action.
         s.HandleRetainedSessionRequest(title, "loadGame");
         CHECK(legacyActions.back() == "main_b_loadgame" && title->named.back() == "depart");
