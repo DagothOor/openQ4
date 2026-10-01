@@ -102,14 +102,14 @@
   },
   {
    "id": "quake4.hover",
-   "durationMs": 60,
+   "durationMs": 1,
    "tracks": [
     {
      "node": "quake4-plate",
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 0.8}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "number", "value": 0.8}}
+      {"atMs": 1, "value": {"type": "number", "value": 0.8}}
      ]
     },
     {
@@ -117,7 +117,7 @@
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 0}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "number", "value": 0}}
+      {"atMs": 1, "value": {"type": "number", "value": 0}}
      ]
     },
     {
@@ -125,7 +125,7 @@
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 1}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "number", "value": 1}}
+      {"atMs": 1, "value": {"type": "number", "value": 1}}
      ]
     },
     {
@@ -133,7 +133,7 @@
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 0}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "number", "value": 0}}
+      {"atMs": 1, "value": {"type": "number", "value": 0}}
      ]
     },
     {
@@ -141,7 +141,7 @@
      "property": "color",
      "keys": [
       {"atMs": 0, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
+      {"atMs": 1, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
      ]
     },
     {
@@ -153,7 +153,7 @@
        "value": {"type": "transform", "unit": "dp", "value": [0, 0, 1.03, 1.03, 0]},
        "easing": [0.16, 1, 0.3, 1]
       },
-      {"atMs": 60, "value": {"type": "transform", "unit": "dp", "value": [0, 0, 1.03, 1.03, 0]}}
+      {"atMs": 1, "value": {"type": "transform", "unit": "dp", "value": [0, 0, 1.03, 1.03, 0]}}
      ]
     }
    ]
@@ -382,14 +382,14 @@
   },
   {
    "id": "awakening.hover",
-   "durationMs": 60,
+   "durationMs": 1,
    "tracks": [
     {
      "node": "awakening-plate",
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 0.8}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "number", "value": 0.8}}
+      {"atMs": 1, "value": {"type": "number", "value": 0.8}}
      ]
     },
     {
@@ -397,7 +397,7 @@
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 0}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "number", "value": 0}}
+      {"atMs": 1, "value": {"type": "number", "value": 0}}
      ]
     },
     {
@@ -405,7 +405,7 @@
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 1}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "number", "value": 1}}
+      {"atMs": 1, "value": {"type": "number", "value": 1}}
      ]
     },
     {
@@ -413,7 +413,7 @@
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 0}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "number", "value": 0}}
+      {"atMs": 1, "value": {"type": "number", "value": 0}}
      ]
     },
     {
@@ -421,7 +421,7 @@
      "property": "color",
      "keys": [
       {"atMs": 0, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
+      {"atMs": 1, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
      ]
     },
     {
@@ -433,7 +433,7 @@
        "value": {"type": "transform", "unit": "dp", "value": [0, 0, 1.03, 1.03, 0]},
        "easing": [0.16, 1, 0.3, 1]
       },
-      {"atMs": 60, "value": {"type": "transform", "unit": "dp", "value": [0, 0, 1.03, 1.03, 0]}}
+      {"atMs": 1, "value": {"type": "transform", "unit": "dp", "value": [0, 0, 1.03, 1.03, 0]}}
      ]
     }
    ]
@@ -662,14 +662,14 @@
   },
   {
    "id": "back.hover",
-   "durationMs": 60,
+   "durationMs": 1,
    "tracks": [
     {
      "node": "back-plate",
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 0.8}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "number", "value": 0.8}}
+      {"atMs": 1, "value": {"type": "number", "value": 0.8}}
      ]
     },
     {
@@ -677,7 +677,7 @@
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 0}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "number", "value": 0}}
+      {"atMs": 1, "value": {"type": "number", "value": 0}}
      ]
     },
     {
@@ -685,7 +685,7 @@
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 1}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "number", "value": 1}}
+      {"atMs": 1, "value": {"type": "number", "value": 1}}
      ]
     },
     {
@@ -693,7 +693,7 @@
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 0}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "number", "value": 0}}
+      {"atMs": 1, "value": {"type": "number", "value": 0}}
      ]
     },
     {
@@ -701,7 +701,7 @@
      "property": "color",
      "keys": [
       {"atMs": 0, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}, "easing": [0.16, 1, 0.3, 1]},
-      {"atMs": 60, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
+      {"atMs": 1, "value": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
      ]
     },
     {
@@ -713,7 +713,7 @@
        "value": {"type": "transform", "unit": "dp", "value": [0, 0, 1.03, 1.03, 0]},
        "easing": [0.16, 1, 0.3, 1]
       },
-      {"atMs": 60, "value": {"type": "transform", "unit": "dp", "value": [0, 0, 1.03, 1.03, 0]}}
+      {"atMs": 1, "value": {"type": "transform", "unit": "dp", "value": [0, 0, 1.03, 1.03, 0]}}
      ]
     }
    ]

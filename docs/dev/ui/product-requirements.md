@@ -1,8 +1,8 @@
 # UI product requirement register
 
 9 September 2026, revised 26, 27, 28 and 29 September and 1 October 2026. The
-[machine-readable register](product-requirements.json) contains **339
-requirements** for the complete UI product: 307 that define acceptance and 32
+[machine-readable register](product-requirements.json) contains **340
+requirements** for the complete UI product: 307 that define acceptance and 33
 superseded rows kept for history. It expands
 the [completion plan](../plans/ui-product-completion.md), the
 [original delivery scope](../plans/idtech5-ui.md) and the normative
@@ -127,6 +127,13 @@ prompts (`WID-035`) and The Awakening's vehicle display refinements
 hull warning (the gun itself cannot be damaged, so it has no turret health),
 and the speeder and GEV corrections. Every appended requirement is pending.
 
+Register schema 13 (1 October 2026) follows visual specification 1.14, which
+measures the modal against the stock. It supersedes `ART-036`, whose modal
+title stood on the raised top line, by `ART-037`: the title's capitals hang
+from that line into the lit slot, the silhouette is inset in its rectangle so
+that the inset is the lit margin, and the first body baseline sits 87.5 dp
+below the rectangle's top. `ART-037` is pending.
+
 The [17 September implementation audit](masked-input-review.md) records current
 delivery gaps and the shared vector-mask input repair. `INP-007` remains partial;
 requirement counts, migration acceptance and final gates are unchanged.
@@ -172,7 +179,13 @@ The retained title's depth lean, based on engine `cb15ae91a93de5cd43f89487baf8ef
 
 On engine `d491aa476c82c42e0828f06b5ff7b74caf22384b` the retained title's depth lean also follows a held look stick, which leads while deflected. `ART-022` gains partial evidence without a status change; device tilt remains. The session code is qualified by `ui_retained_gate.py`, not by an engine capture.
 
-The retained confirmation modal, recorded on engine `98e453662704a79df722bc2f4696ddba8c42de03`, which carries it, rebuilds the title's exit and the pause menu's quit confirmations on the stock dialog's construction over the scrim: the stock art's silhouette sits inside the glow column so a 6 dp lit margin outlines it, and the title hangs from the raised top line with a 1 dp black outline at 0.85. Engine captures on OpenGL and Vulkan at 16:9 and OpenGL at 4:3 were compared with a capture of the stock exit dialog. The same change makes retained layer composites sample GL row order on Vulkan, where every faded or masked element had vanished since 2026-09-25. `ART-036` moves from pending to partial, with acceptance evidence still empty; cards, the soft-focus glow, the other dialog widths, the chat box, tab strip and header band remain. Evidence: `.tmp/ui/retained-modal/validation-evidence.json`, SHA-256 `32b9bbf8b67cf36b59dca317274579f637bb2eda2bc7c3000b7122160b9f8945`.
+The retained confirmation modal, based on engine `e039c0ecad7c0010c8a52966235c791dc9dbd8b7`, rebuilds the title's exit and the pause menu's quit confirmations on the stock dialog's construction over the scrim: the stock art's silhouette sits inside the glow column so a 6 dp lit margin outlines it, and the title's capitals hang from the raised top line with a 1 dp black outline at 0.85. Engine captures on OpenGL and Vulkan at 16:9 and OpenGL at 4:3 were compared with a capture of the stock exit dialog. The same change makes retained layer composites sample GL row order on Vulkan, where every faded or masked element had vanished since 2026-09-25. `ART-037` moves from pending to partial, with acceptance evidence still empty; cards, the soft-focus glow, the other dialog widths, the chat box, tab strip and header band remain. Evidence: `.tmp/ui/retained-modal/validation-evidence.json`, SHA-256 `32b9bbf8b67cf36b59dca317274579f637bb2eda2bc7c3000b7122160b9f8945`.
+
+Retained timeline completion programs, based on engine `9171699a34db3ebf4affb6c2880604eb3aee643b`, let a timeline name an event to run when it plays to its end: no actions, no completion cycles, and cancellation, replay or a takeover never complete it. The retained confirmations use them for the stock modal.enter and modal.leave. With the retained screens' authored band and content choreography, `MOT-012` moves from pending to partial, with acceptance evidence still empty; the links' 50 ms fade, page-side timing, band.slide, row.flash, list.unfold, light.up, destination backings and the sampled comparison with the stock timelines remain. Native tests only; no engine capture of the transitions. Evidence: `.tmp/ui/retained-modal-motion/validation-evidence.json`, SHA-256 `a23a96a22a4abd67ded93a9a00624ffa6dba93d4d4275170346aafc0c2ba5b70`.
+
+On engine `694889557900c39e7940261dc61810cdffc52627` the retained title and pause screens fade the plinth and its secondary links over 50 ms on depart, give hover feedback at once, and dim the wordmark while the title's Exit modal is open. `MOT-012` gains partial evidence without a status change. Qualified by the native screens test; no engine capture. Evidence: `.tmp/ui/retained-motion-tokens/validation-evidence.json`, SHA-256 `0d139aa4bd795cece9cf6e7ebda88883b0b52bd53c1ce8ab9544a9ca3b082218`.
+
+On engine `98fb185f2bd6051fd9acc1f213913ea84ae2c2d3` the retained title's modal and depart motion was captured in the engine on OpenGL and Vulkan, which exposed and now verifies a host fix: additive pictures no longer black out their rectangle inside a fading composition layer. `MOT-012` gains partial evidence without a status change. Evidence: `.tmp/ui/retained-motion-engine/validation-evidence.json`, SHA-256 `b915a8889da4535c7b4a19fc6c9af500ad8bc1dccd5608dafe6057221189cbf9`.
 
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
@@ -458,8 +471,8 @@ The [full renderer shutdown increment](image-recovery-ownership.md), based on en
 
 The [editor file publication increment](editor-file-safety.md), based on engine `a11a00181b5997993bb9e225bad63a6422386311`, adds actual native creation of complete new files without replacing an existing or racing document. Windows Clang and MSVC each pass 340 checks, GCC with sanitizers passes 344, and all three reject seven compiled mutations. The full engine build and 78 UI suites pass. Windows symlink and DrvFS FIFO limitations are recorded. This file-only increment has no new game captures. Save As/autosave UI, live document association, overwrite/conflict handling and crash/relaunch recovery remain required. No requirement status, migration acceptance or final gate changes. Evidence: `.tmp/ui/editor-new-file/validation-evidence.json`, SHA-256 `846413e35eb34ed965a57005aa6eb724b5c8d3dbc2fb46f65ba30711a509cc63`.
 
-There are **78 partial, 260 pending and one verified requirement**, counting the
-32 superseded rows at their recorded states. `BEH-002`
+There are **80 partial, 259 pending and one verified requirement**, counting the
+33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock
 sounds and the complete device/modal/widget behavior still require implementation
@@ -532,7 +545,7 @@ complete source-bound mappings and evidence.
 | `WID-001`–`035` | Every named functional widget: actions, checkbox, radio, slider, choice, text, binding, tabs, lists, scrolling, progress, tooltip, modal, status, tree, path/color controls, prompt bar, detail area, radial wheel, on-screen keyboard, cycling values, the weapon wheels and their transitions, the pop-up frame catalogue, the HUD prompts and the modern components | M2, M3, M5 |
 | `REN-001`–`016` | Editable paths/paints/strokes/SVG, coverage/color, isolated opacity/masks/clips, additive, darkening and masked additive composition, backdrop soft focus and recovery | M3, M6 |
 | `RES-001`–`005` | Full material/movie/model operations, generated images and actual renderer resource accounting | M3, M4 |
-| `ART-001`–`036` | Measured component/icon libraries, exact visual tokens, panel/plate anatomy, all eight distinct families, complex-image exceptions, device glyphs, modern refinements, detailing, HUD gauge constructions, the crosshair and item icon catalogues, the traced HUD instruments, the title screen's emblem, the initializing screen's layers, the squad patches and The Awakening's icons and crosshairs | M2–M5 |
+| `ART-001`–`037` | Measured component/icon libraries, exact visual tokens, panel/plate anatomy, all eight distinct families, complex-image exceptions, device glyphs, modern refinements, detailing, HUD gauge constructions, the crosshair and item icon catalogues, the traced HUD instruments, the title screen's emblem, the initializing screen's layers, the squad patches and The Awakening's icons and crosshairs | M2–M5 |
 | `MOT-001`–`016` | Continuous clocks, normative timing/easing, reversal/ownership, page/modal orchestration, stock choreography, sound, ambient loops/alarms, reduced motion, band motion with the sub-page step, HUD alarms and the translation and transmission effects | M1–M6 |
 | `FLOW-001`–`061` | Every menu/MP flow, HUD, communications, scope/vehicle, cinematic and scripted/world GUI; lifecycle, first-run setup, touch controls and editor, terminal input, modern screen patterns, HUD presets and layouts; the HUD's composition, gauges, strip, crosshair, messages and multiplayer HUD; objectives, boss, vehicle, scope and weapon displays; the scoreboard; the Remastered multiplayer top and chat; the multiplayer menus, the loading screens, the title and pause menus, the initializing screen, the menu levels, the Competitive HUD, the spectator follow camera and The Awakening's vehicle display refinements | M2, M4, M5 |
 | `ED-001`–`030` | Native workspace, canvas/constraints, components, vectors, motion/behavior, persistence/recovery, diagnostics and complete SP/MP delivery | M2, M3 |
@@ -574,16 +587,17 @@ as in an increment, document hashes may be re-bound:
 
 ```powershell
 python tools/ui/validate_product_requirements.py `
-  --baseline be3852badf08503e2a20aa59a8f42a522aeee7f1 `
+  --baseline 63aa36fd6571cc84d4f68104607822ffd0faae07 `
   --revision `
-  --output .tmp/ui/register-revision-12/register-validation-final.json
+  --output .tmp/ui/register-revision-13/register-validation-final.json
 ```
 
 Use a new output path for each audit. The optional `--defer-hashes` preparation
 mode explicitly reports incomplete source bindings and cannot serve as the
-final audit. The schema 12 revision audit is recorded at
-`.tmp/ui/register-revision-12/register-validation-final.json`, the schema 11
-audit at `.tmp/ui/register-revision-11/register-validation-final.json`, the
+final audit. The schema 13 revision audit is recorded at
+`.tmp/ui/register-revision-13/register-validation-final.json`, the schema 12
+audit at `.tmp/ui/register-revision-12/register-validation-final.json`, the
+schema 11 audit at `.tmp/ui/register-revision-11/register-validation-final.json`, the
 schema 10 audit at `.tmp/ui/register-revision-10/register-validation-final.json`, the
 schema 9 audit at `.tmp/ui/register-revision-9/register-validation-final.json`, the
 schema 8 audit at `.tmp/ui/register-revision-8/register-validation-final.json`, the schema 7

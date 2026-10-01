@@ -399,6 +399,17 @@ struct idUserInterfaceRetained::Impl {
 			else RuntimeView()->MenuAction(event.menu,event.down,RetainedUI_PresentationTime());
 		}
 	}
+	// Preserve undeclared and unrelated pending dictionary keys. Publish only
+	// the programs' explicit application writes, using round-trip numbers.
+	void PublishWrites(const StateValues& writes) {
+		for (const auto& [id,value] : writes) {
+			PresentationValue text;
+			if (std::holds_alternative<std::string>(value)) { text.type = PresentationType::String; text.text = std::get<std::string>(value); }
+			else if (std::holds_alternative<bool>(value)) { text.type = PresentationType::Boolean; text.data[0] = std::get<bool>(value) ? 1 : 0; }
+			else text.data[0] = std::get<double>(value);
+			state.Set(id.c_str(),FormatPresentationValue(text).c_str());
+		}
+	}
 	bool RunEvent(const std::string& name) {
 		// A click can detach a field after Prepare. Programs must see its fresh
 		// local draft status before deciding whether Back may close the page.
@@ -409,15 +420,7 @@ struct idUserInterfaceRetained::Impl {
 		if (!RuntimeView()->RunEvent(name,RetainedUI_PresentationTime(),effects,error,application,ValidInvocation,256-actions.size())) {
 			Error(error); return false;
 		}
-		// Preserve undeclared and unrelated pending dictionary keys. Publish only
-		// the program's explicit application writes, using round-trip numbers.
-		for (const auto& [id,value] : effects.stateChanges) {
-			PresentationValue text;
-			if (std::holds_alternative<std::string>(value)) { text.type = PresentationType::String; text.text = std::get<std::string>(value); }
-			else if (std::holds_alternative<bool>(value)) { text.type = PresentationType::Boolean; text.data[0] = std::get<bool>(value) ? 1 : 0; }
-			else text.data[0] = std::get<double>(value);
-			state.Set(id.c_str(),FormatPresentationValue(text).c_str());
-		}
+		PublishWrites(effects.stateChanges);
 		const auto count = effects.actions.size();
 		for (auto& action : effects.actions) actions.push_back({std::move(action),false});
 		if (!interactiveSet) {
@@ -809,7 +812,10 @@ void idUserInterfaceRetained::Redraw(int time, bool useAspectCorrection) {
 		if (!impl->RuntimeView()->HasEvent("onInit") || impl->RunEvent("onInit")) impl->initialized = true;
 	}
 	impl->AcceptInput();
-	if (RetainedUI_DrawViewRoot(impl->view,viewport) && impl->active && impl->interactive) {
+	const bool drawn = RetainedUI_DrawViewRoot(impl->view,viewport);
+	// Timeline completion programs run inside the frame; publish their writes.
+	if (auto* runtime = impl->RuntimeView()) impl->PublishWrites(runtime->TakeCompletionWrites());
+	if (drawn && impl->active && impl->interactive) {
 		// A restored world frame alone cannot arm Keep. Require this owner and
 		// its actually activatable Revert control to have reached the draw path.
 		if (impl->settingsFields && impl->RuntimeView()->CanActivateControl("settings_revert",RetainedUI_PresentationTime()))

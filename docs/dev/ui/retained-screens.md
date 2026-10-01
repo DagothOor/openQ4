@@ -85,12 +85,28 @@ after editing the script; `--check` fails when an output is stale.
   extruded 1 dp around the strokes behind the fill. The outline is eight
   opaque copies composited once as a group, so their overlaps never darken it
   past 0.85. The body and the actions sit where the stock ones do: the body's
-  first baseline is 87.5 dp down, and the actions start 96 u down.
+  first baseline is 87.5 dp down, and the actions start 96 u down. They open
+  and close with the stock motion (section 8, `modal.enter` and
+  `modal.leave`).
+  - Opening brings the scrim, glow and frame in over 200 ms, and the title,
+    body and actions appear together at its end, when NO takes focus.
+  - Closing hides the contents at once. After 50 ms the scrim and glow release
+    over 250 ms, and the frame over 200 ms for Exit or 250 ms for the pause
+    quit; then the modal closes.
+  - The title's Exit modal also dims the wordmark to 40% gray over 200 ms,
+    and restores it from 50 ms over 150 ms as it closes.
+  - Timeline [completion programs](event-programs.md#completion-programs)
+    show the contents and close the modal. A reopen during the leave takes it
+    over, so the leave never completes and the modal stays open.
 
 Band motion follows the stock choreography (section 8): opening reveals the
 content, choosing a page sends the bands to the page dock (`depart`), a
 pop-up only dims the content (`departPopup`), and returning from a page
-brings the bands back (`returnHome`). As the bands dock, the chosen
+brings the bands back (`returnHome`). On depart the home plates fade over
+250 ms, but the plinth and its secondary links go in 50 ms (`content.out`);
+they return together with `content.in`. Control feedback follows the same
+section: hover responds at once, focus over 80 ms, a press over 60 ms, and
+every return to rest is linear over 300 ms. As the bands dock, the chosen
 navigation label travels from its row into the page's title slot at 39,19 u
 and settles at the 18 dp screen-title size (`title.carry`, section 13.8),
 where the stock page then shows its own title; the session plays it only for
@@ -132,6 +148,12 @@ than the presented home screen.
   scale; a rotated or rounded clip is limited to its bounds and counted in
   `clipMaskFallbacks`. Before this, such content was never clipped (the loading
   bar lit its whole length at any progress).
+- **Additive pictures in layers.** An add-blended picture used to write its
+  texture alpha. Inside a composition layer (any ancestor fading through
+  `opacity`), the layer then composited the picture's whole rectangle as an
+  opaque box: the wordmark darkened its rectangle as the title departed.
+  Additive pictures now draw with zero coverage, which leaves their light
+  unchanged; `ui_retained_layer_pool.py` checks the conversion.
 - **Layer row order on Vulkan.** Opacity below 1 and masks composite through
   engine render textures, which keep GL row order on every backend. Since
   2026-09-25 the Vulkan executor has recorded render textures lower-origin and
@@ -182,8 +204,15 @@ controller or the mouse switches the prompt.
   levelshot drift, the phase line, the percentage and the controller prompt,
   the multiplayer server card and JOINING, the title carry on both menus, the
   depth lean and its reduced-motion hold, the exit confirmation's lit margin,
-  title placement, body placement and single 0.85 outline composite, and that
-  every action is an allowlisted session verb.
+  title placement, body placement and single 0.85 outline composite, its
+  enter and leave timing with the contents and focus waiting for the
+  entrance, a completion due before an event running before its program and
+  a reopen during the leave, and that every action is an allowlisted session
+  verb.
+- `openq4-retained-ui` and `openq4-ui-document` cover timeline completion
+  programs: firing once at the end, cancellation, replay, pause, reduced
+  motion and a snapshot taken while a completion is due, and the rejected
+  schemas (unknown event, endless timeline, actions and completion cycles).
 - `tools/tests/ui_retained_layer_pool.py` runs the host's layer allocation
   and its opacity and mask composites against a counted renderer, and pins
   the Vulkan executor's render-texture row order that the composites sample.
@@ -254,6 +283,32 @@ missing there, as were the title menu's navigation plates. Evidence:
 `.tmp/ui/retained-modal/validation-evidence.json`, SHA-256
 `32b9bbf8b67cf36b59dca317274579f637bb2eda2bc7c3000b7122160b9f8945`.
 
+Timeline completion programs and the confirmations' stock motion were
+qualified by native tests in an optimized build of a clean worktree. All 107
+Meson tests pass, among them the completion schema and timing tests, a
+snapshot taken while a completion is due, and the exit confirmation's enter
+and leave. Without the completion run that precedes an event's program, the
+screens test fails. There are no engine captures of the transitions: the
+only client path with firewall rules, `.install`, was in use by another
+session. Evidence: `.tmp/ui/retained-modal-motion/validation-evidence.json`,
+SHA-256 `a23a96a22a4abd67ded93a9a00624ffa6dba93d4d4275170346aafc0c2ba5b70`.
+
+The retained title and pause screens' section 8 tokens were qualified by the
+native screens test. On depart, the plinth and its links are gone at 50 ms
+while the home plates are at 0.8. The wordmark sits at 40% while the Exit
+modal is open and is restored 200 ms into its leave. Evidence:
+`.tmp/ui/retained-motion-tokens/validation-evidence.json`, SHA-256
+`0d139aa4bd795cece9cf6e7ebda88883b0b52bd53c1ce8ab9544a9ca3b082218`.
+
+The motion was then captured in the engine, on OpenGL and Vulkan at
+1280x720, from a candidate runtime built from the pushed code. The exit
+confirmation appeared half way in, open, holding, releasing and closed,
+and the plinth was gone 30 ms into a depart. The captures exposed the
+additive-picture layer fault above. Fixed, the wordmark's rectangle reads
+69 on OpenGL and 68.7 on Vulkan instead of a dark 26. Evidence:
+`.tmp/ui/retained-motion-engine/validation-evidence.json`, SHA-256
+`b915a8889da4535c7b4a19fc6c9af500ad8bc1dccd5608dafe6057221189cbf9`.
+
 ## Known limitations
 
 - The pause menu has no OBJECTIVES action yet, so the navigation holds six of
@@ -267,9 +322,7 @@ missing there, as were the title menu's navigation plates. Evidence:
 - The renderer has no soft focus yet (REN-016), so modals use the fallback of
   visual specification 1.9: the scrim with the stock glow column. The
   soft-focus glow of specification 1.12, graded across the dialog and fading
-  out past its sides, waits for it. Modals open and close at once, without
-  the `modal.enter` and `modal.leave` motion. Only the confirmation width
-  exists.
+  out past its sides, waits for it. Only the confirmation width exists.
 - The multiplayer Escape and Welcome menus (section 14.18) keep the stock
   menus: the retained home screen is never presented in a multiplayer game.
 - The loading screen has no tips and no touch prompt (touch counts as desktop

@@ -489,7 +489,8 @@
   Choosing a page carries its name up into the page title as the frame docks,
   and the title screen's backdrop leans slightly away from the pointer or the
   right stick (off with reduced motion). Exiting or quitting asks in a dialog
-  built like the stock one, lit around its edges, with a crisp outlined title.
+  built like the stock one, lit around its edges, with a crisp outlined title,
+  and it fades in and out as the stock dialog does.
   While a level loads, its picture drifts slowly closer, the bar shows what is
   loading and how far along it is, the finished load reports how long it took,
   and the continue prompt shows your controller's button once you use one.

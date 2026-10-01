@@ -1,10 +1,10 @@
 {
-  "schema_version": 12,
+  "schema_version": 13,
   "id_namespace": "openq4.ui.product",
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "98e453662704a79df722bc2f4696ddba8c42de03",
+    "engine_revision": "813a8acb759a1b4178f282698bd67a3ad1888343",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -14,17 +14,17 @@
     "visual": {
       "path": "docs/dev/ui-visual-design.md",
       "authority": "normative visual, interaction and editor contract",
-      "sha256": "5c6b694240425926692e0c6bf72a50958d09ca084f4b3d270afabcaad3fc8bba"
+      "sha256": "eca6710622d19077fe0f7ea76040b881582202c540907328b7b771e9f349767a"
     },
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "3cee019ad4d38ddb15880b5ddf5a77129f36c95b2c987049845b082fc1c23082"
+      "sha256": "7a7e90a2c38c2319e8f632bc37fb20492cabd396282056d0fc8e988b3a719bf7"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "c9ffe961815c0f52681714d8338e667b6e86138977017ff7fa5174a804e258d0"
+      "sha256": "469bab5dc7784512cf5fde6cf953f8ec8bf084f266b86fe397a6a0b5d35e4919"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -102,13 +102,13 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "3cee019ad4d38ddb15880b5ddf5a77129f36c95b2c987049845b082fc1c23082"
+      "sha256": "7a7e90a2c38c2319e8f632bc37fb20492cabd396282056d0fc8e988b3a719bf7"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/document-format.md",
       "scope": "Typed JSONC, stable IDs, value edits and motion only; components, structure editing and full model unfinished.",
-      "sha256": "1a1c9c87ebf3a3afe2b784e3d1dadff4df4dabaa8ae8d14ba005546b927bb1c1"
+      "sha256": "0974115fc28ee1974c8867acf6e1a1becfd2b474d00a70b5d13e81546ee81af9"
     },
     "binding-foundation": {
       "kind": "implementation_checkpoint",
@@ -204,7 +204,7 @@
     "event-program-foundation": {
       "kind": "qualified_foundation_checkpoint",
       "path": "docs/dev/ui/event-programs.md",
-      "sha256": "ac88d99b0dd896cc1fdfd3b94a02c68566bc63e333a4fe2e5c09a8fb220cbde6",
+      "sha256": "b306ee55c5b8a50aa305c2944a08de649988515acbe45f184a099304d02b1633",
       "baseline_engine_revision": "25813aaf96f0a9dfe36e1be0fd29bbce8cea93df",
       "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
       "local_capture_summary": ".tmp/ui/events-review/capture-evidence.json",
@@ -253,7 +253,7 @@
       "scope": "M2 implementation subset: canonical typed toggle, stepped slider and constrained choice roles, atomic authoritative value/mixed/option readbacks, invocation-local immutable edit operands and acknowledged proposals. Authored stable vector parts have compiler-enforced geometry and property ownership; derived popup placement, tentative selection/drag state, source cancellation and versioned widget snapshots support the subset. The packaged openq4.system document declares the complete 53-field draft/baseline service schema and presents eight initial immediate image controls with local dirty-discard and eligible display-confirmation panels. A non-archived default-off ui_retainedSystem option selects the normal Session child route, preserving its exact parent and service-owned return guard. The final Windows build/package stage and 13 native UI suites pass; the production Session boundary passes 173 checks and the capture runner passes 15 tests with 444 rejected altered-log cases. Source/binary-bound hidden windowed Windows SP/OpenGL at 125% and MP/Vulkan at 200%, both at 1280x720, each pass 18 normal Session stages after active gameplay. Draft/readback/apply, dirty Back/continue/discard, tentative/committed choice, language/video recovery with an unapplied draft, exact parent return and fresh-owner reopen are covered. All 14 engine render-target images were reviewed, including column reflow, popup placement and distinct disabled Apply; SP has no warnings/errors, MP retains 94 baseline warnings with no new warning messages or errors. These are semantic integration and static-view checks, not full physical-input, transition, display/platform/language or artwork qualification. Precise numeric text entry/IME, complete controls and setting inventory, effect/preset executors, full source-derived artwork/transitions, touch/accessibility/scrollbars, editor round trips and full platform/corpus qualification remain required. Discard currently resets the draft and stays on the page. No requirement, milestone, production screen or migration entry is accepted.",
       "local_capture_summary": ".tmp/ui/value-controls-review/capture-evidence.json",
       "local_capture_summary_sha256": "2c5c14d4d0a9d0fb8cc8d45dab9af39fdc9e6c4ab017f93a1f6a3e49c3cf1a40",
-      "sha256": "4e6b146f25f47473ee20f9fa5907e857fdcaa642c888e97fbf414f558ecdacc2"
+      "sha256": "948cfd1c87e67ab38ea25a0dc33fd995553472b4ab19dd44d7010ae4713412d1"
     },
     "system-exit-foundation": {
       "kind": "implementation_checkpoint",
@@ -588,89 +588,107 @@
       "scope": "17 September plan audit: actual ancestor vector-mask pointer queries, positive-alpha hole/stroke/gradient coverage and empty-mask subtree focus. Repairs eight stale settings status translation keys. All 83 UI suites and final bounded SP/OpenGL and MP/Vulkan SYSTEM gameplay captures passed. No full control/mask focus intersection, transformed overflow, physical input, optimized/platform qualification or product acceptance.",
       "local_capture_summary": ".tmp/ui/masked-input-review/validation-evidence.json",
       "local_capture_summary_sha256": "05dda04d28ea4da2171537901a60a30c8408961efd1814a585f649e60c54d7bb",
-      "sha256": "57d96a9c4053c571b2b885f6babfbf906868959de2c74dd33263efef5e9dd369"
+      "sha256": "615d733fa939ac46860058e12df10c025d732e40f58fe65b9cc9bd358e619310"
     },
     "independent-text-scale": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/text-scale.md",
       "baseline_engine_revision": "85c011754b800409e5e471b454ac4d658b6f3d00",
       "companion_revision": "a4946f8b28c53bb32ec323bddcf0e2276bc8492c",
-      "scope": "Independent 100–200% runtime typography with font-relative dimensions and responsive SYSTEM layout. All 85 registered UI suites pass, including 211,245 checks across 84 six-locale/expanded-glyph layout combinations. Thirty engine screenshots were reviewed after windowed SP/OpenGL and MP/Vulkan gameplay. Normal preference/reset controls, arbitrary-size glyph rasterization, full GUI/editor/platform qualification and product acceptance remain outstanding.",
+      "scope": "Independent 100\u2013200% runtime typography with font-relative dimensions and responsive SYSTEM layout. All 85 registered UI suites pass, including 211,245 checks across 84 six-locale/expanded-glyph layout combinations. Thirty engine screenshots were reviewed after windowed SP/OpenGL and MP/Vulkan gameplay. Normal preference/reset controls, arbitrary-size glyph rasterization, full GUI/editor/platform qualification and product acceptance remain outstanding.",
       "local_capture_summary": ".tmp/ui/text-scale/validation-evidence.json",
-      "sha256": "e42c2b99c3958af80d0461eaae31ab6d9ea6f83e4690d013d92515dbf30a5831",
+      "sha256": "b07d9710eee7e2c571284fa9a958c8d97158fe0a77da9635d29c5f2c20c2b319",
       "local_capture_summary_sha256": "38289b7f0057c6de8dd1670f20251d00e6e53033841782097060bc3cfae98139"
     },
     "interface-size-preferences": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/interface-size-preferences.md",
-      "sha256": "c9a559c4f7603154cc584a896d5c59de3a5fe6a8ebd6643fe232ee76ce6029c7",
-      "scope": "Transactional 75–200% UI and 100–200% text scale, two-field reset, root-menu window fitting and legacy display-journal catalog recovery. Bounded SYSTEM qualification; no full screen/editor/product acceptance."
+      "sha256": "d9ced62d57125957390248bfd0599572eea4e63d740d136a2cf5313a64ca96f7",
+      "scope": "Transactional 75\u2013200% UI and 100\u2013200% text scale, two-field reset, root-menu window fitting and legacy display-journal catalog recovery. Bounded SYSTEM qualification; no full screen/editor/product acceptance."
     },
     "output-size-fonts": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/output-size-fonts.md",
-      "sha256": "ed0f2f02df5a301e437fddcf44798032a7e792f452197b0f0b51bd8c1a85603a",
+      "sha256": "eb874ac80318cd730db9cd21d71ad95e5d316c973b3a0f0a91252265b9f81704",
       "scope": "Bounded physical-size retained glyph cache with shared immutable atlases, scalar lookup, legacy fallback and coordinated resource resets. Normal-face rasterization foundation only; style/weight, largest animated transform density, shaping, complete font and product qualification remain required."
     },
     "paired-field-focus": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/paired-field-focus.md",
-      "sha256": "142c9b6b0e28fb5bc41787431a65e56124c52ec26967ace44205e4af4a17d8c5",
+      "sha256": "5f1c807ca8a4c1031e0cddd8067c96d849b78cda094012397d1a41f5385e7f52",
       "scope": "Shared text-relative heights and centered tracks keep the authored SYSTEM brightness/ambient slider and numeric viewport pairs aligned and visible when focused. Bounded production-page evidence only; full LAY-004, control, editor and UI-corpus acceptance remain required."
     },
     "system-display-controls": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/display-controls.md",
       "scope": "Four production SYSTEM display controls reuse typed draft/confirmation ownership and editable vector artwork. Read-only strict-backend availability gates and visibly dims MSAA, including authoritative pre-write refusal. A fresh completion clock preserves the presentation window after blocking Apply and restoration restarts. Bounded page/service/gameplay qualification only; complete display catalogs, dependent presentation, effects, visible window/platform behavior, editor and product acceptance remain required.",
-      "sha256": "5693d7876c6215e7cf973650b971bcac2926958614c4da12a595550f397d22e9"
+      "sha256": "80c9cd7bd289bac5afd644a8ca53e0eeffdbf2f33afb216dbb25c8a275bda620"
     },
     "system-dimensions": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/dimension-controls.md",
       "scope": "Four production SYSTEM window/custom fullscreen dimension fields use exact decimal-integer validation, dependent availability and owned typed drafts. Custom edits select Custom mode atomically. Separate intrinsic draft validation allows intermediate tuples while full capability checks still guard Apply, preparation and execution. Bounded native and hidden/windowed gameplay qualification only; dynamic display/resolution/refresh catalogs, visible fullscreen/platform behavior, native input, remaining effects, editor and complete product acceptance stay open.",
-      "sha256": "336d30920bf71a3acb590f4dce9ce9d56b2b0cd36a12c2d6b4f17c63fc3b08bd"
+      "sha256": "5e12a4c7b4c919799958b6d25c2f11ae51ff87350b668042cac2557926afe84f"
     },
     "retained-screens": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Opt-in retained title, single-player pause and stock loading screens behind the single ui_retained gate, with image nodes, additive and multiply path blends, a view-height canvas, typed session menu requests and exact overflow clipping under translation and scale. Windowed OpenGL/Vulkan 16:9, OpenGL 4:3 and gate-off engine captures only; the Objectives action, the Strogg variant, soft focus, Remastered loading details, multiplayer menus, GLES and complete product acceptance stay open.",
-      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
+      "sha256": "abf18fe35a7c3095171d56965da771a5b699d6a5a9e065dbd520c6ee75125182"
     },
     "retained-loading-progress": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained loading screen's Remastered progress behind ui_retained: the levelshot drift, the difficulty line, LOADING over a 240 u bar with the loader's phase and its place or asset count, the percentage, the load time and a continue prompt that follows the last input family. Real single-player loads traced the phases in order on OpenGL and Vulkan; the rendered line was captured through testGUI. Tips, touch and device-family glyphs, the Remastered multiplayer screen and complete product acceptance stay open.",
-      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
+      "sha256": "abf18fe35a7c3095171d56965da771a5b699d6a5a9e065dbd520c6ee75125182"
     },
     "retained-loading-multiplayer": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained loading screen's Remastered multiplayer composition behind ui_retained: the bottom band kept low, a section 6 server card on the leading side with the server name, address, mode and limits, JOINING when a multiplayer load ends, and the name strip darkening the message line. Captured through testGUI on OpenGL and Vulkan; players by team, the server message, the arsenal, the Welcome hand-off and complete product acceptance stay open.",
-      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
+      "sha256": "abf18fe35a7c3095171d56965da771a5b699d6a5a9e065dbd520c6ee75125182"
     },
     "retained-title-carry": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Section 13.8 refinements on the retained title and single-player pause menus behind ui_retained: the soft additive focus glow beside the focus rail, the emblem's rim light and glint, and the title carry, in which a page hand-off carries the chosen navigation label into the page title slot as the bands dock. Captured on OpenGL and Vulkan; the depth shift, the high-contrast rail, symbols, tags, HDR rules and complete product acceptance stay open.",
-      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
+      "sha256": "abf18fe35a7c3095171d56965da771a5b699d6a5a9e065dbd520c6ee75125182"
     },
     "retained-title-depth": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Section 13.8 depth on the retained title behind ui_retained: the backdrop, the light and grid, and the framing bands lean up to 6 dp away from the pointer the session publishes, deeper layers further, while content stays fixed; reduced motion holds them still. Captured on OpenGL and Vulkan; the right stick, device tilt, the Phone default and complete product acceptance stay open.",
-      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
+      "sha256": "abf18fe35a7c3095171d56965da771a5b699d6a5a9e065dbd520c6ee75125182"
     },
     "retained-title-depth-stick": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained title's depth lean follows a held look stick while it leads and the pointer otherwise. Qualified by ui_retained_gate.py compiling the production session frame code against counted doubles, not by an engine capture, since no input is injected. Device tilt, the Phone default and complete product acceptance stay open.",
-      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
+      "sha256": "abf18fe35a7c3095171d56965da771a5b699d6a5a9e065dbd520c6ee75125182"
     },
     "retained-modal-confirmation": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
-      "scope": "The retained confirmation modal at the 480 dp confirmation width behind ui_retained, in its opaque-backing form: the stock glow column across the dialog's 320 u rectangle with the stock art's black 0.70 silhouette inset 6.5625 dp from each side so the lit margin and slot outline it, the leading tooth, title slot, raised trailing section, 38 dp lower-leading chamfer and square trailing corners without rails, the title at the foot of the slot's leading flank with its capitals hanging from the raised top line and a 1 dp black outline at 0.85 composited once behind the fill, and the body and actions at the stock positions. Captured on OpenGL and Vulkan at 16:9 and OpenGL at 4:3 beside an engine capture of the stock exit dialog. Soft focus, the other four widths, modal motion and complete product acceptance stay open.",
-      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
+      "scope": "The retained confirmation modal at the 480 dp confirmation width behind ui_retained, in its opaque-backing form: the stock glow column across the dialog's 320 u rectangle with the stock art's black 0.70 silhouette inset 6.5625 dp from each side, 3.5625 dp at the top and 5.34 dp at the bottom, so the lit margin and slot outline it; the leading tooth, title slot, raised trailing section, 38 dp lower-leading chamfer and square trailing corners without rails; the title at the foot of the slot's leading flank with its capitals hanging from the raised top line and a 1 dp black outline at 0.85 composited once behind the fill; the first body baseline 87.5 dp down and the actions at the stock row. Captured on OpenGL and Vulkan at 16:9 and OpenGL at 4:3 beside an engine capture of the stock exit dialog; the capture record names ART-036, which ART-037 supersedes. Soft focus, the other four widths, modal motion and complete product acceptance stay open.",
+      "sha256": "abf18fe35a7c3095171d56965da771a5b699d6a5a9e065dbd520c6ee75125182"
+    },
+    "retained-modal-motion": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/retained-screens.md",
+      "scope": "The retained title and single-player pause screens behind ui_retained author the stock screen choreography with the section 8 tokens: menu.fade over 250 ms; frame.dock and screen.depart accel(250, 250) over 500 ms from 50 ms with the home layer sweeping 640 u; content.out of the home content over 250 ms; the bands' return from 0 ms and content.in over 150 ms. Their confirmations run modal.enter (scrim, glow and frame over 200 ms, contents together at 200 ms, no scale) and modal.leave (contents at once, then after 50 ms the scrim and glow over 250 ms and the frame over 200 ms for Exit or 250 ms), on timeline completion programs. Modal timing is qualified by native runtime tests; no engine capture of the transitions, and no sampled comparison with the stock timelines.",
+      "sha256": "abf18fe35a7c3095171d56965da771a5b699d6a5a9e065dbd520c6ee75125182"
+    },
+    "retained-motion-tokens": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/retained-screens.md",
+      "scope": "The retained title and single-player pause screens fade the plinth and its secondary links over 50 ms on depart while the home plates take 250 ms, bring them back with content.in, give hover feedback at once, and dim the wordmark to 40% gray while the title's Exit modal is open. Qualified by the native screens test; no engine capture.",
+      "sha256": "abf18fe35a7c3095171d56965da771a5b699d6a5a9e065dbd520c6ee75125182"
+    },
+    "retained-motion-engine": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/retained-screens.md",
+      "scope": "Engine captures, on OpenGL and Vulkan at 1280x720, of the retained title's exit confirmation entering, open, leaving and closed, and of the plinth gone 30 ms into a depart, from a candidate runtime of the pushed code; with the host fix that keeps additive pictures from blacking out their rectangle inside a fading composition layer. Frame times follow console waits and are approximate.",
+      "sha256": "abf18fe35a7c3095171d56965da771a5b699d6a5a9e065dbd520c6ee75125182"
     }
   },
   "groups": {
@@ -1041,7 +1059,8 @@
       "ART-024",
       "ART-032",
       "ART-033",
-      "ART-036"
+      "ART-036",
+      "ART-037"
     ],
     "UI-12": [
       "LAY-003",
@@ -1417,6 +1436,17 @@
       "normative_change": "Visual 1.13 replaces the walker and hover tank's exit and lock lines with the HUD prompt and keeps the vehicle HUD's transmission display at the trailing screen's corner, adding it where a vehicle HUD has none; every other boss and vehicle rule is carried unchanged.",
       "source_refs": [
         "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "ART-036",
+      "successors": [
+        "ART-037"
+      ],
+      "normative_change": "Visual 1.14 measures the modal against the stock: the title's capitals hang from the raised top line into the lit slot instead of its baseline standing on that line, the silhouette is inset in its rectangle so that the inset is the lit margin, and the first body baseline is placed at 87.5 dp; every other construction is carried unchanged.",
+      "source_refs": [
+        "visual:6"
       ],
       "carried_evidence": []
     }
@@ -2987,7 +3017,7 @@
         "product:3 Text, controls and accessibility",
         "product:5 Visual and interaction qualification"
       ],
-      "requirement": "Provide independently persisted UI scale default 100%, range 75–200%; clamp extremes with reachable reset and no lost essential actions.",
+      "requirement": "Provide independently persisted UI scale default 100%, range 75\u2013200%; clamp extremes with reachable reset and no lost essential actions.",
       "dependencies": [
         "BEH-002"
       ],
@@ -3019,7 +3049,7 @@
         "product:3 Text, controls and accessibility",
         "product:5 Visual and interaction qualification"
       ],
-      "requirement": "Provide text scale default 100%, range 100–200% independent of furniture; reflow labels, rows and forms without hiding essential actions.",
+      "requirement": "Provide text scale default 100%, range 100\u2013200% independent of furniture; reflow labels, rows and forms without hiding essential actions.",
       "dependencies": [
         "TXT-001",
         "LAY-003"
@@ -4836,7 +4866,7 @@
         "product:3 Visual quality and motion",
         "original:Stage 6"
       ],
-      "requirement": "Standard panels have equal 12 dp upper/8 dp lower 45-degree cuts, 1 dp rail and 3 dp inset rail; popover cuts 6 dp, major bands 16–24 dp. Reconstruct each stepped/notched silhouette and named ornaments without stretched corners.",
+      "requirement": "Standard panels have equal 12 dp upper/8 dp lower 45-degree cuts, 1 dp rail and 3 dp inset rail; popover cuts 6 dp, major bands 16\u201324 dp. Reconstruct each stepped/notched silhouette and named ornaments without stretched corners.",
       "dependencies": [
         "ART-001",
         "REN-001"
@@ -9726,10 +9756,14 @@
       "acceptance_evidence_needed": [
         "Authored tokens plus sampled curve and duration evidence against the stock timelines, per destination, with rationale for openQ4 additions."
       ],
-      "status": "pending",
-      "current_evidence": [],
+      "status": "partial",
+      "current_evidence": [
+        "retained-modal-motion",
+        "retained-motion-tokens",
+        "retained-motion-engine"
+      ],
       "acceptance_evidence": [],
-      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "remaining": "Behind ui_retained, the title and single-player pause screens author menu.fade over 250 ms, frame.dock and screen.depart as accel(250, 250) over 500 ms from 50 ms with the home layer sweeping 640 u, the home content.out over 250 ms with the plinth and secondary links over 50 ms, the bands' return from 0 ms with content.in over 150 ms, and their confirmations' modal.enter and modal.leave, whose timing native tests qualify. The departing page's title, Back and backing timing, screen.return and content.in on the pages, band.slide, row.flash, list.unfold, light.up, the destinations' backings and second light band, preservation of the source story, terminal and reticle timing, and sampled curve and duration evidence against the stock timelines per destination remain.",
       "constraints": {
         "accel_rule": "stock accel/decel arguments are fractions of the duration, rescaled when they sum past it",
         "frame.dock": {
@@ -13041,7 +13075,7 @@
         "visual:14",
         "visual:13"
       ],
-      "requirement": "In the Competitive preset, move the standing or team panels and the timer into a match bar at the top center: three sheared HUD plates from y 6, 26 u tall and 2 u apart, a 60 u timer plate at black 0.72 between 122 u side plates at 0.55. Each side's outer 25 u block holds the team color at 0.85 with the faction mark in team modes, or the rank ordinal in deathmatch and Tourney (the leader's in #FFBE23), followed by the team name in its text color or the name cut with an ellipsis, with the score in Chain 21 dp at the inner end; your side leads, marked in deathmatch, facing the leader, 2nd place when you lead, or your Tourney opponent. The timer reads Chain 15.5 dp with the Remastered timer's states over a Lowpixel sub-label (the limit, ROUND n or ARENA n). Small plates under the bar carry each flag's state with the carrier, the round modes' alive pips and the Dead Zone holder, and network quality follows the bar's trailing end at all times. In team modes your team's status list sits at the leading edge from y 150: 138x14.5 u plates on a 16.5 u pitch with the weapon icon, the name, health in Chain (#E46D56 at 25 and below, #FFBE23 above 100) and armor at 0.60, your row on the header-band plate with the marker and the dead at 0.40 under an ✕. The status bar grows by 15% about the bottom edge with the chat box 8 u above it, the vote moves to the top-leading corner, the Tourney bracket strip leaves the top for the scoreboard's bracket tree, and the kill feed, center column, powerups and managed-match card keep their places.",
+      "requirement": "In the Competitive preset, move the standing or team panels and the timer into a match bar at the top center: three sheared HUD plates from y 6, 26 u tall and 2 u apart, a 60 u timer plate at black 0.72 between 122 u side plates at 0.55. Each side's outer 25 u block holds the team color at 0.85 with the faction mark in team modes, or the rank ordinal in deathmatch and Tourney (the leader's in #FFBE23), followed by the team name in its text color or the name cut with an ellipsis, with the score in Chain 21 dp at the inner end; your side leads, marked in deathmatch, facing the leader, 2nd place when you lead, or your Tourney opponent. The timer reads Chain 15.5 dp with the Remastered timer's states over a Lowpixel sub-label (the limit, ROUND n or ARENA n). Small plates under the bar carry each flag's state with the carrier, the round modes' alive pips and the Dead Zone holder, and network quality follows the bar's trailing end at all times. In team modes your team's status list sits at the leading edge from y 150: 138x14.5 u plates on a 16.5 u pitch with the weapon icon, the name, health in Chain (#E46D56 at 25 and below, #FFBE23 above 100) and armor at 0.60, your row on the header-band plate with the marker and the dead at 0.40 under an \u2715. The status bar grows by 15% about the bottom edge with the chat box 8 u above it, the vote moves to the top-leading corner, the Tourney bracket strip leaves the top for the scoreboard's bracket tree, and the kill feed, center column, powerups and managed-match card keep their places.",
       "dependencies": [
         "FLOW-056",
         "FLOW-044",
@@ -13258,6 +13292,135 @@
         "gev": {
           "remastered": "bottom_center",
           "classic": "bottom_leading"
+        }
+      }
+    },
+    {
+      "id": "ART-037",
+      "title": "Panel, pop-up and band constructions",
+      "milestone_owner": "M2",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Cards use one marine.rail.card rail around a 0.94 black body with 12 dp cuts at the top-trailing and bottom-leading corners and 3 dp at the other two; small cards keep the 12 dp cut and only one-line hints use 10 dp. Modals are a 0.70 black silhouette inset in its rectangle as the stock art is (7/512 of the width at each side, 3.6 dp above the raised sections and 5.3 dp below the bottom edge) over the soft-focused screen, with an additive glow graded only vertically across the rectangle, whose inset around the silhouette is the lit margin, at half strength at the rectangle's top and bottom edges and gone 40 dp beyond them, and fading out over a further 16 dp past each side (over the opaque-backing scrim it keeps the stock column, the rectangle's width, 87 u above and 108 u below), with a leading tooth, a title slot about 73% wide, a raised trailing section, a deep lower-leading chamfer, square trailing corners and no rails; the five stock widths keep their slot depths and chamfers, the title starts at the foot of the slot's leading flank with its capitals hanging from the raised top line into the lit slot and its baseline about 6 dp above the floor, with a thin black outline at 0.85 extruding 1 dp around its strokes behind the fill, the first body baseline sits 87.5 dp below the rectangle's top, and actions sit 30 dp and 33 dp from the edges. The chat box, tab strip, header band, framing and loading bands and corner brackets follow their measured constructions, lengthening only straight spans.",
+      "dependencies": [
+        "ART-001",
+        "REN-001",
+        "REN-014",
+        "REN-016"
+      ],
+      "acceptance_evidence_needed": [
+        "Measured geometry and overlays against the stock at 4:3 and across widths and DPI for every construction; a generic beveled rectangle is insufficient. Include each modal width over the soft focus and over the opaque-backing scrim. Show the title outline and the glow's side fade over a bright softened scene. Compare the title's capitals and baseline with an engine capture of the classic exit dialog, and the silhouette's inset with popup_top."
+      ],
+      "status": "partial",
+      "current_evidence": [
+        "retained-modal-confirmation"
+      ],
+      "acceptance_evidence": [],
+      "remaining": "Behind ui_retained, the title's exit and the single-player pause menu's quit confirmations are the 480 dp modal over the opaque-backing scrim: the stock glow column at the rectangle's width and the stock art's black 0.70 silhouette inset 6.56 dp from each side, 3.56 dp above the raised sections and 5.34 dp below the bottom edge, so the lit margin and the lit slot outline it; the leading tooth, title slot, raised trailing section, 38 dp lower-leading chamfer and square trailing corners without rails; the title's capitals hanging from the raised top line at the foot of the slot's leading flank, its baseline 13.5 dp below the rectangle's top, with a 1 dp black outline at 0.85 behind the fill; the first body baseline 87.5 dp below the rectangle's top; and the actions 30 dp and 33 dp from the edges. Cards and their cuts, the modal over the soft focus with its glow fading over 16 dp past each side (REN-016), the system message, ban list and advanced settings widths, the chat box, tab strip and header band, qualification of the framing and loading bands and corner brackets against their measured constructions across widths and DPI, and complete acceptance remain.",
+      "constraints": {
+        "card": {
+          "major_cut_dp": 12,
+          "minor_cut_dp": 3,
+          "one_line_hint_major_cut_dp": 10,
+          "rail_dp": 1.5,
+          "body_alpha": 0.94,
+          "art_inset_u": 2
+        },
+        "modal_widths_dp": {
+          "confirmation_entry_list": {
+            "width": 480,
+            "slot_depth": 17,
+            "chamfer": 38
+          },
+          "system_message_connection_death": {
+            "width": 540,
+            "slot_depth": 20,
+            "chamfer": 46
+          },
+          "ban_list": {
+            "width": 548,
+            "slot_depth": 22,
+            "chamfer": 50
+          },
+          "advanced_options": {
+            "width": [
+              612,
+              642
+            ],
+            "slot_depth": 25,
+            "chamfer": 56
+          }
+        },
+        "modal": {
+          "frame_alpha": 0.7,
+          "leading_tooth_dp": 6,
+          "slot_opening_fraction": 0.73,
+          "slot_floor_fraction": 0.66,
+          "action_inset_dp": [
+            30,
+            33
+          ],
+          "lit_margin_dp": 6,
+          "standard_top_u": 155,
+          "standard_height_u": 136,
+          "backdrop": "modal.softfocus",
+          "soft_focus_glow": {
+            "full_across": "rectangle",
+            "half_at": "rectangle_top_and_bottom_edges",
+            "extent_beyond_dp": 40,
+            "side_fade_dp": 16
+          },
+          "scrim_glow": {
+            "half_at_height_fraction": [
+              0.28,
+              0.72
+            ],
+            "extent_u": {
+              "above": 87,
+              "below": 108
+            }
+          },
+          "title_outline": {
+            "color": "#000000",
+            "alpha": 0.85,
+            "extrude_dp": 1,
+            "behind_fill": true
+          },
+          "silhouette_inset": {
+            "side_fraction_of_width": 0.013671875,
+            "side_dp_at_480": 6.56,
+            "top_dp": 3.56,
+            "bottom_dp": 5.34
+          },
+          "lit_margin": "silhouette_inset",
+          "title": {
+            "cap_line": "raised_top_line",
+            "baseline_above_floor_dp": 6,
+            "confirmation_baseline_below_top_dp": 13.5
+          },
+          "body_first_baseline_below_top_dp": 87.5
+        },
+        "header_band": {
+          "cut_texels": 8,
+          "fill_full_to_fraction": 0.5,
+          "half_at_fraction": 0.75
+        },
+        "bands": {
+          "flank_degrees": 45,
+          "notch_height_u": 9,
+          "notch_top_u": 36,
+          "notch_pitch_u": 97,
+          "top_riser_u": 35,
+          "rim_light_u": 19,
+          "silhouettes": "visual Appendix B.2"
         }
       }
     }

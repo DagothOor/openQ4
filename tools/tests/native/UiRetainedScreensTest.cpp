@@ -218,42 +218,6 @@ int main(int argc, char** argv) {
 		runtime.Frame(viewport,5.5);
 		Check(runtime.GetBounds("nav_settings-focus",focus),"focus rail laid out");
 		Check(runtime.HasEvent("exitModalShow") && runtime.HasEvent("onBack"),"Back asks before leaving the game");
-		// The exit confirmation (section 6) at 1080p, 1.5 px a dp: the stock
-		// art's silhouette sits 6.5625 dp inside the glow column, the title
-		// starts at the slot's foot, and its outline is eight copies extruded
-		// 1 dp and composited once at 0.85, behind the fill.
-		{
-			Runtime::EventEffects shown;
-			Check(runtime.RunEvent("exitModalShow",5.6,shown,error),"the exit confirmation opens");
-			host.draws.clear(); host.compositeOpacities.clear();
-			runtime.Frame(viewport,5.7);
-			Bounds dialog, title, outline, left, below, body;
-			Check(runtime.GetBounds("exitModal-dialog",dialog) && runtime.GetBounds("exitModal-title",title) &&
-				runtime.GetBounds("exitModal-title-outline",outline) && runtime.GetBounds("exitModal-title-outline-1",left) &&
-				runtime.GetBounds("exitModal-title-outline-4",below) && runtime.GetBounds("exitModal-body",body),"the confirmation is laid out");
-			Check(Near(dialog.x,240+240*1.5f) && Near(dialog.width,480*1.5f),"the dialog is the stock 320 u rect");
-			Check(Near(title.x-dialog.x,30.125f*1.5f) && Near(title.y-dialog.y,-4*1.5f),"the title hangs from the slot's foot");
-			Check(Near(left.x-title.x,-1.5f,.01f) && Near(left.y-title.y,0,.01f) && Near(below.y-title.y,1.5f,.01f),
-				"the outline copies extrude 1 dp");
-			Check(outline.x <= left.x && outline.y <= title.y-1.5f && outline.x+outline.width >= title.x+title.width+1.5f,
-				"the outline group encloses its copies, since its composite is clipped to it");
-			Check(Near(body.y-dialog.y,71*1.5f) && Near(body.x-dialog.x,33*1.5f),"the body sits where the stock body does");
-			Check(std::any_of(host.compositeOpacities.begin(),host.compositeOpacities.end(),[](float value) { return Near(value,.85f,.001f); }),
-				"the outline composites once at 0.85");
-			// Vector fills arrive as pixel coverage spans: the first fully covered
-			// column and row start at the next pixel boundary past each edge.
-			float silhouetteLeft = 1e9f, silhouetteTop = 1e9f;
-			for (const auto& draw : host.draws) for (const auto& vertex : draw.vertices)
-				if (!draw.material && vertex.r == 0 && vertex.g == 0 && vertex.b == 0 && Near(vertex.a,.7f,.005f) &&
-					vertex.x >= dialog.x-1 && vertex.x <= dialog.x+dialog.width+1 && vertex.y >= dialog.y-1 && vertex.y <= dialog.y+dialog.height+1) {
-					silhouetteLeft = std::min(silhouetteLeft,vertex.x); silhouetteTop = std::min(silhouetteTop,vertex.y);
-				}
-			Check(Near(silhouetteLeft,std::ceil(dialog.x+480*7/512.f*1.5f),.01f) && Near(silhouetteTop,std::ceil(dialog.y+3.5625f*1.5f),.01f),
-				"the silhouette leaves the 6 dp lit margin and its raised top line");
-			Runtime::EventEffects hidden;
-			Check(runtime.RunEvent("exitModalHide",5.8,hidden,error),"the exit confirmation closes");
-			runtime.Frame(viewport,5.9);
-		}
 		// The emblem's glint turns once every 9 s under its wedge mask while
 		// the rim inside turns back; reduced motion keeps only the rim.
 		Runtime::EventEffects init;
@@ -307,6 +271,104 @@ int main(int argc, char** argv) {
 		runtime.Frame(viewport,13.7);
 		const auto gone = runtime.PresentedValue("title-carry","opacity");
 		Check(gone && Near(static_cast<float>(gone->data[0]),0,.001f),"home starts without a carried title");
+		// The exit confirmation (section 6) at 1080p, 1.5 px a dp: the stock
+		// art's silhouette sits 6.5625 dp inside the glow column, the title
+		// starts at the slot's foot, and its outline is eight copies extruded
+		// 1 dp and composited once at 0.85, behind the fill. modal.enter brings
+		// the scrim, glow and frame in over 200 ms and shows the contents at its
+		// end; modal.leave hides them at once and closes the modal 300 ms later.
+		{
+			Runtime::EventEffects shown;
+			Check(runtime.RunEvent("exitModalShow",14,shown,error),"the exit confirmation opens");
+			runtime.Frame(viewport,14.1);
+			const auto scrim = runtime.PresentedValue("exitModal","background-color");
+			const auto frameIn = runtime.PresentedValue("exitModal-frame","opacity");
+			const auto waiting = runtime.PresentedValue("exitModal-contents","display");
+			Check(scrim && Near(static_cast<float>(scrim->data[3]),.47f,.02f) && frameIn && Near(static_cast<float>(frameIn->data[0]),.5f,.02f) &&
+				waiting && waiting->text == "none","half way in, the scrim and frame rise while the contents wait");
+			Check(runtime.FocusedControl().empty(),"focus waits for the contents");
+			host.draws.clear(); host.compositeOpacities.clear();
+			runtime.Frame(viewport,14.25);
+			const auto appeared = runtime.PresentedValue("exitModal-contents","display");
+			Check(appeared && appeared->text == "block" && runtime.FocusedControl() == "exitModal_no",
+				"the contents appear together at 200 ms and NO takes focus");
+			const auto dimmed = runtime.PresentedValue("wordmark","image-color");
+			Check(dimmed && Near(static_cast<float>(dimmed->data[0]),.4f,.01f) && Near(static_cast<float>(dimmed->data[3]),1,.001f),
+				"the Exit modal dims the wordmark to 40% gray");
+			Bounds dialog, title, outline, left, below, body;
+			Check(runtime.GetBounds("exitModal-dialog",dialog) && runtime.GetBounds("exitModal-title",title) &&
+				runtime.GetBounds("exitModal-title-outline",outline) && runtime.GetBounds("exitModal-title-outline-1",left) &&
+				runtime.GetBounds("exitModal-title-outline-4",below) && runtime.GetBounds("exitModal-body",body),"the confirmation is laid out");
+			Check(Near(dialog.x,240+240*1.5f) && Near(dialog.width,480*1.5f),"the dialog is the stock 320 u rect");
+			Check(Near(title.x-dialog.x,30.125f*1.5f) && Near(title.y-dialog.y,-4*1.5f),"the title hangs from the slot's foot");
+			Check(Near(left.x-title.x,-1.5f,.01f) && Near(left.y-title.y,0,.01f) && Near(below.y-title.y,1.5f,.01f),
+				"the outline copies extrude 1 dp");
+			Check(outline.x <= left.x && outline.y <= title.y-1.5f && outline.x+outline.width >= title.x+title.width+1.5f,
+				"the outline group encloses its copies, since its composite is clipped to it");
+			Check(Near(body.y-dialog.y,71*1.5f) && Near(body.x-dialog.x,33*1.5f),"the body sits where the stock body does");
+			Check(std::any_of(host.compositeOpacities.begin(),host.compositeOpacities.end(),[](float value) { return Near(value,.85f,.001f); }),
+				"the outline composites once at 0.85");
+			// Vector fills arrive as pixel coverage spans: the first fully covered
+			// column and row start at the next pixel boundary past each edge.
+			float silhouetteLeft = 1e9f, silhouetteTop = 1e9f;
+			for (const auto& draw : host.draws) for (const auto& vertex : draw.vertices)
+				if (!draw.material && vertex.r == 0 && vertex.g == 0 && vertex.b == 0 && Near(vertex.a,.7f,.005f) &&
+					vertex.x >= dialog.x-1 && vertex.x <= dialog.x+dialog.width+1 && vertex.y >= dialog.y-1 && vertex.y <= dialog.y+dialog.height+1) {
+					silhouetteLeft = std::min(silhouetteLeft,vertex.x); silhouetteTop = std::min(silhouetteTop,vertex.y);
+				}
+			Check(Near(silhouetteLeft,std::ceil(dialog.x+480*7/512.f*1.5f),.01f) && Near(silhouetteTop,std::ceil(dialog.y+3.5625f*1.5f),.01f),
+				"the silhouette leaves the 6 dp lit margin and its raised top line");
+			Runtime::EventEffects hidden;
+			Check(runtime.RunEvent("exitModalHide",14.3,hidden,error),"the exit confirmation closes");
+			runtime.Frame(viewport,14.32);
+			const auto held = runtime.PresentedValue("exitModal","background-color");
+			const auto gone = runtime.PresentedValue("exitModal-contents","display");
+			const auto open = runtime.PresentedValue("exitModal","display");
+			Check(gone && gone->text == "none" && open && open->text == "block" && held && Near(static_cast<float>(held->data[3]),.94f,.01f),
+				"leaving hides the contents at once and holds the scrim for 50 ms");
+			runtime.Frame(viewport,14.56);
+			const auto frameOut = runtime.PresentedValue("exitModal-frame","opacity");
+			const auto stillOpen = runtime.PresentedValue("exitModal","display");
+			Check(frameOut && Near(static_cast<float>(frameOut->data[0]),0,.001f) && stillOpen && stillOpen->text == "block",
+				"Exit releases its frame over 200 ms while the scrim is still going");
+			const auto restoredMark = runtime.PresentedValue("wordmark","image-color");
+			Check(restoredMark && Near(static_cast<float>(restoredMark->data[0]),1,.001f),"the wordmark is restored from 50 ms over 150 ms");
+			runtime.Frame(viewport,14.61);
+			const auto closed = runtime.PresentedValue("exitModal","display");
+			Check(closed && closed->text == "none" && runtime.FocusedControl() != "exitModal_no","the modal closes when the scrim is gone");
+			// A Hide just after enter ended (with no frame between) runs enter's
+			// completion first, so the contents stay hidden. A Show while leaving
+			// then takes over the leave, which never completes.
+			Check(runtime.RunEvent("exitModalShow",15,shown,error) && runtime.RunEvent("exitModalHide",15.25,hidden,error),"hide after enter ended");
+			runtime.Frame(viewport,15.27);
+			const auto ordered = runtime.PresentedValue("exitModal-contents","display");
+			Check(ordered && ordered->text == "none" && hidden.stateChanges.contains("exitModal.contents") &&
+				!std::get<bool>(hidden.stateChanges.at("exitModal.contents")),"a completion due before an event runs before its program");
+			Check(runtime.RunEvent("exitModalShow",15.4,shown,error),"reopen while leaving");
+			runtime.Frame(viewport,15.7);
+			const auto reopened = runtime.PresentedValue("exitModal","display");
+			const auto restored = runtime.PresentedValue("exitModal-contents","display");
+			Check(reopened && reopened->text == "block" && restored && restored->text == "block","a reopened modal stays open");
+			Check(runtime.RunEvent("exitModalHide",16,hidden,error),"close again");
+			runtime.Frame(viewport,16.4);
+		}
+		// content.out (section 8): departing home plates fade over 250 ms, but
+		// the plinth and its secondary links take 50 ms; content.in brings
+		// them back together over 150 ms after the bands return.
+		{
+			Check(runtime.PlayTimeline("depart",17),"depart toward a page");
+			runtime.Frame(viewport,17.05);
+			const auto plinth = runtime.PresentedValue("plinth","opacity");
+			const auto homeOut = runtime.PresentedValue("home","opacity");
+			Check(plinth && Near(static_cast<float>(plinth->data[0]),0,.001f) && homeOut && Near(static_cast<float>(homeOut->data[0]),.8f,.01f),
+				"the plinth is gone at 50 ms while the home plates are still fading");
+			Check(runtime.PlayTimeline("returnHome",18),"return home");
+			runtime.Frame(viewport,18.7);
+			const auto plinthBack = runtime.PresentedValue("plinth","opacity");
+			const auto homeBack = runtime.PresentedValue("home","opacity");
+			Check(plinthBack && Near(static_cast<float>(plinthBack->data[0]),1,.001f) && homeBack && Near(static_cast<float>(homeBack->data[0]),1,.001f),
+				"the plinth returns with the home content");
+		}
 	}
 	// Pause: the level block binds the mission, difficulty, objectives and shot.
 	{

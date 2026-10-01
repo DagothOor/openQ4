@@ -185,12 +185,16 @@ class Timelines:
         self.items: list[dict] = []
 
     def add(self, ident: str, duration: float, tracks: list, *, iterations: int | None = None,
-            essential: bool | None = None) -> str:
+            essential: bool | None = None, complete: str | None = None) -> str:
+        """`complete` names an event the runtime runs when the timeline plays
+        to its end; cancellation and a takeover of every track never complete."""
         timeline = {"id": ident, "durationMs": duration, "tracks": tracks}
         if iterations is not None:
             timeline["iterations"] = iterations
         if essential is not None:
             timeline["essential"] = essential
+        if complete is not None:
+            timeline["complete"] = complete
         self.items.append(timeline)
         return ident
 
@@ -309,10 +313,10 @@ class Document:
 
     def states(self, control: str, tracks: dict) -> dict:
         """Button feedback timelines. `tracks` maps state -> [(node, prop, value)].
-        Hover and focus respond at once (hover.enter 0 ms, focus 80 ms); every
-        return to rest is linear over 300 ms (hover.leave); press insets 1 dp
-        over 60 ms (section 8)."""
-        durations = {"default": 300, "hover": 60, "focus": 80, "pressed": 60, "disabled": 150}
+        Hover responds at once (hover.enter 0 ms: a 1 ms step, the shortest a
+        timeline can run) and focus over 80 ms; every return to rest is linear
+        over 300 ms (hover.leave); press insets 1 dp over 60 ms (section 8)."""
+        durations = {"default": 300, "hover": 1, "focus": 80, "pressed": 60, "disabled": 150}
         ids = {}
         for state, duration in durations.items():
             ident = f"{control}.{state}"
@@ -464,7 +468,7 @@ def plinth(doc: Document, links: list) -> dict:
     row = group("plinth-links", {**absolute(left=U * (32 - left), top=U * -0.3, height=U * 17),
                                   "display": keyword("flex"), "flex-direction": keyword("row"),
                                   "align-items": keyword("flex-start")}, links)
-    return vector("plinth", absolute(left=U * left, top=U * top, width=width, height=height), [shape], [row])
+    return vector("plinth", {**absolute(left=U * left, top=U * top, width=width, height=height), "opacity": number(1)}, [shape], [row])
 
 
 def action_plate(doc: Document, ident: str, key: str, left: float, top: float, *, action: str | None = None,
@@ -532,19 +536,35 @@ def outlined_label(ident: str, key: str, box: dict, style: dict, fill: list[floa
             label(ident, key, {**box, **style, "color": colour(fill)})]
 
 
-def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_action: str) -> dict:
+def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_action: str,
+                 frame_leave_ms: float = 250, dim: tuple = ()) -> dict:
     """A stock confirmation modal (section 6) over the marine.scrim: an
     additive glow column exactly as wide as the 480 dp dialog, and inside it
     the stock popup art's black 0.70 silhouette, inset so a 6 dp lit margin
     shows beside it, with a leading tooth, a recessed title slot, a raised
     trailing section and a 38 dp lower-leading chamfer. The title hangs from
     the raised top line into the lit slot with a 1 dp black outline at 0.85;
-    YES leads, NO trails."""
-    visible = f"{ident}.visible"
+    YES leads, NO trails.
+
+    Motion (section 8, scrim form): modal.enter brings the scrim, the glow and
+    the frame in over 200 ms and shows the title, body and actions together at
+    its end; modal.leave hides them at once and, after 50 ms, releases the
+    scrim and glow over 250 ms and the frame over `frame_leave_ms` (200 ms for
+    Exit). Completion programs show the contents and close the modal, so a
+    Show during leave or a Hide during enter takes over the other run, which
+    then never completes. Static bases are the hidden values, so the first
+    key's retarget never flashes the scrim. `dim` lists (node, property, lit,
+    dimmed) that dim over 200 ms on enter and return from 50 ms over 150 ms
+    on leave, as the Exit and Mods modals dim the wordmark to 40% gray."""
+    visible, contents = f"{ident}.visible", f"{ident}.contents"
     doc.state[visible] = {"type": "boolean", "initial": False}
-    hide = f"{ident}Hide"
-    doc.events[f"{ident}Show"] = [{"op": "setState", "values": {visible: True}}]
-    doc.events[hide] = [{"op": "setState", "values": {visible: False}}]
+    doc.state[contents] = {"type": "boolean", "initial": False}
+    show, shown, hide, hidden = f"{ident}Show", f"{ident}Shown", f"{ident}Hide", f"{ident}Hidden"
+    enter, leave = f"{ident}Enter", f"{ident}Leave"
+    doc.events[show] = [{"op": "setState", "values": {visible: True, contents: False}}, {"op": "playTimeline", "timeline": enter}]
+    doc.events[shown] = [{"op": "setState", "values": {contents: True}}]
+    doc.events[hide] = [{"op": "setState", "values": {contents: False}}, {"op": "playTimeline", "timeline": leave}]
+    doc.events[hidden] = [{"op": "setState", "values": {visible: False}}]
     width, height = 480.0, 204.0          # 320x136 u
     left = (CANVAS_W - width) / 2
     top = U * 155                           # 17 u above centre
@@ -562,15 +582,15 @@ def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_a
                                 (right, bottom), (inset + chamfer, bottom), (inset, bottom - chamfer)],
                       fill=solid([0, 0, 0, 0.7]))
     glow_top, glow_bottom = -U * 87, height + U * 108
-    glow = vector(f"{ident}-glow", absolute(left=0, top=glow_top, width=width, height=glow_bottom - glow_top), [
+    glow = vector(f"{ident}-glow", {**absolute(left=0, top=glow_top, width=width, height=glow_bottom - glow_top), "opacity": number(0)}, [
         path("column", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})],
              fill=linear((0, 0), (0, {"fraction": 1}), [(0, rgb(GLOW_MODAL, 0)), (0.28, rgb(GLOW_MODAL, 0.5)), (0.41, rgb(GLOW_MODAL, 0.9)),
                                                         (0.58, rgb(GLOW_MODAL, 0.9)), (0.72, rgb(GLOW_MODAL, 0.5)), (1, rgb(GLOW_MODAL, 0))]),
              blend="additive")])
-    frame = vector(f"{ident}-frame", absolute(left=0, top=0, width=width, height=height), [silhouette])
+    frame = vector(f"{ident}-frame", {**absolute(left=0, top=0, width=width, height=height), "opacity": number(0)}, [silhouette])
     # The title starts at the foot of the slot's leading flank; its capitals
     # hang from the raised top line into the lit slot, as the stock title's
-    # do, its baseline 14.5 dp down where the stock one sits.
+    # do, its baseline 13.5 dp down where the stock one sits.
     foot = slot_lead + slot_depth
     title = outlined_label(f"{ident}-title", title_key,
                            absolute(left=round(foot, 4), top=-4, width=round(slot_trail - slot_depth - foot, 4), height=24),
@@ -582,12 +602,28 @@ def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_a
         **typeface("lowpixel", 17, 22, [1, 1, 1, 0.8])})
     yes = action_plate(doc, f"{ident}_yes", "#str_200157", 30, U * 96, action=yes_action)
     no = action_plate(doc, f"{ident}_no", "#str_200158", width - 33 - 180, U * 96, event=hide)
-    dialog = group(f"{ident}-dialog", absolute(left=left, top=top, width=width, height=height), [glow, frame, *title, body, yes, no])
+    shown_contents = group(f"{ident}-contents", {**FULL, "display": keyword("none")}, [*title, body, yes, no])
+    dialog = group(f"{ident}-dialog", absolute(left=left, top=top, width=width, height=height), [glow, frame, shown_contents])
     stage = group(f"{ident}-stage", {**absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"),
                                      "margin-left": length(-CANVAS_W / 2)}, [dialog])
-    node = group(ident, {**FULL, "display": keyword("none"), "background-color": colour([0, 0, 0, 0.94])}, [stage],
+    node = group(ident, {**FULL, "display": keyword("none"), "background-color": colour([0, 0, 0, 0])}, [stage],
                  modal={"initialFocus": f"{ident}_no", "back": hide})
     doc.bind(f"{ident}.display", ident, "display", {"op": "select", "args": [{"state": visible}, "block", "none"]})
+    doc.bind(f"{ident}.contents", f"{ident}-contents", "display", {"op": "select", "args": [{"state": contents}, "block", "none"]})
+    scrim_on, scrim_off = colour([0, 0, 0, 0.94]), colour([0, 0, 0, 0])
+    doc.timelines.add(enter, 200, [
+        track(ident, "background-color", [(0, scrim_off), (200, scrim_on)]),
+        track(f"{ident}-glow", "opacity", [(0, number(0)), (200, number(1))]),
+        track(f"{ident}-frame", "opacity", [(0, number(0)), (200, number(1))]),
+    ] + [track(node, prop, [(0, lit), (200, dimmed)]) for node, prop, lit, dimmed in dim], complete=shown)
+    frame_end = 50 + frame_leave_ms
+    doc.timelines.add(leave, 300, [
+        track(ident, "background-color", [(0, scrim_on), (50, scrim_on), (300, scrim_off)]),
+        track(f"{ident}-glow", "opacity", [(0, number(1)), (50, number(1)), (300, number(0))]),
+        track(f"{ident}-frame", "opacity", [(0, number(1)), (50, number(1)), (frame_end, number(0))] +
+              ([(300, number(0))] if frame_end < 300 else [])),
+    ] + [track(node, prop, [(0, dimmed), (50, dimmed), (200, lit), (300, lit)]) for node, prop, lit, dimmed in dim],
+        complete=hidden)
     return node
 
 
@@ -612,10 +648,11 @@ def prompt_bar(doc: Document, prompts: list) -> dict:
 
 # --------------------------------------------------------------- choreography
 
-def band_motion(doc: Document, prefix: str, content: str, extra_home: list) -> None:
+def band_motion(doc: Document, prefix: str, content: str, extra_home: list, quick: tuple = ()) -> None:
     """Section 8 stock choreography, sampled every presented frame:
     open        menu.fade from black over 250 ms, bands already home;
-    depart      content out over 250 ms; from 50 ms frame.dock and
+    depart      content out over 250 ms, the `quick` nodes (secondary links
+                and the plinth) over 50 ms; from 50 ms frame.dock and
                 screen.depart, both accel(250, 250) over 500 ms;
     departPopup content out over 150 ms, bands stay home;
     returnHome  bands from their page dock home over 500 ms accel(250, 250);
@@ -629,14 +666,16 @@ def band_motion(doc: Document, prefix: str, content: str, extra_home: list) -> N
         track(content, "transform", [(0, transform()), (250, transform())]),
         track(top, "transform", [(0, home), (250, home)]),
         track(bottom, "transform", [(0, home), (250, home)]),
-    ] + [track(node, prop, [(0, lit), (250, lit)]) for node, prop, lit, dark in lights])
+    ] + [track(node, prop, [(0, lit), (250, lit)]) for node, prop, lit, dark in lights]
+      + [track(node, "opacity", [(0, number(1)), (250, number(1))]) for node in quick])
     doc.timelines.add("depart", 550, [
         track(content, "opacity", [(0, number(1)), (250, number(0)), (550, number(0))]),
         track(content, "transform", [(0, transform()), (50, transform(), ACCEL), (550, transform(640 * U, 0))]),
         track(top, "transform", [(0, home), (50, home, ACCEL), (550, page_top)]),
         track(bottom, "transform", [(0, home), (50, home, ACCEL), (550, page_bottom)]),
         track("fade", "background-color", [(0, colour([0, 0, 0, 0])), (550, colour([0, 0, 0, 0]))]),
-    ] + [track(node, prop, [(0, lit), (250, dark), (550, dark)]) for node, prop, lit, dark in lights])
+    ] + [track(node, prop, [(0, lit), (250, dark), (550, dark)]) for node, prop, lit, dark in lights]
+      + [track(node, "opacity", [(0, number(1)), (50, number(0)), (550, number(0))]) for node in quick])
     doc.timelines.add("departPopup", 200, [
         track(content, "opacity", [(0, number(1)), (150, number(0)), (200, number(0))]),
     ])
@@ -646,7 +685,8 @@ def band_motion(doc: Document, prefix: str, content: str, extra_home: list) -> N
         track(content, "transform", [(0, transform()), (650, transform())]),
         track(content, "opacity", [(0, number(0)), (500, number(0)), (650, number(1))]),
         track("fade", "background-color", [(0, colour([0, 0, 0, 0])), (650, colour([0, 0, 0, 0]))]),
-    ] + [track(node, prop, [(0, dark), (500, dark), (650, lit)]) for node, prop, lit, dark in lights])
+    ] + [track(node, prop, [(0, dark), (500, dark), (650, lit)]) for node, prop, lit, dark in lights]
+      + [track(node, "opacity", [(0, number(0)), (500, number(0)), (650, number(1))]) for node in quick])
 
 
 # ------------------------------------------------------------------- depth
@@ -864,7 +904,8 @@ def title_document() -> dict:
     doc.session("updates", "updates")
     doc.session("credits", "credits")
     doc.session("quit", "quit")
-    exit_modal = confirmation(doc, "exitModal", "#str_200169", "#str_200170", "quit")
+    exit_modal = confirmation(doc, "exitModal", "#str_200169", "#str_200170", "quit", frame_leave_ms=200,
+                              dim=(("wordmark", "image-color", colour([1, 1, 1, 1]), colour([0.4, 0.4, 0.4, 1])),))
     doc.events["onBack"] = [{"op": "call", "event": "exitModalShow"}]
 
     # The message line at 44,364 u explains the focused item (section 13.7):
@@ -929,7 +970,7 @@ def title_document() -> dict:
         group("fade", {**FULL, "background-color": colour([0, 0, 0, 0]), "pointer-events": keyword("none")}),
     ])
     band_motion(doc, "band", "home", [("wordmark", "image-color", colour([1, 1, 1, 1]), colour([1, 1, 1, 0])),
-                                      ("home-stage", "opacity", number(1), number(0))])
+                                      ("home-stage", "opacity", number(1), number(0))], quick=("plinth",))
     hide_carry_at_home(doc)
     return doc.build(root)
 
@@ -1049,7 +1090,7 @@ def pause_document() -> dict:
     doc.session("quitToMenu", "quitToMenu")
     doc.session("quit", "quit")
     quit_modal = confirmation(doc, "quitModal", "#str_200004", "#str_200174", "quitToMenu")
-    exit_modal = confirmation(doc, "exitModal", "#str_200169", "#str_200170", "quit")
+    exit_modal = confirmation(doc, "exitModal", "#str_200169", "#str_200170", "quit", frame_leave_ms=200)
     doc.events["onBack"] = [{"op": "action", "action": "resume"}]
     nav = group("nav", {**absolute(left=0, top=U * 182.2, width=U * 413), "display": keyword("flex"),
                         "flex-direction": keyword("column")}, [
@@ -1088,7 +1129,7 @@ def pause_document() -> dict:
         exit_modal,
         group("fade", {**FULL, "background-color": colour([0, 0, 0, 0]), "pointer-events": keyword("none")}),
     ])
-    band_motion(doc, "band", "home", [])
+    band_motion(doc, "band", "home", [], quick=("plinth",))
     hide_carry_at_home(doc)
     return doc.build(root)
 

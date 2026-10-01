@@ -142,10 +142,14 @@ public:
 				// their uniform text tint is unpremultiplied at this boundary.
 				// Multiply factors are plain colours for a dst*src blend.
 				// Additive pictures keep premultiplied tints: the tint scales their light.
+				// Light carries no coverage: its zero alpha keeps an add blend from
+				// writing a composition layer's alpha, which would otherwise
+				// composite the picture's whole rectangle as an opaque box.
+				const bool additiveImage = handle && idStr::Icmpn(material->GetName(),"_retainedAdd/",13) == 0;
 				const bool straightImage = handle && idStr::Icmpn(material->GetName(),"_retainedLayer/",15) != 0 &&
-					idStr::Icmp(material->GetName(),"_retainedMultiply") != 0 && idStr::Icmpn(material->GetName(),"_retainedAdd/",13) != 0;
+					idStr::Icmp(material->GetName(),"_retainedMultiply") != 0 && !additiveImage;
 				const float inverseAlpha = straightImage ? (source.a > 0 ? 1.f/source.a : 0) : 1.f;
-				const float components[4] = {source.r*inverseAlpha, source.g*inverseAlpha, source.b*inverseAlpha, source.a};
+				const float components[4] = {source.r*inverseAlpha, source.g*inverseAlpha, source.b*inverseAlpha, additiveImage ? 0.f : source.a};
 				for (int channel = 0; channel < 4; ++channel) {
 					v.color[channel] = static_cast<byte>(idMath::ClampFloat(0,1,components[channel]) * 255.f + .5f);
 					v.color2[channel] = 255;

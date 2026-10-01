@@ -193,6 +193,10 @@ public:
 	bool RunEvent(const std::string& name, double monotonicSeconds, EventEffects& effects,
 		std::string& error, const StateValues& application = {},
 		const ActionValidator& validate = {}, size_t maxActions = 256);
+	// Application writes of timeline completion programs run by frames since the
+	// last call; programs completing inside RunEvent join its effects instead.
+	// The adapter publishes them as it publishes event effects.
+	StateValues TakeCompletionWrites();
 	bool ResolveAction(const std::string& id, ActionInvocation& invocation, std::string& error,
 		const StateValue* input = nullptr) const;
 	std::uint64_t StateRevision() const;

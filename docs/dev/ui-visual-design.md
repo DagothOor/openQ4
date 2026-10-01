@@ -1,6 +1,6 @@
 # openQ4 UI Visual Design
 
-Specification version 1.13, 1 October 2026 (1.10 to 1.12 the same day, 1.7 to
+Specification version 1.14, 1 October 2026 (1.10 to 1.13 the same day, 1.7 to
 1.9 on 29 September, 1.6 on 28 September, 1.4 and 1.5 on 27 September, 1.1 to
 1.3 on 26 September, 1.0 on 8 September 2026). Status:
 implementation target; the replacement has not shipped. Applies to every
@@ -38,7 +38,9 @@ camera, outlines the modal title and widens its glow, and gives the initializing
 screen Remastered accents. Version 1.13 refines the vehicle displays: HUD
 prompts replace the bracketed exit and boost lines, the transmission display
 keeps the right-hand screen's corner on every HUD, and the MCC side gun's
-readout is confirmed as the ship's hull.
+readout is confirmed as the ship's hull. Version 1.14 measures the modal against
+the stock: its title hangs in the lit slot, its silhouette is inset in its
+rectangle, and its body is placed.
 [Appendix C](#appendix-c-change-record) lists every change and the
 requirement-register rows it affects.
 
@@ -587,25 +589,32 @@ it, to 10 dp.
 
 **Modal** (front-end confirmations, entry, list and advanced-settings dialogs):
 the screen beneath stays in view, in `modal.softfocus`, where the stock covered
-it with the `marine.scrim`. An additive glow peaking in `marine.glow.modal`
-stands behind the dialog. Across the dialog and the 6 dp lit margin beside it
-the glow is graded only vertically: half strength at the dialog's top and bottom
-edges, gone 40 dp beyond them. Past the margin it fades out over a further 16 dp
-at each side. The lit slot and margin outline the silhouette, and the light
-spreads softly past the dialog instead of standing as a hard-edged strip across
-the softened screen; over the scrim it keeps the stock column. The dialog is a
-black 0.70 silhouette. Along its top edge a 6 dp leading tooth, a title slot
-opening across about 73% of the width with 45-degree flanks down to a floor
-about 66% wide, and a raised trailing section; a deep lower-leading chamfer;
-square trailing corners; no rail lines, because the glow outlines the
-silhouette. The title (Marine 20 dp, tracking -0.075 em) starts at the foot of
-the slot's leading flank with its baseline on the raised sections' top line, so
-its capitals stand in the lit slot above the empty floor. A thin black outline
-at 0.85 extrudes 1 dp around the title's strokes, drawn behind its fill, so the
+it with the `marine.scrim`. The dialog is a black 0.70 silhouette inset in its
+rectangle, as the stock art is (`popup_top` from row 4 within columns 7 to 504
+of 512): 7/512 of the width in from each side, 6.6 dp at 480 dp, with 3.6 dp
+above the raised sections and 5.3 dp below the bottom edge. The widths below are
+the rectangles'. An additive glow peaking in `marine.glow.modal` stands behind
+the dialog. Across the rectangle the glow is graded only vertically: half
+strength at its top and bottom edges, gone 40 dp beyond them. The rectangle's
+inset around the silhouette is the lit margin. Past the rectangle the glow fades
+out over a further 16 dp at each side. The lit slot and margin outline the
+silhouette, and the light spreads softly past the dialog instead of standing as
+a hard-edged strip across the softened screen; over the scrim it keeps the stock
+column, exactly the rectangle's width, where the inset alone is the margin.
+Along the silhouette's top edge a 6 dp leading tooth, a title slot opening
+across about 73% of the width with 45-degree flanks down to a floor about 66%
+wide, and a raised trailing section; a deep lower-leading chamfer; square
+trailing corners; no rail lines, because the glow outlines the silhouette. The
+title (Marine 20 dp, tracking -0.075 em) starts at the foot of the slot's
+leading flank, and its capitals hang from the raised sections' top line into the
+lit slot, above the empty floor: the baseline sits about 6 dp above the floor,
+13.5 dp below the rectangle's top in the confirmation. A thin black outline at
+0.85 extrudes 1 dp around the title's strokes, drawn behind its fill, so the
 capitals keep a crisp edge where the glow is brightest. Body text is inset
-33 dp. Actions sit 30 dp from the leading edge and 33 dp from the trailing edge,
-about 16 dp above the bottom, the affirmative action leading. Stock dialogs come
-in five widths, and the art stretches with them:
+33 dp, its first baseline 87.5 dp below the rectangle's top. Actions sit 30 dp
+from the leading edge and 33 dp from the trailing edge, about 16 dp above the
+bottom, the affirmative action leading. Stock dialogs come in five widths, and
+the art stretches with them:
 
 | Dialog | Width | Slot depth | Chamfer |
 | --- | --- | --- | --- |
@@ -3578,3 +3587,19 @@ Version 1.13 follows the product owner's review of the vehicle displays.
 Register schema 12 supersedes FLOW-037, which kept the stock exit and lock
 lines, with FLOW-060, and appends WID-035 (HUD prompts) and FLOW-061 (The
 Awakening's vehicle display refinements).
+
+### Version 1.14
+
+Version 1.14 corrects the modal against stock measurements made for the retained
+confirmation dialogs: `popup_top` and an engine capture of the classic exit
+dialog at 1280x720, whose capitals occupy rows 237 to 246 between the raised
+line at 236 and the floor at 253.
+
+| Area | 1.13 | 1.14 | Basis |
+| --- | --- | --- | --- |
+| Modal title | Its baseline on the raised sections' top line | Its capitals hang from that line into the lit slot; the baseline sits about 6 dp above the floor | The exit title's 149 u rectangle and 15 u line skip; the engine capture |
+| Modal silhouette and glow | The silhouette filled its rectangle, with the lit margin beside it | The silhouette is inset in its rectangle (7/512 of the width at each side, 3.6 dp above, 5.3 dp below); the inset is the lit margin, and the soft-focus glow fades over 16 dp past the rectangle | `popup_top`, measured in Appendix B.1 |
+| Modal body | Inset 33 dp, not placed vertically | Its first baseline 87.5 dp below the rectangle's top | The stock body rectangle at y 200 u |
+
+Register schema 13 supersedes ART-036, whose modal title stood on the raised top
+line, with ART-037.

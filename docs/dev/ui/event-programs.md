@@ -84,6 +84,42 @@ remain intact. Numeric output uses the locale-independent round-trip codec.
 Local writes, alias ownership and motion state participate in existing snapshots;
 queued host invocations do not. Restore never repeats a program or host action.
 
+## Completion programs
+
+A timeline's optional `complete` field names a program that the runtime runs
+when the timeline plays to its end. This is how a modal can stay displayed
+through its leave fade and close afterwards, or show its contents when its
+entrance ends, since `display` cannot be animated.
+
+```json
+{"id":"exitModalLeave","durationMs":300,"complete":"exitModalHidden","tracks":[...]}
+```
+
+- The named event must exist. A timeline with `iterations: 0` never ends, so it
+  cannot name one.
+- The program, through `call` and both `if` branches, cannot contain `action`.
+  It runs from the presentation frame, where no application caller can receive
+  host work. State, presentation and motion writes are allowed.
+- Completions cannot lead back to a timeline already on their path: a program
+  that plays its own timeline, or a chain of completions that returns to it, is
+  rejected. One frame therefore always settles; the runtime also stops after 64
+  chained rounds and logs it.
+- A timeline completes when its last owned track finishes, or at once when
+  reduced motion jumps every track to its end. Cancellation, a replay before the
+  end, and another timeline taking over every track never complete it. So a Show
+  that interrupts a leave, by taking over its tracks, keeps the modal open.
+- Each completion is its own transaction, run at the time that completed it, in
+  completion order. A failed program is logged and skipped. Inside `RunEvent`,
+  timelines that ended by the event's time complete before its program, and any
+  the program completes at once complete after it. All of it commits with the
+  event, and the completion writes are published with the event's own. Frames
+  queue their completion writes, and the adapter publishes them after each
+  redraw, before the next event reads the dictionary.
+- A snapshot applies, on its own copies, every completion due by its time, so it
+  carries their effects without running them on the live instance. Restoring
+  never replays a completion; restored playback completes normally as it
+  reaches its end.
+
 ## Lifecycle and safe delivery
 
 `HandleNamedEvent` selects an explicit canonical program. An unhandled name

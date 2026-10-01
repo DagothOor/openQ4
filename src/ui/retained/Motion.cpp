@@ -12,7 +12,7 @@ void BaseValues(const Node& node, PropertyValues& values) {
 }
 }
 void Motion::Reset(const DocumentModel& model) {
-	timelines.clear(); playing.clear(); base.clear();
+	timelines.clear(); playing.clear(); base.clear(); completed.clear();
 	for (const auto& timeline : model.timelines) timelines.emplace(timeline.id,timeline);
 	BaseValues(model.root,base);
 	values = base;
@@ -29,14 +29,26 @@ Value Motion::Sample(const Track& track, double milliseconds) {
 }
 void Motion::Advance(double seconds) {
 	if (std::isfinite(seconds)) clock = std::max(clock,seconds);
+	std::vector<std::string> finished;
 	for (auto it = playing.begin(); it != playing.end();) {
 		auto& item = it->second;
 		const double elapsedMs = std::max(0.0,((item.paused ? item.pauseAt : clock)-item.start)*1000);
 		const bool done = item.iterations != 0 && elapsedMs >= item.durationMs*item.iterations;
 		if (elapsedMs >= item.durationMs) item.track.keys.front().value = item.repeatStart;
 		values[it->first] = Sample(item.track,done ? item.durationMs : std::fmod(elapsedMs,item.durationMs));
-		if (done) it = playing.erase(it); else ++it;
+		if (done) { finished.push_back(item.owner); it = playing.erase(it); } else ++it;
 	}
+	for (const auto& owner : finished) if (!IsPlaying(owner)) NoteCompleted(owner);
+}
+void Motion::NoteCompleted(const std::string& id) {
+	const auto found = timelines.find(id);
+	if (found == timelines.end() || found->second.complete.empty()) return;
+	if (std::find(completed.begin(),completed.end(),id) == completed.end()) completed.push_back(id);
+}
+std::vector<std::string> Motion::TakeCompleted() {
+	std::vector<std::string> result;
+	result.swap(completed);
+	return result;
 }
 bool Motion::Play(const std::string& id, double seconds) {
 	const auto found = timelines.find(id);
@@ -64,6 +76,8 @@ bool Motion::Play(const std::string& id, double seconds) {
 		}
 		playing[key] = std::move(item);
 	}
+	// Reduced motion can jump every track to its end: the timeline is complete.
+	if (!IsPlaying(id)) NoteCompleted(id);
 	return true;
 }
 void Motion::Pause(const std::string& id, double seconds) {
@@ -87,11 +101,13 @@ void Motion::SetReducedMotion(bool enabled, double seconds) {
 	if (reducedMotion == enabled) return;
 	reducedMotion = enabled;
 	if (!enabled) return; // Never resurrect cancelled decorative movement.
+	std::vector<std::string> jumped;
 	for (auto it = playing.begin(); it != playing.end();) {
 		auto& item = it->second;
 		if (item.essential) { ++it; continue; }
 		if (it->first.second != "opacity") {
 			values[it->first] = item.track.keys.back().value;
+			jumped.push_back(item.owner);
 			it = playing.erase(it); continue;
 		}
 		const double remaining = item.durationMs-std::fmod(std::max(0.0,((item.paused ? item.pauseAt : clock)-item.start)*1000),item.durationMs);
@@ -101,6 +117,7 @@ void Motion::SetReducedMotion(bool enabled, double seconds) {
 		item.reduced = true;
 		++it;
 	}
+	for (const auto& owner : jumped) if (!IsPlaying(owner)) NoteCompleted(owner);
 }
 bool Motion::IsPlaying(const std::string& id) const {
 	for (const auto& [key,item] : playing) if (item.owner == id) return true;
@@ -148,7 +165,8 @@ bool Motion::Restore(const MotionSnapshot& snapshot, double seconds, std::string
 	auto reject = [&](const char* message) { error = message; return false; };
 	if (!std::isfinite(seconds) || seconds < 0) return reject("Invalid restored presentation time");
 	Motion candidate = *this;
-	candidate.values = base; candidate.playing.clear(); candidate.clock = seconds;
+	// Restore never replays a program: completions of the replaced playback go.
+	candidate.values = base; candidate.playing.clear(); candidate.completed.clear(); candidate.clock = seconds;
 	candidate.reducedMotion = snapshot.reducedMotion;
 	std::set<PropertyKey> animated;
 	for (const auto& [id,timeline] : timelines) for (const auto& track : timeline.tracks) animated.emplace(track.node,track.property);

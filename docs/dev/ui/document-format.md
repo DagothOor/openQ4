@@ -160,7 +160,9 @@ for a canonical runtime document; editor changes must update its source/model.
 ## Presentation tracks
 
 Each timeline has `id`, positive `durationMs`, `tracks`, optional `iterations`
-(default 1; 0 repeats until cancelled) and optional `essential` (default false).
+(default 1; 0 repeats until cancelled), optional `essential` (default false) and
+optional `complete`, an [event program](event-programs.md#completion-programs)
+the runtime runs when the timeline plays to its end.
 Each track targets one `node` and `property`, with at least two `keys`. A key has
 `atMs`, typed `value` and optional cubic-Bezier `easing:[x1,y1,x2,y2]`. The easing
 belongs to the interval beginning at that key. All four coordinates currently
@@ -205,6 +207,12 @@ timeline are rejected.
   decorative repetition and key oscillation. Enabling it during playback samples
   current opacity before retargeting. Disabling it never resurrects cancelled
   motion. Essential gameplay-information tracks retain their authored timing.
+- A timeline completes when its last owned track finishes while advancing, or
+  at once when reduced motion jumps every track to its end. Cancellation, a
+  replay before the end, and another timeline taking over every track never
+  complete it. A snapshot carries the effects of completions due by its time
+  instead of pending completions; restored playback completes as it reaches
+  its end.
 
 This checkpoint covers property presentation. Subsequent [state bindings](bindings.md)
 drive data properties independently of timeline-owned properties. Action/event
