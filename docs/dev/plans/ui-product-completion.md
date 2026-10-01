@@ -525,7 +525,7 @@ inside a milestone are allowed but do not mark that milestone complete. The
 sequence is a dependency order, not a calendar estimate. Prioritize work needed
 by the next complete user flow over additional disconnected demonstrations.
 
-### M0 â€” Published implementation checkpoint and audited baseline
+### M0 — Published implementation checkpoint and audited baseline
 
 Status: implementation checkpoint published; this review records its limits.
 Keep the paired revisions and evidence above. Refresh the effective inventory
@@ -535,7 +535,7 @@ evidence fields. The final requirement register is a required implementation
 deliverable; the [product requirement register](../ui/product-requirements.md)
 now records this scope, refreshed inventory evidence and milestone ownership.
 
-### M1 â€” Normal application integration and durable instances
+### M1 — Normal application integration and durable instances
 
 Progress: the [ownership and persistence checkpoint](../ui/instance-persistence.md)
 adds private manager-neutral lifecycle operations and canonical instance
@@ -563,7 +563,7 @@ pause and MP ownership work; independent views survive teardown and renderer
 restart. Demonstrate a saved instance round trip. An explicit diagnostic fixture
 may establish the adapter, but is not accepted as a finished screen.
 
-### M2 â€” One production settings screen and the first editor round trip
+### M2 — One production settings screen and the first editor round trip
 
 Progress: the [source-backed SYSTEM contract](../ui/system-settings-contract.md)
 inventories all 31 current options, dependent popups and the 32-field preset
@@ -633,7 +633,7 @@ text and editor requirements. If it fails, record a bounded remedy or replacemen
 at that interface. Retain the canonical sources and acceptance requirements.
 Do not replace a failing requirement with a narrower demonstration.
 
-### M3 â€” Complete shared controls, rendering features and authoring tool
+### M3 — Complete shared controls, rendering features and authoring tool
 
 Finish the full control, text, composition, component, motion and editor
 contracts above. Build state galleries for every family and widget. Implement
@@ -649,7 +649,7 @@ and render correctly across the backend/density matrix. There are no placeholder
 buttons or decorative substitutes for complex controls. Remaining full-corpus
 work stays open.
 
-### M4 â€” Complete menu and multiplayer application flows
+### M4 — Complete menu and multiplayer application flows
 
 Translate and polish main/pause menus, settings, save/load, loading/game-over,
 server browser, join/team/spectator flows, scoreboard/chat, buy/arena/Match
@@ -664,7 +664,7 @@ MP task sequences, including cancellation and failures. Save/load and destructiv
 in-game choices retain appropriate user-facing confirmations. No route silently
 falls back to an unqualified stock menu.
 
-### M5 â€” Complete HUD, world, scope, vehicle and scripted GUI corpus
+### M5 — Complete HUD, world, scope, vehicle and scripted GUI corpus
 
 Finish UI-04/UI-05 and all remaining families. Establish projected density and
 render-target selection for world surfaces, per-entity state/events, input-ray
@@ -681,7 +681,7 @@ timing work. Save/restore preserves required state and produces no duplicate
 actions. Current count is 271 resources; changes to the effective corpus update
 the gate instead of freezing an obsolete denominator.
 
-### M6 â€” Performance, platform qualification and final cutover
+### M6 — Performance, platform qualification and final cutover
 
 Complete the performance/quality matrix below on Windows, Linux, macOS and
 Android/GLES through the repository's supported workflows. Qualify dedicated

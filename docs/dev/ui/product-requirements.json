@@ -19,7 +19,7 @@
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "7a7e90a2c38c2319e8f632bc37fb20492cabd396282056d0fc8e988b3a719bf7"
+      "sha256": "c530470ffc3cba6928133463d66558b0bb965ad003f6193dd45ca1b73da4ad63"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
@@ -102,7 +102,7 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "7a7e90a2c38c2319e8f632bc37fb20492cabd396282056d0fc8e988b3a719bf7"
+      "sha256": "c530470ffc3cba6928133463d66558b0bb965ad003f6193dd45ca1b73da4ad63"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
@@ -595,7 +595,7 @@
       "path": "docs/dev/ui/text-scale.md",
       "baseline_engine_revision": "85c011754b800409e5e471b454ac4d658b6f3d00",
       "companion_revision": "a4946f8b28c53bb32ec323bddcf0e2276bc8492c",
-      "scope": "Independent 100\u2013200% runtime typography with font-relative dimensions and responsive SYSTEM layout. All 85 registered UI suites pass, including 211,245 checks across 84 six-locale/expanded-glyph layout combinations. Thirty engine screenshots were reviewed after windowed SP/OpenGL and MP/Vulkan gameplay. Normal preference/reset controls, arbitrary-size glyph rasterization, full GUI/editor/platform qualification and product acceptance remain outstanding.",
+      "scope": "Independent 100–200% runtime typography with font-relative dimensions and responsive SYSTEM layout. All 85 registered UI suites pass, including 211,245 checks across 84 six-locale/expanded-glyph layout combinations. Thirty engine screenshots were reviewed after windowed SP/OpenGL and MP/Vulkan gameplay. Normal preference/reset controls, arbitrary-size glyph rasterization, full GUI/editor/platform qualification and product acceptance remain outstanding.",
       "local_capture_summary": ".tmp/ui/text-scale/validation-evidence.json",
       "sha256": "b07d9710eee7e2c571284fa9a958c8d97158fe0a77da9635d29c5f2c20c2b319",
       "local_capture_summary_sha256": "38289b7f0057c6de8dd1670f20251d00e6e53033841782097060bc3cfae98139"
@@ -604,7 +604,7 @@
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/interface-size-preferences.md",
       "sha256": "d9ced62d57125957390248bfd0599572eea4e63d740d136a2cf5313a64ca96f7",
-      "scope": "Transactional 75\u2013200% UI and 100\u2013200% text scale, two-field reset, root-menu window fitting and legacy display-journal catalog recovery. Bounded SYSTEM qualification; no full screen/editor/product acceptance."
+      "scope": "Transactional 75–200% UI and 100–200% text scale, two-field reset, root-menu window fitting and legacy display-journal catalog recovery. Bounded SYSTEM qualification; no full screen/editor/product acceptance."
     },
     "output-size-fonts": {
       "kind": "implementation_checkpoint",
@@ -3023,7 +3023,7 @@
         "product:3 Text, controls and accessibility",
         "product:5 Visual and interaction qualification"
       ],
-      "requirement": "Provide independently persisted UI scale default 100%, range 75\u2013200%; clamp extremes with reachable reset and no lost essential actions.",
+      "requirement": "Provide independently persisted UI scale default 100%, range 75–200%; clamp extremes with reachable reset and no lost essential actions.",
       "dependencies": [
         "BEH-002"
       ],
@@ -3055,7 +3055,7 @@
         "product:3 Text, controls and accessibility",
         "product:5 Visual and interaction qualification"
       ],
-      "requirement": "Provide text scale default 100%, range 100\u2013200% independent of furniture; reflow labels, rows and forms without hiding essential actions.",
+      "requirement": "Provide text scale default 100%, range 100–200% independent of furniture; reflow labels, rows and forms without hiding essential actions.",
       "dependencies": [
         "TXT-001",
         "LAY-003"
@@ -4872,7 +4872,7 @@
         "product:3 Visual quality and motion",
         "original:Stage 6"
       ],
-      "requirement": "Standard panels have equal 12 dp upper/8 dp lower 45-degree cuts, 1 dp rail and 3 dp inset rail; popover cuts 6 dp, major bands 16\u201324 dp. Reconstruct each stepped/notched silhouette and named ornaments without stretched corners.",
+      "requirement": "Standard panels have equal 12 dp upper/8 dp lower 45-degree cuts, 1 dp rail and 3 dp inset rail; popover cuts 6 dp, major bands 16–24 dp. Reconstruct each stepped/notched silhouette and named ornaments without stretched corners.",
       "dependencies": [
         "ART-001",
         "REN-001"
@@ -13084,7 +13084,7 @@
         "visual:14",
         "visual:13"
       ],
-      "requirement": "In the Competitive preset, move the standing or team panels and the timer into a match bar at the top center: three sheared HUD plates from y 6, 26 u tall and 2 u apart, a 60 u timer plate at black 0.72 between 122 u side plates at 0.55. Each side's outer 25 u block holds the team color at 0.85 with the faction mark in team modes, or the rank ordinal in deathmatch and Tourney (the leader's in #FFBE23), followed by the team name in its text color or the name cut with an ellipsis, with the score in Chain 21 dp at the inner end; your side leads, marked in deathmatch, facing the leader, 2nd place when you lead, or your Tourney opponent. The timer reads Chain 15.5 dp with the Remastered timer's states over a Lowpixel sub-label (the limit, ROUND n or ARENA n). Small plates under the bar carry each flag's state with the carrier, the round modes' alive pips and the Dead Zone holder, and network quality follows the bar's trailing end at all times. In team modes your team's status list sits at the leading edge from y 150: 138x14.5 u plates on a 16.5 u pitch with the weapon icon, the name, health in Chain (#E46D56 at 25 and below, #FFBE23 above 100) and armor at 0.60, your row on the header-band plate with the marker and the dead at 0.40 under an \u2715. The status bar grows by 15% about the bottom edge with the chat box 8 u above it, the vote moves to the top-leading corner, the Tourney bracket strip leaves the top for the scoreboard's bracket tree, and the kill feed, center column, powerups and managed-match card keep their places.",
+      "requirement": "In the Competitive preset, move the standing or team panels and the timer into a match bar at the top center: three sheared HUD plates from y 6, 26 u tall and 2 u apart, a 60 u timer plate at black 0.72 between 122 u side plates at 0.55. Each side's outer 25 u block holds the team color at 0.85 with the faction mark in team modes, or the rank ordinal in deathmatch and Tourney (the leader's in #FFBE23), followed by the team name in its text color or the name cut with an ellipsis, with the score in Chain 21 dp at the inner end; your side leads, marked in deathmatch, facing the leader, 2nd place when you lead, or your Tourney opponent. The timer reads Chain 15.5 dp with the Remastered timer's states over a Lowpixel sub-label (the limit, ROUND n or ARENA n). Small plates under the bar carry each flag's state with the carrier, the round modes' alive pips and the Dead Zone holder, and network quality follows the bar's trailing end at all times. In team modes your team's status list sits at the leading edge from y 150: 138x14.5 u plates on a 16.5 u pitch with the weapon icon, the name, health in Chain (#E46D56 at 25 and below, #FFBE23 above 100) and armor at 0.60, your row on the header-band plate with the marker and the dead at 0.40 under an ✕. The status bar grows by 15% about the bottom edge with the chat box 8 u above it, the vote moves to the top-leading corner, the Tourney bracket strip leaves the top for the scoreboard's bracket tree, and the kill feed, center column, powerups and managed-match card keep their places.",
       "dependencies": [
         "FLOW-056",
         "FLOW-044",

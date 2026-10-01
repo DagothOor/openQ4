@@ -682,3 +682,5 @@ No new unrelated defect was established by this read-only inventory/register
 work. Historical MP content warnings remain a separate qualification backlog;
 that inventory-only refresh did not run a game. The later renderer probes above
 record their own gameplay and warning comparisons.
+
+The source consolidation also preserves ART-036's earlier partial record from `e3e7237a`, carrying the confirmation evidence retained by ART-037 after supersession. No additional requirement or production GUI is accepted.
