@@ -1,10 +1,10 @@
 {
-  "schema_version": 11,
+  "schema_version": 12,
   "id_namespace": "openq4.ui.product",
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "ac28efdec9f050b65d8b322be0584db4b19b8c0d",
+    "engine_revision": "be3852badf08503e2a20aa59a8f42a522aeee7f1",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -14,17 +14,17 @@
     "visual": {
       "path": "docs/dev/ui-visual-design.md",
       "authority": "normative visual, interaction and editor contract",
-      "sha256": "eaac60cb6dfa47c9e4402121bdbf10be75065a8dbd19ca331597897a0ec32813"
+      "sha256": "5c6b694240425926692e0c6bf72a50958d09ca084f4b3d270afabcaad3fc8bba"
     },
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "93a5073c01efebd64fdd1dc2b6fef0a4aa07c54d254f120a5cd685889acb40fc"
+      "sha256": "3cee019ad4d38ddb15880b5ddf5a77129f36c95b2c987049845b082fc1c23082"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "8675fc83f3081b39917925fe79f737c2ade0b496154660344cda514df0e34813"
+      "sha256": "f3424d57708801c8a0393a0759b643bc364167722c44358128f7139dc33359aa"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -102,7 +102,7 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "93a5073c01efebd64fdd1dc2b6fef0a4aa07c54d254f120a5cd685889acb40fc"
+      "sha256": "3cee019ad4d38ddb15880b5ddf5a77129f36c95b2c987049845b082fc1c23082"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
@@ -1398,6 +1398,17 @@
         "FLOW-057"
       ],
       "normative_change": "Visual 1.12 adds Remastered accents to the initializing screen (a light sweep, a halo, embers, a glint, a pulsing current segment and a flicker on each step) instead of replacing the line at once over a fixed rule; every other initializing rule is carried unchanged.",
+      "source_refs": [
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "FLOW-037",
+      "successors": [
+        "FLOW-060"
+      ],
+      "normative_change": "Visual 1.13 replaces the walker and hover tank's exit and lock lines with the HUD prompt and keeps the vehicle HUD's transmission display at the trailing screen's corner, adding it where a vehicle HUD has none; every other boss and vehicle rule is carried unchanged.",
       "source_refs": [
         "visual:14"
       ],
@@ -13111,6 +13122,135 @@
         ],
         "classic_color": "#FFFF8C",
         "classic_breathe_ms": 900
+      }
+    },
+    {
+      "id": "FLOW-060",
+      "title": "Boss and vehicle displays",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Reproduce the boss bar (the measured octagon, hexagonal health draining toward its leading point, shield brackets draining toward their outer points and pulsing below 1000 points), the walker and hover-tank HUD (numeral-free Marine gauges labelled ARMOR and SHIELDS with 25% warnings, the chamfered weapon panel with the traced vehicle glyphs, charge bar, entry messages, hit flash and electric warning, the HUD's own transmission display, and the HUD prompt of WID-035 in place of the stock exit and lock lines: the jump control's glyph and Exit, or a lock and Vehicle locked in #FF8000), the flatbed and tram gauges, the air-defence overlay and the scripted Strogg tables, with localized labels. In Remastered every vehicle keeps its status bar centered on the bottom edge, the HUD prompt at the bottom-trailing corner and the transmission display at the top-trailing corner of the trailing screen, adding the display where a vehicle HUD has none (the air-defence cannon).",
+      "dependencies": [
+        "FLOW-015",
+        "ART-026",
+        "FLOW-030",
+        "WID-035"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures of boss fights and every drivable vehicle and ride against the stock at 4:3, including warnings and entry sequences. Include each prompt device, a locked vehicle and the transmission display at 16:9 and 21:9 in Remastered."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "boss_plate_u": [
+          185.8,
+          43.7
+        ],
+        "boss_chamfer_u": 14.2,
+        "shield_warning_points": 1000,
+        "vehicle_warning_fraction": 0.25,
+        "entry_sequence_ms": 5500,
+        "prompt_locked_color": "#FF8000",
+        "transmission_display_anchor": "top_trailing"
+      }
+    },
+    {
+      "id": "WID-035",
+      "title": "HUD prompts",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI components and application bindings",
+      "source_refs": [
+        "visual:7",
+        "product:2 UI-03",
+        "product:3 Text, controls and accessibility",
+        "product:4 M3",
+        "visual:14",
+        "visual:13",
+        "visual:9"
+      ],
+      "requirement": "Where the HUD names a control, show a bind prompt in the menus' prompt construction instead of a bracketed line such as \"[ Press JUMP to exit ]\": the active device's glyph (a keycap plate with the 45-degree cut naming the bound key, the controller's button from the active glyph family, or on touch the symbol of the overlay control that performs the action) followed by the action in Lowpixel 16 dp. Several actions share one sheared HUD plate at black 0.50, never wider than its content, contextual actions leading and Exit trailing; an action that cannot run shows its state instead (a lock and Vehicle locked in #FF8000). The prompt follows the active device in the frame it changes and sits at the bottom-trailing corner in Remastered; Classic sets it at the stock line's place with the stock drop shadow and no plate.",
+      "dependencies": [
+        "WID-019",
+        "INP-011",
+        "ART-021",
+        "FLOW-030"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures of the vehicle prompts with keyboard, controller and touch, locked and unlocked, in Classic and Remastered at 4:3, 16:9 and 9:16, with a device switch traced to the next presented frame."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "label": "Lowpixel 16 dp",
+        "plate_alpha": 0.5,
+        "keycap_cut_deg": 45,
+        "locked_color": "#FF8000",
+        "order": "contextual_leading_exit_trailing",
+        "anchor": "bottom_trailing"
+      }
+    },
+    {
+      "id": "FLOW-061",
+      "title": "The Awakening's vehicle display refinements",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Under The Awakening keep the transmission display at the top-trailing corner of the trailing screen on every vehicle, with the space cannon's ship panel and the MCC readout stacked below it, adding it to the MCC side gun's HUD in Remastered; show the HUD prompt's Exit on the dropship and MCC guns, the speeder and the GEV. The MCC side gun inherits the space cannon's noDamage, health 0 and god mode, so it reports no turret health; its readout is the MCC's hull, which Remastered turns #FF3300 at 0.60 with a 2 Hz pulse at or below 25%. Give the speeder the stock vehicle status bar with the hull and shield warnings restored in Remastered and the machinegun's glyph for the machinegun, its progress bar 18 u lower in Remastered, and Boost (the hazard symbol and Boosting while it lasts) and Exit in the HUD prompt, Classic keeping the expansion's boost line and restoring Exit at the stock exit line's place. Center the GEV's cluster on the bottom edge in Remastered and keep it bottom-leading in Classic.",
+      "dependencies": [
+        "FLOW-055",
+        "FLOW-060",
+        "WID-035"
+      ],
+      "acceptance_evidence_needed": [
+        "q4xbase captures of the m03 and m06 guns, the m07 race and a spawned GEV at 4:3, 16:9, 21:9 and 9:16 in Classic and Remastered, with the MCC below 25%, a boost and each prompt device."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "mcc": {
+          "turret_damage": false,
+          "warn_at": 0.25,
+          "warn_color": "#FF3300",
+          "warn_alpha": 0.6,
+          "pulse_hz": 2
+        },
+        "speeder": {
+          "progress_offset_u": 18,
+          "warnings_restored": true,
+          "weapon_glyphs": {
+            "0": "veh_mgun",
+            "1": "veh_shell"
+          }
+        },
+        "gev": {
+          "remastered": "bottom_center",
+          "classic": "bottom_leading"
+        }
       }
     }
   ]

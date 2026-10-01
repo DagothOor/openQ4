@@ -65,6 +65,14 @@ declaring that choice proven for the whole product.
 
 ### Current implementation progress
 
+A fourth [1 October register revision](../ui/product-requirements.md) follows
+[visual specification](../ui-visual-design.md) 1.13, which replaces the
+vehicles' bracketed exit and boost lines with HUD prompts, keeps the
+transmission display in the right-hand screen's corner on every HUD and
+confirms that the MCC side gun reports the ship's hull. Register schema 12
+supersedes one row and appends two. The register now holds 339 rows, of which
+307 define acceptance.
+
 A third [1 October register revision](../ui/product-requirements.md) follows
 [visual specification](../ui-visual-design.md) 1.12, which adds the 9:16
 portrait view, a multiplayer weapon wheel, the Competitive HUD's match bar and a

@@ -54,7 +54,10 @@ register schema 10 supersedes three rows and appends five for it. Version 1.12
 adds the 9:16 portrait view, a multiplayer weapon wheel, the Competitive HUD and
 a spectator follow camera, outlines the modal title and gives the initializing
 screen Remastered accents; register schema 11 supersedes five rows and appends
-four for it.
+four for it. Version 1.13 replaces the vehicles' bracketed exit and boost lines
+with HUD prompts and keeps the transmission display in the right-hand screen's
+corner on every HUD; register schema 12 supersedes one row and appends two for
+it.
 
 The controller weapon wheel already in openQ4-game (`356dfe56`: 12 slots,
 centered at 77% of the width, cursor selection) differs from section 14.6
