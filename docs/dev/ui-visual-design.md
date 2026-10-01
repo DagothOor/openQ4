@@ -1,8 +1,8 @@
 # openQ4 UI Visual Design
 
-Specification version 1.11, 1 October 2026 (1.10 the same day, 1.7 to 1.9 on
-29 September, 1.6 on 28 September, 1.4 and 1.5 on 27 September, 1.1 to 1.3 on
-26 September, 1.0 on 8 September 2026). Status:
+Specification version 1.12, 1 October 2026 (1.10 and 1.11 the same day, 1.7 to
+1.9 on 29 September, 1.6 on 28 September, 1.4 and 1.5 on 27 September, 1.1 to
+1.3 on 26 September, 1.0 on 8 September 2026). Status:
 implementation target; the replacement has not shipped. Applies to every
 player-facing GUI and to the visual editor's Quake 4 preview. Implementation and
 evidence are tracked in [the replacement plan](plans/idtech5-ui.md).
@@ -32,7 +32,10 @@ level beneath the menu pages, with its own band step and path crumb. Version
 1.11 rebuilds the scopes from their stock layers, catalogues the squad patches,
 brings The Awakening's weapons, icons, crosshairs and vehicle displays into the
 HUD sections, lifts the multiplayer chat clear of the status bar and takes the
-waveform out of the weapon wheel.
+waveform out of the weapon wheel. Version 1.12 adds the 9:16 portrait view, a
+multiplayer weapon wheel, the Competitive HUD's match bar and a spectator follow
+camera, outlines the modal title and widens its glow, and gives the initializing
+screen Remastered accents.
 [Appendix C](#appendix-c-change-record) lists every change and the
 requirement-register rows it affects.
 
@@ -80,6 +83,9 @@ Stock GUIs author every rectangle on a 640x480 virtual canvas. Record stock
 measurements in source units (`u`) on that canvas and convert them last: at
 the 1280x720 dp reference, `1 u = 1.5 dp` on both axes. The stock 4:3 canvas
 maps to the central 960x720 dp; aspect expansion supplies the remaining width.
+In the 9:16 portrait view the 720x1280 dp reference puts the canvas across the
+full width at `1 u = 1.125 dp`, and expansion supplies the remaining height
+(section 14.4).
 
 - Interface bitmaps are stretched non-uniformly into window rectangles; a
   512x32 texel row plate is drawn at 377x25 u. Measure proportions in the
@@ -223,6 +229,7 @@ Use the inverse of the actual composed transform for hit testing.
 | UI scale | Default 100%; player-adjustable 75–200%, independently persisted |
 | Text scale | Default 100%; 100–200% independently of furniture; reflow labels/rows |
 | Desktop reference | 1280x720 dp composition reference; never a raster framebuffer limit |
+| Portrait reference | 720x1280 dp for the 9:16 portrait view: the 640 u canvas spans the width at 1.125 dp a unit (sections 13.6 and 14.4) |
 | Standard margins | 32 dp horizontally, 24 dp vertically; 16 dp in compact mode |
 | Content maximum | 1440 dp for forms/tables; backgrounds and structural rails stay full bleed |
 | Spacing scale | 2, 4, 8, 12, 16, 24, 32, 48 dp |
@@ -578,20 +585,24 @@ it, to 10 dp.
 **Modal** (front-end confirmations, entry, list and advanced-settings dialogs):
 the screen beneath stays in view, in `modal.softfocus`, where the stock covered
 it with the `marine.scrim`. An additive glow peaking in `marine.glow.modal`
-stands behind the dialog, exactly as wide as the dialog plus the 6 dp lit
-margin. It is at half strength at the dialog's top and bottom edges and gone
-24 dp beyond them, so the lit slot and margin outline the silhouette without a
-strip of light across the softened screen; over the scrim it keeps the stock
-column. The dialog is a black 0.70 silhouette. Along its top edge a 6 dp leading
-tooth, a title slot opening across about 73% of the width with 45-degree flanks
-down to a floor about 66% wide, and a raised trailing section; a deep
-lower-leading chamfer; square trailing corners; no rail lines, because the glow
-outlines the silhouette. The title (Marine 20 dp, tracking -0.075 em) starts at
-the foot of the slot's leading flank with its baseline on the raised sections'
-top line, so its capitals stand in the lit slot above the empty floor. Body text
-is inset 33 dp. Actions sit 30 dp from the leading edge and 33 dp from the
-trailing edge, about 16 dp above the bottom, the affirmative action leading.
-Stock dialogs come in five widths, and the art stretches with them:
+stands behind the dialog. Across the dialog and the 6 dp lit margin beside it
+the glow is graded only vertically: half strength at the dialog's top and bottom
+edges, gone 40 dp beyond them. Past the margin it fades out over a further 16 dp
+at each side. The lit slot and margin outline the silhouette, and the light
+spreads softly past the dialog instead of standing as a hard-edged strip across
+the softened screen; over the scrim it keeps the stock column. The dialog is a
+black 0.70 silhouette. Along its top edge a 6 dp leading tooth, a title slot
+opening across about 73% of the width with 45-degree flanks down to a floor
+about 66% wide, and a raised trailing section; a deep lower-leading chamfer;
+square trailing corners; no rail lines, because the glow outlines the
+silhouette. The title (Marine 20 dp, tracking -0.075 em) starts at the foot of
+the slot's leading flank with its baseline on the raised sections' top line, so
+its capitals stand in the lit slot above the empty floor. A thin black outline
+at 0.85 extrudes 1 dp around the title's strokes, drawn behind its fill, so the
+capitals keep a crisp edge where the glow is brightest. Body text is inset
+33 dp. Actions sit 30 dp from the leading edge and 33 dp from the trailing edge,
+about 16 dp above the bottom, the affirmative action leading. Stock dialogs come
+in five widths, and the art stretches with them:
 
 | Dialog | Width | Slot depth | Chamfer |
 | --- | --- | --- | --- |
@@ -1460,7 +1471,7 @@ and text scale choices always override the profile defaults.
 | Desk | Monitors, laptops, ChromeOS windows | 50–80 cm | Mouse and keyboard | 100% / 100% | 36 dp |
 | Couch | Televisions, Steam Big Picture | 2–3 m | Controller | 150% / 125% | Focus-driven; 44 dp rows |
 | Handheld | Steam Deck and similar PCs | 30–40 cm | Controller, touch | 125% / 100% | 48 dp for touch |
-| Phone | Android phones in landscape | 25–35 cm | Touch, controller | 100% / 100% at native density | 48 dp |
+| Phone | Android phones, in landscape or portrait | 25–35 cm | Touch, controller | 100% / 100% at native density | 48 dp |
 | Tablet | Android tablets and foldables | 35–50 cm | Touch, controller, keyboard | 100% / 100% at native density | 48 dp |
 
 These defaults keep the 17 dp body em within roughly 22–31 arc-minutes of
@@ -1481,7 +1492,7 @@ order. They refine the compact presentation in section 3.
 | Class | Condition | Structure |
 | --- | --- | --- |
 | Compact height | Height below 600 dp and width at least 720 dp | Phones in landscape and short windows. A navigation rail on the leading edge, the content column, and a detail column when the width reaches 840 dp. The top band stays within 40 dp and the bottom band within 56 dp |
-| Compact width | Width below 960 dp | One content column. Navigation becomes a tab strip in the top band; details expand in place |
+| Compact width | Width below 960 dp | Phones in portrait and narrow windows. One content column. Navigation becomes a tab strip in the top band; details expand in place |
 | Regular | Width 960–1439 dp | Navigation column and content column; details appear under the focused row or in the prompt band |
 | Expanded | Width 1440 dp and above | Navigation, content (forms within 1440 dp) and a trailing detail column |
 
@@ -1621,7 +1632,10 @@ the existing `in_joystick*`, `in_gyro*` and `in_touchpad*` settings.
 - Menus follow one touch at a time; the gameplay overlay tracks every finger
   independently.
 - A light haptic tick on press follows the system's touch-feedback setting.
-- Play is landscape-only in both orientations; no portrait layouts are provided.
+- Play runs in landscape, either way up, and in portrait, with the 9:16 view as
+  the portrait reference (section 14.4). Turning the device is an ordinary
+  resize (section 13.3) that keeps the state, and each orientation keeps its own
+  touch layout.
 
 **Lifecycle.** Leaving the app, or suspending a handheld, pauses single player,
 mutes audio and shows the pause menu on return, never dropping the player back
@@ -1672,6 +1686,20 @@ A layout editor, reachable from Settings and the pause menu, moves, resizes
 (75–150%), fades and hides each control on a snapping grid. It offers Default,
 Compact and Left-handed presets and a reset, stores layouts per device and
 shows labels only while editing.
+
+**Portrait.** The 9:16 portrait view uses a 720x1280 dp reference. The 640 u
+center screen spans its width at `1 u = 1.125 dp`, with a 370 dp band above and
+below it (section 14.4), and the bottom band becomes the thumb deck. The move
+stick floats in the deck's leading half. Fire, weapon, jump, crouch, zoom and
+reload gather in its trailing half: Fire in the middle with the weapon control
+above it, jump and crouch outside it and zoom and reload inside it. Every other
+drag looks, in the deck or in the view above it. The Touch HUD preset raises the
+readouts to the center screen's bottom edge, above the deck. Pause keeps the top
+leading corner, and the scoreboard and chat move to the top trailing corner,
+clear of a camera cutout. Sizes, spacing, states and the editor are as in
+landscape. Taller screens deepen the deck. Menus take the compact-width
+structure (section 13.3), and the multiplayer menu card keeps its dp size
+(section 14.18).
 
 **World terminals.** A tap on a terminal's projected surface within use range
 activates the region under the finger through the projected ray (SUR-004). A
@@ -1796,7 +1824,7 @@ and parallax off.
 | Classic | The stock layout, shear and palette |
 | Remastered | The stock elements anchored to the safe area, scalable, with vector symbols |
 | Minimal | Health, armor, ammunition and crosshair only |
-| Competitive | Multiplayer: enlarged readouts, match timer and team status |
+| Competitive | Multiplayer: the match bar at the top center (your side, the timer, the other side), team status at the leading edge, readouts enlarged by 15% and network quality at all times (section 14.9) |
 | Touch | Readouts moved clear of the touch controls and enlarged |
 
 HUD settings cover an independent HUD scale, the safe inset, the HUD width
@@ -1880,7 +1908,8 @@ component takes focus, prompts and touch targets from sections 13.4–13.6.
 - Emoji or font glyphs standing in for symbols.
 - Gestures without a visible alternative.
 - A controller-driven cursor in menus.
-- Portrait layouts.
+- Portrait layouts that shrink the landscape composition instead of
+  rearranging it.
 
 ## 14. HUD and in-game overlays
 
@@ -1977,15 +2006,19 @@ y 419. Remastered centers the three gauges as one status bar (section 14.4).
 
 ### 14.4 Remastered layout
 
-**Screens.** The Remastered HUD keeps the 4:3 stock canvas as its center
-screen and expands outward from it. HUD space follows the view height, so at
-100% HUD scale the center screen always fills the view's height and keeps the
-stock proportions.
+**Screens.** The Remastered HUD keeps the 4:3 stock canvas as its center screen
+and expands outward from it. At 100% HUD scale the center screen keeps the stock
+proportions and fills the view's height in views 4:3 and wider, and its width in
+narrower ones.
 
 - **Horizontal expansion.** A view wider than 4:3 adds a leading and a trailing
   screen: 160 dp each at 16:9, 96 dp at 16:10 and 373 dp at 21:9 (64:27).
-- **Vertical expansion.** A view narrower than 4:3, such as 5:4, adds a top
-  band and a bottom band.
+- **Vertical expansion.** A view narrower than 4:3 adds a top band and a bottom
+  band: 16 u each at 5:4, and 329 u each in the 9:16 portrait view, where the
+  center screen spans the width (370 dp at the 720x1280 dp portrait reference).
+  Taller portrait screens deepen the bands. Top groups ride the top edge and
+  bottom groups the bottom edge, with the view between them; on touch the bottom
+  band is the thumb deck instead (section 13.6).
 
 **Anchors.** Every group belongs to one of nine anchors: the four corners, the
 four edge midpoints and the center. It keeps its stock offset from that anchor,
@@ -2000,12 +2033,12 @@ centered status bar.
 | Anchor | Groups |
 | --- | --- |
 | Center | Crosshair, hit indicator, interactive brackets, aim text, awards and the respawn prompt, on the true projection center |
-| Bottom center | The status bar: the ammunition, health and armor gauges with their stock gaps; the pickup lines above them; the weapon strip above those |
-| Top center | Boss bar, timed notices, multiplayer notices, spectator and warm-up text; the Competitive match bar |
-| Top leading | New-objective notice; the multiplayer standing, team panels and timer |
+| Bottom center | The status bar: the ammunition, health and armor gauges with their stock gaps; the pickup lines above them; the weapon strip above those; a spectator's follow card in their place |
+| Top center | Boss bar, timed notices, multiplayer notices and warm-up text, and in Classic the stock spectator lines; the Competitive match bar |
+| Top leading | New-objective notice; the multiplayer standing, team panels and timer, or in Competitive the vote |
 | Top trailing | Radio chatter, with the objective-complete notice below it; the kill feed |
-| Leading edge | Objectives display, vote |
-| Trailing edge | Statistics |
+| Leading edge | Objectives display, vote; Competitive team status |
+| Trailing edge | Statistics; a Competitive spectator's second team list |
 | Bottom leading | Chat and chat input |
 | Bottom trailing | Powerups and the carried flag |
 
@@ -2131,6 +2164,24 @@ a recolored Marine ring.
   selection #FFCC00 in a #F2AD0B ring, readouts #FCFFC8, and the scan bar
   additive #FF8000.
 - **Reduced motion.** The rings and grain stop, and names change at once.
+
+**Multiplayer.** Multiplayer draws every team's HUD in the Marine family, and
+its wheel is the Marine wheel with these changes:
+
+- **Roster.** The multiplayer weapons in strip order, the gauntlet in the
+  blaster's place: eleven positions, thirteen under *The Awakening*.
+- **Icons.** The weapon color code, as in the multiplayer strip (section 14.5):
+  the pending weapon at full alpha and the rest at 0.60, never the single-player
+  orange.
+- **Ammunition.** Multiplayer weapons have no clips, so the segments and the hub
+  read the reserve alone. The hub holds the name and the reserve and nothing
+  else.
+- **Team color.** Your team's text color takes the selection ring and its flash,
+  the selected number, the bezel's ticks, the hub's double ring, the compass's
+  bright dot and the pointer: #AAE355 for Marines and #FF8E00 for Strogg, whose
+  selection light is additive #6B3A08 instead of #616F26. Deathmatch and Tourney
+  keep the stock olive, #B2CC80 and #B3D06E.
+- **Timing.** The game is never slowed, and releasing equips at once.
 
 ### 14.7 Crosshair and hit feedback
 
@@ -2279,14 +2330,71 @@ their content. The table records what each group shows.
 | Round modes | In the timer | Clan Arena, Freeze Tag and Red Rover add alive-player pips after each panel when the mode reports them, and a ROUND n plate with the round clock under the timer |
 | Timer | Top leading, under the standing or panels | A 70x16 u plate: the stopwatch in #FFFF8D and the time in Chain 19 dp, tabular. One readout per state: M:SS counting down; elapsed time beside ∞ when the match is untimed; WARM-UP with the ready count; STARTS IN and the countdown, stated only here; #FFBE23 in the last minute and #E46D56 with a 1 Hz pulse in the last ten seconds; SUDDEN DEATH with ∞; OVERTIME with the time added |
 | Tourney | Top center, within the center screen | The bracket strip on plates at 0.55: names cut with an ellipsis before the score, scores in Chain, your row aqua #5EB987 at 0.40 with the marker, the winner of a finished arena checked and the loser at 0.50 (the blue settle stays, no longer the only cue). The message bar keeps its 45-degree end and names the round with one word throughout; the timer and a ROUND and ARENA plate sit under it |
-| Center column | Top center | Frag notice, main notice, spectator and warm-up lines, and awards stack in that order from y 81 and move down for each other with `page.enter` easing instead of overlapping. Each line sits on its own plate at 0.35; rank ordinals take #FFBE23 instead of pure blue, red and yellow. The countdown is not repeated here |
+| Center column | Top center | Frag notice, main notice, warm-up lines and awards stack in that order from y 81 and move down for each other with `page.enter` easing instead of overlapping; spectators get the follow card instead of the stock lines. Each line sits on its own plate at 0.35; rank ordinals take #FFBE23 instead of pure blue, red and yellow. The countdown is not repeated here |
 | Kill feed | Top trailing | Trailing-aligned lines on their own plates at 0.35. Names longer than 84 u end in an ellipsis, so the victim is never lost. Your lines use the header-band plate at 0.30 with the marker, and a team kill carries a TEAM tag. The Tourney feed sits under the strip and fades like the rest; spectators see the feed |
 | Match context | Top trailing, under the kill feed | openQ4's managed-match lines in the card construction: the phase heading, then series, timeouts, readiness and proposals. It collapses to its phase line and one summary while play is live, and the scoreboard holds the full record |
 
 Positions never depend on which elements are visible: a group keeps its slot,
-and only the center column reflows. The Competitive preset moves the standing
-or team panels and the timer into a match bar at the top center: your side,
-the timer, the other side.
+and only the center column reflows.
+
+**Competitive (Remastered).** The Competitive preset (section 13.9) moves the
+standing or team panels and the timer into one match bar at the top center: your
+side, the timer, the other side. The kill feed, the center column, the powerups
+and the managed-match card keep their places.
+
+- **Match bar.** Three sheared HUD plates from y 6, 26 u tall and 2 u apart: a
+  60 u timer plate at black 0.72 between two 122 u side plates at 0.55. Each
+  side's outer end is a 25 u block. In team modes it is the team color at 0.85
+  holding the faction mark, followed by the team name in the team's text color,
+  and your team leads. In deathmatch and Tourney it holds the rank ordinal, the
+  leader's in #FFBE23, followed by the name cut with an ellipsis: you lead with
+  the ◥ marker, facing the leader, 2nd place when you lead, or your Tourney
+  opponent. Each side's score sits at its inner end in Chain 21 dp.
+- **Timer.** The time in Chain 15.5 dp with the Remastered timer's states, and
+  under it, in Lowpixel 700 at 0.55, the limit (TO 30), the round (ROUND 3) or
+  the arena (ARENA 2).
+- **Under the bar.** Each side's state hangs from its inner end on a small
+  plate: its flag (AT BASE, TAKEN with the carrier's name, or DROPPED) or the
+  round modes' alive-player pips. The Dead Zone holder sits under the timer,
+  with CONTESTED or EMPTY.
+- **Network.** Network quality (section 13.13), the ping beside four bars,
+  follows the bar's trailing end at all times.
+- **Team status.** In team modes your team's list sits at the leading edge from
+  y 150, under the team name in its text color: one 138x14.5 u plate per player
+  on a 16.5 u pitch with the weapon icon, the name cut with an ellipsis, health
+  in Chain (#E46D56 at 25 and below, #FFBE23 above 100) and armor at 0.60. Your
+  row uses the header-band plate and the marker; the dead keep their row at 0.40
+  under an ✕.
+- **Readouts.** The status bar grows by 15% about the bottom edge, and the chat
+  box keeps its 8 u clearance above it.
+- **Vote.** The vote takes the top-leading corner that the standing left, clear
+  of the team status.
+- **Tourney.** The bracket strip leaves the top; the scoreboard's bracket tree
+  (section 14.14) holds it.
+
+**Spectators (Remastered).** Spectators get a follow camera presentation instead
+of the stock's breathing lines in the center column.
+
+- **Following.** The followed player's status bar and powerups show, but not
+  their pickup lines or weapon strip. In their place, directly above the status
+  bar, sits the follow card: a 236x30 u HUD plate at black 0.58 with a 7 u block
+  of the followed player's team color at its leading end (none in deathmatch and
+  Tourney). It holds FOLLOWING in Lowpixel 700 at 0.58 over the name in Lowpixel
+  13 dp, and at its trailing end the rank ordinal in #FFBE23 and the score in
+  Chain. Chevrons beside the card's ends mark the cycle, and under it the active
+  device's prompts read Next, Previous and Free camera.
+- **Free camera.** The status bar, crosshair and powerups go, and the card drops
+  toward the bottom edge, reading SPECTATING over Free camera with Follow a
+  player and Scores prompts. Players in view carry name tags: a small plate at
+  0.50 with a 4 u team-color block and the name, pointing down at the player.
+- **Competitive.** Both teams' status lists flank the view, the Marines at the
+  leading edge and the Strogg at the trailing edge, trailing-aligned. The
+  followed player's row is lit in the team's text color at 0.22 with the marker,
+  and held statistics take the trailing list's place. In deathmatch and Tourney
+  the match bar's leading side is the followed player. Name tags add a health
+  line.
+- **Classic** keeps the stock lines: SPECTATING - FOLLOWING with the name, then
+  the cycle and exit keys, in #FFFF8C at 123 and 141 u, breathing over 900 ms.
 
 **Chat (Remastered).** The chat box and its input live on the leading side.
 
@@ -2883,10 +2991,29 @@ rings are circles on the 640x480 canvas. Its parts, measured on the canvas:
   clock (section 8), so every repaint finds them where continuous motion would
   have. The screen repaints at each step and, during a long step, whenever the
   engine can, at most 30 times a second. Reduced motion holds them still.
+- **Accents.** Remastered adds four quiet layers that keep close to the stock
+  picture, on the presentation clock with the rings. Reduced motion holds the
+  sweep still as a key light at the upper left, its leading edge 38 degrees
+  counterclockwise from the top, keeps the halo at 0.80 of its strength and
+  drops the embers, the glint and the status pulse.
+  - **Light sweep.** A warm light turns clockwise round the rings once every
+    10 s, added in #5E6E24. It rises over its first 7.5 degrees to 0.26 from the
+    inner ring through the teeth (161–250 u) and half that on the grooves out to
+    300 u, then fades through a 60-degree tail. Short #C9D98A arcs on the ring
+    edges catch its leading edge.
+  - **Halo.** #FF8340 added behind the emblem at up to 0.10, fading out by 168 u
+    and breathing between 0.40 and 1.00 of that strength over 6 s, so the dark
+    emblem stands clear of the rings.
+  - **Embers.** Fourteen sparks of 0.6–1.2 u in #FFB070 rise slowly through the
+    rings, each fading in and out over 6–11 s, at most 0.50.
+  - **Glint.** Every 9 s a narrow white light crosses QUAKE 4 from left to right
+    in 900 ms, clipped to the letters.
 - **Status.** The line is Marine 16 dp in #F09E0D, centered on the stock line's
-  middle at 418 u, and a new step replaces it at once. A 168 u rule under it
-  holds one segment per step: done at 0.55, current at 0.95 and pending at 0.15.
-- **Classic** keeps the stock picture and line.
+  middle at 418 u. Each new step replaces it, flickering in from 0.35 to full
+  over 120 ms. A 168 u rule under it holds one segment per step: done at 0.55
+  and pending at 0.15, while the current segment pulses between 0.62 and 0.95
+  over 800 ms.
+- **Classic** keeps the stock picture and line, without the accents.
 
 ### 14.18 Multiplayer menus
 
@@ -2904,7 +3031,9 @@ page and a prompt bar.
 
 - **Size.** 570x402 dp (380x268 u) for Welcome and 648x477 dp (432x318 u) for
   Escape, centered on the projection center, so at 16:9 the view shows on every
-  side. Switching tabs never changes the card's size.
+  side. Switching tabs never changes the card's size. In the 9:16 portrait view
+  the card keeps these dp sizes, about 507x357 u and 576x424 u, and never comes
+  closer than 16 dp to the sides.
 - **Scene.** The view behind is softened by the scene effect (section 9, with
   the join card's values): blurred and slightly desaturated, never dimmed. The
   softening ramps in over 250 ms while the card rises 12 dp and fades in over
@@ -3363,3 +3492,26 @@ Rhino emblem alone) and FLOW-045 (the chat beside the status bar) with
 WID-033, FLOW-052 and FLOW-051, and appends FLOW-053 (scope layers), ART-034
 (squad patches), ART-035 (The Awakening's icons and crosshairs) and FLOW-054
 and FLOW-055 (The Awakening's HUD and vehicle displays).
+
+### Version 1.12
+
+Version 1.12 follows the product owner's requests for a portrait view, a
+multiplayer weapon wheel, a Competitive HUD and a spectator follow camera, and
+the review of the pop-up titles and the initializing screen.
+
+| Area | 1.11 | 1.12 | Basis |
+| --- | --- | --- | --- |
+| Portrait | Play landscape-only; portrait layouts a pattern to avoid | The 9:16 portrait view at a 720x1280 dp reference: the center screen spans the width between top and bottom bands, the touch deck takes the bottom band with the readouts above it, menus take the compact-width structure and the multiplayer card keeps its dp size | The product owner's request |
+| HUD screens | The center screen always fills the view's height | It fills the height in views 4:3 and wider and the width in narrower ones | The vertical-expansion rule, which 5:4 already followed |
+| Modal title and glow | A bare title; the glow as wide as the dialog plus the 6 dp lit margin, gone 24 dp above and below | A thin black outline 1 dp around the title's strokes at 0.85; the glow fading out over a further 16 dp at each side and gone 40 dp above and below | The product owner's review |
+| Multiplayer wheel | Not specified | The Marine wheel for every team: the multiplayer roster, color-coded icons, the reserve alone and the team's text color on the ring, ticks, hub and pointer | The product owner's request; the multiplayer strip |
+| Competitive HUD | A preset named in one sentence | The match bar's geometry, timer and states, network quality, team status at the leading edge, readouts at 115%, and the vote and Tourney placements | The product owner's request |
+| Spectators | The stock breathing lines in the center column | A follow card above the status bar with the active device's prompts, free-camera name tags and both teams' lists in Competitive; Classic keeps the stock lines | The product owner's request; `mphud` Spectate0 and Spectate1 |
+| Initializing screen | Turning rings and a status line replaced at once | Remastered accents: a light sweep every 10 s, a breathing halo, embers, a glint across the lettering every 9 s, a pulsing step segment and a flicker on each step; reduced motion keeps a fixed key light | The product owner's review |
+
+Register schema 11 supersedes INP-013 (play landscape-only), LAY-019 (the center
+screen at full view height), ART-033 (the modal glow), FLOW-041 (spectator lines
+in the center column) and FLOW-049 (the status line replaced at once) with
+INP-014, LAY-020, ART-036, FLOW-056 and FLOW-057, and appends LAY-021 (the
+portrait view), WID-034 (the multiplayer wheel), FLOW-058 (the Competitive HUD)
+and FLOW-059 (the spectator follow camera).
