@@ -1,10 +1,10 @@
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "id_namespace": "openq4.ui.product",
-  "date": "2026-09-29",
+  "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "d491aa476c82c42e0828f06b5ff7b74caf22384b",
+    "engine_revision": "229fdad546ef5223a88ed07a254cf59fc19dceea",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -14,17 +14,17 @@
     "visual": {
       "path": "docs/dev/ui-visual-design.md",
       "authority": "normative visual, interaction and editor contract",
-      "sha256": "371e0425cf0b8f360ab32c6fb7f7b38633b0670eaaf333f9a4d722afea447d8c"
+      "sha256": "13d640398350b33f71684d2fd71cfe05a93421e2b012e5b609b8e414800884de"
     },
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "618d136e0b70a7184241a989682b126ebd9d802845be9f08b06c48791cbf0b68"
+      "sha256": "3c57e272178c8350ad0620e4514d1f8e7763fad4bf3e618adcfdfed9c6c48fd7"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "b5e5f6daf25c2f3b7938cf23c780c8a425364fbddce27a0debdc3b0050e4ac6c"
+      "sha256": "56b627416223ba2154c2c218ce8c82454950a48c731c5338ce2c6d52ceb70a7e"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -102,7 +102,7 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "618d136e0b70a7184241a989682b126ebd9d802845be9f08b06c48791cbf0b68"
+      "sha256": "3c57e272178c8350ad0620e4514d1f8e7763fad4bf3e618adcfdfed9c6c48fd7"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
@@ -1299,6 +1299,18 @@
       "normative_change": "Visual 1.9 sets modals over the soft-focused screen instead of the 0.94 scrim and cuts their glow to the dialog: the 6 dp lit margin, half strength at the dialog's top and bottom edges and gone 24 dp beyond; the stock column remains over the opaque-backing scrim.",
       "source_refs": [
         "visual:6"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "MOT-013",
+      "successors": [
+        "MOT-016"
+      ],
+      "normative_change": "Visual 1.10 adds a Remastered sub-page dock state, in which only the top band moves on one notch pitch on frame.step, so a band no longer has exactly two dock states; every other band motion rule is carried unchanged.",
+      "source_refs": [
+        "visual:8",
+        "visual:9"
       ],
       "carried_evidence": []
     }
@@ -11814,6 +11826,116 @@
         "leave_hold_ms": 50,
         "leave_ms": 250,
         "opaque_scrim_alpha": 0.94
+      }
+    },
+    {
+      "id": "MOT-016",
+      "title": "Band motion rules",
+      "milestone_owner": "M2",
+      "implementation_owner": "Presentation motion and UI interaction",
+      "source_refs": [
+        "visual:8",
+        "product:3 Visual quality and motion",
+        "product:5 Visual and interaction qualification",
+        "original:Stage 2",
+        "visual:9"
+      ],
+      "requirement": "Each framing band docks at home and page positions per menu, and Remastered adds a sub-page state in which only the top band moves on one notch pitch (97 u) toward the trailing edge (frame.step: accel(150, 150) over 300 ms, from 50 ms going deeper and at once on Back) while the bottom band and Back stay docked; bands move on the straight lines between states, home to page with accel(250, 250), sampled every presented frame; notches, risers and steps travel undeformed while flat spans stay attached to the viewport edges. Input that reverses a change starts the opposite move from the current positions with a duration proportional to the remaining distance, 150-500 ms (150-300 ms for frame.step), so position never jumps. Remastered carries the activated label into the title slot, over frame.dock or, going deeper, frame.step; the rim light moves with the band and nothing flares on arrival; compact classes shorten only the travel and keep the sub-page step one notch pitch at their scale; a change renders at the display rate even where a resting menu is capped at 30 Hz; the selection sound plays once at activation.",
+      "dependencies": [
+        "MOT-012",
+        "LAY-015",
+        "ART-033"
+      ],
+      "acceptance_evidence_needed": [
+        "Sampled band positions and velocities for full, interrupted and reversed changes at 30, 60, 144 and 240 Hz, in compact and regular classes, with title-carry and sound traces. Include page-to-sub-page steps, their reversal and their retargeting."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "retarget_duration_ms": [
+          150,
+          500
+        ],
+        "title_carry_ms": {
+          "frame_dock": 500,
+          "frame_step": 300
+        },
+        "phone_rest_cap_hz": 30,
+        "sub_page_step_u": 97,
+        "frame_step_ms": 300,
+        "frame_step_accel_ms": [
+          150,
+          150
+        ],
+        "frame_step_start_ms": 50,
+        "frame_step_retarget_ms": [
+          150,
+          300
+        ],
+        "bottom_band_moves_on_step": false
+      }
+    },
+    {
+      "id": "FLOW-050",
+      "title": "Menu levels",
+      "milestone_owner": "M4",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:8",
+        "visual:13"
+      ],
+      "requirement": "Give the menus three levels: home, pages and sub-pages. Single Player is a page whose sections, Campaign (New Campaign and Chapters) and Arena (the tier ladder), each open a sub-page; Multiplayer's Join Game (the server browser), Create Server and Demos (the demo list) open sub-pages, and Player Setup edits in place. A section that leads deeper summarizes itself in the content column, with a levelshot where one fits, until Accept opens it; Back always climbs one level and returns focus to the section that led down. Going deeper, the page's plates fade over 150 ms while it sweeps 640 u toward the trailing edge over 300 ms; the page title becomes the crumb, rising 7 u into the top band's thin span at 80% of its size and 0.40 and shrinking to fit before it truncates; the top band steps one notch pitch (MOT-016); and at 350 ms the sub-page appears with its plates at rest and its title, at the step's foot (136,19 u), fading in over 150 ms with its backing. Back drops the sub-page title at once, sweeps the sub-page 640 u toward the leading edge over 300 ms, returns the crumb over the last 150 ms of the step and fades the page back in at 300 ms. Classic keeps the stock within-a-screen change: docked bands and the sub-page at 500 ms under a path title. Reduced motion places both levels and cross-fades within 80 ms.",
+      "dependencies": [
+        "FLOW-001",
+        "MOT-016",
+        "MOT-010",
+        "FLOW-026",
+        "FLOW-013",
+        "TXT-005"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures and timing traces of every page-to-sub-page change and its reversal (Single Player to Campaign and Arena, Multiplayer to Join Game, Create Server and Demos) at 4:3, 16:9 and 21:9 in Classic and Remastered with keyboard, controller and touch, crumbs of the longest localized titles, retargeted changes and reduced motion."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "levels": [
+          "home",
+          "page",
+          "sub-page"
+        ],
+        "page_plates_fade_ms": 150,
+        "page_sweep_ms": 300,
+        "sweep_u": 640,
+        "sub_page_appears_ms": 350,
+        "content_in_ms": 150,
+        "crumb": {
+          "rise_u": 7,
+          "scale": 0.8,
+          "alpha": 0.4,
+          "ms": 150,
+          "position_u": [
+            39,
+            12
+          ]
+        },
+        "sub_page_title_u": [
+          136,
+          19
+        ],
+        "classic_sub_page_appears_ms": 500,
+        "reduced_motion_fade_max_ms": 80
       }
     }
   ]

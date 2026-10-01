@@ -65,6 +65,12 @@ declaring that choice proven for the whole product.
 
 ### Current implementation progress
 
+A [1 October register revision](../ui/product-requirements.md) follows
+[visual specification](../ui-visual-design.md) 1.10, which adds a sub-page level
+beneath the menu pages. Register schema 9 supersedes the band motion rules with
+a successor that adds the Remastered sub-page dock state, and appends the menu
+levels. The register now holds 319 rows, of which 296 define acceptance.
+
 A third [29 September register revision](../ui/product-requirements.md) follows
 [visual specification](../ui-visual-design.md) 1.9, in which modals soft-focus
 the screen beneath them instead of blacking it out. Register schema 8

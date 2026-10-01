@@ -42,6 +42,12 @@ with the current level block in the emblem's place and a Strogg variant after
 Kane's stroggification. Register schema 6 appends two rows for it. Version
 1.8 rebuilds the initializing screen from separate layers, and its rings turn
 slowly while the engine starts. Register schema 7 appends two rows for it.
+Version 1.9 replaces the modal scrim with a soft focus of the screen beneath;
+register schema 8 supersedes two rows and appends one for it. Version 1.10 adds
+a sub-page level beneath the menu pages: Single Player leads to Campaign and
+Arena, and Multiplayer to Join Game, Create Server and Demos, with a one-notch
+band step and a path crumb. Register schema 9 supersedes one row and appends one
+for it.
 
 The controller weapon wheel already in openQ4-game (`356dfe56`: 12 slots,
 centered at 77% of the width, cursor selection) differs from section 14.6
