@@ -66,8 +66,11 @@ Pictures fall back as well. CONTINUE shows the newest save's picture only when
 its file exists: an autosave names its level's loadscreen, and any other save
 keeps its own screenshot beside it (`savegames/<slot>.tga`), as the stock Load
 Game page shows it. That screenshot is reread when the title opens, so a newer
-save's picture replaces an older one. The level block and the loading screen
-keep the generic levelshot when a map has none.
+save's picture replaces an older one. The pause screen's level block chooses
+its levelshot as the loading screen chooses its picture: the map's
+`loadimage`, the intro art for a map that loads through the intro screen, then
+the map's own levelshot. A candidate that is not installed falls through to
+the next, ending at the generic art.
 
 ## Screens
 
@@ -440,6 +443,12 @@ and the SYSTEM button loaded nothing retained. All 18 runs exited cleanly with
 no errors. Evidence: `.tmp/ui/retained-default/validation-evidence.json`,
 SHA-256 `4aae5c75825a2036a9569bc19496bca79d567c3cf7ce682ca28dd576c19cf7f7`.
 
+The pause screen's level block was captured over airdefense1 on OpenGL and
+Vulkan at 1280x720: it shows the intro art the level's loading screen uses,
+where it showed the generic loadscreen. Evidence:
+`.tmp/ui/retained-pause-shot/validation-evidence.json`, SHA-256
+`d3b289962528acd575ddf5fc17033f8ece7e2e159d89d3724d2e10d36ffa6a06`.
+
 ## Known limitations
 
 - The pause menu has no OBJECTIVES action yet, so the navigation holds six of
@@ -464,8 +473,6 @@ SHA-256 `4aae5c75825a2036a9569bc19496bca79d567c3cf7ce682ca28dd576c19cf7f7`.
   video quality and light-grid preload.
 - A mod's own loading GUI that keeps a stock name (`generic`, `splevel`,
   `mplevel` or `intro`) is still replaced by the retained loading screen.
-- The pause screen's level block shows the generic art for a map without a
-  levelshot of its own name, airdefense1 among them.
 - The loading screen has no tips and no touch prompt (touch counts as desktop
   input). The multiplayer server card lacks the players by team and the
   server's message, the arsenal does not fill in (the game publishes no item

@@ -490,7 +490,9 @@
   a blank or unresponsive screen. The new screens follow the visual
   specification's framing bands, lighting and motion, and hand off to the
   stock pages for anything they do not replace yet. Continue now shows the
-  picture of your latest quick or manual save as well as autosaves.
+  picture of your latest quick or manual save as well as autosaves, and the
+  pause menu's level card shows the same picture as the level's loading
+  screen instead of the generic art.
   Choosing a page carries its name up into the page title as the frame docks,
   and the title screen's backdrop leans slightly away from the pointer or the
   right stick (off with reduced motion). Exiting or quitting asks in a dialog

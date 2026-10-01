@@ -6044,12 +6044,40 @@ void idSessionLocal::PublishRetainedPauseState( idUserInterface *gui ) {
 #endif
 }
 
-// The level block's levelshot: the map's menu levelshot, or the generic art
-// when that is not a plain image name.
+// Whether an image the renderer would load by this name is installed: the
+// name itself, or the name with one of the image formats it tries.
+static bool Session_ImageInstalled( const char *name ) {
+	static const char *const extensions[] = { "", ".tga", ".dds", ".jpg", ".png" };
+	for ( int i = 0; i < static_cast<int>( sizeof( extensions ) / sizeof( extensions[0] ) ); ++i ) {
+		if ( Session_FileExistsInSearchPaths( va( "%s%s", name, extensions[i] ) ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// The level block's levelshot, chosen as the loading screen chooses its
+// picture: the map's loadimage, the intro art for a map that loads through
+// the intro screen, then its menu levelshot. A candidate that is not an
+// installed, plain image name falls through, ending at the generic art.
 idStr idSessionLocal::RetainedPauseShot( const char *mapPath ) const {
+	idStrList candidates;
+	idDict mapDeclDict;
+	if ( Session_GetMapDeclDict( mapPath, mapSpawnData.serverInfo.GetString( "si_entityFilter", "" ), mapDeclDict ) ) {
+		candidates.Append( mapDeclDict.GetString( "loadimage", "" ) );
+		if ( !idStr::Icmp( mapDeclDict.GetString( "loadgui", "" ), "guis/loading/intro.gui" ) ) {
+			candidates.Append( "gfx/guis/loadscreens/e3_load" );
+		}
+	}
 	char screenshot[ MAX_STRING_CHARS ];
 	fileSystem->FindMapScreenshot( mapPath, screenshot, sizeof( screenshot ) );
-	return UI_RetainedImageSource( screenshot ) ? screenshot : "gfx/guis/loadscreens/generic";
+	candidates.Append( screenshot );
+	for ( int i = 0; i < candidates.Num(); ++i ) {
+		if ( candidates[i].Length() > 0 && UI_RetainedImageSource( candidates[i].c_str() ) && Session_ImageInstalled( candidates[i].c_str() ) ) {
+			return candidates[i];
+		}
+	}
+	return "gfx/guis/loadscreens/generic";
 }
 
 /*

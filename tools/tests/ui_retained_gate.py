@@ -82,12 +82,28 @@ struct Common {
 } commonObject, *common = &commonObject;
 // The installed files the session can find, and the Awakening content probe.
 struct idCampaignContentInfo { bool ready = true, present = true; idStr missing; };
+#define MAX_STRING_CHARS 1024
 struct FileSystem {
     std::set<std::string> files;
+    std::map<std::string, std::string> screenshots; // a map's own levelshot; the stock search ends at the generic .tga
     int ReadFile(const char* path, void**, ID_TIME_T*) { return files.count(path) ? 64 : -1; }
+    void FindMapScreenshot(const char* map, char* buffer, int length) {
+        const auto found = screenshots.find(map);
+        std::snprintf(buffer, length, "%s", found == screenshots.end() ? "gfx/guis/loadscreens/generic.tga" : found->second.c_str());
+    }
     idCampaignContentInfo GetAwakeningContentInfo() { return {}; }
 } fileSystemObject, *fileSystem = &fileSystemObject;
 struct ArenaCampaign { int selectors = 0; void OpenSelector() { ++selectors; } } arenaCampaign;
+struct idDict {
+    std::map<std::string, std::string> values;
+    const char* GetString(const char* key, const char* fallback = "") const { const auto found = values.find(key); return found == values.end() ? fallback : found->second.c_str(); }
+};
+struct MapSpawnData { idDict serverInfo; };
+static std::map<std::string, idDict> mapDecls;
+static bool Session_GetMapDeclDict(const char* map, const char*, idDict& out) {
+    const auto found = mapDecls.find(map); if (found == mapDecls.end()) return false; out = found->second; return true;
+}
+static bool Session_FileExistsInSearchPaths(const char* path) { return fileSystemObject.files.count(path) != 0; }
 struct CVar { bool value = false; bool GetBool() const { return value; } } ui_retained, ui_retainedSystem;
 enum { SE_NONE = 0, CMD_EXEC_APPEND = 1 };
 struct sysEvent_t { int evType = SE_NONE; };
@@ -176,7 +192,8 @@ public:
         for (size_t i = 0; i < saves.size(); ++i) { files.Append(idStr(saves[i])); times.Append({static_cast<int>(i), 100 - static_cast<ID_TIME_T>(i)}); }
     }
     void PublishRetainedPauseState(idUserInterface*) { ++pauseStates; }
-    idStr RetainedPauseShot(const char*) const { return "gfx/guis/loadscreens/generic"; }
+    MapSpawnData mapSpawnData;
+    idStr RetainedPauseShot(const char*) const;
     void UpdateRetainedHome(); bool RetainedHomeInputBlocked() const; void RetainedHomeFrameEvent();
     void HandleRetainedSessionRequest(idUserInterface*, const char*);
     void OpenCampaignSelector(bool);
@@ -202,7 +219,7 @@ static idSessionLocal Session(bool gate, bool inGame = false) {
     managerObject = Manager{}; commonObject = Common{}; commands = CommandSystem{}; legacy.clear(); legacyActions.clear(); precached.clear(); stickX = stickY = 0;
     legacyActionAvailable = true; preview = false; ui_retained.value = gate; ui_retainedSystem.value = false;
     fileSystemObject.files = std::set<std::string>(std::begin(DOCUMENTS), std::end(DOCUMENTS)); arenaCampaign = ArenaCampaign{};
-    legacyMissing.clear(); reloaded.clear(); describedShot = "savegames/quick.tga";
+    legacyMissing.clear(); reloaded.clear(); describedShot = "savegames/quick.tga"; mapDecls.clear(); fileSystemObject.screenshots.clear();
     static idUserInterface menu("guis/mainmenu.gui"); menu = idUserInterface("guis/mainmenu.gui");
     idSessionLocal session; session.guiActive = session.guiMainMenu = &menu; session.mapSpawned = inGame;
     legacy["desktop::curr"] = 0; legacy["desktop::active"] = 0; legacy["desktop::dest"] = 0;
@@ -382,6 +399,19 @@ int main() {
         auto autosave = Session(true); autosave.saves = {"autosave"}; describedShot = "gfx/guis/loadscreens/airdefense";
         autosave.UpdateRetainedHome(); CHECK(autosave.guiRetainedHome->state["menu_continue_shot"] == "gfx/guis/loadscreens/airdefense");
     }
+    {   // The level block's levelshot follows the loading screen's choice and falls through missing pictures.
+        auto s = Session(true, true);
+        mapDecls["game/airdefense2"] = idDict{{{"loadimage", "gfx/guis/loadscreens/airdefense"}}};
+        mapDecls["game/airdefense1"] = idDict{{{"loadgui", "guis/loading/intro.gui"}}};
+        mapDecls["game/building_b"] = idDict{{{"loadimage", "gfx/guis/loadscreens/missing"}}};
+        for (const char* file : {"gfx/guis/loadscreens/airdefense.tga", "gfx/guis/loadscreens/e3_load.tga", "gfx/guis/loadscreens/defstation.tga"})
+            fileSystemObject.files.insert(file);
+        fileSystemObject.screenshots["game/building_b"] = "gfx/guis/loadscreens/defstation.tga";
+        CHECK(s.RetainedPauseShot("game/airdefense2") == "gfx/guis/loadscreens/airdefense");
+        CHECK(s.RetainedPauseShot("game/airdefense1") == "gfx/guis/loadscreens/e3_load");
+        CHECK(s.RetainedPauseShot("game/building_b") == "gfx/guis/loadscreens/defstation.tga"); // its loadimage is not installed
+        CHECK(s.RetainedPauseShot("game/unknown") == "gfx/guis/loadscreens/generic");
+    }
     std::printf("ui_retained gate: %d checks passed\n", checks);
 }
 '''
@@ -554,6 +584,8 @@ def main() -> int:
         'void idSessionLocal::HandleRetainedSessionRequest(', 'idUserInterface *idSessionLocal::SelectRetainedLoadingGui(',
         'void idSessionLocal::PreloadRetainedScreens(', 'void idSessionLocal::PrepareRetainedLevel(',
         'void idSessionLocal::ReportRetainedScreens(')]
+    bodies += [function_body(session, signature) for signature in (
+        'static bool Session_ImageInstalled(', 'idStr idSessionLocal::RetainedPauseShot(')]
     compiler = next((found for name in ('clang++', 'g++', 'c++') if (found := shutil.which(name))), None)
     if not compiler:
         raise RuntimeError('C++ compiler required')
