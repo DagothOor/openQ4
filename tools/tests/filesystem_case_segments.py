@@ -12,7 +12,7 @@ def read(relative_path: str) -> str:
 
 
 def read_companion(relative_path: str) -> str:
-    return (ROOT.parent / "openQ4-game" / relative_path).read_text(encoding="utf-8")
+    return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
 def require(haystack: str, needle: str, context: str) -> None:
@@ -149,8 +149,8 @@ def validate_linux_build_path_casing() -> None:
     push = read(".github/workflows/push-verification.yml")
     commit = read(".github/workflows/commit-validation.yml")
 
-    require(root_meson, 'root / ".." / "openQ4-game"', "default GameLibs repository path")
-    require(root_meson, "../openQ4-game", "GameLibs repository diagnostics")
+    require(root_meson, 'game_libs_repo_root = meson.project_source_root()', "canonical game source path")
+    reject(root_meson, "../openQ4-game", "retired companion source input")
     reject(root_meson, 'root / ".." / "OpenQ4-game"', "default GameLibs repository path")
     reject(root_meson, "../OpenQ4-game", "GameLibs repository diagnostics")
 
@@ -165,8 +165,8 @@ def validate_linux_build_path_casing() -> None:
         (push, "push verification workflow"),
         (commit, "commit validation workflow"),
     ):
-        require(workflow, "../openQ4-game", context)
-        require(workflow, "openQ4-game.git", context)
+        reject(workflow, "../openQ4-game", context)
+        reject(workflow, "openQ4-game.git", context)
         reject(workflow, "../OpenQ4-game", context)
 
 

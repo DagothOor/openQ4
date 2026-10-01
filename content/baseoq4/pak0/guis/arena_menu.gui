@@ -449,7 +449,7 @@ windowDef Desktop
 			{
 				rect		18,72,236,34
 				forecolor	0.96,0.97,0.91,1
-				text		"#str_42001"
+				text		"#str_230038"
 				textscale	0.44
 				font		"fonts/marine"
 				noevents	1
@@ -1947,7 +1947,7 @@ windowDef Desktop
 				set "cmd" "arenaBrowse" ;
 				resetTime "arena_browser_entry_timeline" "0" ;
 			} else if ( "Desktop::arena_navigationAction" == 2 ) {
-				set "cmd" "arenaMission" ;
+				set "cmd" "arenaCampaigns" ;
 			} else {
 				set "cmd" "arenaClose" ;
 			}

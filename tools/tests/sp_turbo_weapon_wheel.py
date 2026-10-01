@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-GAME = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT.parent / "openQ4-game"))
+GAME = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT))
 
 
 def read(path):

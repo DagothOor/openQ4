@@ -13,7 +13,7 @@ def read_repo_file(relative_path):
 
 
 def read_companion_file(relative_path):
-    return (Path(__file__).resolve().parents[2].parent / "openQ4-game" / relative_path).read_text(encoding="utf-8")
+    return (Path(__file__).resolve().parents[2] / relative_path).read_text(encoding="utf-8")
 
 
 def test_msaa_cvar_exposes_guarded_steps():

@@ -26,7 +26,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 GAME_LIBS_ROOT = Path(
-    os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT.parent / "openQ4-game")
+    os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT)
 ).resolve()
 
 CAMPAIGN_PATH = (
@@ -728,7 +728,7 @@ def validate_menu_hooks() -> None:
         "unchanged Mission start",
     )
     for command in (
-        "arenaMission",
+        "arenaCampaigns",
         "arenaBrowse",
         "arenaClose",
         "arenaBackToModes",
@@ -756,7 +756,7 @@ def validate_menu_hooks() -> None:
         )
     for string_id in (
         "#str_42000",
-        "#str_42001",
+        "#str_230038",
         "#str_42002",
         "#str_42009",
         "#str_42010",

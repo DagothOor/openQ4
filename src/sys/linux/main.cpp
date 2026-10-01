@@ -1061,7 +1061,6 @@ int main(int argc, const char **argv) {
 	Posix_EarlyInit( );
 #ifndef ID_DEDICATED
 	Sys_ReportWaylandRuntime();
-	Sys_ShowSplash();
 #endif
 
 	if ( argc > 1 ) {

@@ -18,7 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INDEX = ROOT / "docs" / "dev" / "macos-signoff-evidence.md"
-DEFAULT_GAMELIBS_ROOT = ROOT.parent / "openQ4-game"
+DEFAULT_GAMELIBS_ROOT = ROOT
 NO_COMPLETED_STATUS = "- [ ] No completed macOS first-class support evidence is recorded yet."
 EVIDENCE_HISTORY_HEADING = "## Evidence History"
 CURRENT_RELEASE_HEADING = "## Current Release Evidence"
@@ -610,7 +610,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--package-artifact", action="append", default=[], help="Package artifact name. Repeat for multiple artifacts.")
     parser.add_argument("--signing-status", default="", help="Signing/notarization status for the tested packages.")
     parser.add_argument("--openq4-commit", default="", help="openQ4 commit. Defaults to git rev-parse HEAD.")
-    parser.add_argument("--gamelibs-root", type=Path, default=DEFAULT_GAMELIBS_ROOT, help="Path to openQ4-game.")
+    parser.add_argument("--gamelibs-root", type=Path, default=DEFAULT_GAMELIBS_ROOT, help="Game source checkout; defaults to the canonical engine checkout.")
     parser.add_argument("--gamelibs-commit", default="", help="openQ4-game commit. Defaults to git rev-parse HEAD in --gamelibs-root.")
     parser.add_argument("--known-exception", action="append", default=[], help="Known exception to record. Repeat as needed.")
     parser.add_argument("--release-note-limitation", action="append", default=[], help="Release-note limitation to record. Repeat as needed.")

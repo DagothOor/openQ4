@@ -936,6 +936,9 @@ def validate_macos_package_main_collateral_error_runtime() -> None:
     try:
         write_test_file(source_root / "assets" / "release" / "README.html", b"<html></html>\n")
         write_test_file(source_root / "LICENSE", b"license\n")
+        write_test_file(source_root / "LICENSING.md", b"component licences\n")
+        for name in ('QUAKE-4-SDK-EULA.rtf','DOOM-3-ADDITIONAL-TERMS.txt','DOOM-3-BFG-ADDITIONAL-TERMS.txt'):
+            write_test_file(source_root / "LICENSES" / name, b"licence terms\n")
         write_test_file(source_root / "LICENSES" / "KHRONOS-GLES-MIT.txt", b"khronos notice\n")
         write_test_file(source_root / "CONTRIBUTORS.md", b"contributors\n")
         write_test_file(
@@ -3518,10 +3521,11 @@ def validate_macos_workflow_security_contract() -> None:
     require(host, "including hardlinks", "macOS host archive hardlink validation")
     require(host, "rsync -a --delete", "macOS host safe temp extraction sync")
     require(host, 'Join-RemotePosixPath -Base $MacWorkspace -Child "openQ4"', "macOS host remote source sync path joining")
-    require(host, 'Join-RemotePosixPath -Base $MacWorkspace -Child "openQ4-game"', "macOS host remote GameLibs sync path joining")
+    reject(host, 'Join-RemotePosixPath -Base $MacWorkspace -Child "openQ4-game"', "macOS host obsolete companion transfer")
+    require(host, "$HostGameLibsPath = $repoRoot", "macOS host canonical in-tree game sources")
     require(host, "openQ4/.git", "macOS host source metadata exclusion")
     require(host, "openQ4/.codex", "macOS host local agent metadata exclusion")
-    require(host, "openQ4-game/.git", "macOS host GameLibs metadata exclusion")
+    reject(host, "openQ4-game/.git", "macOS host obsolete companion archive")
     require(host, "$assetRootName/q4base/*.cfg", "macOS host personal config exclusion")
     require(host, "$assetRootName/q4base/q4key", "macOS host private key exclusion")
     require(host, '"Signoff"', "macOS host signoff action")
@@ -4036,8 +4040,7 @@ def make_macos_layer_symbol_records(arch: str) -> bytes:
 
 
 def validate_macos_game_layer_bundle_runtime() -> None:
-    """q4xbase embeds its modules as signed code in Contents/Frameworks/q4xbase and its
-    mod.json as data in Contents/Resources/q4xbase, and nothing else passes."""
+    """Unified SP/MP modules are bundled; obsolete campaign stages are ignored."""
     package = load_package_module()
     work = ROOT / ".tmp" / "macos-game-layer-contract"
     package_root = work / "openq4-v0.2.000-macos-arm64-opengl"
@@ -4073,89 +4076,28 @@ def validate_macos_game_layer_bundle_runtime() -> None:
         write_test_file(install_dir / "assets" / "splash" / "quake4_rt_bitmap_4001.bmp", b"bmp\n")
         write_test_file(install_dir / "openQ4.icns", b"icns\n")
 
-        # a release that requires the layer fails when the build did not stage it
-        stage_package()
-        try:
-            create(required_layers={"q4xbase"})
-        except FileNotFoundError as exc:
-            if "required game layer q4xbase/ was not staged" not in str(exc):
-                raise AssertionError(f"unexpected missing-layer error: {exc}") from exc
-        else:
-            raise AssertionError("a required layer that was not staged must fail the macOS package")
-
+        # Historical q4xbase outputs may still exist beside an upgraded stage.
+        # The unified package must ignore their modules, metadata and user assets.
         staged_layer = install_dir / "q4xbase"
-        write_test_file(staged_layer / f"game-sp_{arch}.dylib", b"layer-sp\n", 0o755)
-        write_test_file(staged_layer / f"game-mp_{arch}.dylib", b"layer-mp\n", 0o755)
+        write_test_file(staged_layer / f"game-sp_{arch}.dylib", b"obsolete-sp\n", 0o755)
+        write_test_file(staged_layer / f"game-mp_{arch}.dylib", b"obsolete-mp\n", 0o755)
         write_test_file(staged_layer / "mod.json", make_macos_layer_mod_json_bytes())
-
-        # a stray file in the staged layer fails before anything is embedded
-        write_test_file(staged_layer / "game-sp_x64.dylib", b"stale\n", 0o755)
+        write_test_file(staged_layer / "user-content.pk4", b"private-assets\n")
         stage_package()
-        expect_runtime_error("must hold exactly", create, "macOS staged layer with a stale module")
-        (staged_layer / "game-sp_x64.dylib").unlink()
-
-        stage_package()
-        app_root = create(required_layers={"q4xbase"})
+        app_root = create()
         validate(app_root)
-        frameworks = app_root / package.MACOS_APP_FRAMEWORKS_DIR / "q4xbase"
-        resources = app_root / package.MACOS_APP_RESOURCES_DIR / "q4xbase"
-        if {path.name for path in frameworks.iterdir()} != {f"game-sp_{arch}.dylib", f"game-mp_{arch}.dylib"}:
-            raise AssertionError("Contents/Frameworks/q4xbase must hold exactly the layer's two modules")
-        if {path.name for path in resources.iterdir()} != {"mod.json"}:
-            raise AssertionError("Contents/Resources/q4xbase must hold exactly the layer's mod.json")
-        if package.macos_embedded_game_layers(package_root) != ["q4xbase"]:
-            raise AssertionError("the embedded q4xbase layer was not detected")
+        if package.macos_embedded_game_layers(package_root):
+            raise AssertionError("the unified package must not embed historical campaign modules")
+        if any("q4xbase" in path.parts for path in app_root.rglob("*")):
+            raise AssertionError("campaign modules or user content leaked into the app bundle")
+        base_modules = [app_root / package.MACOS_APP_FRAMEWORKS_DIR / f"game-{kind}_{arch}.dylib"
+                        for kind in ("sp", "mp")]
+        for module in base_modules:
+            if module not in package.macos_signable_targets(package_root, arch):
+                raise AssertionError(f"unified game module must be signed: {module}")
+        if not (staged_layer / "user-content.pk4").is_file():
+            raise AssertionError("packaging must preserve installed campaign content")
 
-        # the layer's modules are signed, checked, renamed and symbolicated like baseoq4's
-        layer_modules = [frameworks / f"game-sp_{arch}.dylib", frameworks / f"game-mp_{arch}.dylib"]
-        signable = package.macos_signable_targets(package_root, arch)
-        embedded = package.macos_embedded_library_paths(package_root, arch)
-        dependency_binaries = package.macos_dependency_validation_binaries(package_root, arch)
-        install_names = package.macos_loadable_module_install_names(package_root, arch)
-        symbol_targets = package.macos_symbol_targets(package_root, arch)
-        executables = package.get_package_executable_archive_paths("macos", arch, [], ["q4xbase"])
-        for module in layer_modules:
-            if module not in signable or module not in embedded or module not in dependency_binaries:
-                raise AssertionError(f"the layer module must be signed and checked like baseoq4's: {module}")
-            if install_names.get(module) != f"@loader_path/{module.name}":
-                raise AssertionError(f"layer module install name is {install_names.get(module)!r}")
-            expected_target = (
-                Path("openQ4.app") / "Contents" / "Frameworks" / "q4xbase" / module.name,
-                module,
-                Path("dSYMs") / "q4xbase" / f"{module.name}.dSYM",
-            )
-            if expected_target not in symbol_targets:
-                raise AssertionError(f"layer module has no nested dSYM target: {module}")
-            if module.relative_to(package_root) not in executables:
-                raise AssertionError(f"layer module must be archived executable: {module}")
-        if symbol_targets[-1][0].name != f"renderer-vk_{arch}.dylib":
-            raise AssertionError("the renderer must stay the last dSYM target")
-
-        # every departure from the embedded layout is refused
-        loose = package_root / "q4xbase"
-        write_test_file(loose / "mod.json", make_macos_layer_mod_json_bytes())
-        expect_runtime_error("retained adjacent q4xbase/", lambda: validate(app_root), "macOS loose q4xbase")
-        shutil.rmtree(loose)
-        write_test_file(frameworks / "mod.json", make_macos_layer_mod_json_bytes())
-        expect_runtime_error("unexpected files", lambda: validate(app_root), "macOS layer data under Frameworks")
-        (frameworks / "mod.json").unlink()
-        write_test_file(frameworks / "game-sp_x64.dylib", b"stale\n", 0o755)
-        expect_runtime_error("unexpected files", lambda: validate(app_root), "macOS layer with a stale module")
-        (frameworks / "game-sp_x64.dylib").unlink()
-        write_test_file(resources / "mod.json", make_macos_layer_mod_json_bytes("0.1.000"))
-        expect_runtime_error(
-            "which is not release 0.2.000",
-            lambda: validate(app_root),
-            "macOS layer built for another engine",
-        )
-        (resources / "mod.json").unlink()
-        expect_runtime_error(
-            "a layer mod.json must be a regular file",
-            lambda: validate(app_root),
-            "macOS layer without its mod.json",
-        )
-        resources.rmdir()
-        expect_runtime_error("missing required directories", lambda: validate(app_root), "macOS half-embedded layer")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

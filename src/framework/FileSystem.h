@@ -155,6 +155,15 @@ private:
 	idStrList				list;
 };
 
+// A built-in campaign is content, not a separately loaded game module.
+// "ready" checks the campaign's compiled maps and defining scripts/decls;
+// it does not certify the completeness of an unfinished third-party release.
+struct idCampaignContentInfo {
+    bool present = false;
+    bool ready = false;
+    idStr missing;
+};
+
 // mod list
 struct idModInfo {
 	idStr					directory;
@@ -375,6 +384,8 @@ public:
 	virtual void			DiscardGeneratedCache( generatedCacheKind_t kind,
 								const char *sourcePath, unsigned int parserVersion,
 								const char *settingsKey = "" ) = 0;
+	virtual idCampaignContentInfo GetAwakeningContentInfo() = 0;
+	virtual const char *GetActiveGameDir() const = 0;
 };
 
 extern idFileSystem *		fileSystem;

@@ -1054,7 +1054,6 @@ void Sys_CreateConsole(void) {
 	SysCon_ApplyFonts();
 	SysCon_LayoutChildren();
 
-	Sys_ShowSplash();
 
 	// don't show it now that we have a splash screen up
 	if (win32.win_viewlog.GetBool()) {

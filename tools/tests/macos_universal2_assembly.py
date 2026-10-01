@@ -176,7 +176,29 @@ def with_layer_binaries(manifest: dict[str, object], arch: str, code_records: di
 
 
 def test_game_layer_slices() -> None:
-    """q4xbase is lipo-merged like baseoq4's modules when both slices stage it whole."""
+    """Current packages reject retired modules; historical fixtures stay readable."""
+    if ASSEMBLER.optional_thin_code_paths("arm64") or ASSEMBLER.optional_universal_code_paths():
+        raise AssertionError("current packages must use only the unified baseoq4 modules")
+    work = ROOT / ".tmp" / "macos-universal2-retired-layer-contract"
+    shutil.rmtree(work, ignore_errors=True)
+    try:
+        populate_staging(work, "arm64")
+        write_file(work / "q4xbase/game-sp_arm64.dylib", b"retired\n", 0o755)
+        expect_error("stale or mismatched code file",
+                     lambda: ASSEMBLER.classify_staged_tree(work, "arm64"),
+                     "retired expansion module in current staging")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    original_layers = ASSEMBLER.PACKAGED_LAYER_GAME_DIRS
+    try:
+        ASSEMBLER.PACKAGED_LAYER_GAME_DIRS = ("q4xbase",)
+        test_historical_game_layer_slices()
+    finally:
+        ASSEMBLER.PACKAGED_LAYER_GAME_DIRS = original_layers
+
+
+def test_historical_game_layer_slices() -> None:
+    """Validate archived dual-module fixtures under their explicit historical policy."""
     if ASSEMBLER.layer_code_keys("q4xbase") != ("q4xbase/game-sp", "q4xbase/game-mp"):
         raise AssertionError("q4xbase must contribute exactly its SP and MP modules")
     if ASSEMBLER.expected_install_name("q4xbase/game-sp", "arm64") != "@loader_path/game-sp_arm64.dylib":

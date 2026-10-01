@@ -235,21 +235,14 @@ endif
 if build_sigmatouch and sigmatouch_controls_root == ''
   error('sigmatouch_root requires sigmatouch_controls_root.')
 endif
-game_libs_repo_root = ''
-game_libs_source_root = ''
-game_libs_repo_summary = 'not required'
-game_stage_root = ''
-game_stage_game_root = ''
-game_stage_mpgame_root = ''
-game_stage_game_include_rel = '.tmp/gamelibs_stage/src/game'
-game_stage_mpgame_include_rel = '.tmp/gamelibs_stage/src/mpgame'
-game_stage_output_rel = '.tmp/gamelibs_stage'
-if host_system != 'windows'
-  # A cross configure must not refresh files an active desktop build reads.
-  game_stage_output_rel = '.tmp/gamelibs_stage-' + host_system + '-' + binary_arch
-  game_stage_game_include_rel = game_stage_output_rel / 'src/game'
-  game_stage_mpgame_include_rel = game_stage_output_rel / 'src/mpgame'
-endif
+game_libs_repo_root = meson.project_source_root()
+game_libs_source_root = game_libs_repo_root / 'src'
+game_libs_repo_summary = 'in-tree (src/game and src/mpgame)'
+game_stage_root = meson.project_source_root()
+game_stage_game_root = game_stage_root / 'src' / 'game'
+game_stage_mpgame_root = game_stage_root / 'src' / 'mpgame'
+game_stage_game_include_rel = 'src/game'
+game_stage_mpgame_include_rel = 'src/mpgame'
 bse_source_root = meson.project_source_root() / 'src' / 'bse'
 game_sp_module_defs_file = ''
 game_mp_module_defs_file = ''
@@ -1142,125 +1135,22 @@ if build_engine or build_games
 endif
 
 if needs_game_headers
-  game_libs_repo_discovery = run_command(
-    py,
-    '-c',
-    'import os, pathlib, sys; root = pathlib.Path(sys.argv[1]); raw = os.environ.get("OPENQ4_GAMELIBS_REPO", "").strip(); repo = pathlib.Path(raw) if raw else (root / ".." / "openQ4-game"); print(repo.resolve().as_posix())',
-    meson.project_source_root(),
-    check: true,
-  )
-  game_libs_repo_root = game_libs_repo_discovery.stdout().strip()
-  if game_libs_repo_root == ''
-    error('Failed to resolve the openQ4-game repository path. Set OPENQ4_GAMELIBS_REPO or place it at ../openQ4-game.')
-  endif
-
-  game_libs_source_root = game_libs_repo_root / 'src'
-  if not fs_mod.is_dir(game_libs_source_root / 'game')
-    error('openQ4-game source directory not found: ' + game_libs_source_root / 'game')
-  endif
-  if not fs_mod.is_dir(game_libs_source_root / 'mpgame')
-    error('openQ4-game multiplayer source directory not found: ' + game_libs_source_root / 'mpgame')
-  endif
-
-  game_stage_result = run_command(
-    py,
-    meson.project_source_root() / 'tools' / 'build' / 'stage_gamelibs.py',
-    meson.project_source_root(),
-    game_libs_repo_root,
-    meson.project_source_root() / game_stage_output_rel,
-    check: true,
-  )
-  game_stage_root = game_stage_result.stdout().strip()
-  if game_stage_root == ''
-    error('Failed to stage game sources from openQ4-game.')
-  endif
-
-  game_stage_game_root = game_stage_root / 'src' / 'game'
-  if not fs_mod.is_dir(game_stage_game_root)
-    error('Staged game source directory not found: ' + game_stage_game_root)
-  endif
-  game_stage_mpgame_root = game_stage_root / 'src' / 'mpgame'
-  if not fs_mod.is_dir(game_stage_mpgame_root)
-    error('Staged multiplayer game source directory not found: ' + game_stage_mpgame_root)
-  endif
-  game_stage_manifest = game_stage_root / 'openq4_gamelibs_stage_manifest.json'
-  if not fs_mod.is_file(game_stage_manifest)
-    error('Staged openQ4-game source manifest not found: ' + game_stage_manifest)
-  endif
-
+  foreach game_tree : ['game', 'mpgame']
+    if not fs_mod.is_dir(game_libs_source_root / game_tree)
+      error('Canonical game source directory not found: ' + game_libs_source_root / game_tree)
+    endif
+  endforeach
   game_sp_module_defs_file = game_stage_game_root / 'Game.def'
   game_mp_module_defs_file = game_stage_mpgame_root / 'mpgame.def'
-  if host_system == 'windows' and not fs_mod.is_file(game_sp_module_defs_file)
-    error('Staged Game.def not found: ' + game_sp_module_defs_file)
-  endif
-  if host_system == 'windows' and not fs_mod.is_file(game_mp_module_defs_file)
-    error('Staged mpgame.def not found: ' + game_mp_module_defs_file)
-  endif
-
-  game_libs_repo_summary = game_libs_repo_root
-endif
-
-# Quake 4: The Awakening. openQ4-game-awakening is a game-library layer: it
-# only adds sources (tools/build/game_layer.py), and its q4xbase modules link
-# the same openQ4-game objects as the baseoq4 modules plus the layer's own.
-awakening_option = get_option('awakening')
-build_awakening = false
-awakening_repo_root = ''
-awakening_game_dir = ''
-awakening_layer_id = ''
-awakening_stage_root = ''
-awakening_stage_rel = ''
-awakening_summary = 'disabled'
-if build_games and host_system != 'android' and not awakening_option.disabled()
-  # The first line says whether OPENQ4_AWAKENING_REPO named the layer; the second is its path.
-  awakening_repo_discovery = run_command(
-    py,
-    '-c',
-    'import os, pathlib, sys; root = pathlib.Path(sys.argv[1]); raw = os.environ.get("OPENQ4_AWAKENING_REPO", "").strip(); repo = pathlib.Path(raw) if raw else (root / ".." / "openQ4-game-awakening"); print("named" if raw else "sibling"); print(repo.resolve().as_posix())',
-    meson.project_source_root(),
-    check: true,
+  game_source_inventory = configure_file(
+    output: 'openq4_game_sources.json',
+    command: [py, files('tools/build/game_source_inventory.py'), meson.project_source_root()],
+    capture: true,
   )
-  awakening_discovery = awakening_repo_discovery.stdout().strip().split('\n')
-  awakening_named = awakening_discovery[0].strip() == 'named'
-  awakening_candidate = awakening_discovery[1].strip()
-  if fs_mod.is_file(awakening_candidate / 'layer.json')
-    build_awakening = true
-    awakening_repo_root = awakening_candidate
-  elif awakening_option.enabled()
-    error('awakening=enabled but no openQ4-game-awakening layer was found at ' + awakening_candidate + '. Set OPENQ4_AWAKENING_REPO or place it at ../openQ4-game-awakening.')
-  elif awakening_named
-    # Only the sibling checkout is optional: a layer someone names (CI does) must be there.
-    error('OPENQ4_AWAKENING_REPO names ' + awakening_candidate + ', which holds no openQ4-game-awakening layer (layer.json).')
-  else
-    awakening_summary = 'not found (' + awakening_candidate + ')'
-  endif
-elif awakening_option.enabled()
-  error('awakening=enabled requires build_games=true on a desktop target.')
 endif
 
-if build_awakening
-  awakening_game_dir = run_command(py, files('tools/build/game_layer.py'), 'field', awakening_repo_root, 'gameDir', check: true).stdout().strip()
-  awakening_layer_id = run_command(py, files('tools/build/game_layer.py'), 'field', awakening_repo_root, 'id', check: true).stdout().strip()
-  awakening_stage_rel = '.tmp/gamelibs_stage_' + awakening_layer_id
-  if host_system != 'windows'
-    awakening_stage_rel = awakening_stage_rel + '-' + host_system + '-' + binary_arch
-  endif
-  awakening_stage_result = run_command(
-    py,
-    meson.project_source_root() / 'tools' / 'build' / 'stage_gamelibs.py',
-    meson.project_source_root(),
-    game_libs_repo_root,
-    meson.project_source_root() / awakening_stage_rel,
-    '--layer',
-    awakening_repo_root,
-    check: true,
-  )
-  awakening_stage_root = awakening_stage_result.stdout().strip()
-  if awakening_stage_root == ''
-    error('Failed to stage the openQ4-game-awakening layer.')
-  endif
-  awakening_summary = awakening_repo_root + ' -> ' + awakening_game_dir
-endif
+# Awakening SP is built into game_sp; q4xbase now supplies content only.
+awakening_summary = 'built into game_sp (user-supplied campaign content)'
 
 if build_engine and not fs_mod.is_dir(bse_source_root)
   error('Integrated BSE source directory not found: ' + bse_source_root)
@@ -1492,7 +1382,7 @@ if build_games
   game_sp_sources += [savegame_compat_header, generated_version_header]
   game_mp_sources += [savegame_compat_header, generated_version_header]
   if build_engine
-    # Session preflights the exact GameLibs source stamp before tearing down
+    # Session records the canonical game source stamp before tearing down
     # the active map, so the engine target must see the same generated header.
     openq4_engine_sources += [savegame_compat_header]
   endif
@@ -2239,24 +2129,6 @@ if needs_game_headers
   bse_client_include_dirs += [staged_game_include_dir]
 endif
 
-if build_awakening
-  # the layer stage carries its own copy of the openQ4-game trees, taken from
-  # the same checkout as the base stage, so layer sources resolve their
-  # relative includes exactly as base sources do
-  awakening_game_include_dirs = [
-    root_include_dir,
-    src_include_dir,
-    src_idlib_include_dir,
-    src_renderer_include_dir,
-    src_ui_include_dir,
-    src_sys_include_dir,
-    src_bse_include_dir,
-    src_maya_import_include_dir,
-    include_directories(awakening_stage_rel / 'src' / 'game'),
-    include_directories(awakening_stage_rel / 'src' / 'mpgame'),
-  ]
-endif
-
 engine_cpp_args = shared_cpp_args + common_header_cpp_args + ['-D__DOOM_DLL__'] + linux_cross_dso_sanitizer_cpp_args
 engine_c_args = shared_c_args
 # client-only flavor: module-only clients compile the loader/backend for the
@@ -2993,10 +2865,6 @@ if build_engine or (build_games and (build_game_sp or build_game_mp))
   subdir('content/baseoq4')
 endif
 
-if build_awakening and (build_game_sp or build_game_mp)
-  subdir('content/q4xbase')
-endif
-
 if build_games and build_game_sp
   custom_target(
     'openq4_stage_game_sp_direct_run',
@@ -3055,7 +2923,11 @@ install_data(
   rename: 'openQ4.ico',
 )
 
-install_data('LICENSE', 'CONTRIBUTORS.md', install_dir: install_root_dir)
+install_data('LICENSE', 'LICENSING.md', 'CONTRIBUTORS.md', install_dir: install_root_dir)
+install_data('LICENSES/QUAKE-4-SDK-EULA.rtf',
+  'LICENSES/DOOM-3-ADDITIONAL-TERMS.txt', 'LICENSES/DOOM-3-BFG-ADDITIONAL-TERMS.txt',
+  install_dir: install_root_dir / 'licenses')
+meson.add_install_script(py, files('tools/build/retire_game_layers.py'), install_root_dir)
 install_data('LICENSES/KHRONOS-GLES-MIT.txt', install_dir: install_root_dir / 'licenses')
 install_data('docs/licenses/RmlUi.txt', install_dir: install_root_dir / 'licenses')
 install_data('docs/licenses/JsonCpp.txt', install_dir: install_root_dir / 'licenses')
@@ -3182,7 +3054,7 @@ summary(
     'Build game_mp': build_games and build_game_mp,
     'game_sp binary': game_sp_binary_name,
     'game_mp binary': game_mp_binary_name,
-    'Awakening layer (q4xbase)': awakening_summary,
+    'Awakening SP campaign': awakening_summary,
     'Build Vulkan renderer module': build_renderer_vk and build_engine,
     'Vulkan renderer binary': renderer_vk_binary_name,
     'Resource compiler': resource_compiler.found(),

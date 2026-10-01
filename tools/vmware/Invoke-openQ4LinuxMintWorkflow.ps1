@@ -14,7 +14,7 @@ param(
     [string]$SnapshotName = "openq4-ready",
     [string]$GuestBasePath = "/mnt/openq4-data/Quake4",
     [string]$GuestHostRepoShare = "/mnt/hgfs/openQ4",
-    [string]$GuestHostGameLibsShare = "/mnt/hgfs/openQ4-game",
+    [string]$GuestHostGameLibsShare = "/mnt/hgfs/openQ4", # Retained compatibility parameter; game sources travel with the engine.
     [string]$GuestHostResultsDir,
     [switch]$NoStart
 )
@@ -160,8 +160,7 @@ function Copy-AndRunGuestScript {
     $envArgs = @(
         "OPENQ4_SUDO_PASSWORD=$script:GuestPasswordPlain",
         "OPENQ4_BASEPATH=$script:GuestBasePath",
-        "OPENQ4_HOST_REPO_SHARE=$script:GuestHostRepoShare",
-        "OPENQ4_HOST_GAMELIBS_SHARE=$script:GuestHostGameLibsShare"
+        "OPENQ4_HOST_REPO_SHARE=$script:GuestHostRepoShare"
     )
     if ($script:GuestHostResultsDir) {
         $envArgs += "OPENQ4_HOST_RESULTS_DIR=$script:GuestHostResultsDir"

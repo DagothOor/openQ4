@@ -1,0 +1,91 @@
+// Compatibility presentation while the retained interface is opt-in.
+// Shared engine campaign commands own discovery, switching and save paths.
+windowDef Desktop {
+    rect 0,0,640,480
+    onESC { set "cmd" "campaignBack"; }
+    windowDef background {
+        rect (0 - "gui::virtual_screen_x_expand"),(0 - "gui::virtual_screen_y_expand"),(640 + "gui::virtual_screen_x_expand" * 2),(480 + "gui::virtual_screen_y_expand" * 2)
+        background "gfx/guis/mainmenu/bg_darkgrad2"
+        matcolor 0.2,0.25,0.16,1
+        noevents 1
+    }
+    windowDef title {
+        rect 44,54,552,38
+        text "#str_230038"
+        font "fonts/marine"
+        textscale 0.48
+        forecolor 0.95,0.49,0.06,1
+        noevents 1
+    }
+    windowDef quake4 {
+        rect 0,190,357,30
+        background "gfx/guis/mainmenu/b1_dark"
+        matcolor 0.42,0.49,0.25,0.66
+        onAction { set "cmd" "campaignQuake4"; }
+        onMouseEnter { set "matcolor" "0.95,0.49,0.06,0.82"; }
+        onMouseExit { set "matcolor" "0.42,0.49,0.25,0.66"; }
+        windowDef label {
+            rect 44,2,305,28
+            text "#str_230039"
+            textscale 0.32
+            forecolor 0.96,0.97,0.91,1
+            font "fonts/marine"
+            noevents 1
+        }
+    }
+    windowDef awakening {
+        rect 0,220,357,30
+        background "gfx/guis/mainmenu/b1_dark"
+        matcolor 0.42,0.49,0.25,0.66
+        onAction { if ("gui::awakening_ready" == 1) { set "cmd" "campaignAwakening"; } }
+        windowDef label {
+            rect 44,2,305,28
+            text "#str_230040"
+            textscale 0.32
+            forecolor 0.96,0.97,0.91,(0.4 + "gui::awakening_ready" * 0.6)
+            font "fonts/marine"
+            noevents 1
+        }
+    }
+    windowDef back {
+        rect 0,250,357,30
+        background "gfx/guis/mainmenu/b1_dark"
+        matcolor 0.42,0.49,0.25,0.66
+        onAction { set "cmd" "campaignBack"; }
+        windowDef label {
+            rect 44,2,305,28
+            text "#str_230045"
+            textscale 0.32
+            forecolor 0.96,0.97,0.91,1
+            font "fonts/marine"
+            noevents 1
+        }
+    }
+    windowDef available {
+        rect 395,190,210,160
+        visible ("gui::awakening_ready" == 1)
+        text "#str_230041"
+        textscale 0.24
+        font "fonts/lowpixel"
+        forecolor 0.72,0.76,0.59,1
+        noevents 1
+    }
+    windowDef partial {
+        rect 395,190,210,160
+        visible ("gui::awakening_ready" == 0 && "gui::awakening_present" == 1)
+        text "#str_230042"
+        textscale 0.24
+        font "fonts/lowpixel"
+        forecolor 0.72,0.76,0.59,1
+        noevents 1
+    }
+    windowDef absent {
+        rect 395,190,210,160
+        visible ("gui::awakening_ready" == 0 && "gui::awakening_present" == 0)
+        text "#str_230043"
+        textscale 0.24
+        font "fonts/lowpixel"
+        forecolor 0.72,0.76,0.59,1
+        noevents 1
+    }
+}

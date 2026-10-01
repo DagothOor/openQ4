@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from stage_gamelibs import validate_stage_manifest
+from game_source_inventory import inventory
 
 
 FULL_GIT_SHA_RE = re.compile(r"[0-9a-f]{40}")
@@ -53,6 +54,9 @@ def git_value(repository: Path, *args: str) -> str:
 
 
 def verify_repository_commit(repository: Path, expected_commit: str, label: str) -> None:
+    git_root = Path(git_value(repository, "rev-parse", "--show-toplevel")).resolve()
+    if git_root != repository.resolve():
+        raise RuntimeError(f"{label} is not the root of the checked-out repository")
     actual_commit = require_full_git_sha(
         git_value(repository, "rev-parse", "--verify", "HEAD^{commit}"),
         f"{label} checked-out commit",
@@ -152,15 +156,32 @@ def verify_layer_provenance(
 
 def verify_release_source_provenance(
     project_root: Path,
-    gamelibs_root: Path,
-    stage_manifest: Path,
-    expected_project_commit: str,
-    expected_gamelibs_commit: str,
+    gamelibs_root: Path | None = None,
+    stage_manifest: Path | None = None,
+    expected_project_commit: str | None = None,
+    expected_gamelibs_commit: str | None = None,
     *,
+    build_dir: Path | None = None,
     layer_root: Path | None = None,
     layer_stage_manifest: Path | None = None,
     expected_layer_commit: str | None = None,
 ) -> None:
+    # Canonical releases have one source commit and compile these files in
+    # place. Keep the historical staged verifier for old evidence fixtures.
+    if gamelibs_root is None and stage_manifest is None and expected_gamelibs_commit is None:
+        commit = require_full_git_sha(expected_project_commit or "", "expected openQ4 commit")
+        project_root = require_repository(project_root, "openQ4 repository")
+        verify_repository_commit(project_root, commit, "openQ4")
+        for relative in ("src/game/LICENSE", "src/mpgame/LICENSE", "LICENSES/QUAKE-4-SDK-EULA.rtf", "LICENSING.md"):
+            path = project_root / relative
+            if path.is_symlink() or not path.is_file():
+                raise RuntimeError(f"missing canonical game licensing: {relative}")
+        configured = read_stage_manifest((build_dir or project_root / "builddir") / "openq4_game_sources.json")
+        if configured != inventory(project_root):
+            raise RuntimeError("configured in-tree game source inventory differs from the clean release checkout; reconfigure and rebuild")
+        if any(arg is not None for arg in (layer_root, layer_stage_manifest, expected_layer_commit)):
+            raise RuntimeError("in-tree releases cannot select a separate Awakening source revision")
+        return
     layer_args = (layer_root, layer_stage_manifest, expected_layer_commit)
     if any(arg is not None for arg in layer_args) and not all(arg is not None for arg in layer_args):
         raise RuntimeError("layer provenance needs the layer root, its stage manifest and the expected layer commit")
@@ -206,10 +227,11 @@ def verify_release_source_provenance(
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-root", required=True, type=Path)
-    parser.add_argument("--gamelibs-root", required=True, type=Path)
-    parser.add_argument("--stage-manifest", required=True, type=Path)
+    parser.add_argument("--gamelibs-root", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--stage-manifest", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--expected-project-commit", required=True)
-    parser.add_argument("--expected-gamelibs-commit", required=True)
+    parser.add_argument("--expected-gamelibs-commit", help=argparse.SUPPRESS)
     parser.add_argument("--layer-root", type=Path, help="a game-library layer checkout (openQ4-game-awakening)")
     parser.add_argument("--layer-stage-manifest", type=Path, help="that layer's stage manifest")
     parser.add_argument("--expected-layer-commit", help="the approved layer commit")
@@ -225,6 +247,7 @@ def main(argv: list[str] | None = None) -> int:
             args.stage_manifest,
             args.expected_project_commit,
             args.expected_gamelibs_commit,
+            build_dir=args.build_dir,
             layer_root=args.layer_root,
             layer_stage_manifest=args.layer_stage_manifest,
             expected_layer_commit=args.expected_layer_commit,
@@ -236,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "release source provenance verified: "
         f"openQ4={args.expected_project_commit.lower()} "
-        f"openQ4-game={args.expected_gamelibs_commit.lower()}"
+        f"game sources={(args.expected_gamelibs_commit or args.expected_project_commit).lower()}"
         + (f" layer={args.expected_layer_commit.lower()}" if args.expected_layer_commit else "")
     )
     return 0

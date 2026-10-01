@@ -4,135 +4,34 @@ Status: in progress. This is the living plan for running the unreleased Raven/Ri
 expansion on openQ4. The gap analysis it works from is
 [the support audit](../q4x-awakening-support-audit.md).
 
-## Goal
+## Current architecture (1 October 2026)
 
-Play the expansion's campaign (13 maps, `m01_stranarus_trench1` to `m09_valkaryne`) and
-its multiplayer maps (`q4xctf1`-`q4xctf6`, `q4xtourney1`) on openQ4, from the
-expansion's own content plus openQ4 binaries. The expansion's `gamex86.dll` is never
-loaded (openQ4 does not load legacy game code), and none of its code is copied: it is
-studied only as a record of how the shipped content expects to behave.
+Awakening is an optional **single-player campaign** built into the canonical
+`src/game/` SP library in openQ4. Its independent additions are in
+`src/game/awakening/`; `src/mpgame/` remains the ordinary multiplayer game.
+The two companion repositories are historical import sources, not build inputs.
+See [source provenance](../game-source-provenance.md),
+[licensing](../../../LICENSING.md) and the
+[consolidation/evidence plan](game-source-consolidation.md).
 
-## Shape of the solution
+Single Player → Campaign queries loose files and PK4 indices without mounting
+them. A ready installation requires the defining declarations/scripts and all
+thirteen compiled campaign maps. Only selecting Awakening mounts `q4xbase`,
+which keeps its saves/configuration separate from `baseoq4`. Its turret
+substitution is scoped to the filesystem's active game directory. Retail,
+Arena and online multiplayer unload expansion overrides through a full restart.
+Both story campaigns load the trusted `baseoq4` SP module, ignoring old expansion
+DLLs. Expansion menu/default configuration files cannot replace engine navigation.
 
-Three repositories share the work.
+The original leaked game binary and reconstructed GPL source remain behaviour
+references only. No recovered implementation or proprietary art is imported.
+Awakening multiplayer code, maps and pricing changes are excluded from this
+integration. No expansion assets are distributed; installation is described in
+the [campaign guide](../../user/campaigns.md).
 
-| Repository | Licence | Role |
-|---|---|---|
-| `openQ4` | GPLv3 | Engine features the expansion's content needs; the build that stages and links the Awakening game modules |
-| `openQ4-game` | Quake 4 SDK EULA | The base game libraries, plus generic extension points the expansion builds on |
-| `openQ4-game-awakening` | Quake 4 SDK EULA | The expansion's own classes, as an additive *game-library layer* |
-
-### The game-library layer
-
-`openQ4-game-awakening` holds only new files. Its `layer.json` names the layer, its
-game directory (`q4xbase`) and its source roots:
-
-- `src/shared` compiles into both modules,
-- `src/game` into single player only,
-- `src/mpgame` into multiplayer only.
-
-`tools/build/stage_gamelibs.py --layer` copies the base trees and places the layer's
-files in `src/game/awakening/` and `src/mpgame/awakening/` of a separate stage, so a
-layer file includes base headers exactly as a base file would (`../Game_local.h`) and
-cannot collide with them. The base game compiles once, into static core libraries that
-both `baseoq4` and `q4xbase` link whole; the layer adds its objects on top.
-`tools/build/game_layer.py` validates `layer.json` and writes `q4xbase/mod.json`.
-
-The Meson option `awakening` (`auto` by default) builds the layer when
-`../openQ4-game-awakening` (or `OPENQ4_AWAKENING_REPO`) exists. Output lands in
-`builddir/q4xbase/` for direct runs and `.install/q4xbase/` for the staged package;
-`tools/build/meson_setup.ps1` re-stages whenever the layer's sources change.
-
-CI builds the layer. Seven workflows pin one commit of it (`OPENQ4_AWAKENING_SHA`) and
-fetch it beside openQ4-game, so the q4xbase modules compile on Windows x64 and ARM64, on
-Linux x64 and ARM64 (native and cross) and in its sanitizer and Wayland builds, and on
-macOS (Apple silicon and Intel push and commit validation, debug and sanitizer builds,
-and the universal2 candidate). CI names the layer through `OPENQ4_AWAKENING_REPO`, and
-configure fails when a named layer is missing instead of quietly building without it.
-
-Releases ship the layer. `manual-release.yml` fetches the pinned commit the way it fetches
-openQ4-game (no reused checkout, verified commit, clean tree), checks that the staged
-layer came from that commit (`verify_release_source_provenance.py --layer-root`), and
-passes `--require-game-layer q4xbase` to the packager, so a build that lost the layer
-cannot publish a package without it.
-
-- Windows and Linux packages carry `q4xbase/` beside `baseoq4/`: the two modules, their
-  `.pdb` files on Windows, and `mod.json`, and nothing else. The Windows installer
-  requires all of them once the folder is present; the Linux release strips the modules
-  into the debug-symbol archive and the AppImage prepares them with the core runtime.
-- The macOS app embeds the modules as signed code in `Contents/Frameworks/q4xbase/`,
-  where the engine's module lookup (`<moduleRoot>/<fs_game>/`) finds them, and
-  `mod.json` as data in `Contents/Resources/q4xbase/`, which is `fs_cdpath`. Only code
-  may sit under `Frameworks`, since codesign treats every file there as nested code.
-  The modules get the same `@loader_path` install names as baseoq4's, and their dSYMs
-  sit in `dSYMs/q4xbase/`. The release's macOS smoke starts the app a second time with
-  `fs_game q4xbase` and requires the layer's own SP module to load, not baseoq4's.
-- Commit validation's macOS thin builds and the universal2 candidate build the layer as
-  well, and the universal2 assembly merges its modules like baseoq4's: a layer must be
-  staged whole in both thin slices or in neither.
-
-A layer change needs its new commit pinned in all seven workflows;
-`tools/tests/awakening_ci_contract.py` checks that they agree, that every fetch is in
-place and that every packaging step requires the layer.
-
-A layer reaches the base in one of three ways, in order of preference:
-
-1. **A new class** (most of the roster), registered like any other: base
-   `CLASS_DECLARATION` now registers through a static registrar, so a class in a layer
-   object is found without editing any base list.
-2. **Class substitution**: `SPAWNCLASS_SUBSTITUTION( base, replacement )` makes every
-   spawn of a base class produce a layer subclass, for behaviour the expansion changed
-   on a stock class.
-3. **A generic extension point in the base**, when neither will do (below).
-
-### Extension points added to `openQ4-game`
-
-Each is inert for stock content; the audit checked the retail defs for every key.
-
-| Extension point | Used by |
-|---|---|
-| `idClassRegistrar`, `idClassSubstitution` | Every layer class |
-| A damage def with a `spawnclass` hands its damage to an entity of that class (`idEntity::SpawnDamageEntity`); `idEntity::ApplyDamage` takes worked-out damage; `idActor::SetPainType` | `DOTEntity`, `FireDOTEntity` |
-| `idActor::SetDamageScales` (damage dealt and taken) | `riMonsterRetch` |
-| `resetTalkCount` script event on `idAI` | Expansion scripts |
-| `idLight::GetRadius` | `riFireFX` |
-| `WeaponNapalmGun` declared in a header | `WeaponGoobGun` |
-| `rvVehicleWeapon`: virtual `Fire`, `UpdateCursorGUI`, `Select`, `ProjectileLaunched`; a `convergence` key | Cockpit cannons |
-| `rvVehicle::SetFovOffset`, added to the driver's FOV | `riVehiclePartBoost` |
-| `damage <entity> <scale> [def]` console command | Headless testing |
-| Multiplayer powerups resolved by def name (`idPlayer::PowerupForContentType`), plus `POWERUP_ADRENALINE` and `POWERUP_FC_ARMOR_REGEN` | The expansion's `powerup_types` numbering |
-| `idBuyItemPrice` / `BUY_ITEM_PRICE`: prices a layer sets in code, ahead of `ItemCostConstants` | `src/mpgame/BuyPrices.cpp` |
-| `sq_buy` / `sq_buyMenu`, and the `canbuy_*` states on every buy-menu refresh | The expansion's `buymenu.gui` and `default.cfg` |
-| `openq4_reportMPWorld` also prints armor, credits and weapons (`MP_WORLD_INVENTORY`) | Headless multiplayer testing |
-| `idProjectile`: `sticky`, `passThroughActors`, `maxPinDistance` and the `STUCK` state; `canBePinned` on the corpse | The spike gun, the Pain Lord |
-| Transient AF constraints (`idAFConstraint::SetTransient`), left out of saves | Corpse pins |
-| `idAI`: `onlyTarget`, `onlyTarget2`, ... and `subStringOnlyTarget` | Scripted fights in m03, m04, m06, m07 and m09 |
-| `openq4_launchTestProjectile <def> <name> <target> [key value ...]` | Headless testing |
-
-### Engine work in `openQ4`
-
-- **Mod runtime underlay.** Under any mod that is not built on `baseoq4`, the engine
-  still searches `baseoq4` (between the mod and `q4base`), so openQ4's own shaders,
-  GUIs and fonts come along.
-- **Decl layering.** When a mod ships a decl file with the same name as one below it
-  (the expansion's `player.def`, `debris.def`, `persona.def`, `music.sndshd`, ...), the
-  engine now also reads the shadowed copies, with the mod's definitions winning. This
-  recovers the hundreds of retail definitions those files used to hide. `decl_layerModFiles 0`
-  restores the old behaviour.
-- **Formats.** `CM "2"` collision models (the expansion's 157 per-model `.cm` files),
-  DXT3 textures, `.jpg` names that exist only as `.tga` (the Valkaryne's nine limb
-  textures), and `sound/music/` as a music path. DXT3 is decoded on the CPU and used
-  only when a material names the file or nothing else by its name exists: retail keeps
-  a DXT3 copy beside the `.tga` of every font atlas, and fonts must keep loading from
-  the `.tga`.
-- **Robustness.** Rotation bounds stay finite when a rotation axis component rounds a
-  hair above 1 (ragdolls in m04 hit it on their first frames).
-- **Menus.** `GetCVarValue`, `SetCVarValue` and `GetVecCVarValue` GUI commands. The
-  create-server and server-browser previews show a map's mapDef `loadimage`, as its
-  loading screen does: the expansion's CTF maps, `q4xctf1-5`, have no levelshot of their
-  own name and name retail's there, so they previewed as the generic image.
-  `openq4_mapLevelshot <map>` prints what the menus will show.
-- **Input.** `_altattack` binds the zoom button, which is alternate fire.
+The sections below retain the historical feature and content investigation.
+References to separately linked layer modules describe the pre-consolidation
+implementation; the architecture above governs current builds.
 
 ## Status
 

@@ -694,128 +694,44 @@ Write-Output $refreshNeeded.ToString().ToLowerInvariant()
 
 
 def validate_source_contracts() -> None:
-    script = STAGE_SCRIPT.read_text(encoding="utf-8")
-    shell_wrapper = (ROOT / "tools" / "build" / "meson_setup.sh").read_text(encoding="utf-8")
-    powershell_wrapper = POWERSHELL_WRAPPER.read_text(encoding="utf-8")
+    for wrapper, helper in ((SHELL_WRAPPER, "test_game_sources_refresh_needed"),
+                            (POWERSHELL_WRAPPER, "Test-GameSourcesRefreshNeeded")):
+        source = wrapper.read_text(encoding="utf-8")
+        assert helper in source
+        assert "game_source_inventory.py" in source
+        assert "openq4_game_sources.json" in source
     meson = (ROOT / "meson.build").read_text(encoding="utf-8")
-    game_targets = (ROOT / "content" / "baseoq4" / "meson.build").read_text(encoding="utf-8")
-    aas_file = (ROOT / "src" / "aas" / "AASFile.h").read_text(encoding="utf-8")
-    precompiled = (ROOT / "src" / "idlib" / "precompiled.h").read_text(encoding="utf-8")
-    validator = (ROOT / "tools" / "validation" / "openq4_validate.py").read_text(encoding="utf-8")
-    building = (ROOT / "BUILDING.md").read_text(encoding="utf-8")
+    assert "game_libs_repo_root = meson.project_source_root()" in meson
+    assert "stage_gamelibs.py" not in meson
+    assert "subdir('content/q4xbase')" not in meson
 
-    fixture_support_dirs = tuple(relative_path.split("/", 1)[0] for relative_path in SUPPORT_FIXTURES)
-    if fixture_support_dirs != staged_support_dir_names():
-        raise AssertionError("GameLibs wrapper fixtures do not cover every staged openQ4 support directory")
-
-    required_script_tokens = (
-        "MANIFEST_NAME",
-        "openq4_gamelibs_stage_manifest.json",
-        "refusing to stage symlink",
-        "refusing to stage non-regular file",
-        "stage root must be under openQ4 .tmp",
-        "sha256",
-        "gameLibsGitCommit",
-        "gameLibsGitDirty",
-        "validate_stage_manifest",
-        "PYTHON_BYTECODE_SUFFIXES",
-        '"__pycache__" in relative.parts',
-        '"mpgame": gamelibs_root / "src" / "mpgame"',
-    )
-    for token in required_script_tokens:
-        if token not in script:
-            raise AssertionError(f"missing staging script token: {token}")
-
-    for token in (
-        "test_gamelibs_stage_refresh_needed",
-        "OPENQ4_GAMELIBS_REFRESH_PROBE_BEGIN",
-        'support_dir_names = ("idlib", "renderer", "ui", "sys", "bse", "MayaImport")',
-        "source_specs",
-        "staged_specs",
-        "regular_file_map",
-        "python_bytecode_suffixes",
-        '"__pycache__" in relative_parts',
-        "onerror=raise_walk_error",
-        "manifest_hashes",
-        "file_sha256(source_path)",
-        "file_sha256(staged_files[relative_path])",
-        "raise SystemExit(0 if needs_refresh else 10)",
-        "run_meson setup --reconfigure",
-    ):
-        if token not in shell_wrapper:
-            raise AssertionError(f"missing POSIX GameLibs refresh token: {token}")
-
-    for token in (
-        "Get-GamelibsFileMap",
-        "Get-GamelibsFileHashMap",
-        "openq4_gamelibs_stage_manifest.json",
-        "System.Security.Cryptography.SHA256",
-        '@("idlib", "renderer", "ui", "sys", "bse", "MayaImport")',
-        "$sourceRoots += $RepoRoot",
-        "$stagedRoots += $stageRoot",
-        "Test-GamelibsStageRefreshNeeded",
-        '$relativeParts -ccontains "__pycache__"',
-    ):
-        if token not in powershell_wrapper:
-            raise AssertionError(f"missing Windows GameLibs refresh token: {token}")
-
-    if "& $buildGameLibsScript -GameLibsRepo $gameLibsRepo" not in powershell_wrapper:
-        raise AssertionError("Windows wrapper does not bind the companion repository as a named parameter")
-    if '$buildArgs += @("-GameLibsRepo", $gameLibsRepo)' in powershell_wrapper:
-        raise AssertionError("Windows wrapper still uses positional array splatting for a named parameter")
-
-    for token in (
-        "openq4_gamelibs_stage_manifest.json",
-        "Staged openQ4-game source manifest not found",
-        "game_sp_sources = files(game_sp_absolute_paths)",
-        "game_mp_sources = files(game_mp_absolute_paths)",
-        "game_sources = game_sp_sources + game_mp_sources",
-        "game_sp_module_defs_file",
-        "game_mp_module_defs_file",
-        "game_target_override_options = ['cpp_std=c++17']",
-    ):
-        if token not in meson:
-            raise AssertionError(f"missing Meson staging contract token: {token}")
-
-    sp_marker = "if build_games and build_game_sp"
-    mp_marker = "if build_games and build_game_mp"
-    if sp_marker not in game_targets or mp_marker not in game_targets:
-        raise AssertionError("missing SP/MP game target blocks")
-    sp_target_block, mp_target_block = game_targets.split(mp_marker, 1)
-    sp_target_block = sp_target_block.split(sp_marker, 1)[1]
-    for token in ("game_sp_sources", "game_sp_module_defs_file", "game_target_override_options"):
-        if token not in sp_target_block:
-            raise AssertionError(f"missing SP target binding: {token}")
-    for token in ("game_mp_sources", "game_mp_module_defs_file"):
-        if token in sp_target_block:
-            raise AssertionError(f"SP target incorrectly references MP binding: {token}")
-    for token in ("game_mp_sources", "game_mp_module_defs_file", "game_target_override_options", "-DGAME_MPAPI"):
-        if token not in mp_target_block:
-            raise AssertionError(f"missing MP target binding: {token}")
-    for token in ("game_sp_sources", "game_sp_module_defs_file"):
-        if token in mp_target_block:
-            raise AssertionError(f"MP target incorrectly references SP binding: {token}")
-
-    for token in (
-        "#ifdef GAME_MPAPI",
-        '#include "../mpgame/Game_local.h"',
-        '#include "../game/Game_local.h"',
-    ):
-        if token not in precompiled:
-            raise AssertionError(f"missing SP/MP precompiled-header routing token: {token}")
-
-    for token in (
-        "aasArea_t& GetArea(int index) { return areas[index]; }",
-        "const aasArea_t& GetArea(int index) const { return areas[index]; }",
-    ):
-        if token not in aas_file:
-            raise AssertionError(f"missing SDK-compatible AAS area accessor: {token}")
-
-    if "gamelibs_staging.py" not in validator:
-        raise AssertionError("validation runner does not include gamelibs_staging.py")
-    if "source-input repository" not in building:
-        raise AssertionError("BUILDING.md does not document the GameLibs source-input role")
-
+def validate_canonical_inventory(work: Path) -> None:
+    from game_source_inventory import inventory
+    root = work / "project"
+    write_file(root / "src/game/Game.cpp", "version 1\n")
+    write_file(root / "src/mpgame/Game.cpp", "multiplayer\n")
+    first = inventory(root)
+    write_file(root / "src/game/Game.cpp", "version 2\n")
+    second = inventory(root)
+    assert first["sourceDigest"] != second["sourceDigest"]
+    assert first["fileCount"] == second["fileCount"] == 2
+    write_file(root / "src/game/awakening/New.cpp", "campaign extension\n")
+    third = inventory(root)
+    assert third["fileCount"] == 3 and third != second
+    (root / "src/game/awakening/New.cpp").unlink()
+    assert inventory(root) == second
+    try:
+        (root / "src/game/link.cpp").symlink_to(root / "src/game/Game.cpp")
+    except OSError:
+        pass
+    else:
+        try:
+            inventory(root)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("canonical source inventory accepted a link")
+        (root / "src/game/link.cpp").unlink()
 
 def validate_target_stage_paths(work: Path) -> None:
     project_root = work / "project"
@@ -861,9 +777,7 @@ def main() -> None:
         assert (destination / source.name).stat().st_mtime_ns > old
         validate_symlink_rejection(work / "symlink")
         validate_stage_root_guard(work / "stage-root")
-        validate_posix_support_refresh_probe(work / "posix-support-refresh")
-        validate_posix_wrapper_refresh(work / "posix-refresh")
-        validate_windows_wrapper_refresh(work / "windows-refresh")
+        validate_canonical_inventory(work / "canonical")
         validate_source_contracts()
     finally:
         shutil.rmtree(work, ignore_errors=True)

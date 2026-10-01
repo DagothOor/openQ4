@@ -184,193 +184,17 @@ raise SystemExit(1)
 PY
 }
 
-resolve_gamelibs_repo_path() {
-    "${PYTHON_CMD}" - "${repo_root}" "${OPENQ4_GAMELIBS_REPO:-}" <<'PY'
-import pathlib
-import sys
-
-root = pathlib.Path(sys.argv[1])
-raw = sys.argv[2].strip()
-repo = pathlib.Path(raw) if raw else root.parent / "openQ4-game"
-print(repo.resolve().as_posix())
-PY
-}
-
-test_gamelibs_stage_refresh_needed() {
+test_game_sources_refresh_needed() {
     local build_dir="$1"
-    test_meson_build_directory "${build_dir}" || return 1
-
-    local build_engine=""
-    local build_games=""
-    build_engine="$(get_meson_build_option_value "${build_dir}" build_engine || true)"
-    build_games="$(get_meson_build_option_value "${build_dir}" build_games || true)"
-    if [[ "${build_engine}" != "true" && "${build_games}" != "true" ]]; then
+    [[ -d "${build_dir}" ]] || return 1
+    local games
+    games="$(get_meson_build_option_value "${build_dir}" build_games || true)"
+    [[ "${games}" != "false" ]] || return 1
+    if "${PYTHON_CMD}" "${script_dir}/game_source_inventory.py" "${repo_root}" \
+        --check "${build_dir}/openq4_game_sources.json" >/dev/null; then
         return 1
     fi
-
-    local gamelibs_repo=""
-    gamelibs_repo="$(resolve_gamelibs_repo_path)"
-    local stage_root=""
-    stage_root="$("${PYTHON_CMD}" "${script_dir}/gamelibs_stage_path.py" \
-        --source-root "${repo_root}" --build-dir "${build_dir}")" || return 0
-    local source_game_dirs=("${gamelibs_repo}/src/game" "${gamelibs_repo}/src/mpgame")
-    local staged_game_dirs=("${stage_root}/src/game" "${stage_root}/src/mpgame")
-
-    local directory_path=""
-    for directory_path in "${source_game_dirs[@]}"; do
-        [[ -d "${directory_path}" ]] || return 1
-    done
-    for directory_path in "${staged_game_dirs[@]}"; do
-        [[ -d "${directory_path}" ]] || return 0
-    done
-
-    local probe_status=0
-    if "${PYTHON_CMD}" - "${gamelibs_repo}" "${repo_root}" "${stage_root}" <<'PY'
-# OPENQ4_GAMELIBS_REFRESH_PROBE_BEGIN
-import hashlib
-import json
-import os
-import pathlib
-import re
-import sys
-
-gamelibs_root = pathlib.Path(sys.argv[1])
-project_root = pathlib.Path(sys.argv[2])
-stage_root = pathlib.Path(sys.argv[3])
-support_dir_names = ("idlib", "renderer", "ui", "sys", "bse", "MayaImport")
-python_bytecode_suffixes = (".pyc", ".pyo")
-
-
-def raise_walk_error(error):
-    raise error
-
-
-def regular_file_map(specs):
-    files = {}
-    for relative_root, directory in specs:
-        if not directory.exists():
-            continue
-        if directory.is_symlink() or not directory.is_dir():
-            raise ValueError(f"GameLibs refresh input is not a regular directory: {directory}")
-
-        resolved_root = relative_root.resolve()
-        for current_root, directory_names, file_names in os.walk(
-            directory,
-            followlinks=False,
-            onerror=raise_walk_error,
-        ):
-            current_path = pathlib.Path(current_root)
-            for directory_name in directory_names:
-                child_directory = current_path / directory_name
-                if child_directory.is_symlink():
-                    raise ValueError(f"GameLibs refresh input must not be a symlink: {child_directory}")
-
-            for file_name in file_names:
-                path = current_path / file_name
-                if path.is_symlink() or not path.is_file():
-                    raise ValueError(f"GameLibs refresh input must be a regular file: {path}")
-                resolved_path = path.resolve()
-                relative_path = resolved_path.relative_to(resolved_root).as_posix()
-                relative_parts = pathlib.PurePosixPath(relative_path).parts
-                if "__pycache__" in relative_parts or path.suffix.lower() in python_bytecode_suffixes:
-                    continue
-                if relative_path in files:
-                    raise ValueError(f"duplicate GameLibs refresh input: {relative_path}")
-                files[relative_path] = resolved_path
-    return files
-
-
-def file_sha256(path):
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def refresh_needed():
-    source_specs = [
-        (gamelibs_root, gamelibs_root / "src" / "game"),
-        (gamelibs_root, gamelibs_root / "src" / "mpgame"),
-    ]
-    source_specs.extend(
-        (project_root, project_root / "src" / directory_name)
-        for directory_name in support_dir_names
-    )
-    staged_specs = [
-        (stage_root, stage_root / "src" / "game"),
-        (stage_root, stage_root / "src" / "mpgame"),
-    ]
-    staged_specs.extend(
-        (stage_root, stage_root / "src" / directory_name)
-        for directory_name in support_dir_names
-    )
-
-    source_files = regular_file_map(source_specs)
-    staged_files = regular_file_map(staged_specs)
-    if source_files.keys() != staged_files.keys():
-        return True
-
-    manifest = json.loads(
-        (stage_root / "openq4_gamelibs_stage_manifest.json").read_text(encoding="utf-8")
-    )
-    if not isinstance(manifest, dict) or manifest.get("format") != 1:
-        return True
-    entries = manifest.get("files")
-    file_count = manifest.get("fileCount")
-    if (
-        not isinstance(entries, list)
-        or not isinstance(file_count, int)
-        or isinstance(file_count, bool)
-        or file_count != len(entries)
-    ):
-        return True
-
-    manifest_hashes = {}
-    for entry in entries:
-        if not isinstance(entry, dict):
-            return True
-        relative_path = entry.get("path")
-        expected_hash = entry.get("sha256")
-        if (
-            not isinstance(relative_path, str)
-            or relative_path not in source_files
-            or relative_path in manifest_hashes
-            or not isinstance(expected_hash, str)
-            or re.fullmatch(r"[0-9a-fA-F]{64}", expected_hash) is None
-        ):
-            return True
-        manifest_hashes[relative_path] = expected_hash.lower()
-
-    if manifest_hashes.keys() != source_files.keys():
-        return True
-    for relative_path, source_path in source_files.items():
-        expected_hash = manifest_hashes[relative_path]
-        if file_sha256(source_path) != expected_hash:
-            return True
-        if file_sha256(staged_files[relative_path]) != expected_hash:
-            return True
-    return False
-
-
-try:
-    needs_refresh = refresh_needed()
-except Exception as exc:
-    print(f"warning: could not verify staged GameLibs snapshot: {exc}", file=sys.stderr)
-    needs_refresh = True
-raise SystemExit(0 if needs_refresh else 10)
-# OPENQ4_GAMELIBS_REFRESH_PROBE_END
-PY
-    then
-        return 0
-    else
-        probe_status=$?
-        if [[ ${probe_status} -eq 10 ]]; then
-            return 1
-        fi
-        echo "GameLibs staging verification failed unexpectedly; forcing a Meson reconfigure." >&2
-        return 0
-    fi
+    return 0
 }
 
 load_build_dir_info() {
@@ -559,8 +383,8 @@ if [[ "${command_name}" == "compile" || "${command_name}" == "install" ]]; then
         run_meson "${SETUP_ARGS_RESULT[@]}"
     fi
 
-    if test_gamelibs_stage_refresh_needed "${BUILD_DIR}"; then
-        echo "GameLibs staging inputs changed since the last snapshot. Reconfiguring '${BUILD_DIR}'..."
+    if test_game_sources_refresh_needed "${BUILD_DIR}"; then
+        echo "In-tree game source membership changed. Reconfiguring '${BUILD_DIR}'..."
         run_meson setup --reconfigure "${BUILD_DIR}" "${repo_root}"
     fi
 

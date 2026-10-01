@@ -19,6 +19,7 @@ ROOT_DOCS = (
     Path("README.md"),
     Path("BUILDING.md"),
     Path("TECHNICAL.md"),
+    Path("LICENSING.md"),
     Path("TODO.md"),
 )
 COMMUNITY_DOCS = (
@@ -31,6 +32,7 @@ SAFE_LINK_SCHEMES = {
     "mailto",
 }
 REPOSITORY_BLOB_BASE = "https://github.com/themuffinator/openQ4/blob/main/"
+REPOSITORY_TREE_BASE = "https://github.com/themuffinator/openQ4/tree/main/"
 
 
 SITE_CSS = r"""
@@ -776,7 +778,7 @@ def rewrite_markdown_links(
     source_relative: Path | None = None,
     rendered_sources: set[str] | None = None,
 ) -> str:
-    pattern = re.compile(r"(!?\[[^\]]+\]\()([^)]+)(\))")
+    pattern = re.compile(r"(!?\[(?:[^\[\]]|!\[[^\]]*\]\([^)]+\))+\]\()([^)]+)(\))")
 
     def replace(match: re.Match[str]) -> str:
         prefix, target, suffix = match.groups()
@@ -807,6 +809,13 @@ def rewrite_markdown_links(
                     repo_target = resolved if resolved is not None else stripped_target
                     return prefix + REPOSITORY_BLOB_BASE + repo_target + hash_suffix + suffix
             stripped_target = stripped_target[:-3] + ".html"
+
+        elif stripped_target.endswith("/") and source_relative is not None:
+            # Source directories are browsed in the repository, rather than
+            # copied into player documentation with compiler inputs.
+            resolved = resolve_site_relative(source_relative, stripped_target)
+            if resolved is not None:
+                return prefix + REPOSITORY_TREE_BASE + resolved + hash_suffix + suffix
 
         return prefix + stripped_target + hash_suffix + suffix
 
@@ -1290,8 +1299,15 @@ def generate_release_docs_site(
         docs_assets_dest = output_root / "assets" / "docs" / "img"
         copy_docs_asset_tree(docs_assets_source, docs_assets_dest)
 
-    for auxiliary in (Path("LICENSE"),):
-        copy_docs_auxiliary_file(source_root, auxiliary, output_root / auxiliary.name)
+    for auxiliary in (
+        Path("LICENSE"),
+        Path("LICENSES/QUAKE-4-SDK-EULA.rtf"),
+        Path("LICENSES/DOOM-3-ADDITIONAL-TERMS.txt"),
+        Path("LICENSES/DOOM-3-BFG-ADDITIONAL-TERMS.txt"),
+        Path("src/game/LICENSE"),
+        Path("src/mpgame/LICENSE"),
+    ):
+        copy_docs_auxiliary_file(source_root, auxiliary, output_root / auxiliary)
     khronos_notice = Path("LICENSES") / "KHRONOS-GLES-MIT.txt"
     copy_docs_auxiliary_file(source_root, khronos_notice, output_root / khronos_notice)
 

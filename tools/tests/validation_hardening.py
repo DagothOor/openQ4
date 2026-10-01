@@ -166,7 +166,7 @@ def validate_game_libs_repo_guards() -> None:
 
     expect_validation_error(
         lambda: VALIDATOR.ensure_game_libs_repo({"OPENQ4_GAMELIBS_REPO": str(game_libs_target)}),
-        "multiplayer source directory was not found",
+        "multiplayer game source directory was not found",
         "missing multiplayer GameLibs source tree",
     )
     write_file(game_libs_target / "src" / "mpgame" / "Game_local.cpp")
@@ -203,11 +203,9 @@ def validate_game_libs_repo_guards() -> None:
     original_default = os.environ.get("OPENQ4_GAMELIBS_REPO")
     try:
         os.environ.pop("OPENQ4_GAMELIBS_REPO", None)
-        expect_validation_error(
-            lambda: VALIDATOR.validation_env(default_args, default_root),
-            "must not be a symlink",
-            "default symlink GameLibs repository",
-        )
+        env = VALIDATOR.validation_env(default_args, default_root)
+        if Path(env["OPENQ4_GAMELIBS_REPO"]) != default_root.resolve():
+            raise AssertionError("the canonical default must ignore a linked companion checkout")
     finally:
         if original_default is None:
             os.environ.pop("OPENQ4_GAMELIBS_REPO", None)
@@ -716,6 +714,8 @@ def validate_validation_wiring() -> None:
         "mp_series_smoke.py",
         "mp_tourney_smoke.py",
         "renderer_shadow_mapping_maps.py",
+        "renderer_shadow_mapping_outdoor.py",
+        "renderer_shadow_mapping_terrain.py",
         "renderer_shadow_mapping_movers.py",
         "renderer_shadow_mapping_scenes.py",
         "renderer_shadow_mapping_transitions.py",
@@ -727,6 +727,9 @@ def validate_validation_wiring() -> None:
         "macos_dedicated_server_smoke.py",
         "windows_dedicated_server_smoke.py",
         "renderer_gameplay_benchmark.py",
+        # Campaign runtime checks require user-supplied retail/expansion assets.
+        "campaign_runtime.py",
+        "campaign_selection_runtime.py",
         "renderer_milestone_d_acceptance.py",
         "renderer_milestone_d_fixture.py",
         # Imported by the UI harnesses that compile wrap sources; the workflows

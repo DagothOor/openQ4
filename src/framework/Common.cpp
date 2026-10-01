@@ -6681,6 +6681,14 @@ void idCommonLocal::Init( int argc, const char **argv, const char *cmdline ) {
 		StartupVariable( NULL, false );
 		ApplyAutomaticPlatformProfile();
 
+#ifndef ID_DEDICATED
+		// The splash must respect launch settings before creating any visible window.
+		if ( !cvarSystem->GetCVarBool( "r_hiddenWindow" ) && !com_skipRenderer.GetBool() &&
+			!idAsyncNetwork::serverDedicated.GetInteger() && !cvarSystem->GetCVarBool( "win_viewlog" ) ) {
+			Sys_ShowSplash();
+		}
+#endif
+
 		if ( !idAsyncNetwork::serverDedicated.GetInteger() && Sys_AlreadyRunning() ) {
 			Sys_Quit();
 		}
@@ -6851,8 +6859,15 @@ void idCommonLocal::InitGame( void ) {
 	// Canonicalize the pending multiplayer mode at the start of that rebuild;
 	// doing this only in LoadGameDLL is too late for the decl checksum.
 	const idStr pendingGameModule = openQ4_SelectGameModuleBaseName();
+	const bool preservePendingGameType = openQ4_IsValidGameModuleName(
+		cvarSystem->GetCVarString( "com_nextGameModule" ) );
 	openQ4_NormalizeGameTypeForModule( pendingGameModule.c_str() );
+	const idStr pendingGameType = cvarSystem->GetCVarString( "si_gameType" );
 
+    if ( pendingGameModule == "game_mp" && !idStr::Icmp( cvarSystem->GetCVarString( "fs_game" ), "q4xbase" ) ) {
+        cvarSystem->SetCVarString( "fs_game", OPENQ4_GAMEDIR );
+        cvarSystem->SetCVarString( "fs_game_base", "" );
+    }
 	// initialize the file system
 	fileSystem->Init();
 
@@ -6943,6 +6958,12 @@ void idCommonLocal::InitGame( void ) {
 
 	// re-override anything from the config files with command line args
 	StartupVariable( NULL, false );
+	if ( preservePendingGameType ) {
+		// A queued campaign/module handoff owns its mode. Replayed base configs
+		// and one-shot launch settings must not turn a requested CTF game into DM.
+		cvarSystem->SetCVarString( "si_gameType", pendingGameType.c_str() );
+		openQ4_NormalizeGameTypeForModule( pendingGameModule.c_str() );
+	}
 
 	// Reload the language dictionary after cfg/autoexec and command-line cvars
 	// have settled, so +set sys_lang wins over archived startup scripts.
@@ -7104,6 +7125,11 @@ void idCommonLocal::ShutdownGame( bool reloading ) {
 		gameShutdownCalled = true;
 		game->Shutdown();
 	}
+
+	// Cached collision polygons retain material declarations. A campaign or
+	// module restart replaces those declarations, so retire the cache after
+	// the game releases its clip models and before renderer/decl teardown.
+	collisionModelManager->Shutdown();
 
 	// shut down the user interfaces
 	uiManager->Shutdown();

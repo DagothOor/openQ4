@@ -469,6 +469,7 @@ def validate_release_docs_layout() -> None:
     legacy_user_root = "docs" + "-user"
     legacy_dev_root = "docs" + "-dev"
     write_file(source_root / "README.md", "# Docs\n\nProject docs.\n")
+    write_file(source_root / "LICENSING.md", "# Licensing\n\nComponent terms.\n")
     write_file(source_root / "docs" / "user" / "getting-started.md", "# Getting Started\n\nUser guide.\n")
     write_file(source_root / "docs" / "dev" / "platform-support.md", "# Platform Support\n\nDeveloper guide.\n")
     write_file(source_root / "docs" / "dev" / "proposals" / "renderer.md", "# Renderer Proposal\n\nResearch.\n")
@@ -478,6 +479,7 @@ def validate_release_docs_layout() -> None:
     sources = {relative.as_posix() for relative in DOCS.collect_doc_sources(source_root)}
     expected = {
         "README.md",
+        "LICENSING.md",
         "docs/user/getting-started.md",
         "docs/dev/platform-support.md",
         "docs/dev/proposals/renderer.md",
@@ -557,6 +559,12 @@ def validate_release_docs_symlink_and_link_guards() -> None:
             raise AssertionError(f"unsafe generated-docs URI scheme survived rewrite: {prepared!r}")
     if "[ok](https://example.invalid/docs)" not in prepared:
         raise AssertionError(f"safe HTTPS link was not preserved: {prepared!r}")
+    prepared = DOCS.prepare_markdown(
+        "[![Licence](https://example.invalid/badge.svg)](LICENSING.md) "
+        "[Game sources](src/game/)", source_relative=Path('README.md'),
+        rendered_sources={'readme.md','licensing.md'})
+    assert '](LICENSING.html)' in prepared
+    assert 'https://github.com/themuffinator/openQ4/tree/main/src/game' in prepared
 
 
 def validate_docs_link_integrity_work_roots() -> None:
@@ -648,6 +656,8 @@ def validate_windows_installer_payload_requirements() -> None:
         "openQ4-ded_x64.pdb",
         "README.html",
         "LICENSE",
+        "LICENSING.md",
+        "LICENSES/QUAKE-4-SDK-EULA.rtf",
         "docs/index.html",
         "baseoq4/mod.json",
         "baseoq4/pak0.pk4",
@@ -689,6 +699,8 @@ def validate_windows_installer_symlink_guards() -> None:
         "OpenAL32.dll",
         "README.html",
         "LICENSE",
+        "LICENSING.md",
+        "LICENSES/QUAKE-4-SDK-EULA.rtf",
         "docs/index.html",
         "baseoq4/mod.json",
         "baseoq4/pak0.pk4",
@@ -1142,53 +1154,26 @@ def validate_manual_release_linux_runtime_gate() -> None:
 
 
 def validate_manual_release_companion_checkout() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "manual-release.yml").read_text(encoding="utf-8")
-
+    workflow = (ROOT / ".github/workflows/manual-release.yml").read_text(encoding="utf-8")
     for token in (
-        "OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}/../openQ4-game",
-        "openq4_game_ref:",
-        "description: openQ4-game branch, tag, or full commit SHA to package",
-        "openq4_source_sha: ${{ steps.source_revisions.outputs.openq4_source_sha }}",
-        "openq4_game_ref: ${{ steps.source_revisions.outputs.openq4_game_ref }}",
-        "openq4_game_sha: ${{ steps.source_revisions.outputs.openq4_game_sha }}",
-        "linux_arm64_archive_sha256: ${{ steps.arm64_evidence.outputs.archive_sha256 }}",
-        "ref: ${{ github.sha }}",
+        'openq4_game_sha="${openq4_source_sha}"',
+        "ref: ${{ github.sha }}", "ref: ${{ needs.metadata.outputs.openq4_source_sha }}",
         "Publishing manual releases must be dispatched from refs/heads/main",
         "Linux ARM64 evidence candidates must be dispatched from a pushed branch",
         "must descend from the current origin/main",
         'git merge-base --is-ancestor "${openq4_source_sha}" refs/remotes/origin/main',
-        'git -C "${resolution_repo}" fetch --quiet --no-tags --depth=1 origin "${input_ref}"',
-        'openq4_game_sha="$(git -C "${resolution_repo}" rev-parse --verify \'FETCH_HEAD^{commit}\')"',
-        "ref: ${{ needs.metadata.outputs.openq4_source_sha }}",
-        'git -C "${OPENQ4_GAMELIBS_REPO}" fetch --quiet --no-tags --depth=1 origin "${expected_game_sha}"',
-        'git -C "${OPENQ4_GAMELIBS_REPO}" checkout --quiet --detach "${expected_game_sha}"',
-        "python tools/build/verify_release_source_provenance.py",
+        "python tools/build/verify_release_source_provenance.py", "--build-dir builddir",
         '--expected-project-commit "${{ needs.metadata.outputs.openq4_source_sha }}"',
-        '--expected-gamelibs-commit "${{ needs.metadata.outputs.openq4_game_sha }}"',
         "Release publication is bound to the triggering refs/heads/main commit",
-        'git merge-base --is-ancestor "${OPENQ4_SOURCE_SHA}" refs/remotes/origin/main',
         'published_tag_sha="$(git rev-parse --verify "refs/tags/${tag}^{commit}")"',
         "published_release_target",
     ):
-        if token not in workflow:
-            raise AssertionError(f"manual release source pinning is missing token: {token}")
+        assert token in workflow, f"missing canonical release source gate: {token}"
+    for obsolete in ("openQ4-game.git", "openQ4-game-awakening.git", "inputs.openq4_game_ref", "--require-game-layer q4xbase"):
+        assert obsolete not in workflow, f"release depends on retired source/build: {obsolete}"
 
-    if "OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}/openQ4-game" in workflow:
-        raise AssertionError(
-            "manual release must not clone openQ4-game inside the engine checkout; "
-            "that makes a clean engine source manifest appear dirty"
-        )
-    if "git clone --depth 1 https://github.com/themuffinator/openQ4-game.git" in workflow:
-        raise AssertionError("manual release builds must not independently clone a moving openQ4-game ref")
     if workflow.count('--target "${target}"') != 2:
         raise AssertionError("manual release create and edit paths must both target the triggering openQ4 SHA")
-
-    game_ref_input_offset = workflow.index("      openq4_game_ref:")
-    game_ref_input_end = workflow.index("      linux_arm64_support_tier:", game_ref_input_offset)
-    ci = (ROOT / ".github" / "workflows" / "commit-validation.yml").read_text(encoding="utf-8")
-    ci_pin = re.search(r"^\s*OPENQ4_GAMELIBS_SHA: ([0-9a-f]{40})\s*$", ci, re.MULTILINE)
-    if ci_pin is None or f"        default: {ci_pin[1]}" not in workflow[game_ref_input_offset:game_ref_input_end]:
-        raise AssertionError("manual release openq4_game_ref input must default to the immutable CI companion revision")
 
     source_resolution_offset = workflow.index("- name: Resolve immutable source revisions")
     build_job_offset = workflow.index("  builds:")
@@ -1663,83 +1648,15 @@ def validate_linux_release_artifact_helper_contracts() -> None:
 
 
 def validate_release_game_layer_helpers() -> None:
-    """Linux and Windows release checks treat a packaged q4xbase like baseoq4 and reject an incomplete one."""
-    layer_json = (
-        '{"name": "Quake 4: The Awakening", "version": "0.1.0", '
-        '"requiredopenQ4Version": "0.13.2", "layer": "awakening"}\n'
-    )
-
+    """Retired layer artifacts cannot become release runtime requirements."""
     runtime_root = WORK / "linux-layer-runtime"
     runtime_root.mkdir(parents=True, exist_ok=True)
-    if LINUX_RELEASE_ARTIFACTS.packaged_layer_dirs(runtime_root) != []:
-        raise AssertionError("a Linux payload without q4xbase must not report a layer")
-    base = LINUX_RELEASE_ARTIFACTS.expected_runtime_binaries(runtime_root, "x64")
+    baseline = LINUX_RELEASE_ARTIFACTS.expected_runtime_binaries(runtime_root, "x64")
     layer_dir = runtime_root / "q4xbase"
     write_file(layer_dir / "game-sp_x64.so")
-    write_file(layer_dir / "game-mp_x64.so")
-    write_file(layer_dir / "mod.json", layer_json)
-    if LINUX_RELEASE_ARTIFACTS.packaged_layer_dirs(runtime_root) != ["q4xbase"]:
-        raise AssertionError("the packaged q4xbase layer was not detected")
-    expected = LINUX_RELEASE_ARTIFACTS.expected_runtime_binaries(runtime_root, "x64")
-    if expected[:4] != base or [path for path, _, _ in expected[4:]] != [
-        layer_dir / "game-sp_x64.so",
-        layer_dir / "game-mp_x64.so",
-    ]:
-        raise AssertionError("q4xbase modules must follow baseoq4's so indices 2 and 3 stay baseoq4's")
-    LINUX_RELEASE_ARTIFACTS.validate_layer_game_dir(runtime_root, "q4xbase", "x64")
-
-    write_file(layer_dir / "game-sp_x64.so.debug")
-    expect_runtime_error(
-        lambda: LINUX_RELEASE_ARTIFACTS.validate_layer_game_dir(runtime_root, "q4xbase", "x64"),
-        "must hold exactly",
-        "Linux q4xbase carrying debug symbols",
-    )
-    (layer_dir / "game-sp_x64.so.debug").unlink()
-    (layer_dir / "game-mp_x64.so").unlink()
-    expect_runtime_error(
-        lambda: LINUX_RELEASE_ARTIFACTS.validate_layer_game_dir(runtime_root, "q4xbase", "x64"),
-        "missing ['game-mp_x64.so']",
-        "Linux q4xbase without its MP module",
-    )
-    write_file(layer_dir / "game-mp_x64.so")
-    write_file(layer_dir / "mod.json", '{"version": "0.13.2"}\n')
-    expect_runtime_error(
-        lambda: LINUX_RELEASE_ARTIFACTS.validate_layer_game_dir(runtime_root, "q4xbase", "x64"),
-        "needs a non-empty 'layer'",
-        "Linux q4xbase carrying a base-game mod.json",
-    )
-
-    package_dir = WORK / "installer-layer-package"
-    for relative in (
-        "openQ4-client_x64.exe",
-        "openQ4-client_x64.pdb",
-        "openQ4-ded_x64.exe",
-        "openQ4-ded_x64.pdb",
-        "OpenAL32.dll",
-        "README.html",
-        "LICENSE",
-        "docs/index.html",
-        "baseoq4/mod.json",
-        "baseoq4/pak0.pk4",
-        "baseoq4/pak1.pk4",
-        "baseoq4/game-sp_x64.dll",
-        "baseoq4/game-sp_x64.pdb",
-        "baseoq4/game-mp_x64.dll",
-        "baseoq4/game-mp_x64.pdb",
-        "q4xbase/game-sp_x64.dll",
-        "q4xbase/game-sp_x64.pdb",
-        "q4xbase/game-mp_x64.dll",
-        "q4xbase/mod.json",
-    ):
-        write_file(package_dir / relative)
-    expect_file_not_found(
-        lambda: INSTALLER.validate_package_dir(package_dir, "x64"),
-        "game-mp_x64.pdb",
-        "installer with an incomplete q4xbase",
-    )
-    write_file(package_dir / "q4xbase" / "game-mp_x64.pdb")
-    INSTALLER.validate_package_dir(package_dir, "x64")
-
+    write_file(layer_dir / "mod.json", '{"layer":"awakening"}\n')
+    assert LINUX_RELEASE_ARTIFACTS.packaged_layer_dirs(runtime_root) == []
+    assert LINUX_RELEASE_ARTIFACTS.expected_runtime_binaries(runtime_root, "x64") == baseline
 
 def validate_release_asset_set_helper_contracts() -> None:
     root = WORK / "release-asset-set"

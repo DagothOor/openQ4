@@ -1764,7 +1764,8 @@ and parallax off.
   prompt bar, and display changes keep the 15-second Keep or Revert countdown.
 - **Menu levels.** Home, pages and sub-pages (sections 8 and 9). Single Player
   is a page whose sections, Campaign and Arena, each open a sub-page: Campaign
-  holds New Campaign (the difficulty choice) and Chapters (the reached
+  includes a campaign choice (Quake 4 and installed Awakening content),
+  then New Campaign (the difficulty choice) and Chapters (the reached
   missions), and Arena holds the tier ladder. Multiplayer's Join Game (the
   server browser), Create Server and Demos (the demo list) open sub-pages too,
   and Player Setup edits in place. A section that leads deeper summarizes itself

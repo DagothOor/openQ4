@@ -372,269 +372,15 @@ function Recreate-MesonBuildDirectory {
     return [int]$LASTEXITCODE
 }
 
-function Get-openQ4GameLibsRepoPath {
-    param(
-        [string]$RepoRoot,
-        [string]$ConfiguredRepo
-    )
-
-    if (-not [string]::IsNullOrWhiteSpace($ConfiguredRepo)) {
-        return [System.IO.Path]::GetFullPath($ConfiguredRepo)
-    }
-
-    return [System.IO.Path]::GetFullPath((Join-Path $RepoRoot "..\openQ4-game"))
-}
-
-function Get-GamelibsFileMap {
-    param(
-        [string[]]$RootPaths,
-        [string[]]$DirectoryPaths
-    )
-
-    if ($RootPaths.Count -ne $DirectoryPaths.Count) {
-        throw "GameLibs refresh roots and input directories must have the same count."
-    }
-
-    $filesByRelativePath = [System.Collections.Hashtable]::new([System.StringComparer]::Ordinal)
-    for ($directoryIndex = 0; $directoryIndex -lt $DirectoryPaths.Count; $directoryIndex++) {
-        $directoryPath = $DirectoryPaths[$directoryIndex]
-        if (-not (Test-Path -LiteralPath $directoryPath -PathType Container)) {
-            continue
-        }
-
-        $rootPrefix = [System.IO.Path]::GetFullPath($RootPaths[$directoryIndex])
-        if (-not $rootPrefix.EndsWith([System.IO.Path]::DirectorySeparatorChar.ToString())) {
-            $rootPrefix += [System.IO.Path]::DirectorySeparatorChar
-        }
-
-        foreach ($item in Get-ChildItem -LiteralPath $directoryPath -Recurse -Force) {
-            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-                throw "GameLibs refresh input must not be a reparse point: '$($item.FullName)'."
-            }
-            if ($item.PSIsContainer) {
-                continue
-            }
-            if ($item -isnot [System.IO.FileInfo]) {
-                throw "GameLibs refresh input must be a regular file: '$($item.FullName)'."
-            }
-
-            $fullPath = [System.IO.Path]::GetFullPath($item.FullName)
-            if (-not $fullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-                throw "GameLibs refresh input escaped its expected root: '$fullPath'."
-            }
-
-            $relativePath = $fullPath.Substring($rootPrefix.Length).Replace('\', '/')
-            $relativeParts = $relativePath.Split(
-                @([char]'/', [char]'\'),
-                [System.StringSplitOptions]::RemoveEmptyEntries
-            )
-            $extension = [System.IO.Path]::GetExtension($item.Name)
-            if ($relativeParts -ccontains "__pycache__" -or
-                $extension -ieq ".pyc" -or
-                $extension -ieq ".pyo") {
-                continue
-            }
-            if ($filesByRelativePath.ContainsKey($relativePath)) {
-                throw "GameLibs refresh input contains a duplicate relative path: '$relativePath'."
-            }
-            $filesByRelativePath[$relativePath] = $item
-        }
-    }
-
-    return $filesByRelativePath
-}
-
-function Get-GamelibsFileHashMap {
-    param([System.Collections.IDictionary]$FilesByRelativePath)
-
-    $hashes = [System.Collections.Hashtable]::new([System.StringComparer]::Ordinal)
-    $sha256 = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        foreach ($relativePath in $FilesByRelativePath.Keys) {
-            $filePath = $FilesByRelativePath[$relativePath].FullName
-            $stream = [System.IO.File]::Open(
-                $filePath,
-                [System.IO.FileMode]::Open,
-                [System.IO.FileAccess]::Read,
-                [System.IO.FileShare]::Read
-            )
-            try {
-                $sha256.Initialize()
-                $hashBytes = $sha256.ComputeHash($stream)
-            } finally {
-                $stream.Dispose()
-            }
-            $hashes[$relativePath] = [System.BitConverter]::ToString($hashBytes).Replace("-", "").ToLowerInvariant()
-        }
-    } finally {
-        $sha256.Dispose()
-    }
-
-    return $hashes
-}
-
-function Test-GamelibsStageRefreshNeeded {
-    param(
-        [string]$BuildDir,
-        [string]$RepoRoot,
-        [string]$GameLibsRepo,
-        [string]$StageRoot = ""
-    )
-
-    if (-not (Test-MesonBuildDirectory $BuildDir)) {
-        return $false
-    }
-
-    $buildEngine = Get-MesonBuildOptionValue -BuildDir $BuildDir -OptionName "build_engine"
+function Test-GameSourcesRefreshNeeded {
+    param([string]$BuildDir, [string]$RepoRoot)
+    if (-not (Test-MesonBuildDirectory $BuildDir)) { return $false }
     $buildGames = Get-MesonBuildOptionValue -BuildDir $BuildDir -OptionName "build_games"
-    if ($buildEngine -ne $true -and $buildGames -ne $true) {
-        return $false
-    }
-
-    $resolvedGameLibsRepo = Get-openQ4GameLibsRepoPath -RepoRoot $RepoRoot -ConfiguredRepo $GameLibsRepo
-    if ([string]::IsNullOrWhiteSpace($StageRoot)) {
-        $StageRoot = Join-Path $RepoRoot ".tmp\gamelibs_stage"
-    }
-    $sourceGameDirs = @(
-        (Join-Path $resolvedGameLibsRepo "src\game"),
-        (Join-Path $resolvedGameLibsRepo "src\mpgame")
-    )
-    $stagedGameDirs = @(
-        (Join-Path $stageRoot "src\game"),
-        (Join-Path $stageRoot "src\mpgame")
-    )
-
-    if (@($sourceGameDirs | Where-Object { -not (Test-Path $_) }).Count -ne 0) {
-        return $false
-    }
-
-    if (@($stagedGameDirs | Where-Object { -not (Test-Path $_) }).Count -ne 0) {
-        return $true
-    }
-
-    try {
-        $supportDirNames = @("idlib", "renderer", "ui", "sys", "bse", "MayaImport")
-        $sourceRoots = @($resolvedGameLibsRepo, $resolvedGameLibsRepo)
-        $sourceDirs = @($sourceGameDirs)
-        $stagedRoots = @($stageRoot, $stageRoot)
-        $stagedDirs = @($stagedGameDirs)
-        foreach ($supportDirName in $supportDirNames) {
-            $sourceRoots += $RepoRoot
-            $sourceDirs += Join-Path $RepoRoot "src\$supportDirName"
-            $stagedRoots += $stageRoot
-            $stagedDirs += Join-Path $stageRoot "src\$supportDirName"
-        }
-
-        $sourceFiles = Get-GamelibsFileMap -RootPaths $sourceRoots -DirectoryPaths $sourceDirs
-        $stagedFiles = Get-GamelibsFileMap -RootPaths $stagedRoots -DirectoryPaths $stagedDirs
-
-        if ($sourceFiles.Count -ne $stagedFiles.Count) {
-            return $true
-        }
-        foreach ($relativePath in $sourceFiles.Keys) {
-            if (-not $stagedFiles.ContainsKey($relativePath)) {
-                return $true
-            }
-        }
-
-        $manifestPath = Join-Path $stageRoot "openq4_gamelibs_stage_manifest.json"
-        if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-            return $true
-        }
-
-        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-        $formatIsInteger = ($manifest.format -is [int]) -or ($manifest.format -is [long])
-        $fileCountIsInteger = ($manifest.fileCount -is [int]) -or ($manifest.fileCount -is [long])
-        if (-not $formatIsInteger -or $manifest.format -ne 1 -or
-                $manifest.files -isnot [System.Array] -or -not $fileCountIsInteger -or
-                $manifest.fileCount -ne @($manifest.files).Count) {
-            return $true
-        }
-
-        $manifestHashes = [System.Collections.Hashtable]::new([System.StringComparer]::Ordinal)
-        foreach ($entry in @($manifest.files)) {
-            $relativePath = [string]$entry.path
-            $expectedHash = [string]$entry.sha256
-            if ([string]::IsNullOrWhiteSpace($relativePath) -or
-                    $expectedHash -notmatch '^[0-9a-fA-F]{64}$' -or
-                    -not $sourceFiles.ContainsKey($relativePath) -or
-                    $manifestHashes.ContainsKey($relativePath)) {
-                return $true
-            }
-            $manifestHashes[$relativePath] = $expectedHash.ToLowerInvariant()
-        }
-
-        if ($manifestHashes.Count -ne $sourceFiles.Count) {
-            return $true
-        }
-
-        $sourceHashes = Get-GamelibsFileHashMap -FilesByRelativePath $sourceFiles
-        $stagedHashes = Get-GamelibsFileHashMap -FilesByRelativePath $stagedFiles
-        foreach ($relativePath in $sourceFiles.Keys) {
-            if (-not $manifestHashes.ContainsKey($relativePath)) {
-                return $true
-            }
-
-            $expectedHash = $manifestHashes[$relativePath]
-            $sourceHash = $sourceHashes[$relativePath]
-            $stagedHash = $stagedHashes[$relativePath]
-            if ($sourceHash -cne $expectedHash -or $stagedHash -cne $expectedHash) {
-                return $true
-            }
-        }
-    } catch {
-        Write-Warning (
-            "Could not verify the staged openQ4-game snapshot; forcing a Meson reconfigure. " +
-            "Details: $($_.Exception.Message)"
-        )
-        return $true
-    }
-
-    return $false
-}
-
-function Test-GameLayerStageRefreshNeeded {
-    param(
-        [string]$BuildDir,
-        [string]$RepoRoot
-    )
-
-    # The Awakening layer (openQ4-game-awakening) is staged at configure time
-    # like openQ4-game itself. stage_gamelibs.py --check-fresh compares every
-    # recorded source root with its staged copy: exit 0 = fresh, 3 = stale.
-    if (-not (Test-MesonBuildDirectory $BuildDir)) {
-        return $false
-    }
-    if ((Get-MesonBuildOptionValue -BuildDir $BuildDir -OptionName "build_games") -ne $true) {
-        return $false
-    }
-    if ([string](Get-MesonBuildOptionValue -BuildDir $BuildDir -OptionName "awakening") -eq "disabled") {
-        return $false
-    }
-
-    $layerRepo = $env:OPENQ4_AWAKENING_REPO
-    if ([string]::IsNullOrWhiteSpace($layerRepo)) {
-        $layerRepo = Join-Path $RepoRoot "..\openQ4-game-awakening"
-    }
-    $layerRepo = [System.IO.Path]::GetFullPath($layerRepo)
-    if (-not (Test-Path -LiteralPath (Join-Path $layerRepo "layer.json") -PathType Leaf)) {
-        return $false
-    }
-
+    if ($buildGames -eq $false) { return $false }
     $python = Get-Command python -ErrorAction SilentlyContinue
     if ($null -eq $python) { $python = Get-Command python3 -ErrorAction SilentlyContinue }
-    if ($null -eq $python) {
-        Write-Warning "Python was not found; cannot check the staged Awakening layer."
-        return $false
-    }
-
-    $layerId = (& $python.Source (Join-Path $RepoRoot "tools\build\game_layer.py") field $layerRepo id 2>$null)
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($layerId)) {
-        Write-Warning "Could not read $layerRepo\layer.json; forcing a Meson reconfigure."
-        return $true
-    }
-    $stageRoot = Join-Path $RepoRoot (".tmp\gamelibs_stage_" + $layerId.Trim())
-    & $python.Source (Join-Path $RepoRoot "tools\build\stage_gamelibs.py") --check-fresh $stageRoot | Out-Null
+    if ($null -eq $python) { throw "Python is required to check canonical game sources." }
+    & $python.Source (Join-Path $RepoRoot "tools\build\game_source_inventory.py") $RepoRoot --check (Join-Path $BuildDir "openq4_game_sources.json") | Out-Null
     return ($LASTEXITCODE -ne 0)
 }
 
@@ -876,14 +622,8 @@ if ($isAndroidCross) {
     }
     $androidMesonCommand = Get-MesonCommand
     if ($androidMesonArgs[0] -eq "compile" -or $androidMesonArgs[0] -eq "install") {
-        $androidPython = Get-Command python -ErrorAction SilentlyContinue
-        if ($null -eq $androidPython) { $androidPython = Get-Command python3 -ErrorAction Stop }
-        $androidStageRoot = & $androidPython.Source (Join-Path $scriptDir "gamelibs_stage_path.py") `
-            --source-root $repoRoot --build-dir $androidBuildInfo.BuildDir
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        if (Test-GamelibsStageRefreshNeeded -BuildDir $androidBuildInfo.BuildDir -RepoRoot $repoRoot `
-                -GameLibsRepo $env:OPENQ4_GAMELIBS_REPO -StageRoot $androidStageRoot) {
-            Write-Host "GameLibs staging inputs changed. Reconfiguring '$($androidBuildInfo.BuildDir)'..."
+        if (Test-GameSourcesRefreshNeeded -BuildDir $androidBuildInfo.BuildDir -RepoRoot $repoRoot) {
+            Write-Host "Canonical game source membership changed. Reconfiguring '$($androidBuildInfo.BuildDir)'..."
             Invoke-Meson -MesonArgs @("setup", "--reconfigure", $androidBuildInfo.BuildDir, $repoRoot) `
                 -VsDevCmdPath "" -MesonCommand $androidMesonCommand -VsTargetArch "" -VsHostArch ""
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -914,8 +654,6 @@ if ($effectiveArgs.Count -eq 0) {
 }
 
 $commandName = $effectiveArgs[0].ToLowerInvariant()
-$gameLibsRepo = if ([string]::IsNullOrWhiteSpace($env:OPENQ4_GAMELIBS_REPO)) { "" } else { $env:OPENQ4_GAMELIBS_REPO }
-$buildGameLibsScript = Join-Path $scriptDir "build_gamelibs.ps1"
 $stageWindowsRuntimeScript = Join-Path $scriptDir "stage_windows_runtime.py"
 $syncIconsScript = Join-Path $scriptDir "sync_icons.py"
 $checkStagedContentScript = Join-Path $scriptDir "check_staged_content_edits.py"
@@ -938,24 +676,7 @@ if ($commandName -eq "setup" -and ($effectiveArgs -contains "--reconfigure")) {
     }
 }
 
-$buildGameLibs = $env:OPENQ4_BUILD_GAMELIBS -eq "1"
-if ($commandName -eq "compile" -and $buildGameLibs -and $env:OPENQ4_SKIP_GAMELIBS_BUILD -ne "1") {
-    if (-not (Test-Path $buildGameLibsScript)) {
-        throw "GameLibs build script not found: '$buildGameLibsScript'."
-    }
 
-    if ([string]::IsNullOrWhiteSpace($gameLibsRepo)) {
-        & $buildGameLibsScript
-    } else {
-        # PowerShell array splatting binds strings positionally; it does not
-        # reinterpret a "-GameLibsRepo" array element as a named parameter.
-        & $buildGameLibsScript -GameLibsRepo $gameLibsRepo
-    }
-    $buildExit = [int]$LASTEXITCODE
-    if ($buildExit -ne 0) {
-        exit $buildExit
-    }
-}
 
 if ($effectiveArgs.Length -gt 0 -and ($effectiveArgs[0] -eq "compile" -or $effectiveArgs[0] -eq "install")) {
     $isCompile = $effectiveArgs[0] -eq "compile"
@@ -1011,14 +732,10 @@ if ($effectiveArgs.Length -gt 0 -and ($effectiveArgs[0] -eq "compile" -or $effec
         $reconfigureReasons += "Windows static CRT policy"
     }
 
-    $needsGameLibsRefresh = Test-GamelibsStageRefreshNeeded -BuildDir $buildInfo.BuildDir -RepoRoot $repoRoot -GameLibsRepo $gameLibsRepo
+    $needsGameLibsRefresh = Test-GameSourcesRefreshNeeded -BuildDir $buildInfo.BuildDir -RepoRoot $repoRoot
     if ($needsGameLibsRefresh) {
-        Write-Host "GameLibs staging inputs changed since the last snapshot. Reconfiguring '$($buildInfo.BuildDir)'..."
-        $reconfigureReasons += "staged openQ4-game refresh"
-    }
-    elseif (Test-GameLayerStageRefreshNeeded -BuildDir $buildInfo.BuildDir -RepoRoot $repoRoot) {
-        Write-Host "Awakening layer staging inputs changed since the last snapshot. Reconfiguring '$($buildInfo.BuildDir)'..."
-        $reconfigureReasons += "staged openQ4-game-awakening refresh"
+        Write-Host "Canonical game source membership changed since the last snapshot. Reconfiguring '$($buildInfo.BuildDir)'..."
+        $reconfigureReasons += "canonical game source membership"
     }
 
     if ($reconfigureReasons.Count -gt 0) {

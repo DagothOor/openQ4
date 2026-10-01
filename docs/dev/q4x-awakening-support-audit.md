@@ -1,8 +1,15 @@
 # Quake 4: The Awakening (`q4xbase`) — openQ4 support audit
 
+> **Source consolidation, 1 October 2026.** Current game sources and the
+> independent Awakening SP extensions live in openQ4. The expansion uses the
+> shared `baseoq4` SP module and an isolated campaign content mount. Historical
+> layer/module findings below remain useful content evidence; expansion MP is
+> excluded. See [current architecture](plans/q4x-awakening.md) and
+> [campaign installation](../user/campaigns.md).
+
 Audit of the unreleased Raven/Ritual Quake 4 expansion drop at
 `E:\Games\Quake_4_Alpha-main\q4xbase` against the current openQ4 engine
-(`openQ4/src`) and game code (`openQ4-game/src/game`, `openQ4-game/src/mpgame`).
+(`openQ4/src`) and canonical game code (`src/game`, `src/mpgame`).
 
 The question answered here is narrow and practical: **if a user launched openQ4 with
 `fs_game q4xbase`, what breaks, and what code change fixes each break?**

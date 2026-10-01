@@ -67,7 +67,7 @@ expand_guest_path() {
 
 workspace="$(expand_guest_path "${OPENQ4_GUEST_WORKSPACE:-${GUEST_HOME}/openq4-work}")"
 repo="${workspace}/openQ4"
-gamelibs="${workspace}/openQ4-game"
+gamelibs="${repo}"
 basepath="$(expand_guest_path "${OPENQ4_BASEPATH:-${workspace}/Quake4}")"
 
 require_result_token() {
@@ -710,7 +710,6 @@ build_openq4() {
     require_repo
     cd "${repo}"
     export OPENQ4_GAMELIBS_REPO="${gamelibs}"
-    export OPENQ4_BUILD_GAMELIBS="${OPENQ4_BUILD_GAMELIBS:-1}"
     # Keep Meson subprojects (SDL3, GLEW, stb_vorbis) on the same macOS 11.0
     # floor as the main project's -mmacosx-version-min=11.0 flags.
     export MACOSX_DEPLOYMENT_TARGET=11.0

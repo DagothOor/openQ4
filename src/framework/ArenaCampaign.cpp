@@ -1663,7 +1663,15 @@ bool idArenaCampaign::HandleGuiCommand( const char *menuCommand ) {
 			return true;
 		}
 
-		if ( !idStr::Icmp( cmd, "arenaMission" ) ) {
+        if ( !idStr::Icmp( cmd, "arenaCampaigns" ) ) {
+            sessLocal.OpenCampaignSelector( true );
+            return true;
+        }
+        if ( !idStr::Icmp( cmd, "arenaMission" ) ) {
+            sessLocal.SelectCampaign( "quake4" );
+            return true;
+        }
+		if ( !idStr::Icmp( cmd, "arenaMissionOpen" ) ) {
 			idUserInterface *mainMenu = sessLocal.guiMainMenu;
 			state->returnGui = NULL;
 			if ( mainMenu != NULL ) {
@@ -1690,6 +1698,10 @@ bool idArenaCampaign::HandleGuiCommand( const char *menuCommand ) {
 			return true;
 		}
 		if ( !idStr::Icmp( cmd, "arenaBackToModes" ) ) {
+            sessLocal.OpenCampaignSelector( false );
+            return true;
+        }
+        if ( !idStr::Icmp( cmd, "arenaLegacyModes" ) ) {
 			state->resetConfirmation = false;
 			state->view = 0;
 			UpdateGui();

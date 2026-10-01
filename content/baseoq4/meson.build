@@ -1,7 +1,6 @@
-# The openQ4-game objects are compiled once into a core static library per
-# game flavour. The baseoq4 modules link a core whole, and a game layer's
-# modules (content/q4xbase) link the same core plus the layer's own sources, so
-# a layer always runs the current openQ4 game rather than a copy of it.
+# In-tree SDK objects form a core static library per game flavour. The
+# baseoq4 modules link each complete core; game_sp includes the independent
+# Awakening SP additions, whose substitutions require mounted q4xbase content.
 game_core_pic = host_system == 'linux' or host_system == 'android' or host_system == 'darwin'
 game_core_visibility = host_system == 'windows' ? 'default' : 'hidden'
 

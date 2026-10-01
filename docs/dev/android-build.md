@@ -10,7 +10,7 @@ the current engine, renderer API, multiplayer module and package checks.
 
 Android targets `arm64-v8a`, Android API 24 or later, SDL3 and OpenGL ES 3.0.
 The native application is `libquake4.so`. The renderer is
-`librenderer-gles_arm64.so`; the companion `openQ4-game` repository supplies
+`librenderer-gles_arm64.so`; the in-tree `src/game/` and `src/mpgame/` supply
 `libgame-sp_arm64.so` and `libgame-mp_arm64.so`. Both modes use `baseoq4/`.
 Android has no dedicated-server target. Desktop defaults remain unchanged.
 
@@ -27,12 +27,10 @@ validation step.
 
 ## Toolchain and dependencies
 
-Use the `android-gles` branch in both openQ4 and its sibling `openQ4-game`
-checkout. This integration pins the companion to
-`f9bf8a692de539b9d149cc7b2c47759dbb1ddd62`; checking out that commit directly is
-also supported. A companion checkout from an older `main` revision carries
-incompatible engine-interface headers. Publish the companion branch before
-pushing the engine branch so remote CI can fetch the pinned commit.
+Use the current openQ4 checkout. Canonical SDK game sources and matching engine
+interfaces build together; neither archived companion repository is a build
+input. Historical Android integration revisions are recorded in the
+[integration evidence](android-gles-integration.md).
 
 Use the [Android NDK](https://developer.android.com/ndk/downloads), Python 3,
 Meson 1.6 or newer, Ninja and CMake. NDK r27d is the initial cross-build baseline.
@@ -64,10 +62,10 @@ powershell -ExecutionPolicy Bypass -File tools/build/meson_setup.ps1 install -C 
 
 Adjust absolute paths for your checkout. On Linux/macOS, run the same Python
 helpers and use `bash tools/build/meson_setup.sh setup`, `compile` and `install`
-with the corresponding arguments above. The wrapper refreshes the companion
-source stage when engine interfaces change; use it for subsequent rebuilds too.
+with the corresponding arguments above. The wrapper refreshes the in-tree
+source inventory when sources change; use it for subsequent rebuilds too.
 Use a separate build directory so desktop settings and staged binaries remain
-available. Android game-header staging has its own directory under `.tmp/`.
+available. Android builds use the same canonical game and engine headers.
 
 The dependency prefix must contain `include/SDL3`, `include/AL`,
 `lib/libSDL3.so`, `lib/libopenal.so` and `lib/libc++_shared.so`.

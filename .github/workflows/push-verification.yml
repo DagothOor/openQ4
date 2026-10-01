@@ -7,14 +7,6 @@ on:
 permissions:
   contents: read
 
-env:
-  # Pin the companion's GAME_API 48 and retained input/presentation contract.
-  # Renderer API 14 device services are private to this engine repository.
-  # Publish this companion commit before CI runs.
-  OPENQ4_GAMELIBS_SHA: 4d87dbdb6934307988b371d3c794190a1380f322
-  # The Awakening's game-library layer: its q4xbase modules build beside baseoq4's.
-  OPENQ4_AWAKENING_SHA: c49842986c0a519feeebc68d78e6f5509d99c3a7
-
 concurrency:
   group: openq4-push-verification-${{ github.ref }}
   cancel-in-progress: true
@@ -24,21 +16,11 @@ jobs:
     name: Validation Script Smoke
     runs-on: ubuntu-24.04
     env:
-      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}/../openQ4-game
+      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Fetch openQ4-game
-        shell: bash
-        run: |
-          set -euo pipefail
-          git init "${OPENQ4_GAMELIBS_REPO}"
-          git -C "${OPENQ4_GAMELIBS_REPO}" remote add origin https://github.com/themuffinator/openQ4-game.git
-          git -C "${OPENQ4_GAMELIBS_REPO}" fetch --depth 1 origin "${OPENQ4_GAMELIBS_SHA}"
-          git -C "${OPENQ4_GAMELIBS_REPO}" checkout --detach "${OPENQ4_GAMELIBS_SHA}"
-          test "$(git -C "${OPENQ4_GAMELIBS_REPO}" rev-parse HEAD)" = "${OPENQ4_GAMELIBS_SHA}"
 
       - name: Setup Python
         uses: actions/setup-python@v7
@@ -89,6 +71,8 @@ jobs:
             tools/build/stage_fast_install.py \
             tools/build/stage_gamelibs.py \
             tools/build/gamelibs_stage_path.py \
+            tools/build/game_source_inventory.py \
+            tools/build/retire_game_layers.py \
             tools/build/stage_windows_runtime.py \
             tools/build/sync_icons.py \
             tools/build/windows_runtime.py \
@@ -132,6 +116,9 @@ jobs:
             tools/tests/async_usercmd_window_contract.py \
             tools/tests/base64_input_safety.py \
             tools/tests/campaign_split_state_transition.py \
+            tools/tests/campaign_scope.py \
+            tools/tests/campaign_runtime.py \
+            tools/tests/campaign_selection_runtime.py \
             tools/tests/clang_tidy_input_safety.py \
             tools/tests/cmdargs_append_contract.py \
             tools/tests/console_completion_contract.py \
@@ -468,6 +455,7 @@ jobs:
           python tools/tests/async_usercmd_window_contract.py
           python tools/tests/base64_input_safety.py
           python tools/tests/campaign_split_state_transition.py
+          python tools/tests/campaign_scope.py
           python tools/tests/clang_tidy_input_safety.py
           python tools/tests/cmdargs_append_contract.py
           python tools/tests/console_completion_contract.py
@@ -758,8 +746,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
-      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}/../openQ4-game
-      OPENQ4_AWAKENING_REPO: ${{ github.workspace }}/../openQ4-game-awakening
+      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}
     strategy:
       fail-fast: false
       matrix:
@@ -804,24 +791,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Fetch openQ4-game
-        shell: bash
-        run: |
-          set -euo pipefail
-          git init "${OPENQ4_GAMELIBS_REPO}"
-          git -C "${OPENQ4_GAMELIBS_REPO}" remote add origin https://github.com/themuffinator/openQ4-game.git
-          git -C "${OPENQ4_GAMELIBS_REPO}" fetch --depth 1 origin "${OPENQ4_GAMELIBS_SHA}"
-          git -C "${OPENQ4_GAMELIBS_REPO}" checkout --detach "${OPENQ4_GAMELIBS_SHA}"
-          test "$(git -C "${OPENQ4_GAMELIBS_REPO}" rev-parse HEAD)" = "${OPENQ4_GAMELIBS_SHA}"
-      - name: Fetch openQ4-game-awakening
-        shell: bash
-        run: |
-          set -euo pipefail
-          git init "${OPENQ4_AWAKENING_REPO}"
-          git -C "${OPENQ4_AWAKENING_REPO}" remote add origin https://github.com/themuffinator/openQ4-game-awakening.git
-          git -C "${OPENQ4_AWAKENING_REPO}" fetch --depth 1 origin "${OPENQ4_AWAKENING_SHA}"
-          git -C "${OPENQ4_AWAKENING_REPO}" checkout --detach "${OPENQ4_AWAKENING_SHA}"
-          test "$(git -C "${OPENQ4_AWAKENING_REPO}" rev-parse HEAD)" = "${OPENQ4_AWAKENING_SHA}"
       - name: Setup Python
         uses: actions/setup-python@v7
         with:
@@ -1020,35 +989,10 @@ jobs:
     runs-on: windows-2025-vs2026
     timeout-minutes: 90
     env:
-      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}/../openQ4-game
-      OPENQ4_AWAKENING_REPO: ${{ github.workspace }}/../openQ4-game-awakening
+      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Fetch openQ4-game
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          git init "$env:OPENQ4_GAMELIBS_REPO"
-          git -C "$env:OPENQ4_GAMELIBS_REPO" remote add origin https://github.com/themuffinator/openQ4-game.git
-          git -C "$env:OPENQ4_GAMELIBS_REPO" fetch --depth 1 origin "$env:OPENQ4_GAMELIBS_SHA"
-          git -C "$env:OPENQ4_GAMELIBS_REPO" checkout --detach "$env:OPENQ4_GAMELIBS_SHA"
-          if ( ( git -C "$env:OPENQ4_GAMELIBS_REPO" rev-parse HEAD ).Trim() -ne $env:OPENQ4_GAMELIBS_SHA ) {
-            throw "openQ4-game checkout did not resolve to $env:OPENQ4_GAMELIBS_SHA"
-          }
-
-      - name: Fetch openQ4-game-awakening
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          git init "$env:OPENQ4_AWAKENING_REPO"
-          git -C "$env:OPENQ4_AWAKENING_REPO" remote add origin https://github.com/themuffinator/openQ4-game-awakening.git
-          git -C "$env:OPENQ4_AWAKENING_REPO" fetch --depth 1 origin "$env:OPENQ4_AWAKENING_SHA"
-          git -C "$env:OPENQ4_AWAKENING_REPO" checkout --detach "$env:OPENQ4_AWAKENING_SHA"
-          if ( ( git -C "$env:OPENQ4_AWAKENING_REPO" rev-parse HEAD ).Trim() -ne $env:OPENQ4_AWAKENING_SHA ) {
-            throw "openQ4-game-awakening checkout did not resolve to $env:OPENQ4_AWAKENING_SHA"
-          }
 
       - name: Setup Python
         uses: actions/setup-python@v7
@@ -1144,36 +1088,11 @@ jobs:
     runs-on: windows-11-arm
     timeout-minutes: 90
     env:
-      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}/../openQ4-game
-      OPENQ4_AWAKENING_REPO: ${{ github.workspace }}/../openQ4-game-awakening
+      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}
       OPENQ4_VS_TARGET_ARCH: arm64
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Fetch openQ4-game
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          git init "$env:OPENQ4_GAMELIBS_REPO"
-          git -C "$env:OPENQ4_GAMELIBS_REPO" remote add origin https://github.com/themuffinator/openQ4-game.git
-          git -C "$env:OPENQ4_GAMELIBS_REPO" fetch --depth 1 origin "$env:OPENQ4_GAMELIBS_SHA"
-          git -C "$env:OPENQ4_GAMELIBS_REPO" checkout --detach "$env:OPENQ4_GAMELIBS_SHA"
-          if ( ( git -C "$env:OPENQ4_GAMELIBS_REPO" rev-parse HEAD ).Trim() -ne $env:OPENQ4_GAMELIBS_SHA ) {
-            throw "openQ4-game checkout did not resolve to $env:OPENQ4_GAMELIBS_SHA"
-          }
-
-      - name: Fetch openQ4-game-awakening
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          git init "$env:OPENQ4_AWAKENING_REPO"
-          git -C "$env:OPENQ4_AWAKENING_REPO" remote add origin https://github.com/themuffinator/openQ4-game-awakening.git
-          git -C "$env:OPENQ4_AWAKENING_REPO" fetch --depth 1 origin "$env:OPENQ4_AWAKENING_SHA"
-          git -C "$env:OPENQ4_AWAKENING_REPO" checkout --detach "$env:OPENQ4_AWAKENING_SHA"
-          if ( ( git -C "$env:OPENQ4_AWAKENING_REPO" rev-parse HEAD ).Trim() -ne $env:OPENQ4_AWAKENING_SHA ) {
-            throw "openQ4-game-awakening checkout did not resolve to $env:OPENQ4_AWAKENING_SHA"
-          }
 
       - name: Setup Python
         uses: actions/setup-python@v7

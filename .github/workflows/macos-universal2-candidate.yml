@@ -3,12 +3,6 @@ name: macOS Universal2 Release Candidate
 on:
   workflow_dispatch:
     inputs:
-      openq4_game_ref:
-        description: openQ4-game branch, tag, or full commit SHA to build
-        required: true
-        # The default must match the engine-interface revision pinned in CI.
-        default: 4d87dbdb6934307988b371d3c794190a1380f322
-        type: string
       graphics_bridge:
         description: Graphics bridge package(s) to assemble
         required: true
@@ -33,10 +27,6 @@ concurrency:
 
 permissions:
   contents: read
-
-env:
-  # The Awakening's game-library layer: its q4xbase modules ship beside baseoq4's.
-  OPENQ4_AWAKENING_SHA: c49842986c0a519feeebc68d78e6f5509d99c3a7
 
 jobs:
   metadata:
@@ -64,7 +54,6 @@ jobs:
       - name: Resolve clean source pair and candidate matrix
         id: resolve
         env:
-          OPENQ4_GAME_REF: ${{ inputs.openq4_game_ref }}
           OPENQ4_GRAPHICS_BRIDGE: ${{ inputs.graphics_bridge }}
         shell: bash
         run: |
@@ -76,17 +65,7 @@ jobs:
           fi
           source_sha="$(git rev-parse --verify 'HEAD^{commit}')"
 
-          game_root="${RUNNER_TEMP}/openQ4-game-resolve"
-          rm -rf "${game_root}"
-          git init --quiet "${game_root}"
-          git -C "${game_root}" remote add origin https://github.com/themuffinator/openQ4-game.git
-          git -C "${game_root}" fetch --quiet --no-tags --depth=1 origin "${OPENQ4_GAME_REF}"
-          git -C "${game_root}" checkout --quiet --detach FETCH_HEAD
-          game_sha="$(git -C "${game_root}" rev-parse --verify 'HEAD^{commit}')"
-          if [ -n "$(git -C "${game_root}" status --porcelain --untracked-files=all)" ]; then
-            echo "Resolved openQ4-game checkout is unexpectedly dirty."
-            exit 1
-          fi
+          game_sha="${source_sha}"
 
           version_info="$(python tools/build/openq4_version.py --source-root "${GITHUB_WORKSPACE}" --track stable)"
           version="$(printf '%s\n' "${version_info}" | awk -F= '$1 == "base_version" { print $2; exit }')"
@@ -162,8 +141,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.metadata.outputs.thin_matrix) }}
     env:
-      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}/../openQ4-game
-      OPENQ4_AWAKENING_REPO: ${{ github.workspace }}/../openQ4-game-awakening
+      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}
       MACOSX_DEPLOYMENT_TARGET: "11.0"
 
     steps:
@@ -184,63 +162,6 @@ jobs:
           actual_arch="$(uname -m)"
           if [ "${actual_arch}" != "${expected_arch}" ]; then
             echo "Universal2 thin candidate requires ${expected_arch}, found ${actual_arch}."
-            exit 1
-          fi
-
-      - name: Fetch pinned openQ4-game source
-        shell: bash
-        run: |
-          set -euo pipefail
-          expected_source_sha="${{ needs.metadata.outputs.source_sha }}"
-          expected_game_sha="${{ needs.metadata.outputs.game_sha }}"
-          if [ "$(git rev-parse --verify 'HEAD^{commit}')" != "${expected_source_sha}" ]; then
-            echo "openQ4 checkout does not match the resolved candidate commit."
-            exit 1
-          fi
-          if [ -e "${OPENQ4_GAMELIBS_REPO}" ]; then
-            echo "Refusing to reuse an existing openQ4-game checkout: ${OPENQ4_GAMELIBS_REPO}"
-            exit 1
-          fi
-          mkdir -p "$(dirname "${OPENQ4_GAMELIBS_REPO}")"
-          git init --quiet "${OPENQ4_GAMELIBS_REPO}"
-          git -C "${OPENQ4_GAMELIBS_REPO}" remote add origin https://github.com/themuffinator/openQ4-game.git
-          git -C "${OPENQ4_GAMELIBS_REPO}" fetch --quiet --no-tags --depth=1 origin "${expected_game_sha}"
-          git -C "${OPENQ4_GAMELIBS_REPO}" checkout --quiet --detach "${expected_game_sha}"
-          if [ "$(git -C "${OPENQ4_GAMELIBS_REPO}" rev-parse --verify 'HEAD^{commit}')" != "${expected_game_sha}" ]; then
-            echo "openQ4-game checkout does not match the resolved candidate commit."
-            exit 1
-          fi
-          if [ -n "$(git -C "${OPENQ4_GAMELIBS_REPO}" status --porcelain --untracked-files=all)" ]; then
-            echo "Pinned openQ4-game checkout is unexpectedly dirty."
-            exit 1
-          fi
-
-      - name: Fetch pinned openQ4-game-awakening
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ ! "${OPENQ4_AWAKENING_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "OPENQ4_AWAKENING_SHA is not a full immutable commit SHA: ${OPENQ4_AWAKENING_SHA}"
-            exit 1
-          fi
-          if [ -e "${OPENQ4_AWAKENING_REPO}" ]; then
-            echo "Refusing to reuse an existing openQ4-game-awakening checkout: ${OPENQ4_AWAKENING_REPO}"
-            exit 1
-          fi
-
-          mkdir -p "$(dirname "${OPENQ4_AWAKENING_REPO}")"
-          git init --quiet "${OPENQ4_AWAKENING_REPO}"
-          git -C "${OPENQ4_AWAKENING_REPO}" remote add origin https://github.com/themuffinator/openQ4-game-awakening.git
-          git -C "${OPENQ4_AWAKENING_REPO}" fetch --quiet --no-tags --depth=1 origin "${OPENQ4_AWAKENING_SHA}"
-          git -C "${OPENQ4_AWAKENING_REPO}" checkout --quiet --detach "${OPENQ4_AWAKENING_SHA}"
-          actual_layer_sha="$(git -C "${OPENQ4_AWAKENING_REPO}" rev-parse --verify 'HEAD^{commit}')"
-          if [ "${actual_layer_sha}" != "${OPENQ4_AWAKENING_SHA}" ]; then
-            echo "openQ4-game-awakening checkout ${actual_layer_sha} does not match the pinned SHA ${OPENQ4_AWAKENING_SHA}."
-            exit 1
-          fi
-          if [ -n "$(git -C "${OPENQ4_AWAKENING_REPO}" status --porcelain --untracked-files=all)" ]; then
-            echo "Pinned openQ4-game-awakening checkout is unexpectedly dirty."
             exit 1
           fi
 
@@ -295,13 +216,8 @@ jobs:
           set -euo pipefail
           python tools/build/verify_release_source_provenance.py \
             --project-root "${GITHUB_WORKSPACE}" \
-            --gamelibs-root "${OPENQ4_GAMELIBS_REPO}" \
-            --stage-manifest "$(python tools/build/gamelibs_stage_path.py --build-dir builddir --manifest)" \
             --expected-project-commit "${{ needs.metadata.outputs.source_sha }}" \
-            --expected-gamelibs-commit "${{ needs.metadata.outputs.game_sha }}" \
-            --layer-root "${OPENQ4_AWAKENING_REPO}" \
-            --layer-stage-manifest "$(python tools/build/gamelibs_stage_path.py --build-dir builddir --manifest --layer awakening)" \
-            --expected-layer-commit "${OPENQ4_AWAKENING_SHA}"
+            --build-dir builddir
 
       - name: Normalize thin universal2 payload
         shell: bash
@@ -332,7 +248,7 @@ jobs:
           set -euo pipefail
           python tools/build/assemble_macos_universal2.py record \
             --install-root .install \
-            --source-manifest "$(python tools/build/gamelibs_stage_path.py --build-dir builddir --manifest)" \
+            --source-manifest builddir/openq4_game_sources.json \
             --arch "${{ matrix.binary_arch }}" \
             --graphics-bridge "${{ matrix.bridge }}" \
             --openal-provider system \
@@ -530,8 +446,6 @@ jobs:
           else
             package_args+=(--macos-signing-mode ad-hoc)
           fi
-          # the Awakening's q4xbase modules ship in every package; a missing layer fails
-          package_args+=(--require-game-layer q4xbase)
           python tools/build/package_release.py "${package_args[@]}"
           package_name="openq4-${{ needs.metadata.outputs.version_tag }}-macos-universal2${package_suffix}"
           archive_path="${corridor_root}/package-output/${package_name}${archive_ext}"
@@ -565,8 +479,6 @@ jobs:
             "${package_dir}/openQ4-ded_universal2"
             "${module_dir}/game-sp_universal2.dylib"
             "${module_dir}/game-mp_universal2.dylib"
-            "${module_dir}/q4xbase/game-sp_universal2.dylib"
-            "${module_dir}/q4xbase/game-mp_universal2.dylib"
           )
           for binary in "${binaries[@]}"; do
             if [ ! -f "${binary}" ]; then
@@ -581,20 +493,16 @@ jobs:
             codesign --verify --strict --verbose=2 "${binary}"
           done
           codesign --verify --deep --strict --verbose=2 "${app_root}"
-          for module in game-sp game-mp q4xbase/game-sp q4xbase/game-mp; do
+          for module in game-sp game-mp; do
             for macho_arch in arm64 x86_64; do
               actual_id="$(otool -arch "${macho_arch}" -D "${module_dir}/${module}_universal2.dylib" | sed -n '2p' | tr -d '[:space:]')"
-              expected_id="@loader_path/${module#q4xbase/}_universal2.dylib"
+              expected_id="@loader_path/${module}_universal2.dylib"
               if [ "${actual_id}" != "${expected_id}" ]; then
                 echo "Universal2 ${module} install name mismatch for ${macho_arch}: ${actual_id:-<empty>}"
                 exit 1
               fi
             done
           done
-          if [ ! -f "${app_root}/Contents/Resources/q4xbase/mod.json" ]; then
-            echo "Missing universal2 candidate q4xbase mod.json."
-            exit 1
-          fi
           if [ "${{ inputs.macos_signing_mode }}" = "developer-id" ]; then
             for target in "${app_root}" "${binaries[@]}"; do
               details="$(codesign -dv --verbose=4 "${target}" 2>&1)"
@@ -703,46 +611,6 @@ jobs:
             echo "Universal2 app smoke completed its startup and shutdown checks with SDL launcher status ${app_status}."
           fi
 
-          # q4xbase ships in the bundle: with fs_game q4xbase the app must load the layer's own
-          # SP module from Contents/Frameworks/q4xbase instead of falling back to baseoq4's.
-          layer_console="${smoke_root}/q4xbase-console.log"
-          set +e
-          (
-            cd "${smoke_cwd}"
-            exec "${app_exec}" \
-              +set logFile 2 \
-              +set logFileName logs/macos_universal2_q4xbase_smoke.log \
-              +set fs_savepath "${smoke_save}" \
-              +set fs_game q4xbase \
-              +set fs_validateOfficialPaks 0 \
-              +set g_allowAssetlessStartup 1 \
-              +set r_fullscreen 0 \
-              +quit
-          ) > "${layer_console}" 2>&1 &
-          layer_pid=$!
-          ( sleep 90; kill -KILL "${layer_pid}" 2>/dev/null ) &
-          layer_watchdog=$!
-          wait "${layer_pid}"
-          layer_status=$?
-          kill "${layer_watchdog}" 2>/dev/null
-          wait "${layer_watchdog}" 2>/dev/null
-          set -e
-          if [ "${layer_status}" -gt 127 ]; then
-            echo "Universal2 app q4xbase smoke ended abnormally or timed out (status ${layer_status})."
-            tail -n 160 "${layer_console}" || true
-            exit 1
-          fi
-          if ! grep -F "Selected game module: logical='game_sp'" "${layer_console}" \
-            | grep -F "/openQ4.app/Contents/Frameworks/q4xbase/game-sp_universal2.dylib'" >/dev/null; then
-            echo "Universal2 app q4xbase smoke did not load the layer's own game module."
-            tail -n 160 "${layer_console}" || true
-            exit 1
-          fi
-          if grep -Eiq '(^|[[:space:]])(FATAL|Sys_Error):' "${layer_console}"; then
-            echo "Universal2 app q4xbase smoke output contains a fatal startup diagnostic."
-            tail -n 160 "${layer_console}" || true
-            exit 1
-          fi
 
       - name: Upload universal2 candidate evidence
         if: always()

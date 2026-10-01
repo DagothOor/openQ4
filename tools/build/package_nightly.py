@@ -34,7 +34,7 @@ from linux_metadata import (
 )
 from generate_release_docs import GeneratedDocSite, generate_release_docs_site
 from gamelibs_stage_path import MANIFEST_NAME as GAMELIBS_STAGE_MANIFEST_NAME, stage_root as gamelibs_stage_root
-from game_layer import PACKAGED_LAYER_GAME_DIRS, LayerError, read_layer_mod_json
+from game_layer import PACKAGED_LAYER_GAME_DIRS, RETIRED_LAYER_GAME_DIRS, LayerError, read_layer_mod_json
 from openq4_pak import (
     OPENQ4_PK4_FORBIDDEN_FILES,
     OPENQ4_PACK_NAMES,
@@ -401,8 +401,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=[],
         choices=PACKAGED_LAYER_GAME_DIRS,
         help=(
-            "Fail unless this game-library layer's game directory (for example q4xbase) was "
-            "staged. Without it a staged layer is still packaged, and a missing one is skipped."
+            "Retired compatibility option: separate campaign modules are no longer packaged. "
+            "Campaigns use the in-tree SP module."
         ),
     )
     parser.add_argument(
@@ -1607,29 +1607,12 @@ def read_staged_repository_metadata(source_root: Path, platform: str = "windows"
 
 
 def collect_package_repository_metadata(source_root: Path, platform: str = "windows", arch: str = "x64") -> dict[str, str]:
-    metadata = {key: "unavailable" for key in VERSION_REPOSITORY_METADATA_KEYS}
-    staged_metadata = read_staged_repository_metadata(source_root, platform, arch)
-    for key, value in staged_metadata.items():
-        if value != "unavailable":
-            metadata[key] = value
-
-    if metadata["openq4_commit"] == "unavailable":
-        metadata["openq4_commit"] = clean_version_metadata_value(
-            package_git_value(source_root, "rev-parse", "--verify", "HEAD")
-        )
-    if metadata["openq4_dirty"] == "unavailable":
-        metadata["openq4_dirty"] = package_git_dirty(source_root)
-
-    gamelibs_env = os.environ.get("OPENQ4_GAMELIBS_REPO", "").strip()
-    gamelibs_root = Path(gamelibs_env) if gamelibs_env else source_root.parent / "openQ4-game"
-    if metadata["openq4_game_commit"] == "unavailable":
-        metadata["openq4_game_commit"] = clean_version_metadata_value(
-            package_git_value(gamelibs_root, "rev-parse", "--verify", "HEAD")
-        )
-    if metadata["openq4_game_dirty"] == "unavailable":
-        metadata["openq4_game_dirty"] = package_git_dirty(gamelibs_root)
-
-    return metadata
+    # Release provenance is verified against builddir's canonical inventory
+    # before packaging. Both receipt fields identify the same source commit.
+    commit = clean_version_metadata_value(package_git_value(source_root, "rev-parse", "--verify", "HEAD"))
+    dirty = package_git_dirty(source_root)
+    return {"openq4_commit": commit, "openq4_dirty": dirty,
+            "openq4_game_commit": commit, "openq4_game_dirty": dirty}
 
 
 def write_version_manifest(
@@ -2271,6 +2254,10 @@ def copy_release_collateral(source_root: Path, package_root: Path, platform: str
     collateral = (
         (source_root / RELEASE_README_PATH, package_root / "README.html"),
         (source_root / LICENSE_PATH, package_root / "LICENSE"),
+        (source_root / "LICENSING.md", package_root / "LICENSING.md"),
+        (source_root / "LICENSES" / "QUAKE-4-SDK-EULA.rtf", package_root / "licenses" / "QUAKE-4-SDK-EULA.rtf"),
+        (source_root / "LICENSES" / "DOOM-3-ADDITIONAL-TERMS.txt", package_root / "licenses" / "DOOM-3-ADDITIONAL-TERMS.txt"),
+        (source_root / "LICENSES" / "DOOM-3-BFG-ADDITIONAL-TERMS.txt", package_root / "licenses" / "DOOM-3-BFG-ADDITIONAL-TERMS.txt"),
         (source_root / "LICENSES" / "KHRONOS-GLES-MIT.txt", package_root / "licenses" / "KHRONOS-GLES-MIT.txt"),
         (source_root / "CONTRIBUTORS.md", package_root / "CONTRIBUTORS.md"),
     )
@@ -3049,7 +3036,7 @@ def validate_macos_archive_contents(
         f"{app_bundle_prefix}Contents/Resources/{GAME_DIR_NAME}/game-",
         *(
             prefix
-            for layer in PACKAGED_LAYER_GAME_DIRS
+            for layer in (*PACKAGED_LAYER_GAME_DIRS, *RETIRED_LAYER_GAME_DIRS)
             for prefix in (
                 f"{package_prefix}{layer}/game-",
                 f"{app_bundle_prefix}Contents/Frameworks/{layer}/game-",
@@ -3073,7 +3060,7 @@ def validate_macos_archive_contents(
     loose_layer_entries = sorted(
         name
         for name in entry_names
-        if any(name.startswith(f"{package_prefix}{layer}/") for layer in PACKAGED_LAYER_GAME_DIRS)
+        if any(name.startswith(f"{package_prefix}{layer}/") for layer in (*PACKAGED_LAYER_GAME_DIRS, *RETIRED_LAYER_GAME_DIRS))
     )
     if loose_layer_entries:
         joined = ", ".join(loose_layer_entries[:5])

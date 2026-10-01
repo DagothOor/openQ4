@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GAME_LIBS_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT.parent / "openQ4-game")).resolve()
+GAME_LIBS_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT)).resolve()
 COMPONENTS = ("txt", "tga", "save")
 MAX_SAVEGAME_BYTES = 512 * 1024 * 1024
 INTEGRITY_TRAILER_BYTES = 16

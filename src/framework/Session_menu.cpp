@@ -2727,7 +2727,7 @@ void idSessionLocal::HandleMainMenuCommands( const char *menuCommand ) {
 		}
 
 		if ( !idStr::Icmp( cmd, "singlePlayerOpen" ) ) {
-			arenaCampaign.OpenSelector();
+			OpenCampaignSelector( false );
 			return;
 		}
 
@@ -2838,10 +2838,12 @@ void idSessionLocal::HandleMainMenuCommands( const char *menuCommand ) {
 		if ( !idStr::Icmp( cmd, "startMap" ) ) {
 			MainMenuApplyNewGameOptions( guiMainMenu );
 			if ( icmd < args.Argc() ) {
-				StartNewGame( args.Argv( icmd++ ) );
+				const char *map = args.Argv( icmd++ );
+                if ( !idStr::Icmp( map, "game/airdefense1" ) && !idStr::Icmp( fileSystem->GetActiveGameDir(), "q4xbase" ) ) map = "game/m01_stranarus_trench1";
+                StartNewGame( map );
 			} else {
 #ifndef ID_DEMO_BUILD
-				StartNewGame( "game/mars_city1" );
+				StartNewGame( !idStr::Icmp( fileSystem->GetActiveGameDir(), "q4xbase" ) ? "game/m01_stranarus_trench1" : "game/airdefense1" );
 #else
 				StartNewGame( "game/demo_mars_city1" );
 #endif
@@ -2855,10 +2857,12 @@ void idSessionLocal::HandleMainMenuCommands( const char *menuCommand ) {
 		if ( !idStr::Icmp( cmd, "startGame" ) ) {
 			MainMenuApplyNewGameOptions( guiMainMenu );
 			if ( icmd < args.Argc() ) {
-				StartNewGame( args.Argv( icmd++ ) );
+				const char *map = args.Argv( icmd++ );
+                if ( !idStr::Icmp( map, "game/airdefense1" ) && !idStr::Icmp( fileSystem->GetActiveGameDir(), "q4xbase" ) ) map = "game/m01_stranarus_trench1";
+                StartNewGame( map );
 			} else {
 #ifndef ID_DEMO_BUILD
-				StartNewGame( "game/mars_city1" );
+				StartNewGame( !idStr::Icmp( fileSystem->GetActiveGameDir(), "q4xbase" ) ? "game/m01_stranarus_trench1" : "game/airdefense1" );
 #else
 				StartNewGame( "game/demo_mars_city1" );
 #endif
@@ -3631,6 +3635,12 @@ void idSessionLocal::DispatchCommand( idUserInterface *gui, const char *menuComm
 	if ( !gui ) {
 		gui = guiActive;
 	}
+    if ( gui && gui == guiActive && !idStr::Icmp( gui->Name(), "guis/campaign_menu.gui" ) ) {
+        if ( !idStr::Icmp( menuCommand, "campaignQuake4" ) ) SelectCampaign( "quake4" );
+        else if ( !idStr::Icmp( menuCommand, "campaignAwakening" ) ) SelectCampaign( "awakening" );
+        else if ( !idStr::Icmp( menuCommand, "campaignBack" ) ) OpenCampaignSelector( false );
+        return;
+    }
 	bool closeRequested = false;
 	if ( UI_DispatchApplicationActions( gui, menuCommand, closeRequested ) ) {
 		// A retained screen's accepted verbs, in order. Each names a session
@@ -4723,6 +4733,75 @@ static void Session_PublishRetainedTitleState( idUserInterface *gui, idSessionLo
 }
 #endif
 
+
+void idSessionLocal::OpenCampaignSelector( bool campaigns ) {
+#ifndef ID_DEDICATED
+    if ( !Session_RetainedScreensEnabled() && !campaigns ) {
+        arenaCampaign.OpenSelector();
+        return;
+    }
+    idUserInterface *gui = Session_RetainedScreensEnabled() ?
+        uiManager->FindGui( campaigns ? "guis/menu/campaigns.q4ui" : "guis/menu/singleplayer.q4ui", true, false, true ) :
+        uiManager->FindGui( "guis/campaign_menu.gui", true, false, true );
+    if ( gui == NULL ) return;
+    if ( campaigns ) {
+        const idCampaignContentInfo info = fileSystem->GetAwakeningContentInfo();
+        gui->SetStateBool( "awakening_ready", info.ready );
+        gui->SetStateBool( "awakening_present", info.present );
+    }
+    SetGUI( gui, NULL );
+    gui->StateChanged( common->GetPresentationTime() );
+#endif
+}
+
+void idSessionLocal::SelectCampaign( const char *campaign, bool start ) {
+#ifndef ID_DEDICATED
+    const bool awakening = !idStr::Icmp( campaign, "awakening" );
+    const bool arena = !idStr::Icmp( campaign, "arena" );
+    if ( !awakening && !arena && idStr::Icmp( campaign, "quake4" ) ) return;
+    if ( awakening ) {
+        const idCampaignContentInfo info = fileSystem->GetAwakeningContentInfo();
+        if ( !info.ready ) {
+            common->Warning( "Awakening campaign is unavailable; missing %s", info.missing.c_str() );
+            OpenCampaignSelector( true );
+            return;
+        }
+    }
+    const char *gameDir = awakening ? "q4xbase" : OPENQ4_GAMEDIR;
+    // Consume one-shot command-line overrides before a full engine restart.
+    common->StartupVariable( "si_gameType", true );
+    if ( idStr::Icmp( fileSystem->GetActiveGameDir(), gameDir ) ||
+         idStr::Icmp( cvarSystem->GetCVarString( "fs_game" ), gameDir ) ||
+         cvarSystem->GetCVarString( "fs_game_base" )[0] ||
+         idStr::Icmp( cvarSystem->GetCVarString( "com_activeGameModule" ), "game_sp" ) ) {
+        cvarSystem->SetCVarString( "fs_game", gameDir );
+        cvarSystem->SetCVarString( "fs_game_base", "" );
+        cvarSystem->SetCVarString( "si_gameType", "singleplayer" );
+        cvarSystem->SetCVarString( "com_nextGameModule", "game_sp" );
+        idCmdArgs continuation;
+        continuation.AppendArg( "campaignSelect" );
+        continuation.AppendArg( campaign );
+        if ( start ) continuation.AppendArg( "start" );
+        cmdSystem->SetupReloadEngineMenu( continuation );
+        return;
+    }
+    common->Printf( "CAMPAIGN_SELECTED id=%s gameDir=%s module=%s\n", campaign, gameDir,
+        cvarSystem->GetCVarString( "com_activeGameModule" ) );
+    if ( start && !arena ) {
+        StartNewGame( awakening ? "game/m01_stranarus_trench1" : "game/airdefense1" );
+        return;
+    }
+    StartMenu();
+    if ( arena ) {
+        arenaCampaign.OpenBrowser();
+    } else {
+        // Continue through the existing difficulty/options screen. Its start
+        // action chooses the active campaign's fixed initial map below.
+        arenaCampaign.HandleGuiCommand( "arenaMissionOpen" );
+    }
+#endif
+}
+
 bool idSessionLocal::RetainedHomeInputBlocked() const {
 	return guiRetainedHome != NULL && common->GetPresentationTime() < retainedHandoffUntil;
 }
@@ -4835,6 +4914,16 @@ void idSessionLocal::DrawRetainedHome( int presentationTime ) {
 
 void idSessionLocal::HandleRetainedSessionRequest( idUserInterface *gui, const char *request ) {
 #ifndef ID_DEDICATED
+    if ( gui && request && gui == guiActive &&
+         ( !idStr::Icmp( gui->Name(), "guis/menu/singleplayer.q4ui" ) || !idStr::Icmp( gui->Name(), "guis/menu/campaigns.q4ui" ) ) ) {
+        if ( !idStr::Icmp( request, "campaigns" ) ) OpenCampaignSelector( true );
+        else if ( !idStr::Icmp( request, "campaignQuake4" ) ) SelectCampaign( "quake4" );
+        else if ( !idStr::Icmp( request, "campaignAwakening" ) ) SelectCampaign( "awakening" );
+        else if ( !idStr::Icmp( request, "campaignArena" ) ) SelectCampaign( "arena" );
+        else if ( !idStr::Icmp( request, "campaignBack" ) ) OpenCampaignSelector( false );
+        else if ( !idStr::Icmp( request, "campaignHome" ) ) StartMenu();
+        return;
+    }
 	if ( gui == NULL || request == NULL || gui != guiRetainedHome || guiActive != guiMainMenu ) {
 		return;
 	}

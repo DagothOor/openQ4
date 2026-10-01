@@ -1073,4 +1073,14 @@
 	"#str_230035"	"LADEZEIT"
 	"#str_230036"	"%"
 	"#str_230037"	"BEITRETEN"
+
+	// Built-in campaign selection
+	"#str_230038"	"KAMPAGNE"
+	"#str_230039"	"QUAKE 4"
+	"#str_230040"	"THE AWAKENING"
+	"#str_230041"	"Wähle eine Kampagne. The Awakening ist eine unfertige Alpha; einige Missionen und Inhalte sind noch unvollständig."
+	"#str_230042"	"Die Installation von The Awakening ist unvollständig. Stelle die Kampagneninhalte wieder her, um diese Option zu aktivieren."
+	"#str_230043"	"The Awakening ist nicht installiert. Füge die Kampagneninhalte hinzu, um diese Option zu aktivieren."
+	"#str_230044"	"Spiele eine Kampagne oder stelle dich den Stufen der Arena."
+	"#str_230045"	"ZURÜCK"
 }

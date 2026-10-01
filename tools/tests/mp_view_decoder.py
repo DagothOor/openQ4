@@ -146,7 +146,7 @@ int main(int argc, char **argv) {
 
 
 class MatchViewDecoder:
-    def __init__(self, output: Path, gamelibs: Path = ROOT.parent / "openQ4-game", *,
+    def __init__(self, output: Path, gamelibs: Path = ROOT, *,
                  executable: Path | None = None, production_source: Path | None = None) -> None:
         self.folder = None
         if executable is not None:

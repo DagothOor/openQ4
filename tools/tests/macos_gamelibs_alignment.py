@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GAME_LIBS_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT.parent / "openQ4-game")).resolve()
+GAME_LIBS_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT)).resolve()
 
 # Engine-interface headers that openQ4-game carries as copies. The engine is
 # authoritative: any content drift changes the effective virtual layouts the
@@ -84,128 +84,57 @@ def normalized_content_hash(path: Path) -> str:
 
 
 def validate_engine_interface_header_parity() -> None:
-    drifted: list[str] = []
+    # There is one engine interface. Games must never acquire stale copies.
     for relative_path in ENGINE_INTERFACE_HEADERS:
-        engine_path = ROOT / relative_path
-        game_path = GAME_LIBS_ROOT / relative_path
-        if not engine_path.is_file():
-            raise AssertionError(f"openQ4 engine-interface header not found: {engine_path}")
-        if not game_path.is_file():
-            raise AssertionError(f"openQ4-game engine-interface header copy not found: {game_path}")
-        engine_hash = normalized_content_hash(engine_path)
-        game_hash = normalized_content_hash(game_path)
-        if engine_hash != game_hash:
-            drifted.append(f"{relative_path} (openQ4 {engine_hash[:12]} != openQ4-game {game_hash[:12]})")
-    if drifted:
-        raise AssertionError(
-            "engine-interface header copies in openQ4-game drifted from the authoritative openQ4 versions; "
-            "re-sync them from openQ4 src/ (standalone game modules built against drifted headers can "
-            "crash at the engine/game ABI boundary despite passing the GAME_API_VERSION check):\n  "
-            + "\n  ".join(drifted)
-        )
+        assert (ROOT / relative_path).is_file(), relative_path
+    for tree in ('game','mpgame'):
+        assert not (ROOT / 'src' / tree / 'framework').exists()
+    meson=read('meson.build')
+    require(meson,"src_include_dir = include_directories('src')",'shared canonical engine interface')
+    require(meson,'game_idlib_include_dirs = [root_include_dir, src_include_dir]','SP interface includes')
+    require(meson,'game_idlib_mp_include_dirs = [root_include_dir, src_include_dir]','MP interface includes')
 
 
 def validate_companion_ci_revision() -> None:
-    """Every default CI source pair must contain the tested interface copies."""
-    workflow_names = (
-        "commit-validation.yml", "push-verification.yml", "linux-arm64-cross.yml",
-        "macos-debug.yml", "macos-sanitizer.yml",
-    )
-    pinned_revision = ""
-    for name in workflow_names:
-        source = read(f".github/workflows/{name}")
-        pins = re.findall(r"^\s*OPENQ4_GAMELIBS_SHA: ([0-9a-f]{40})\s*$", source, re.MULTILINE)
-        if len(pins) != 1:
-            raise AssertionError(f"{name} must pin exactly one immutable companion revision")
-        if pinned_revision and pins[0] != pinned_revision:
-            raise AssertionError(f"{name} has a different default companion revision")
-        pinned_revision = pins[0]
-        reject(source, "git clone --depth 1 https://github.com/themuffinator/openQ4-game.git", name)
-        require(source, 'origin "${OPENQ4_GAMELIBS_SHA}"', f"{name} immutable companion fetch")
-        require(source, 'checkout --detach "${OPENQ4_GAMELIBS_SHA}"', f"{name} detached companion checkout")
-        require(source, 'rev-parse HEAD)', f"{name} companion checkout verification")
-
-    for name in ("manual-release.yml", "macos-universal2-candidate.yml"):
-        source = read(f".github/workflows/{name}")
-        match = re.search(r"      openq4_game_ref:\n(.*?)        type: string", source, re.DOTALL)
-        if match is None or f"default: {pinned_revision}" not in match[1]:
-            raise AssertionError(f"{name} must default to the same tested companion revision as CI")
-
-    # A syntactically correct but stale pin would pass the working-tree parity
-    # check. Compare the immutable revision CI actually fetches as well.
-    for relative_path in ENGINE_INTERFACE_HEADERS:
-        completed = subprocess.run(
-            ["git", "-C", str(GAME_LIBS_ROOT), "show", f"{pinned_revision}:{relative_path}"],
-            check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        )
-        if completed.returncode != 0:
-            raise AssertionError(f"cannot inspect CI companion header {relative_path}: {completed.stderr.decode(errors='replace')}")
-        if completed.stdout.replace(b"\r\n", b"\n") != (ROOT / relative_path).read_bytes().replace(b"\r\n", b"\n"):
-            raise AssertionError(f"CI companion pin {pinned_revision} carries a stale engine-interface header: {relative_path}")
+    for name in ('commit-validation.yml','push-verification.yml','linux-arm64-cross.yml',
+                 'macos-debug.yml','macos-sanitizer.yml','manual-release.yml','macos-universal2-candidate.yml'):
+        source=read(f'.github/workflows/{name}')
+        reject(source,'OPENQ4_GAMELIBS_SHA','retired companion pin')
+        reject(source,'openQ4-game.git','retired companion fetch')
+        assert not re.search(r'^      openq4_game_ref:\s*$',source,re.MULTILINE), 'retired companion revision input'
+        require(source,'actions/checkout@','canonical source checkout')
 
 
 def validate_companion_boundary() -> None:
-    if (ROOT / "src" / "game").exists():
-        raise AssertionError("openQ4 must not grow a local src/game mirror; use openQ4-game as the source input")
-
-    meson = read("meson.build")
-    stage_script = read("tools/build/stage_gamelibs.py")
-    for token in (
-        'root / ".." / "openQ4-game"',
-        "OPENQ4_GAMELIBS_REPO",
-        "stage_gamelibs.py",
-        "gamelibs_stage",
-        "openq4_gamelibs_stage_manifest.json",
-    ):
-        require(meson, token, "openQ4 Meson GameLibs staging contract")
-
-    for token in (
-        "plan_game_sources",
-        "gameLibsGitCommit",
-        "gameLibsGitDirty",
-        "projectGitCommit",
-        "projectGitDirty",
-    ):
-        require(stage_script, token, "openQ4 GameLibs staging manifest contract")
+    meson=read('meson.build')
+    for tree in ('game','mpgame'):
+        assert (ROOT / 'src' / tree / 'Game_local.h').is_file()
+    require(meson,'game_libs_repo_root = meson.project_source_root()','in-tree source ownership')
+    reject(meson,'stage_gamelibs.py','direct compiler inputs')
+    require(meson,"output: 'openq4_game_sources.json'",'canonical source inventory')
+    inventory=read('tools/build/game_source_inventory.py')
+    for field in ('projectGitCommit','gameLibsGitCommit','projectGitDirty','gameLibsGitDirty','sourceDigest'):
+        require(inventory,field,'single-checkout provenance')
 
 
 def validate_companion_macos_contract() -> None:
-    meson = read_game_libs("src/meson.build")
-    workflow = read_game_libs(".github/workflows/commit-validation.yml")
-    readme = read_game_libs("README.md")
-
-    for token in (
-        "is_darwin and cpp.get_id() != 'clang'",
-        "['x86_64', 'aarch64'].contains(host_cpu_family)",
-        "game_arch = 'arm64'",
-        "sp_module_name = 'game-sp_' + game_arch",
-        "mp_module_name = 'game-mp_' + game_arch",
-        "name_suffix : 'dylib'",
-        "'-Wl,-install_name,@loader_path/' + sp_module_name + '.dylib'",
-        "'-Wl,-install_name,@loader_path/' + mp_module_name + '.dylib'",
-    ):
-        require(meson, token, "openQ4-game Meson macOS module contract")
-
-    for token in (
-        "runner: macos-15",
-        "runner: macos-15-intel",
-        "module_arch: arm64",
-        "module_arch: x64",
-        "game-sp_${module_arch}.dylib",
-        "game-mp_${module_arch}.dylib",
-        "lipo -archs",
-        "otool -D",
-        'expected="@loader_path/${module}"',
-    ):
-        require(workflow, token, "openQ4-game macOS CI dylib/install-name contract")
-
-    for token in (
-        "game-sp_arm64.dylib",
-        "game-mp_arm64.dylib",
-        "@loader_path",
-        "ARM64 ABI static checks",
-    ):
-        require(readme, token, "openQ4-game README macOS GameLibs contract")
+    meson=read('meson.build')
+    modules=read('content/baseoq4/meson.build')
+    for token in ("binary_arch = 'arm64'", "binary_arch = 'x64'",
+                  "game_sp_binary_name = 'game-sp_' + binary_arch",
+                  "game_mp_binary_name = 'game-mp_' + binary_arch"):
+        require(meson,token,'in-tree macOS module architecture')
+    for token in ("name_suffix: 'dylib'",
+                  "'-Wl,-install_name,@loader_path/' + game_sp_binary_name + '.dylib'",
+                  "'-Wl,-install_name,@loader_path/' + game_mp_binary_name + '.dylib'"):
+        require(modules,token,'in-tree macOS module install name')
+    workflow=read('.github/workflows/commit-validation.yml')
+    for token in ('macos-15','macos-15-intel'):
+        require(workflow,token,'in-tree macOS CI coverage')
+    validator=read('tools/validation/openq4_validate.py')
+    require(validator,'lipo','staged Mach-O architecture validation')
+    require(read('tools/build/package_nightly.py'),'macos_otool_install_name','packaged Mach-O install name validation')
+    require(read('tools/build/package_nightly.py'),'macos_otool_dependencies','packaged Mach-O dependency validation')
 
 
 def validate_game_module_symbol_discipline() -> None:
@@ -245,35 +174,9 @@ def validate_game_module_symbol_discipline() -> None:
     if module_meson.count("gnu_symbol_visibility: 'hidden',") != 4:
         raise AssertionError("darwin and linux game modules must both hide non-exported symbols")
 
-    companion_meson = read_game_libs("src/meson.build")
-    for token in (
-        "idlib_mp = static_library(",
-        "'idLibMP',",
-        "game_mpapi_define_arg",
-        "darwin_game_module_export_list",
-        "'-Wl,-exported_symbols_list,'",
-        "gnu_symbol_visibility : 'hidden',",
-    ):
-        require(companion_meson, token, "openQ4-game per-flavour idlib and darwin export list")
-
-    # _DEBUG changes shared struct layouts (srfTriangles_t::description,
-    # Heap.h's MemScopedTag). The engine never defines it on Clang, so the
-    # companion build must not either.
-    reject(companion_meson, "common_defines += ['_DEBUG']", "companion _DEBUG parity with the engine")
-
-    # The SDK SIMD implementations use 32-bit MSVC inline assembly. Keep them
-    # available to the x86 build while excluding the complete legacy family
-    # everywhere Simd.cpp intentionally selects the generic processor.
-    legacy_x86_simd_exclusion = """if host_cpu_family != 'x86'
-  idlib_excludes += [
-    'idlib/math/Simd_3DNow.cpp',
-    'idlib/math/Simd_MMX.cpp',
-    'idlib/math/Simd_SSE.cpp',
-    'idlib/math/Simd_SSE2.cpp',
-    'idlib/math/Simd_SSE3.cpp',
-  ]
-endif"""
-    require(companion_meson, legacy_x86_simd_exclusion, "companion architecture-specific SIMD source selection")
+    # The engine and both game flavours share compiler flags and support code.
+    reject(engine_meson,"common_defines += ['_DEBUG']",'Clang game/engine layout parity')
+    require(engine_meson,'game_common_cpp_args = shared_cpp_args +','shared game/engine flags')
 
     lib_header = read("src/idlib/Lib.h")
     require(
@@ -382,7 +285,8 @@ def validate_phase8_docs() -> None:
     ):
         require(support_data, token, "macOS support data guide")
 
-    require(signoff_evidence, "openQ4 and `openQ4-game` commit fields", "macOS signoff evidence index")
+    require(signoff_evidence, "openQ4 commit and game-source inventory", "macOS signoff evidence index")
+    require(signoff_evidence, "both commit fields to the same openQ4 SHA", "macOS signoff evidence index")
 
     for token in (
         "[x] Keep openQ4 staged builds as the release source of truth for game-module validation.",
@@ -413,7 +317,7 @@ def validate_wiring() -> None:
             raise AssertionError(f"{context} should compile and run macos_gamelibs_alignment.py")
 
     require(macos_debug, "python tools/tests/macos_gamelibs_alignment.py", "macOS debug static guards")
-    require(companion_workflow, "tools/tests/arm64_abi_contract.py", "openQ4-game static ABI workflow wiring")
+    require(companion_workflow, "tools/tests/game_class_allocator_alignment.py", "in-tree game ABI workflow wiring")
 
 
 def main() -> None:

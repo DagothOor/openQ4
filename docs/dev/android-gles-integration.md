@@ -1,5 +1,10 @@
 # Android/GLES integration and attribution
 
+Current build guidance: game sources are now in openQ4 under `src/game/` and
+`src/mpgame/`. No companion checkout, pin or source stage is required. The
+commit pairs and stage references below record the earlier port qualification;
+see [the current Android build guide](android-build.md) for today's workflow.
+
 This is an adaptation of **[Emile Belanger (emileb)](https://github.com/emileb)'s work** to official openQ4 after 0.12.0. Emile is the original author of the Android port, SigmaTouch integration, GLES renderer and shader variants, ETC2/EAC encoder, and associated mobile loading and memory improvements. The official integration must not be represented as independently originating those features.
 
 ## Source revisions

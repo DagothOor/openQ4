@@ -216,7 +216,7 @@ def validate_user_documentation() -> None:
 
 
 def validate_game_layer_runtime_paths() -> None:
-    """linuxdeploy prepares a packaged q4xbase's modules after baseoq4's, and only when present."""
+    """User content or obsolete expansion modules never add an AppImage runtime dependency."""
     work = ROOT / ".tmp" / "openq4-appimage-policy" / "layer-paths"
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
@@ -225,8 +225,8 @@ def validate_game_layer_runtime_paths() -> None:
         raise AssertionError("an AppImage without q4xbase prepares exactly the core runtime")
     (work / "q4xbase").mkdir()
     with_layer = APPIMAGE.core_runtime_relative_paths(work, "arm64")
-    if with_layer != base + (Path("q4xbase/game-sp_arm64.so"), Path("q4xbase/game-mp_arm64.so")):
-        raise AssertionError(f"q4xbase modules must follow the core runtime: {with_layer}")
+    if with_layer != base:
+        raise AssertionError(f"obsolete q4xbase modules must not enter the AppImage runtime: {with_layer}")
 
 
 def main() -> None:

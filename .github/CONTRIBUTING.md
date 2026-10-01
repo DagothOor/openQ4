@@ -130,9 +130,10 @@ powershell -ExecutionPolicy Bypass -File tools/build/meson_setup.ps1 install -C 
 ### Project Structure Notes
 
 - **Engine code:** lives under `src/`.
-- **Game code:** maintained in the companion repository
-  [openQ4-game](https://github.com/themuffinator/openQ4-game). Do not mirror
-  game-library sources under `src/game/` in this repository.
+- **Game code:** maintained in `src/game/` and `src/mpgame/` in this repository.
+  Awakening single-player additions live under `src/game/awakening/` and apply
+  only while that campaign's `q4xbase` content is active. The former companion
+  repositories are historical references.
 - **BSE code:** lives under `src/bse/` and is treated as first-party openQ4
   code. BSE is built into the client executable.
 - **Runtime overrides:** authored overrides belong under `content/baseoq4/`. The
@@ -179,12 +180,13 @@ powershell -ExecutionPolicy Bypass -File tools/build/meson_setup.ps1 install -C 
 
 - openQ4 engine code is licensed under the [GNU General Public License
   v3.0](../LICENSE).
-- Game-library code in [openQ4-game](https://github.com/themuffinator/openQ4-game)
-  is derived from the Quake 4 SDK and remains subject to id Software's SDK EULA.
+- Game-library code under `src/game/` and `src/mpgame/` is derived from the
+  Quake 4 SDK and remains subject to id Software's SDK EULA.
 - Quake 4 assets remain the property of id Software and ZeniMax Media.
 
-By contributing code to this repository, you agree that your contribution will
-be licensed under the same license as the existing engine code.
+Contributions must follow the licence of the component they modify. See
+[LICENSING.md](../LICENSING.md) for the component boundaries, original notices,
+and distribution considerations.
 
 ---
 

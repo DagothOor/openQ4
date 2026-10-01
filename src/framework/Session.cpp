@@ -3401,6 +3401,25 @@ Session_Map_f
 Restart the server on a different map
 ==================
 */
+static void Session_CampaignSelect_f( const idCmdArgs &args ) {
+    if ( args.Argc() < 2 || args.Argc() > 3 || ( args.Argc() == 3 && idStr::Icmp( args.Argv( 2 ), "start" ) ) ) {
+        common->Printf( "usage: campaignSelect quake4|awakening|arena [start]\n" ); return;
+    }
+    sessLocal.SelectCampaign( args.Argv( 1 ), args.Argc() == 3 );
+}
+
+static void Session_CampaignMenu_f( const idCmdArgs &args ) {
+    if ( args.Argc() > 2 || ( args.Argc() == 2 && idStr::Icmp( args.Argv( 1 ), "campaigns" ) ) ) return;
+    sessLocal.OpenCampaignSelector( args.Argc() == 2 );
+}
+
+static void Session_CampaignList_f( const idCmdArgs &args ) {
+    const idCampaignContentInfo info = fileSystem->GetAwakeningContentInfo();
+    common->Printf( "CAMPAIGN quake4 available=1 gameDir=baseoq4 module=game_sp\n" );
+    common->Printf( "CAMPAIGN awakening present=%d available=%d gameDir=q4xbase module=game_sp missing=%s\n", info.present, info.ready, info.missing.c_str() );
+    common->Printf( "CAMPAIGN arena available=1 gameDir=baseoq4 module=game_mp active=%s\n", cvarSystem->GetCVarString( "fs_game" ) );
+}
+
 static void Session_Map_f( const idCmdArgs &args ) {
 	idStr		map, string;
 	idStr		entityFilter;
@@ -8501,6 +8520,9 @@ void idSessionLocal::Init() {
 	cmdSystem->AddCommand( "openq4_resumeBakeLightGrids", Session_openQ4ResumeBakeLightGrids_f, CMD_FL_SYSTEM|CMD_FL_CHEAT, "internal helper to continue light-grid baking after game-module switches" );
 	cmdSystem->AddCommand( "iamtheduke", Session_IAmTheDuke_f, CMD_FL_SYSTEM|CMD_FL_CHEAT, "toggles the SP-only iamtheduke cheat text overlay" );
 	cmdSystem->AddCommand( "bakeLightGrids", Session_BakeLightGrids_f, CMD_FL_SYSTEM|CMD_FL_CHEAT, "bakes openQ4-compatible lightgrid metadata and irradiance atlases for the current map or a batch of maps" );
+    cmdSystem->AddCommand( "campaignSelect", Session_CampaignSelect_f, CMD_FL_SYSTEM, "selects a built-in single-player campaign" );
+    cmdSystem->AddCommand( "campaignList", Session_CampaignList_f, CMD_FL_SYSTEM, "reports built-in campaign content readiness without mounting it" );
+    cmdSystem->AddCommand( "campaignMenu", Session_CampaignMenu_f, CMD_FL_SYSTEM, "opens the single-player or campaign selector" );
 	cmdSystem->AddCommand( "map", Session_Map_f, CMD_FL_SYSTEM, "loads a map", idCmdSystem::ArgCompletion_MapName );
 	cmdSystem->AddCommand( "devmap", Session_DevMap_f, CMD_FL_SYSTEM, "loads a map in developer mode", idCmdSystem::ArgCompletion_MapName );
 	cmdSystem->AddCommand( "testmap", Session_TestMap_f, CMD_FL_SYSTEM, "tests a map", idCmdSystem::ArgCompletion_MapName );

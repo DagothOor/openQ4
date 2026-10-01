@@ -4,12 +4,12 @@
 
 <img src="assets/docs/img/banner.png" alt="openQ4 banner">
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Licensing: GPL engine and SDK game code](https://img.shields.io/badge/Licensing-GPL%20engine%20%7C%20SDK%20game%20code-blue.svg)](LICENSING.md)
 [![Status](https://img.shields.io/badge/status-Beta%20Development-d97a1f.svg)](https://github.com/themuffinator/openQ4/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20preview-lightgrey.svg)](https://github.com/themuffinator/openQ4)
 [![Architecture](https://img.shields.io/badge/arch-x64%20%7C%20ARM64-orange.svg)](https://github.com/themuffinator/openQ4)
 
-**Play Quake 4 on modern systems with an open-source engine and game-code replacement built around the original retail assets.**
+**Play Quake 4 on modern systems with an open-source engine and SDK-licensed game-code replacement built around the original retail assets.**
 
 <a href="https://github.com/themuffinator/openQ4/releases">
   <img src="https://img.shields.io/badge/Download-Latest%20Release-2d8f4e?style=for-the-badge&logo=github" alt="Download the latest openQ4 release">
@@ -37,7 +37,7 @@
 
 ## What is openQ4?
 
-**openQ4** is an open-source replacement for the Quake 4 engine and game binaries, built to keep the original game playable on modern PCs while improving presentation, audio, controls, packaging, and day-to-day usability.
+**openQ4** replaces the Quake 4 engine and game binaries with a GPL-covered engine and SDK-licensed, source-available game modules, built to keep the original game playable on modern PCs while improving presentation, audio, controls, packaging, and day-to-day usability.
 
 It is designed for players who want the original Quake 4 experience with a cleaner path to running it on today's hardware.
 
@@ -45,7 +45,7 @@ It is designed for players who want the original Quake 4 experience with a clean
 > openQ4 does **not** include Quake 4 assets. You still need a legitimate Quake 4 copy from Steam or GOG.
 
 > [!IMPORTANT]
-> I am getting the question a lot - particularly in the past week or two (Aug 2026) - so I feel I need to emphasise this point now: **openQ4 is not compatible with legacy Quake 4 game code**. This includes the recent Awakening leak by Justin Marshall. This position won't (and cannot) change. An Awakening mod for openQ4 isn't off the cards, however.
+> openQ4 uses its own game modules. The Awakening single-player additions are integrated into them; **Single Player → Campaign** detects user-supplied Awakening content. The original leaked DLLs are not used. Awakening is unfinished alpha content, and its multiplayer changes are outside this integration.
 
 > [!IMPORTANT]
 > Another point to make, as sadly luddites have become more common rather than less in 2026 and certainly more vocal than ever. Yes, this software is mostly vibe coded and with the extensive work that has gone into it it wouldn't be humanly possible to achieve without a small studio. That does not mean it isn't thoroughly checked and tested by multiple people, it also doesn't mean it is unsafe for use, nor does it mean we don't understand the codebase. It does have a few remaining issues to iron out - remaining macOS support being the main one - but as feedback will show it is otherwise stable. Whether you choose to follow unsubstantiated claims by luddites is entirely up to you, but I would first take a moment to examine their track records before presuming their expertise and credibility on the matter.
@@ -313,7 +313,7 @@ so the experimental PBR path can stay active instead of exhausting its cache.
 - [BUILDING.md](BUILDING.md) - compile openQ4 from source
 - [Android, GLES and SigmaTouch](docs/dev/android-build.md) - experimental native Android builds, optional touch-host integration, and desktop GLES testing
 - [TECHNICAL.md](TECHNICAL.md) - advanced configuration, file layout, compatibility notes, and mod details
-- [The Awakening support plan](docs/dev/plans/q4x-awakening.md) - building and running the `q4xbase` expansion mod, and what works so far
+- [The Awakening support plan](docs/dev/plans/q4x-awakening.md) - integrated single-player campaign support and remaining alpha limitations
 - [Map Entity Strings](docs/user/map-entity-strings.md) - replace or extend a map's runtime entities without editing the original map
 - [Experimental Level Editor](docs/user/level-editor.md) - separate `editorExperimental` workspace with source preview, entity inspector, undo, protected saves and recovery; legacy Radiant retained
 
@@ -324,7 +324,7 @@ so the experimental PBR path can stay active instead of exhausting its cache.
 - openQ4 targets the **official Quake 4 retail assets**.
 - It ships its **own engine and game modules**.
 - It is **not** a drop-in runtime for the original proprietary Quake 4 DLL mods.
-- The unreleased **Quake 4: The Awakening** expansion runs as the `q4xbase` mod, campaign and multiplayer, on openQ4's own game code extended by [openQ4-game-awakening](https://github.com/themuffinator/openQ4-game-awakening), never the leaked game binary. Release packages include its game modules, but not the expansion's content. The [support plan](docs/dev/plans/q4x-awakening.md) records what was built, how it is tested, and what the expansion itself left unfinished.
+- **Quake 4: The Awakening single player** is available through **Single Player → Campaign** when its content is installed. Both campaigns use the same `baseoq4` SP module, with separate content mounts and save directories. Expansion content is not included. See the [campaign installation guide](docs/user/campaigns.md) and [support plan](docs/dev/plans/q4x-awakening.md).
 - The project is still in **beta development**, so compatibility work is ongoing.
 
 Developers and testers should use the [engine capability matrix](docs/dev/engine-capability-matrix.md) for authoritative implemented/experimental/missing status, the [idTech 5-level modernization roadmap](docs/dev/idtech5-modernization-roadmap.md) for the compatibility-safe implementation order, the [shared interaction-lighting contract](docs/dev/classic-interaction-domain-modernization.md), [shared fog/blend contract](docs/dev/classic-fog-blend-domain-modernization.md), and [shared material-deform contract](docs/dev/classic-deform-domain-modernization.md) for the default-off ownership and rollback boundaries, the [loading/cache contract](docs/dev/loading-cache-modernization.md) for the source-authoritative preload and generated-cache boundary plus pending evidence, and the [stock-asset baseline](docs/dev/stock-asset-baseline.md) for reproducible PK4, SP/MP, save/load, demo, log, and engine-screenshot evidence.
@@ -368,12 +368,12 @@ Bug reports, compatibility reports, testing feedback, and code contributions are
 
 openQ4 engine code is licensed under the [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0). See [LICENSE](LICENSE) for details. Files retaining Doom 3 or Doom 3 BFG Edition headers also retain their upstream notices and are accompanied by the corresponding published Additional Terms; the [source-provenance inventory](docs/dev/source-provenance.md) records their scope, pinned audit references, and intermediate lineage without offering a legal conclusion.
 
-The game-library code in [openQ4-game](https://github.com/themuffinator/openQ4-game) is derived from the Quake 4 SDK and remains subject to id Software's SDK EULA. Quake 4 assets remain the property of id Software and ZeniMax Media.
+The game-library code in [`src/game`](src/game/) and [`src/mpgame`](src/mpgame/) is derived from the Quake 4 SDK and remains subject to [id Software's SDK EULA](LICENSES/QUAKE-4-SDK-EULA.rtf). [LICENSING.md](LICENSING.md) distinguishes component terms and the unresolved linked-distribution licensing question. Quake 4 assets remain the property of id Software and ZeniMax Media.
 
 openQ4 is an independent project and is not affiliated with, endorsed by, or sponsored by id Software, Raven Software, Bethesda, or ZeniMax Media.
 
 ---
 
-[Website](https://www.darkmatter-quake.com) | [Repository](https://github.com/themuffinator/openQ4) | [Game Library](https://github.com/themuffinator/openQ4-game) | [Issues](https://github.com/themuffinator/openQ4/issues) | [Releases](https://github.com/themuffinator/openQ4/releases)
+[Website](https://www.darkmatter-quake.com) | [Repository](https://github.com/themuffinator/openQ4) | [Game Sources](src/game/) | [Issues](https://github.com/themuffinator/openQ4/issues) | [Releases](https://github.com/themuffinator/openQ4/releases)
 
 [Back to Top](#top)

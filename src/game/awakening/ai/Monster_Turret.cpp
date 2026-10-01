@@ -6,8 +6,8 @@
 
 	riMonsterTurret
 
-	The expansion's version of rvMonsterTurret. Every turret spawn becomes one
-	(SPAWNCLASS_SUBSTITUTION below), and without the keys that switch its
+	The expansion's version of rvMonsterTurret. Awakening turret spawns become one
+	(the campaign-scoped substitution below), and without the keys that switch its
 	additions on it behaves exactly like the stock turret.
 
 	"dynamicAccuracy": every burst starts wild and tightens as it goes: over
@@ -65,7 +65,7 @@ CLASS_STATES_DECLARATION( riMonsterTurret )
 	STATE( "Torso_BlasterAttack",	riMonsterTurret::State_Torso_BlasterAttack )
 END_CLASS_STATES
 
-SPAWNCLASS_SUBSTITUTION( rvMonsterTurret, riMonsterTurret )
+SPAWNCLASS_SUBSTITUTION_FOR_GAME( "q4xbase", rvMonsterTurret, riMonsterTurret )
 
 static const float TURRET_TRACKING_SLACK = 10.0f;
 

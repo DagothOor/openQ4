@@ -23,7 +23,7 @@ RENDERER = ROOT / "src" / "renderer"
 GLPROGS = ROOT / "content" / "baseoq4" / "pak0" / "glprogs"
 VK_SHADERS = RENDERER / "Vulkan" / "shaders"
 GAME_LIBS_ROOT = Path(
-    os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT.parent / "openQ4-game")
+    os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT)
 ).resolve()
 
 GL_INTERACTIONS = (

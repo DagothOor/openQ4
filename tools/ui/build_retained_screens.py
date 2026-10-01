@@ -31,6 +31,8 @@ OUTPUTS = {
     "title": PAK0 / "guis" / "menu" / "title.q4ui",
     "pause": PAK0 / "guis" / "menu" / "pause.q4ui",
     "loading": PAK0 / "guis" / "loading" / "loading.q4ui",
+    "singleplayer": PAK0 / "guis" / "menu" / "singleplayer.q4ui",
+    "campaigns": PAK0 / "guis" / "menu" / "campaigns.q4ui",
 }
 
 U = 1.5            # dp per stock source unit at the 720 dp canvas
@@ -932,6 +934,59 @@ def title_document() -> dict:
     return doc.build(root)
 
 
+def campaign_document(campaigns: bool) -> dict:
+    """Single Player page and Campaign sub-page, specification sections 8/9.
+
+    Use the shared Marine plates and docked vector bands. Content readiness
+    comes from the filesystem probe, never a module or a folder's name alone.
+    """
+    doc = Document("openq4.campaigns" if campaigns else "openq4.singleplayer")
+    back = "campaignBack" if campaigns else "campaignHome"
+    doc.session("back", back)
+    doc.events["onBack"] = [{"op": "action", "action": "back"}]
+    if campaigns:
+        doc.state.update({"awakening_ready": {"type": "boolean", "initial": False},
+                          "awakening_present": {"type": "boolean", "initial": False}})
+        rows = [("quake4", "#str_230039", "campaignQuake4"),
+                ("awakening", "#str_230040", "campaignAwakening")]
+    else:
+        rows = [("campaign", "#str_230038", "campaigns"), ("arena", "#str_42002", "campaignArena")]
+    buttons = []
+    for ident, key, action in rows:
+        doc.session(action, action)
+        buttons.append(navigation_plate(doc, ident, key, action=action))
+    if campaigns:
+        doc.bind("awakening.enabled", "awakening", "enabled", {"state": "awakening_ready"})
+    buttons.append(navigation_plate(doc, "back", "#str_230045", action="back"))
+    details = []
+    if campaigns:
+        for ident, key in [("available", "#str_230041"), ("partial", "#str_230042"), ("absent", "#str_230043")]:
+            details.append(label(ident, key, {**absolute(left=0, top=0, width=U * 210, height=U * 140),
+                                            "display": keyword("none"),
+                                            **typeface("lowpixel", 18, 26, rgb(OLIVE))}))
+        doc.bind("available.display", "available", "display", {"op": "select", "args": [{"state": "awakening_ready"}, "block", "none"]})
+        for ident, partial in [("partial", True), ("absent", False)]:
+            doc.bind(ident + ".display", ident, "display", {"op": "select", "args": [
+                {"state": "awakening_ready"}, "none", {"op": "select", "args": [
+                    {"state": "awakening_present"}, "block" if partial else "none", "none" if partial else "block"]}]})
+    else:
+        details.append(label("description", "#str_230044", {**absolute(left=0, top=0, width=U * 210, height=U * 140),
+                                                           **typeface("lowpixel", 18, 26, rgb(OLIVE))}))
+    bands = framing_bands("band")
+    bands[0]["properties"]["transform"] = transform(*TOP_TO_PAGE)
+    bands[1]["properties"]["transform"] = transform(*BOTTOM_TO_PAGE)
+    content = group("content", {**absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"), "margin-left": length(-CANVAS_W / 2)}, [
+        label("title", "#str_230038" if campaigns else "#str_42000", {**absolute(left=U * 44, top=U * 54, width=U * 550, height=U * 38),
+                         **typeface("marine", 36, 44, rgb(ORANGE))}),
+        group("navigation", {**absolute(left=0, top=U * 190, width=U * 357), "display": keyword("flex"), "flex-direction": keyword("column")}, buttons),
+        group("details", absolute(left=U * 395, top=U * 190, width=U * 210, height=U * 140), details),
+    ])
+    return doc.build(group("screen", {**FULL, "background-color": colour([0, 0, 0, 1])}, [
+        *lit_field("field", 0.7), *bands, content,
+        prompt_bar(doc, [("#str_107019", "#str_200747"), ("#str_107020", "#str_230045")]),
+    ]))
+
+
 # ------------------------------------------------------------------- the pause
 
 def level_block(doc: Document) -> dict:
@@ -1307,7 +1362,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true", help="fail when a generated document differs from its source")
     args = parser.parse_args()
-    documents = {"title": title_document(), "pause": pause_document(), "loading": loading_document()}
+    documents = {"title": title_document(), "pause": pause_document(), "loading": loading_document(),
+                 "singleplayer": campaign_document(False), "campaigns": campaign_document(True)}
     stale = []
     for name, document in documents.items():
         output = OUTPUTS[name]

@@ -14,7 +14,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 RENDERER = ROOT / "src" / "renderer"
 GAME_ROOT = Path(
-    os.environ.get("OPENQ4_GAMELIBS_REPO", str(ROOT.parent / "openQ4-game"))
+    os.environ.get("OPENQ4_GAMELIBS_REPO", str(ROOT))
 ).resolve()
 
 

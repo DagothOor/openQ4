@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 GAME_ROOT = Path(
-    os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT.parent / "openQ4-game")
+    os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT)
 ).resolve()
 MATCH_ROOT = GAME_ROOT / "src/mpgame/mp/match"
 HEADER = MATCH_ROOT / "MatchControlLocalization.h"
@@ -486,16 +486,16 @@ def static_contracts(header: str, source: str) -> None:
             raise AssertionError(f"localization bridge contains forbidden construction {forbidden!r}")
 
     listed = subprocess.run(
-        [sys.executable, str(GAME_ROOT / "src/buildscripts/list_sources.py"),
-         str(GAME_ROOT / "src"), "mpgame", "mpgame/Callbacks.cpp",
-         "mpgame/gamesys/Callbacks.cpp"],
+        [sys.executable, str(ROOT / "tools/build/list_sources.py"),
+         str(GAME_ROOT), "src/mpgame", "src/mpgame/Callbacks.cpp",
+         "src/mpgame/gamesys/Callbacks.cpp"],
         cwd=GAME_ROOT,
         text=True,
         capture_output=True,
     )
     if listed.returncode != 0:
         raise AssertionError("could not inspect MP source discovery:\n" + listed.stderr)
-    if "mpgame/mp/match/MatchControlLocalization.cpp" not in listed.stdout.splitlines():
+    if "src/mpgame/mp/match/MatchControlLocalization.cpp" not in listed.stdout.splitlines():
         raise AssertionError("MatchControlLocalization.cpp is not compiled into game_mp")
 
     referenced = set(re.findall(r'"(#str_\d+)"', source))

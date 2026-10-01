@@ -36,7 +36,6 @@ def validate_candidate_workflow() -> None:
     for token in (
         "name: macOS Universal2 Release Candidate",
         "workflow_dispatch:",
-        "openq4_game_ref:",
         "graphics_bridge:",
         "macos_signing_mode:",
         "default: ad-hoc",
@@ -51,9 +50,7 @@ def validate_candidate_workflow() -> None:
         "macos-15",
         "Verify requested native architecture",
         "expected_arch=\"x86_64\"",
-        "Fetch pinned openQ4-game source",
         "--expected-project-commit",
-        "--expected-gamelibs-commit",
         "--buildtype=debugoptimized",
         "assemble_macos_universal2.py record",
         "Archive thin universal2 candidate payload with modes",
@@ -79,6 +76,9 @@ def validate_candidate_workflow() -> None:
         require(workflow, token, "macOS universal2 candidate workflow")
 
     reject(workflow, "contents: write", "macOS universal2 candidate workflow permissions")
+    reject(workflow, "Fetch pinned openQ4-game source", "single-checkout game source ownership")
+    reject(workflow, "      openq4_game_ref:", "single-checkout source selection")
+    require(workflow, '--source-manifest builddir/openq4_game_sources.json', 'in-tree universal2 provenance')
     reject(workflow, "gh release", "macOS universal2 candidate workflow publication")
     reject(workflow, "softprops/action-gh-release", "macOS universal2 candidate workflow publication")
     reject(workflow, "path: .install", "macOS universal2 candidate thin artifact transfer")

@@ -152,6 +152,9 @@ public:
     idStr RetainedPauseShot(const char*) const { return "gfx/guis/loadscreens/generic"; }
     void UpdateRetainedHome(); bool RetainedHomeInputBlocked() const; void RetainedHomeFrameEvent();
     void HandleRetainedSessionRequest(idUserInterface*, const char*);
+    void OpenCampaignSelector(bool) {}
+    void SelectCampaign(const char*) {}
+    void StartMenu() {}
     idUserInterface* SelectRetainedLoadingGui(idUserInterface*, bool);
     void PreloadRetainedScreens(); void PrepareRetainedLevel(const char*, bool);
     void ReportRetainedScreens();
@@ -282,7 +285,7 @@ int main() {
 
 def cpp_allowlist(text: str) -> set[str]:
     block = function_body(text, 'bool SessionMenuCommand(')
-    return set(re.findall(r'"([A-Za-z]+)"', block.split('{', 2)[2]))
+    return set(re.findall(r'"([A-Za-z][A-Za-z0-9]*)"', block.split('{', 2)[2]))
 
 
 def main() -> int:
@@ -300,9 +303,13 @@ def main() -> int:
     for source, name in ((menu, 'Session_menu.cpp'), (session, 'Session.cpp')):
         for match in re.finditer(r'"([^"]+\.q4ui)"', source):
             path = match.group(1)
-            allowed = {'guis/menu/settings/system.q4ui', 'guis/menu/title.q4ui', 'guis/menu/pause.q4ui', 'guis/loading/loading.q4ui'}
+            allowed = {'guis/menu/settings/system.q4ui', 'guis/menu/title.q4ui', 'guis/menu/pause.q4ui', 'guis/loading/loading.q4ui',
+                       'guis/menu/singleplayer.q4ui', 'guis/menu/campaigns.q4ui'}
             assert path in allowed, f'{name} names an ungated retained document {path}'
     assert menu.count('FindGui( "guis/menu/settings/system.q4ui"') == 1
+    campaign_selector = function_body(menu, 'void idSessionLocal::OpenCampaignSelector(')
+    assert 'Session_RetainedScreensEnabled() ?' in campaign_selector
+    assert 'FindGui( "guis/campaign_menu.gui"' in campaign_selector
     assert menu.count('RETAINED_TITLE_GUI') == 3 and menu.count('RETAINED_PAUSE_GUI') == 4 and menu.count('RETAINED_LOADING_GUI') == 2
     for signature in ('void idSessionLocal::PreloadRetainedScreens(', 'void idSessionLocal::PrepareRetainedLevel('):
         assert 'if ( !Session_RetainedScreensEnabled()' in function_body(menu, signature), f'{signature} must be gated'
@@ -331,16 +338,16 @@ def main() -> int:
     generator = subprocess.run([sys.executable, str(ROOT / 'tools/ui/build_retained_screens.py'), '--check'], capture_output=True, text=True)
     assert generator.returncode == 0, generator.stderr
     allowlist = cpp_allowlist(adapter)
-    handled = set(re.findall(r'\{ "([A-Za-z]+)",\s+"main_b_', menu)) | set(re.findall(r'!idStr::Icmp\( request, "([A-Za-z]+)" \)', menu))
+    handled = set(re.findall(r'\{ "([A-Za-z][A-Za-z0-9]*)",\s+"main_b_', menu)) | set(re.findall(r'!idStr::Icmp\( request, "([A-Za-z][A-Za-z0-9]*)" \)', menu))
     assert allowlist == handled, f'allowlist {sorted(allowlist)} differs from session handlers {sorted(handled)}'
-    for relative in ('content/baseoq4/pak0/guis/menu/title.q4ui', 'content/baseoq4/pak0/guis/menu/pause.q4ui', 'content/baseoq4/pak0/guis/loading/loading.q4ui'):
+    for relative in ('content/baseoq4/pak0/guis/menu/title.q4ui', 'content/baseoq4/pak0/guis/menu/pause.q4ui', 'content/baseoq4/pak0/guis/loading/loading.q4ui', 'content/baseoq4/pak0/guis/menu/singleplayer.q4ui', 'content/baseoq4/pak0/guis/menu/campaigns.q4ui'):
         text = (ROOT / relative).read_text(encoding='utf-8')
         document = json.loads(re.sub(r'^\s*//.*$', '', text, flags=re.M))
         assert document.get('canvas') == {'height': 720}, relative
         for action in document.get('actions', {}).values():
             assert action['operation'] == 'session.menu' and action['arguments']['command'] in allowlist, relative
     # No game or legacy content names a retained document.
-    for folder in (ROOT / 'content', ROOT.parent / 'openQ4-game' / 'src'):
+    for folder in (ROOT / 'content', ROOT / 'src/game', ROOT / 'src/mpgame'):
         if not folder.exists():
             continue
         for path in folder.rglob('*'):

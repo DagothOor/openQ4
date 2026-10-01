@@ -180,15 +180,21 @@ def main() -> None:
         'mapSpawned = true;\n#ifdef ID_DEDICATED\n\tcommon->Printf( "Dedicated map ready: %s\\n", mapString.c_str() );',
         "dedicated post-load readiness marker",
     )
+    reject(linux_main, "Sys_ShowSplash();", "Linux splash deferred until launch settings")
+    reject(macos_main, "Sys_ShowSplash();", "macOS splash deferred until launch settings")
+    reject(read("src/sys/win32/win_syscon.cpp"), "Sys_ShowSplash();", "Windows splash deferred until launch settings")
+    common = read("src/framework/Common.cpp")
+    startup = common[common.index("void idCommonLocal::Init( int argc"):]
+    settings = startup.index("StartupVariable( NULL, false );")
+    splash = startup.index("Sys_ShowSplash();")
+    assert settings < splash, "Splash must follow command-line CVar application"
     require(
-        linux_main,
-        "Posix_EarlyInit( );\n#ifndef ID_DEDICATED\n\tSys_ReportWaylandRuntime();\n\tSys_ShowSplash();",
-        "Linux dedicated splash exclusion",
-    )
-    require(
-        macos_main,
-        "Posix_EarlyInit();\n#ifndef ID_DEDICATED\n\tSys_ShowSplash();",
-        "macOS dedicated splash exclusion",
+        startup,
+        '#ifndef ID_DEDICATED\n\t\t// The splash must respect launch settings before creating any visible window.\n'
+        '\t\tif ( !cvarSystem->GetCVarBool( "r_hiddenWindow" ) && !com_skipRenderer.GetBool() &&\n'
+        '\t\t\t!idAsyncNetwork::serverDedicated.GetInteger() && !cvarSystem->GetCVarBool( "win_viewlog" ) ) {\n'
+        '\t\t\tSys_ShowSplash();\n\t\t}\n#endif',
+        "Shared headless and dedicated splash exclusion",
     )
     require(
         posix_console,

@@ -209,6 +209,8 @@ public:
 	virtual void		ExitMenu();
 	virtual void		GuiFrameEvents();
 	virtual void		SetGUI( idUserInterface *gui, HandleGuiCommand_t handle );
+	void OpenCampaignSelector( bool campaigns );
+	void SelectCampaign( const char *campaign, bool start = false );
 	bool				OpenSystemSettings();
 	bool				ReturnSystemSettings();
 	void				ReportSystemSettings();

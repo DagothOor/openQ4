@@ -16,7 +16,7 @@ Experimental Android native builds, SigmaTouch host integration and the optional
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
-- [GameLibs Companion Repository](#gamelibs-companion-repository)
+- [In-tree Game Sources](#in-tree-game-sources)
 - [Build Setup](#build-setup)
 - [Build Options](#build-options)
 - [Validation Scripts](#validation-scripts)
@@ -58,35 +58,26 @@ Alternatively, open `tools/build/openq4_devcmd.cmd` first to initialise the Visu
 
 ---
 
-## GameLibs Companion Repository
+## In-tree Game Sources
 
-openQ4's game code (single-player and multiplayer modules) lives in a **separate companion repository** — [openQ4-game](https://github.com/themuffinator/openQ4-game). This separation clearly identifies the SDK-licensed components derived from the [Quake 4 SDK](https://www.moddb.com/games/quake-4/downloads/quake-4-sdk-v15), and makes openQ4-game the canonical source-input repository for SDK/game-library code.
+The engine, single-player (`src/game/`) and multiplayer (`src/mpgame/`) sources
+are maintained and built in this checkout. Clone **openQ4 only**; the retired
+`openQ4-game` and `openQ4-game-awakening` checkouts are no longer build inputs.
+Their source histories are preserved in the import commit. See the
+[import record](docs/dev/game-source-provenance.md) and [licensing scope](LICENSING.md).
 
-> [!IMPORTANT]
-> **The openQ4 build expects openQ4-game to be checked out alongside openQ4**, at `../openQ4-game` relative to this repository. If the companion repository is missing or at a different path, game-module builds will fail.
+Meson compiles game sources directly. The wrappers compare
+`builddir/openq4_game_sources.json` with the canonical source tree so additions,
+removals and content changes refresh configuration and source stamps. Game DLLs
+remain available in `builddir/baseoq4/` and are staged into `.install/baseoq4/`.
+The compatibility `build_gamelibs.ps1` entry point builds this engine checkout;
+`OPENQ4_BUILD_GAMELIBS` no longer starts a companion build.
 
-### Setting Up
-
-```bash
-# Clone both repositories side-by-side:
-git clone https://github.com/themuffinator/openQ4.git
-git clone https://github.com/themuffinator/openQ4-game.git
-
-# Result:
-#   ./openQ4/            ← this repository
-#   ./openQ4-game/   ← game library source
-```
-
-To use a custom location, set the environment variable before configuring:
-
-```bash
-export OPENQ4_GAMELIBS_REPO=/path/to/openQ4-game   # Linux / macOS
-$env:OPENQ4_GAMELIBS_REPO = "C:\path\to\openQ4-game"  # PowerShell
-```
-
-To rebuild the game libraries as part of the openQ4 build, set `OPENQ4_BUILD_GAMELIBS=1` before running compile.
-
-During configure, openQ4 stages the canonical `src/game` and `src/mpgame` source inputs from openQ4-game into `.tmp/gamelibs_stage/` on Windows or `.tmp/gamelibs_stage-<system>-<arch>/` on other targets and writes a source manifest with file hashes and git state. A restage updates that tree in place: staged files whose bytes are unchanged keep their timestamps, so ninja rebuilds only what depends on the files that changed. Meson requires that manifest before compiling a distinct SP module from `src/game` and MP module from `src/mpgame`, so Linux and macOS builds consume the companion repository directly without maintaining local game-source mirrors. The standalone openQ4-game build supports Windows/MSVC, Linux x64/ARM64 with GCC or Clang, and macOS/Clang developer outputs for compiler and ABI validation; openQ4's staged build remains the integrated runtime, packaging, and gameplay-validation path.
+Awakening single-player classes are always included in `game_sp`. The old
+`awakening` Meson option is deprecated and has no effect. No `q4xbase` game modules
+are built or packaged, and no expansion multiplayer layer is imported. Assets
+are user-supplied and mounted only while the Awakening campaign is selected.
+See [campaign installation](docs/user/campaigns.md).
 
 ---
 
@@ -153,7 +144,7 @@ openQ4 includes local validation profiles under `tools/validation/`. They share 
 
 GitHub Actions runs the same validation entrypoints on every pushed commit, pull request, and manual dispatch. Branch pushes run the faster push profile across Linux x64, Linux ARM64, macOS ARM64, macOS Intel x64, Windows x64, and Windows ARM64. Pull requests/manual dispatches run the full PR profile on Windows x64, Windows ARM64, Linux ARM64, and macOS ARM64. Both Windows lanes start the staged dedicated server without game data through `tools/tests/windows_dedicated_server_smoke.py`, but no job starts a Windows client; the staged Linux ARM64 client also runs an assetless no-map renderer startup smoke under a virtual X display. Native Wayland PR jobs run assetless lifecycle, fullscreen/window, input-capture, and display cases under headless Weston on both x64 and ARM64. They verify that preferred libdecor is actually loaded, that the opt-out prevents it from loading, and that the Wayland-only build has no direct X11/GLX dependency. Staged Linux package validation rejects direct PipeWire dependencies from clients and permits only core C/C++/POSIX/compiler runtimes for the x64 and ARM64 dedicated executable plus its loaded MP module. These hosted ARM64 cases prove build/package and window/compositor/input startup, not audio or real SP/MP gameplay.
 
-Manual releases default to `linux_arm64_support_tier=preview`. Selecting `first-class` is a hard gate: the workflow requires accepted physical ARM64 native-Wayland SP/MP, stock-map dedicated-server, audio, input, display, and package evidence in [the Linux ARM64 signoff record](docs/dev/linux-arm64-signoff-evidence.md). The accepted TOML must come from an immutable `linux_arm64_evidence_ref` and match the triggering openQ4 SHA, resolved openQ4-game SHA, release version/tags, exact first-class archive name, archive SHA-256, and all four runtime ELF SHA-256 values. Removing the preview label without that candidate-bound record fails before the release matrix builds.
+Manual releases default to `linux_arm64_support_tier=preview`. Selecting `first-class` is a hard gate: the workflow requires accepted physical ARM64 native-Wayland SP/MP, stock-map dedicated-server, audio, input, display, and package evidence in [the Linux ARM64 signoff record](docs/dev/linux-arm64-signoff-evidence.md). The accepted TOML must come from an immutable `linux_arm64_evidence_ref` and match the triggering openQ4 SHA, in-tree game SHA (the same engine commit), release version/tags, exact first-class archive name, archive SHA-256, and all four runtime ELF SHA-256 values. Removing the preview label without that candidate-bound record fails before the release matrix builds.
 
 Pull requests also run Linux Sanitizer Validation on x64 with ASan+UBSan enabled. The lane builds the engine and staged game-module code without precompiled headers, stages the instrumented runtime separately from release dependency validation, then runs an assetless SDL3 window/fullscreen lifecycle smoke through native Wayland under headless Weston and Mesa software rendering. Sanitizer failures stop the smoke immediately, and its logs are retained with the build diagnostics.
 
@@ -265,8 +256,8 @@ Useful options:
 
 - Add `--runtime` to run the safe renderer startup validation matrix after the staged install.
 - Add `--runtime-skip-official-pak-validation` with a targeted no-map runtime case when intentionally running an assetless engine-startup smoke, such as CI coverage without retail Quake 4 PK4s.
-- Add `--build-gamelibs` when you also want the Windows wrapper to build the standalone openQ4-game outputs during compile.
-- Use `--game-libs-repo <path>` when the companion repository is not at `../openQ4-game`.
+- Game modules build with the engine; the old `--build-gamelibs` switch is accepted only for command-line continuity.
+- Validation defaults to the current checkout. `--game-libs-repo` is retained for isolated source fixtures.
 - Use `--build-dir <path>` plus `--no-clean` to validate a specific existing build tree.
 
 ### Linux Stock-Map Dedicated Gameplay
@@ -378,7 +369,7 @@ python tools/tests/renderer_validation_matrix.py \
   --output-dir .tmp/renderer-validation/sanitizer
 ```
 
-This matches the PR sanitizer build and runtime case; CI supplies the native Wayland session with headless Weston. No stock Quake 4 assets are required. The build still requires the normal Linux development dependencies and the sibling `openQ4-game` checkout so the game modules are compiled from staged source input. Separate staging is intentional: release package validation rejects sanitizer-only runtime dependencies, while this lane needs those dependencies to execute the instrumented client.
+This matches the PR sanitizer build and runtime case; CI supplies the native Wayland session with headless Weston. No stock Quake 4 assets are required. The build still requires the normal Linux development dependencies with game modules compiled from this checkout. Separate staging is intentional: release package validation rejects sanitizer-only runtime dependencies, while this lane needs those dependencies to execute the instrumented client.
 
 Linux engine and game translation units disable only UBSan's `vptr` check. The runtime-loaded modules consume polymorphic engine interfaces, while engine code also consumes game interfaces whose key functions and RTTI are owned by those modules; instrumenting either side for `vptr` creates link-time RTTI references that cannot be resolved without changing the executable/module ABI or weakening the modules' `-z defs` contract. AddressSanitizer and all other requested UBSan checks remain enabled, and in-tree BSE retains `vptr` coverage because its polymorphic types resolve within the executable.
 
@@ -543,7 +534,10 @@ Package the default SDL3 backend with OpenGL plus Wayland/EGL support, and keep 
 - Wayland decoration preference: `OPENQ4_WAYLAND_PREFER_LIBDECOR=1` when a compositor behaves better with libdecor.
 - Wayland window-operation diagnostics: `OPENQ4_WAYLAND_SYNC_WINDOW_OPS=1`; use only for troubleshooting because some compositors can block during window animations.
 
-Build from the companion `openQ4-game` checkout through `OPENQ4_GAMELIBS_REPO` or the default sibling path. The staged `openq4_gamelibs_stage_manifest.json` records the exact source-input hashes and git state used by the engine build. Locate the configured target's manifest with `python tools/build/gamelibs_stage_path.py --build-dir builddir --manifest`; keep it in CI artifacts when investigating packaging or reproducibility problems, but do not package the source stage as a runtime payload.
+The game sources compile directly from `src/game/` and `src/mpgame/`.
+`builddir/openq4_game_sources.json` records source hashes and the engine Git
+identity; both receipt source fields now identify that same commit. Keep this
+inventory with CI evidence, rather than copying source trees into runtime packages.
 
 Release packaging publishes detached Linux debug symbols as `openq4-<version>-linux-<arch>-debugsymbols.tar.xz`. Keep that archive paired with the matching runtime package so crash reports from optimized Linux builds can be symbolized.
 
@@ -650,13 +644,13 @@ Release archives also generate a packaged offline HTML documentation site under 
 
 The manually dispatched GitHub release workflow publishes architecture-qualified release assets such as `openq4-<version>-windows-x64.zip`, the experimental `openq4-<version>-windows-arm64.zip`, `openq4-<version>-linux-x64.tar.xz`, `openq4-<version>-x86_64.AppImage`, and the matching Linux ARM64/aarch64 preview or first-class names. AppImage filenames use the standard `x86_64`/`aarch64` architecture spelling and omit a redundant `linux` segment. The same workflow also publishes preview macOS Apple Silicon/arm64 OpenGL and Metal bridge packages for macOS 11 or later. When Apple signing and notarization credentials are configured, those macOS packages are `openq4-<version>-macos-arm64-opengl.dmg` and `openq4-<version>-macos-arm64-metal.dmg`; otherwise they are clearly labeled fallback archives named `openq4-<version>-macos-arm64-opengl-unsigned.tar.gz` and `openq4-<version>-macos-arm64-metal-unsigned.tar.gz`. macOS `macos-x64` and `macos-universal2` artifacts are intentionally not published by the current release matrix. A first-class macOS release must use the signed/notarized DMG path and current evidence in `docs/dev/macos-signoff-evidence.md` for both the documented macOS floor and latest public macOS; the workflow input `macos_support_tier=first-class` fails the metadata job when Apple signing/notary secrets are absent. Release workflow packages use `version_track=stable` and Meson `buildtype=debugoptimized` with `b_ndebug=true` on every platform, giving end users optimized binaries while preserving diagnostics. Windows payloads include PDB files and write crash logs plus minidumps under `crashes/` beside the executable after unhandled exceptions. Linux release runs also publish detached debug-symbol archives such as `openq4-<version>-linux-x64-debugsymbols.tar.xz` and `openq4-<version>-linux-arm64-debugsymbols.tar.xz`. Credentialed macOS release payloads are signed/stapled, packed into compressed DMG images, submitted for final DMG notarization/stapling, and verified with `hdiutil` before upload. Credential-free macOS fallback archives are ad-hoc signed only for bundle validity, are not Developer ID signed or notarized, and stay marked `unsigned` in the filename. Windows payloads also get native installer executables such as `openq4-<version>-windows-x64-setup.exe` and `openq4-<version>-windows-arm64-setup.exe`. Each installer is compiled from the already-packaged Windows release directory so its file set matches the archive instead of diverging from it, writes install metadata to the registry for upgrade detection, registers a normal Windows uninstaller entry, and can optionally register `openq4://` browser links.
 
-Manual releases must be dispatched from the `main` branch. The `openq4_game_ref` input selects the companion source revision and defaults to `main`; the metadata job resolves that branch, tag, or full commit SHA once, publishes the immutable 40-character SHA to every matrix job, and records both repository commits in package `VERSION.txt` metadata. Every build checks out those exact commits and rejects a dirty checkout or staging manifest whose `projectGitCommit`, `gameLibsGitCommit`, or clean-state fields disagree. Release creation and reruns are likewise bound to the triggering openQ4 `GITHUB_SHA`: an existing version tag must already resolve to that candidate, and both release/tag targets are verified after publication. The publishing job rejects missing, extra, symlinked, or non-regular downloaded assets, constructs the upload list only from the exact expected filename whitelist, rechecks a first-class Linux ARM64 archive against its accepted SHA-256 after artifact download, and verifies that the final GitHub release exposes exactly the approved asset names.
+Manual releases must be dispatched from the `main` branch. The metadata job freezes the triggering 40-character openQ4 SHA for every matrix job. Engine and game sources come from that one clean checkout. The in-tree source inventory and package `VERSION.txt` retain the legacy `projectGitCommit` and `gameLibsGitCommit` fields, both naming the same openQ4 commit; builds reject dirty or mismatched source inventories. Release creation and reruns are likewise bound to the triggering openQ4 `GITHUB_SHA`: an existing version tag must already resolve to that candidate, and both release/tag targets are verified after publication. The publishing job rejects missing, extra, symlinked, or non-regular downloaded assets, constructs the upload list only from the exact expected filename whitelist, rechecks a first-class Linux ARM64 archive against its accepted SHA-256 after artifact download, and verifies that the final GitHub release exposes exactly the approved asset names.
 
 Linux release validation brackets every binary mutation. The normal staged ELF/package gate runs before debug-symbol separation; immediately after `objcopy`, the workflow revalidates the stripped client, dedicated server, and distinct SP/MP modules for native architecture, PIE/RELRO/NOW/non-executable-stack hardening, the closed `GetGameAPI` module ABI, safe/resolvable `DT_NEEDED` dependencies, retained build IDs, and matching `.gnu_debuglink` filename/CRC data against the detached files. After packaging, the workflow extracts the exact `.tar.xz` upload candidate into a bounded isolated temporary directory and repeats those ELF, dependency, build-ID, and debuglink checks on the extracted bytes before artifact upload.
 
 Linux release builds also force the bundled SDL configuration with both native Wayland and X11/XWayland enabled. After debug-symbol separation, the workflow launches the exact stripped staged client assetlessly under headless Weston with `DISPLAY` removed and SDL forced to Wayland, then under Xvfb with SDL forced to X11. After AppImage construction, the exact upload candidate repeats those two bounded lifecycle probes through AppRun. Both gates require the requested SDL driver, SDL3 renderer/window startup, renderer diagnostics, normal process exit, and SDL3 OpenGL teardown; failed runs publish the Weston, Xvfb, engine, stdout/stderr, and matrix-report diagnostics. This hosted assetless release gate improves package regression coverage but does not change the documented Linux ARM64 preview tier or replace physical-hardware gameplay, audio, input, display, and package signoff.
 
-Linux ARM64 first-class evidence uses a fail-closed two-pass flow because an in-tree record cannot contain its own commit SHA. A pushed branch must already contain the prospective first-class code and user-facing wording; an opt-in, non-publishing run (`generate_linux_arm64_evidence_candidate=true`, with the tier selector left at `preview`) builds only native Linux ARM64 and creates a workflow artifact containing the exact first-class-named archive and a pending structured TOML record. It creates no tag or GitHub release. After physical testing, the accepted TOML is committed on a separate evidence branch/tag and passed back by `linux_arm64_evidence_ref`; the exact tested candidate commit must be fast-forwarded unchanged onto `main`, with the explicit version and openQ4-game SHA frozen. Linux release compilation derives `SOURCE_DATE_EPOCH` from that candidate commit, and the archive writer normalizes tar metadata. Before any first-class ARM64 artifact upload, the native job still recomputes and compares the post-strip staged binaries, packaged copies, and final archive. Toolchain drift or any byte mismatch stops publication and requires a new candidate plus physical signoff; hashes are never refreshed independently of evidence.
+Linux ARM64 first-class evidence uses a fail-closed two-pass flow because an in-tree record cannot contain its own commit SHA. A pushed branch must already contain the prospective first-class code and user-facing wording; an opt-in, non-publishing run (`generate_linux_arm64_evidence_candidate=true`, with the tier selector left at `preview`) builds only native Linux ARM64 and creates a workflow artifact containing the exact first-class-named archive and a pending structured TOML record. It creates no tag or GitHub release. After physical testing, the accepted TOML is committed on a separate evidence branch/tag and passed back by `linux_arm64_evidence_ref`; the exact tested candidate commit must be fast-forwarded unchanged onto `main`, with the explicit version and single openQ4 source SHA frozen. Linux release compilation derives `SOURCE_DATE_EPOCH` from that candidate commit, and the archive writer normalizes tar metadata. Before any first-class ARM64 artifact upload, the native job still recomputes and compares the post-strip staged binaries, packaged copies, and final archive. Toolchain drift or any byte mismatch stops publication and requires a new candidate plus physical signoff; hashes are never refreshed independently of evidence.
 
 Configure `MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64`, `MACOS_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD`, `MACOS_DEVELOPER_ID_APPLICATION_IDENTITY`, `MACOS_NOTARY_APPLE_ID`, `MACOS_NOTARY_TEAM_ID`, and `MACOS_NOTARY_APP_PASSWORD` as repository secrets when a signed/notarized macOS release is required. The workflow imports the Developer ID Application certificate into a temporary keychain, signs macOS payloads with the Hardened Runtime, submits the package payload with `notarytool`, staples the app ticket, and validates the result with `codesign`, `spctl`, and `xcrun stapler validate`. If those secrets are absent, the manual release workflow still publishes the preview macOS packages as `-unsigned.tar.gz` archives that are ad-hoc signed, not notarized, and expected to trigger normal Gatekeeper warnings on first launch. Do not select `macos_support_tier=first-class` unless those secrets are configured and the current macOS signoff evidence is complete.
 

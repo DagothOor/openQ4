@@ -37,9 +37,6 @@ def validate_workflow() -> None:
         'MACOSX_DEPLOYMENT_TARGET: "11.0"',
         "ASAN_OPTIONS: halt_on_error=1:abort_on_error=1:detect_leaks=0",
         "UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1",
-        'git -C "${OPENQ4_GAMELIBS_REPO}" fetch --depth 1 origin "${OPENQ4_GAMELIBS_SHA}"',
-        'git -C "${OPENQ4_GAMELIBS_REPO}" checkout --detach "${OPENQ4_GAMELIBS_SHA}"',
-        'test "$(git -C "${OPENQ4_GAMELIBS_REPO}" rev-parse HEAD)" = "${OPENQ4_GAMELIBS_SHA}"',
         "python tools/tests/macos_sanitizer_ci.py",
         "bash tools/build/meson_setup.sh setup --wipe builddir .",
         "-Dplatform_backend=sdl3",
@@ -68,12 +65,13 @@ def validate_workflow() -> None:
         "ERROR: AddressSanitizer|UndefinedBehaviorSanitizer|runtime error:",
         "Publish sanitizer diagnostics",
         "builddir/meson-logs",
-        ".tmp/gamelibs_stage-darwin-arm64/openq4_gamelibs_stage_manifest.json",
+        "builddir/openq4_game_sources.json",
         ".tmp/macos-sanitizer-${{ matrix.artifact_suffix }}-runtime",
     ):
         require(workflow, token, "macOS sanitizer workflow")
 
     reject(workflow, "continue-on-error: true", "macOS sanitizer fail-fast behavior")
+    reject(workflow, 'OPENQ4_GAMELIBS_SHA', 'retired companion source input')
     reject(workflow, "| head -", "pipefail-safe sanitizer report truncation")
     reject(workflow, "pull_request:", "manual-only macOS sanitizer trigger")
     reject(workflow, "\n  push:", "manual-only macOS sanitizer trigger")

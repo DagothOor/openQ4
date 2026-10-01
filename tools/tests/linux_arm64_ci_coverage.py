@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GAME_LIBS_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT.parent / "openQ4-game")).resolve()
+GAME_LIBS_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT)).resolve()
 
 
 def read(relative_path: str) -> str:
@@ -147,7 +147,7 @@ def validate_commit_workflow() -> None:
         "    needs: script-smoke\n"
         "    timeout-minutes: 90\n"
         "    env:\n"
-        "      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}/../openQ4-game\n"
+        "      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}\n"
         "      CC: gcc\n"
         "      CXX: g++",
         "commit validation native ARM64 GCC dedicated job",

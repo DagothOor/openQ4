@@ -16,7 +16,7 @@ option(
   'build_games',
   type: 'boolean',
   value: true,
-  description: 'Build game modules (game-sp_<arch>/game-mp_<arch>) from the companion openQ4-game repository.',
+  description: 'Build game modules (game-sp_<arch>/game-mp_<arch>) from canonical in-tree src/game and src/mpgame sources.',
 )
 
 option(
@@ -37,7 +37,8 @@ option(
   'awakening',
   type: 'feature',
   value: 'auto',
-  description: 'Build the Quake 4: The Awakening (q4xbase) game modules from the openQ4-game-awakening layer (OPENQ4_AWAKENING_REPO or ../openQ4-game-awakening). auto builds them when the layer is present.',
+  deprecated: true,
+  description: 'Deprecated: Awakening single-player support is built into game_sp; this option no longer selects external modules.',
 )
 
 option(

@@ -468,6 +468,20 @@ idAsyncNetwork::SpawnServer_f
 */
 void idAsyncNetwork::SpawnServer_f( const idCmdArgs &args ) {
 
+    if ( !idStr::Icmp( fileSystem->GetActiveGameDir(), "q4xbase" ) ||
+         !idStr::Icmp( cvarSystem->GetCVarString( "fs_game" ), "q4xbase" ) ) {
+        const idStr requestedGameType = cvarSystem->GetCVarString( "si_gameType" );
+        common->StartupVariable( "si_gameType", true );
+        cvarSystem->SetCVarString( "si_gameType", requestedGameType.c_str() );
+        cvarSystem->SetCVarString( "fs_game", OPENQ4_GAMEDIR );
+        cvarSystem->SetCVarString( "fs_game_base", "" );
+        if ( !idStr::Icmp( cvarSystem->GetCVarString( "si_gameType" ), "singleplayer" ) )
+            cvarSystem->SetCVarString( "si_gameType", "DM" );
+        cvarSystem->SetCVarString( "com_nextGameModule", "game_mp" );
+        cmdSystem->SetupReloadEngineMenu( args );
+        return;
+    }
+
 	if(args.Argc() > 1) {
 		cvarSystem->SetCVarString("si_map", args.Argv(1));
 	}
@@ -566,6 +580,20 @@ static idStr Net_AddressArgument( const idCmdArgs &args ) {
 }
 
 void idAsyncNetwork::Connect_f( const idCmdArgs &args ) {
+
+    if ( !idStr::Icmp( fileSystem->GetActiveGameDir(), "q4xbase" ) ||
+         !idStr::Icmp( cvarSystem->GetCVarString( "fs_game" ), "q4xbase" ) ) {
+        const idStr requestedGameType = cvarSystem->GetCVarString( "si_gameType" );
+        common->StartupVariable( "si_gameType", true );
+        cvarSystem->SetCVarString( "si_gameType", requestedGameType.c_str() );
+        cvarSystem->SetCVarString( "fs_game", OPENQ4_GAMEDIR );
+        cvarSystem->SetCVarString( "fs_game_base", "" );
+        if ( !idStr::Icmp( cvarSystem->GetCVarString( "si_gameType" ), "singleplayer" ) )
+            cvarSystem->SetCVarString( "si_gameType", "DM" );
+        cvarSystem->SetCVarString( "com_nextGameModule", "game_mp" );
+        cmdSystem->SetupReloadEngineMenu( args );
+        return;
+    }
 	if ( server.IsActive() ) {
 		common->Printf( "already running a server\n" );
 		return;

@@ -51,6 +51,7 @@ ROOT_MARKDOWN = (
     "README.md",
     "BUILDING.md",
     "TECHNICAL.md",
+    "LICENSING.md",
     "TODO.md",
     "AGENTS.md",
 )

@@ -2,6 +2,13 @@
 
 ## 0.13.2 release candidate
 
+- [x] Suppress startup splash windows for hidden-window, renderer-disabled and dedicated launches across Windows, Linux and macOS.
+
+- [ ] Consolidate SDK game sources and Awakening SP into the engine checkout;
+  qualify campaign discovery, content/save isolation, stock/expansion save
+  compatibility, multiplayer and Arena before archiving the historical repositories.
+  See [implementation/evidence](plans/game-source-consolidation.md).
+
 - [x] Correct outdoor shadow-map terrain sampling on OpenGL and Vulkan.
   Point filters compare against the receiver plane at each sampled texel, while
   distant off-centre point sources use fitted perspective maps and cascades.

@@ -16,7 +16,7 @@ framework, UTM, VMware Fusion, Parallels, or a hosted Mac provider.
 - Guest user recommendation: `codex`
 - Guest workspace: `~/openq4-work/`
 - Guest source checkout: `~/openq4-work/openQ4`
-- Guest GameLibs checkout: `~/openq4-work/openQ4-game`
+- Guest game sources: `~/openq4-work/openQ4/src/game` and `src/mpgame`
 - Guest Quake 4 assets: `~/openq4-work/Quake4`
 - Guest results: `~/openq4-work/results/`
 
@@ -84,7 +84,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/macos/Invoke-openQ4Mac
   `lipo`, `otool`, and `codesign`
 - installs or updates a user-local Meson/Ninja venv
 - copies the Windows Quake 4 install into `~/openq4-work/Quake4`
-- copies `openQ4` and `openQ4-game` into the guest workspace
+- copies `openQ4`, including its canonical SP/MP sources, into the guest workspace
 - configures, builds, and stages openQ4 through `tools/build/meson_setup.sh`
 - runs a renderer smoke profile against the copied Quake 4 assets
 - runs a multiplayer `mp/q4dm1` listen-server smoke profile against the copied Quake 4 assets
@@ -167,7 +167,7 @@ default `current-manual-signoff`, which counts toward neither the macOS floor
 nor latest-public promotion evidence (see
 `docs/dev/macos-support-matrix-policy.md`).
 
-Guest paths passed through `-MacWorkspace` and `-MacBasePath` must be absolute POSIX paths or use a leading `~/`; the host workflow rejects relative, dot-segment, empty-segment, control-character, and backslash paths, and the guest scripts recheck that the paths are absolute and control-character-free after `~` expansion before syncing source trees, installing assets, building, or collecting results. Keep `-MacBasePath` out of the workflow-reserved `openQ4/`, `openQ4-game/`, `incoming-quake4/`, and `results/` children under `-MacWorkspace`; when `-MacHome` is provided, host preflight expands `~/` before that reserved-child comparison, and the guest scripts repeat the check after resolving the actual home directory. The asset installer refuses those targets because it stages extraction under the workspace and installs assets with `rsync --delete`. Source sync also trims trailing slashes before appending `openQ4/` or `openQ4-game/`, so a workspace written as `~/openq4-work/` does not create double-slash remote extraction targets.
+Guest paths passed through `-MacWorkspace` and `-MacBasePath` must be absolute POSIX paths or use a leading `~/`; the host workflow rejects relative, dot-segment, empty-segment, control-character, and backslash paths, and the guest scripts recheck that the paths are absolute and control-character-free after `~` expansion before syncing source trees, installing assets, building, or collecting results. Keep `-MacBasePath` out of the workflow-reserved `openQ4/`, `openQ4-game/`, `incoming-quake4/`, and `results/` children under `-MacWorkspace`; when `-MacHome` is provided, host preflight expands `~/` before that reserved-child comparison, and the guest scripts repeat the check after resolving the actual home directory. The asset installer refuses those targets because it stages extraction under the workspace and installs assets with `rsync --delete`. Source sync also trims trailing slashes before appending `openQ4/`, so a workspace written as `~/openq4-work/` does not create double-slash remote extraction targets.
 Keep `-BuildDir` pointed at a dedicated build output directory such as
 `builddir`, `builddir-opengl`, or `builddir-metal`; the guest script refuses the
 repo root, source/content/tool trees, `.install`, symlinks, and files as Meson
@@ -175,7 +175,7 @@ build directories. Host-side validation now also requires `-BuildDir` to be a
 relative `builddir*` path or a path under `.tmp/`, matching the local validation
 profile's build-output convention.
 
-Source, GameLibs, and retail asset transfer archives are rechecked on the Apple
+Source and retail asset transfer archives are rechecked on the Apple
 host before extraction. The workflow rejects malformed paths, control
 characters, duplicate members, case-insensitive member collisions, macOS
 metadata/debug sidecars, symlinks, hardlinks, and special files, then extracts
@@ -249,7 +249,7 @@ The recorder re-runs `tools/macos/validate_signoff_archive.py` with
 `--require-completed-checklist`, computes the archive SHA-256, extracts the
 bridge reports, verifies that package artifact names are safe `openQ4` macOS
 arm64 filenames covering every requested graphics bridge, records the openQ4
-and `openQ4-game` commits, updates `docs/dev/macos-signoff-evidence.md`, and
+and legacy game commit fields (the same openQ4 SHA for in-tree builds), updates `docs/dev/macos-signoff-evidence.md`, and
 leaves the release-completion evidence gate open until curated release notes
 link to the accepted record.
 
@@ -292,7 +292,7 @@ It builds and stages the macOS OpenGL and/or Metal bridge variants on Apple's
 hosted macOS runner, uploads `.install`, Meson logs, host diagnostics, and
 optional assetless renderer-probe logs. Each selected artifact also includes
 `macos-debug-evidence-scope.txt`, which records the requested bridge, the
-artifact's actual bridge, exact `openQ4` and `openQ4-game` commits, clean-tree
+artifact's actual bridge, exact engine and legacy game commit fields (both the openQ4 SHA), clean-tree
 state, and whether the optional probes were enabled.
 It explicitly marks hosted output as build/package evidence rather than a
 completed manual Apple-hardware gameplay signoff.

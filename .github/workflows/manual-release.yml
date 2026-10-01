@@ -18,12 +18,6 @@ on:
         required: false
         default: ""
         type: string
-      openq4_game_ref:
-        description: openQ4-game branch, tag, or full commit SHA to package
-        required: true
-        # The default must match the engine-interface revision pinned in CI.
-        default: 4d87dbdb6934307988b371d3c794190a1380f322
-        type: string
       linux_arm64_support_tier:
         description: Linux ARM64 release support tier
         required: true
@@ -62,10 +56,6 @@ concurrency:
 
 permissions:
   contents: read
-
-env:
-  # The Awakening's game-library layer: its q4xbase modules ship beside baseoq4's.
-  OPENQ4_AWAKENING_SHA: c49842986c0a519feeebc68d78e6f5509d99c3a7
 
 jobs:
   metadata:
@@ -111,7 +101,6 @@ jobs:
       - name: Resolve immutable source revisions
         id: source_revisions
         env:
-          INPUT_OPENQ4_GAME_REF: ${{ inputs.openq4_game_ref }}
           INPUT_ARM64_EVIDENCE_CANDIDATE: ${{ inputs.generate_linux_arm64_evidence_candidate }}
           INPUT_ARM64_SUPPORT_TIER: ${{ inputs.linux_arm64_support_tier }}
         shell: bash
@@ -159,27 +148,8 @@ jobs:
             exit 1
           fi
 
-          input_ref="${INPUT_OPENQ4_GAME_REF}"
-          if [[ ! "${input_ref}" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] || \
-             [[ "${input_ref}" == *".."* ]] || \
-             [[ "${input_ref}" == *"@{"* ]] || \
-             [[ "${input_ref}" == *"//"* ]] || \
-             [[ "${input_ref}" == */ ]] || \
-             [[ "${input_ref}" == *.lock ]]; then
-            echo "openq4_game_ref is empty, unsafe, or not a supported Git ref/SHA: ${input_ref@Q}"
-            exit 1
-          fi
-
-          resolution_repo="$(mktemp -d "${RUNNER_TEMP}/openq4-game-resolution.XXXXXX")"
-          trap 'rm -rf "${resolution_repo}"' EXIT
-          git -C "${resolution_repo}" init -q
-          git -C "${resolution_repo}" remote add origin https://github.com/themuffinator/openQ4-game.git
-          git -C "${resolution_repo}" fetch --quiet --no-tags --depth=1 origin "${input_ref}"
-          openq4_game_sha="$(git -C "${resolution_repo}" rev-parse --verify 'FETCH_HEAD^{commit}')"
-          if [[ ! "${openq4_game_sha}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Resolved openQ4-game revision is not a full immutable commit SHA: ${openq4_game_sha}"
-            exit 1
-          fi
+          input_ref="${GITHUB_REF}"
+          openq4_game_sha="${openq4_source_sha}"
 
           {
             echo "openq4_source_sha=${openq4_source_sha}"
@@ -190,8 +160,7 @@ jobs:
           {
             echo "### Release source revisions"
             echo "- openQ4: \`${openq4_source_sha}\` (triggering candidate)"
-            echo "- openQ4-game: \`${openq4_game_sha}\` (resolved once from \`${input_ref}\`)"
-            echo "- openQ4-game-awakening: \`${OPENQ4_AWAKENING_SHA}\` (pinned)"
+            echo "- In-tree SDK game sources: \`${openq4_game_sha}\` (resolved once from \`${input_ref}\`)"
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Setup Python
@@ -641,8 +610,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     env:
-      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}/../openQ4-game
-      OPENQ4_AWAKENING_REPO: ${{ github.workspace }}/../openQ4-game-awakening
+      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.metadata.outputs.release_matrix) }}
@@ -655,67 +623,6 @@ jobs:
           # A shallow checkout makes every release build 1 and rejects its saves.
           fetch-depth: 0
           ref: ${{ needs.metadata.outputs.openq4_source_sha }}
-
-      - name: Fetch pinned openQ4-game
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          expected_openq4_sha="${{ needs.metadata.outputs.openq4_source_sha }}"
-          expected_game_sha="${{ needs.metadata.outputs.openq4_game_sha }}"
-          actual_openq4_sha="$(git rev-parse --verify 'HEAD^{commit}')"
-          if [ "${actual_openq4_sha}" != "${expected_openq4_sha}" ]; then
-            echo "openQ4 checkout ${actual_openq4_sha} does not match metadata SHA ${expected_openq4_sha}."
-            exit 1
-          fi
-          if [ -e "${OPENQ4_GAMELIBS_REPO}" ]; then
-            echo "Refusing to reuse an existing openQ4-game checkout: ${OPENQ4_GAMELIBS_REPO}"
-            exit 1
-          fi
-
-          mkdir -p "$(dirname "${OPENQ4_GAMELIBS_REPO}")"
-          git init --quiet "${OPENQ4_GAMELIBS_REPO}"
-          git -C "${OPENQ4_GAMELIBS_REPO}" remote add origin https://github.com/themuffinator/openQ4-game.git
-          git -C "${OPENQ4_GAMELIBS_REPO}" fetch --quiet --no-tags --depth=1 origin "${expected_game_sha}"
-          git -C "${OPENQ4_GAMELIBS_REPO}" checkout --quiet --detach "${expected_game_sha}"
-          actual_game_sha="$(git -C "${OPENQ4_GAMELIBS_REPO}" rev-parse --verify 'HEAD^{commit}')"
-          if [ "${actual_game_sha}" != "${expected_game_sha}" ]; then
-            echo "openQ4-game checkout ${actual_game_sha} does not match metadata SHA ${expected_game_sha}."
-            exit 1
-          fi
-          if [ -n "$(git -C "${OPENQ4_GAMELIBS_REPO}" status --porcelain --untracked-files=all)" ]; then
-            echo "Pinned openQ4-game checkout is unexpectedly dirty."
-            exit 1
-          fi
-
-      - name: Fetch pinned openQ4-game-awakening
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ ! "${OPENQ4_AWAKENING_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "OPENQ4_AWAKENING_SHA is not a full immutable commit SHA: ${OPENQ4_AWAKENING_SHA}"
-            exit 1
-          fi
-          if [ -e "${OPENQ4_AWAKENING_REPO}" ]; then
-            echo "Refusing to reuse an existing openQ4-game-awakening checkout: ${OPENQ4_AWAKENING_REPO}"
-            exit 1
-          fi
-
-          mkdir -p "$(dirname "${OPENQ4_AWAKENING_REPO}")"
-          git init --quiet "${OPENQ4_AWAKENING_REPO}"
-          git -C "${OPENQ4_AWAKENING_REPO}" remote add origin https://github.com/themuffinator/openQ4-game-awakening.git
-          git -C "${OPENQ4_AWAKENING_REPO}" fetch --quiet --no-tags --depth=1 origin "${OPENQ4_AWAKENING_SHA}"
-          git -C "${OPENQ4_AWAKENING_REPO}" checkout --quiet --detach "${OPENQ4_AWAKENING_SHA}"
-          actual_layer_sha="$(git -C "${OPENQ4_AWAKENING_REPO}" rev-parse --verify 'HEAD^{commit}')"
-          if [ "${actual_layer_sha}" != "${OPENQ4_AWAKENING_SHA}" ]; then
-            echo "openQ4-game-awakening checkout ${actual_layer_sha} does not match the pinned SHA ${OPENQ4_AWAKENING_SHA}."
-            exit 1
-          fi
-          if [ -n "$(git -C "${OPENQ4_AWAKENING_REPO}" status --porcelain --untracked-files=all)" ]; then
-            echo "Pinned openQ4-game-awakening checkout is unexpectedly dirty."
-            exit 1
-          fi
 
       - name: Setup Python
         uses: actions/setup-python@v7
@@ -738,9 +645,8 @@ jobs:
           echo "Release scale: ${{ needs.metadata.outputs.release_scale }}"
           echo "Release reason: ${{ needs.metadata.outputs.release_reason }}"
           echo "openQ4 source SHA: ${{ needs.metadata.outputs.openq4_source_sha }}"
-          echo "openQ4-game requested ref: ${{ needs.metadata.outputs.openq4_game_ref }}"
-          echo "openQ4-game resolved SHA: ${{ needs.metadata.outputs.openq4_game_sha }}"
-          echo "openQ4-game-awakening pinned SHA: ${OPENQ4_AWAKENING_SHA}"
+          echo "In-tree game requested ref: ${{ needs.metadata.outputs.openq4_game_ref }}"
+          echo "In-tree game resolved SHA: ${{ needs.metadata.outputs.openq4_game_sha }}"
 
       - name: Install Linux native dependencies
         if: matrix.platform == 'linux'
@@ -910,13 +816,8 @@ jobs:
           set -euo pipefail
           python tools/build/verify_release_source_provenance.py \
             --project-root "${GITHUB_WORKSPACE}" \
-            --gamelibs-root "${OPENQ4_GAMELIBS_REPO}" \
-            --stage-manifest "$(python tools/build/gamelibs_stage_path.py --build-dir builddir --manifest)" \
             --expected-project-commit "${{ needs.metadata.outputs.openq4_source_sha }}" \
-            --expected-gamelibs-commit "${{ needs.metadata.outputs.openq4_game_sha }}" \
-            --layer-root "${OPENQ4_AWAKENING_REPO}" \
-            --layer-stage-manifest "$(python tools/build/gamelibs_stage_path.py --build-dir builddir --manifest --layer awakening)" \
-            --expected-layer-commit "${OPENQ4_AWAKENING_SHA}"
+            --build-dir builddir
 
       - name: Validate staged payload
         shell: bash
@@ -934,11 +835,6 @@ jobs:
             exit 1
           fi
 
-          # every package ships the Awakening's q4xbase layer, built from OPENQ4_AWAKENING_REPO
-          if [ ! -f ".install/q4xbase/mod.json" ]; then
-            echo "Staged q4xbase layer is missing; the build did not produce it."
-            exit 1
-          fi
 
           if [ "${{ matrix.platform }}" = "linux" ]; then
             if [ ! -f ".install/share/applications/openq4.desktop" ]; then
@@ -957,9 +853,6 @@ jobs:
               ".install/openQ4-ded_${{ matrix.binary_arch }}"
               ".install/baseoq4/game-sp_${{ matrix.binary_arch }}.dylib"
               ".install/baseoq4/game-mp_${{ matrix.binary_arch }}.dylib"
-              ".install/q4xbase/game-sp_${{ matrix.binary_arch }}.dylib"
-              ".install/q4xbase/game-mp_${{ matrix.binary_arch }}.dylib"
-              ".install/q4xbase/mod.json"
               ".install/collect_macos_support_info.sh"
               ".install/openQ4.icns"
               ".install/assets/splash/quake4_rt_bitmap_4001.bmp"
@@ -985,10 +878,6 @@ jobs:
               .install/baseoq4/game-sp_*.so
               .install/baseoq4/game-mp_*.dll
               .install/baseoq4/game-mp_*.so
-              .install/q4xbase/game-sp_*.dll
-              .install/q4xbase/game-sp_*.so
-              .install/q4xbase/game-mp_*.dll
-              .install/q4xbase/game-mp_*.so
             )
             shopt -u nullglob
             if [ "${#bad_macos_modules[@]}" -ne 0 ]; then
@@ -1017,10 +906,8 @@ jobs:
             expected_macos_game_modules=(
               ".install/baseoq4/game-sp_${{ matrix.binary_arch }}.dylib"
               ".install/baseoq4/game-mp_${{ matrix.binary_arch }}.dylib"
-              ".install/q4xbase/game-sp_${{ matrix.binary_arch }}.dylib"
-              ".install/q4xbase/game-mp_${{ matrix.binary_arch }}.dylib"
             )
-            for staged_module in .install/baseoq4/game-sp_*.dylib .install/baseoq4/game-mp_*.dylib .install/q4xbase/game-sp_*.dylib .install/q4xbase/game-mp_*.dylib; do
+            for staged_module in .install/baseoq4/game-sp_*.dylib .install/baseoq4/game-mp_*.dylib; do
               [ -e "${staged_module}" ] || continue
               matched=0
               for expected_module in "${expected_macos_game_modules[@]}"; do
@@ -1062,15 +949,13 @@ jobs:
           symbols_dir="${RUNNER_TEMP}/${symbols_stem}"
           symbols_archive="${RUNNER_TEMP}/${symbols_stem}.tar.xz"
           rm -rf "${symbols_dir}" "${symbols_archive}"
-          mkdir -p "${symbols_dir}/baseoq4" "${symbols_dir}/q4xbase"
+          mkdir -p "${symbols_dir}/baseoq4"
 
           binaries=(
             ".install/openQ4-client_${{ matrix.binary_arch }}"
             ".install/openQ4-ded_${{ matrix.binary_arch }}"
             ".install/baseoq4/game-sp_${{ matrix.binary_arch }}.so"
             ".install/baseoq4/game-mp_${{ matrix.binary_arch }}.so"
-            ".install/q4xbase/game-sp_${{ matrix.binary_arch }}.so"
-            ".install/q4xbase/game-mp_${{ matrix.binary_arch }}.so"
           )
 
           for binary in "${binaries[@]}"; do
@@ -1310,8 +1195,6 @@ jobs:
             --package-suffix="${{ matrix.package_suffix }}"
             --source-root "${GITHUB_WORKSPACE}"
             --output-dir "${RUNNER_TEMP}"
-            # the Awakening's q4xbase modules ship in every package; a missing layer fails
-            --require-game-layer q4xbase
           )
 
           if [ "${{ matrix.platform }}" = "macos" ]; then
@@ -1699,9 +1582,6 @@ jobs:
           module_dir="${app_root}/Contents/Frameworks"
           sp_module="${module_dir}/game-sp_${{ matrix.binary_arch }}.dylib"
           mp_module="${module_dir}/game-mp_${{ matrix.binary_arch }}.dylib"
-          layer_sp_module="${module_dir}/q4xbase/game-sp_${{ matrix.binary_arch }}.dylib"
-          layer_mp_module="${module_dir}/q4xbase/game-mp_${{ matrix.binary_arch }}.dylib"
-          layer_manifest="${app_root}/Contents/Resources/q4xbase/mod.json"
           renderer_module="${module_dir}/renderer-vk_${{ matrix.binary_arch }}.dylib"
           openal_runtime="${module_dir}/libopenal.1.dylib"
 
@@ -1819,14 +1699,10 @@ jobs:
             exit 1
           fi
           if [ -e "${{ steps.package.outputs.package_dir }}/q4xbase" ]; then
-            echo "macOS package must embed q4xbase in the app bundle, not beside it."
+            echo "Awakening content is user-supplied; no separate q4xbase module directory is packaged."
             exit 1
           fi
-          if [ ! -f "${layer_manifest}" ]; then
-            echo "Missing macOS embedded q4xbase mod.json: ${layer_manifest}"
-            exit 1
-          fi
-          for module in "${sp_module}" "${mp_module}" "${layer_sp_module}" "${layer_mp_module}" "${renderer_module}"; do
+          for module in "${sp_module}" "${mp_module}" "${renderer_module}"; do
             if [ ! -x "${module}" ]; then
               echo "Missing or non-executable macOS package game module: ${module}"
               exit 1
@@ -1944,7 +1820,7 @@ jobs:
               done
             done
           }
-          for binary in "${app_exec}" "${client_binary}" "${dedicated_binary}" "${sp_module}" "${mp_module}" "${layer_sp_module}" "${layer_mp_module}" "${renderer_module}" "${openal_runtime}"; do
+          for binary in "${app_exec}" "${client_binary}" "${dedicated_binary}" "${sp_module}" "${mp_module}" "${renderer_module}" "${openal_runtime}"; do
             check_macos_binary_architecture "${binary}"
             check_macos_binary_dependencies "${binary}"
             check_macos_codesignature "${binary}"
@@ -2109,47 +1985,6 @@ jobs:
           fi
           if [ "${app_status}" -ne 0 ]; then
             echo "macOS app-bundle smoke completed its startup and shutdown checks with SDL launcher status ${app_status}."
-          fi
-
-          # q4xbase ships in the bundle: with fs_game q4xbase the app must load the layer's own
-          # SP module from Contents/Frameworks/q4xbase instead of falling back to baseoq4's.
-          layer_console="${smoke_root}/q4xbase-console.log"
-          set +e
-          (
-            cd "${smoke_cwd}"
-            exec "${app_exec}" \
-              +set logFile 2 \
-              +set logFileName logs/macos_release_q4xbase_smoke.log \
-              +set fs_savepath "${smoke_save}" \
-              +set fs_game q4xbase \
-              +set fs_validateOfficialPaks 0 \
-              +set g_allowAssetlessStartup 1 \
-              +set r_fullscreen 0 \
-              +quit
-          ) > "${layer_console}" 2>&1 &
-          layer_pid=$!
-          ( sleep 90; kill -KILL "${layer_pid}" 2>/dev/null ) &
-          layer_watchdog=$!
-          wait "${layer_pid}"
-          layer_status=$?
-          kill "${layer_watchdog}" 2>/dev/null
-          wait "${layer_watchdog}" 2>/dev/null
-          set -e
-          if [ "${layer_status}" -gt 127 ]; then
-            echo "macOS app-bundle q4xbase smoke ended abnormally or timed out (status ${layer_status})."
-            tail -n 160 "${layer_console}" || true
-            exit 1
-          fi
-          if ! grep -F "Selected game module: logical='game_sp'" "${layer_console}" \
-            | grep -F "/openQ4.app/Contents/Frameworks/q4xbase/game-sp_${{ matrix.binary_arch }}.dylib'" >/dev/null; then
-            echo "macOS app-bundle q4xbase smoke did not load the layer's own game module."
-            tail -n 160 "${layer_console}" || true
-            exit 1
-          fi
-          if grep -Eiq '(^|[[:space:]])(FATAL|Sys_Error):' "${layer_console}"; then
-            echo "macOS app-bundle q4xbase smoke output contains a fatal startup diagnostic."
-            tail -n 160 "${layer_console}" || true
-            exit 1
           fi
 
       - name: Upload artifact

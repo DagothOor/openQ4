@@ -68,6 +68,7 @@ public:
 	virtual void			BufferCommandArgs( cmdExecution_t exec, const idCmdArgs &args );
 
 	virtual void			SetupReloadEngine( const idCmdArgs &args );
+	virtual void            SetupReloadEngineMenu( const idCmdArgs &args );
 	virtual void			SetupReloadGameModule( const idCmdArgs &args );
 	virtual bool			PostReloadEngine( void );
 
@@ -887,6 +888,11 @@ idCmdSystemLocal::SetupReloadEngine
 */
 void idCmdSystemLocal::SetupReloadEngine( const idCmdArgs &args ) {
 	BufferCommandText( CMD_EXEC_APPEND, "reloadEngine\n" );
+	postReload = args;
+}
+
+void idCmdSystemLocal::SetupReloadEngineMenu( const idCmdArgs &args ) {
+	BufferCommandText( CMD_EXEC_APPEND, "reloadEngine menu\n" );
 	postReload = args;
 }
 

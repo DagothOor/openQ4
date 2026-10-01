@@ -13,7 +13,7 @@ from filesystem_case_segments import function_body
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GAME_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT.parent / "openQ4-game"))
+GAME_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT))
 
 SUPPORT = r'''
 #include <algorithm>

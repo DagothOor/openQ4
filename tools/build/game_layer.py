@@ -52,7 +52,10 @@ MOD_FIELDS = ("name", "version", "releaseDate", "website", "author")
 RESERVED_GAME_DIRS = {"q4base", "baseoq4", "q4mp", "base"}
 # Game directories that packages carry beside baseoq4 when their layer was built. Each holds
 # exactly its two game modules (plus their Windows .pdb files) and the mod.json below.
-PACKAGED_LAYER_GAME_DIRS = ("q4xbase",)
+# Awakening SP is compiled into the canonical game_sp. Its user-supplied
+# campaign assets and obsolete layer DLLs are never package collateral.
+PACKAGED_LAYER_GAME_DIRS = ()
+RETIRED_LAYER_GAME_DIRS = ("q4xbase",)
 LAYER_MOD_JSON_FIELDS = ("layer", "version", "requiredopenQ4Version")
 
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_]*\Z")

@@ -385,11 +385,11 @@ def validation_env(args: argparse.Namespace, root: Path) -> dict[str, str]:
     if args.game_libs_repo:
         env["OPENQ4_GAMELIBS_REPO"] = str(validate_game_libs_repo_path(Path(args.game_libs_repo)))
     elif "OPENQ4_GAMELIBS_REPO" not in env:
-        default_game_libs = validate_game_libs_repo_path(root / ".." / "openQ4-game")
+        default_game_libs = validate_game_libs_repo_path(root)
         env["OPENQ4_GAMELIBS_REPO"] = str(default_game_libs)
 
-    if args.build_gamelibs:
-        env["OPENQ4_BUILD_GAMELIBS"] = "1"
+    # Game modules are compiled with the engine; the old switch is accepted
+    # for command-line continuity and has no separate checkout/build step.
 
     if args.skip_icon_sync:
         env["OPENQ4_SKIP_ICON_SYNC"] = "1"
@@ -420,6 +420,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         root / "tools" / "tests" / "server_browser_contract.py",
         root / "tools" / "tests" / "base64_input_safety.py",
         root / "tools" / "tests" / "campaign_split_state_transition.py",
+        root / "tools" / "tests" / "campaign_scope.py",
         root / "tools" / "tests" / "clang_tidy_input_safety.py",
         root / "tools" / "tests" / "cmdargs_append_contract.py",
         root / "tools" / "tests" / "console_completion_contract.py",
@@ -729,7 +730,7 @@ def ensure_game_libs_repo(env: dict[str, str]) -> None:
         expected = game_libs_repo / "src" / source_tree
         if not expected.is_dir():
             raise ValidationError(
-                f"openQ4-game {label} source directory was not found. "
+                f"Canonical {label} game source directory was not found. "
                 f"Expected: {expected}"
             )
 
@@ -1901,8 +1902,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--no-install", dest="install", action="store_false", help="Skip Meson install and staged payload checks.")
     parser.add_argument("--skip-python-tests", action="store_true", help="Skip lightweight Python validation tests.")
     parser.add_argument("--skip-build", action="store_true", help="Skip Meson setup/compile/install steps.")
-    parser.add_argument("--build-gamelibs", action="store_true", help="Ask the Windows Meson wrapper to build openQ4-game during compile.")
-    parser.add_argument("--game-libs-repo", default="", help="Override the openQ4-game companion repository path.")
+    parser.add_argument("--build-gamelibs", action="store_true", help="Deprecated: game modules now build with the engine.")
+    parser.add_argument("--game-libs-repo", default="", help="Override the game-source root for validation fixtures; ordinary builds use this checkout.")
     parser.add_argument("--skip-icon-sync", action="store_true", help="Set OPENQ4_SKIP_ICON_SYNC=1 for this run.")
     parser.add_argument("--jobs", "-j", type=positive_int, default=None, help="Parallel compile job count passed to Meson.")
     parser.add_argument("--extra-setup-arg", action="append", default=[], help="Additional argument appended to Meson setup.")

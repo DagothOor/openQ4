@@ -607,6 +607,9 @@ ID_INLINE bool idClass::RespondsTo( const idEventDef &ev ) const {
 
 	SPAWNCLASS_SUBSTITUTION( rvMonsterGrunt, riMonsterGrunt )
 
+  SPAWNCLASS_SUBSTITUTION_FOR_GAME scopes a replacement to the active
+  fs_game. Installing a campaign never changes stock class spawning.
+
   Every entity spawned as the original class is then created as the
   replacement, which must derive from it. Only spawning consults the table;
   type queries, savegames and GetClass() keep seeing the real classes.
@@ -615,7 +618,7 @@ ID_INLINE bool idClass::RespondsTo( const idEventDef &ev ) const {
 
 class idClassSubstitution {
 public:
-								idClassSubstitution( const char *original, const char *replacement );
+								idClassSubstitution( const char *original, const char *replacement, const char *requiredGameDir = NULL );
 
 	// the class to create when content asks for type
 	static idTypeInfo *			Resolve( idTypeInfo *type );
@@ -625,6 +628,7 @@ public:
 private:
 	const char *				original;
 	const char *				replacement;
+	const char *				requiredGameDir;
 	idClassSubstitution *		next;
 
 	static idClassSubstitution *list;
@@ -632,5 +636,8 @@ private:
 
 #define SPAWNCLASS_SUBSTITUTION( original, replacement ) \
 	static idClassSubstitution original##_##replacement##_substitution( #original, #replacement );
+
+#define SPAWNCLASS_SUBSTITUTION_FOR_GAME( gameDir, original, replacement ) \
+	static idClassSubstitution original##_##replacement##_substitution( #original, #replacement, gameDir );
 
 #endif /* !__SYS_CLASS_H__ */

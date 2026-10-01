@@ -231,7 +231,7 @@ def meson_conditional_body(source: str, condition: str) -> str:
 
 def check_windows_warning_policy() -> None:
     game_repo = Path(
-        os.environ.get("OPENQ4_GAMELIBS_REPO", str(ROOT.parent / "openQ4-game"))
+        os.environ.get("OPENQ4_GAMELIBS_REPO", str(ROOT))
     ).resolve()
     policies = (
         (
@@ -239,12 +239,6 @@ def check_windows_warning_policy() -> None:
             "cpp.get_argument_syntax() == 'msvc'",
             "is_msvc and host_cpu_family == 'x86_64'",
             "shared_cpp_args",
-        ),
-        (
-            game_repo / "src" / "meson.build",
-            "is_msvc",
-            "host_cpu_family == 'x86_64'",
-            "common_cpp_args",
         ),
     )
     for policy, compiler_condition, architecture_condition, argument_list in policies:
@@ -275,6 +269,8 @@ def check_windows_warning_policy() -> None:
             raise AssertionError(f"{policy} suppresses gated warnings: {', '.join(conflicts)}")
         if re.search(r"['\"]/WX['\"]", source, re.IGNORECASE):
             raise AssertionError(f"{policy} introduced an unsupported blanket /WX policy")
+    source = (ROOT / 'meson.build').read_text(encoding='utf-8')
+    assert 'game_common_cpp_args = shared_cpp_args +' in source
 
 
 def check_ci_wiring() -> None:

@@ -19,7 +19,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from game_layer import PACKAGED_LAYER_GAME_DIRS  # noqa: E402
+from game_layer import PACKAGED_LAYER_GAME_DIRS, RETIRED_LAYER_GAME_DIRS  # noqa: E402
 
 
 THIN_MANIFEST_NAME = "OPENQ4-MACOS-THIN.json"
@@ -452,7 +452,7 @@ def classify_staged_tree(root: Path, arch: str) -> tuple[dict[str, dict[str, obj
             or (path.parent == root / "baseoq4" and re.fullmatch(r"game-(?:sp|mp)_[A-Za-z0-9]+\.dylib", path.name))
             or (
                 path.parent.parent == root
-                and path.parent.name in PACKAGED_LAYER_GAME_DIRS
+                and path.parent.name in (*PACKAGED_LAYER_GAME_DIRS, *RETIRED_LAYER_GAME_DIRS)
                 and re.fullmatch(r"game-(?:sp|mp)_[A-Za-z0-9]+\.dylib", path.name)
             )
             or (path.parent == root and re.fullmatch(r"renderer-(?:gl|vk)_[A-Za-z0-9]+\.dylib", path.name))

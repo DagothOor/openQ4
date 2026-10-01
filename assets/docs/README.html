@@ -344,7 +344,7 @@
       <p class="lead">A complete engine and game-code replacement for Quake 4, built to run stock assets on modern systems with updated rendering, display handling, input support, and build tooling.</p>
 
       <div class="badges">
-        <a href="https://www.gnu.org/licenses/gpl-3.0"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
+        <a href="../../LICENSING.md"><img src="https://img.shields.io/badge/Licensing-GPL%20engine%20%7C%20SDK%20game%20code-blue.svg" alt="GPL engine and SDK-EULA game code"></a>
         <a href="https://github.com/themuffinator/openQ4"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20preview-lightgrey.svg" alt="Platform"></a>
         <a href="https://github.com/themuffinator/openQ4"><img src="https://img.shields.io/badge/arch-x64-orange.svg" alt="Architecture: x64"></a>
         <a href="https://mesonbuild.com/"><img src="https://img.shields.io/badge/build-Meson%20%2B%20Ninja-yellow.svg" alt="Build system"></a>
@@ -363,7 +363,7 @@
     <section class="panel">
       <h2>Overview</h2>
       <p><strong>openQ4</strong> keeps official Quake 4 asset compatibility as its guiding constraint while modernizing rendering, display handling, input, packaging, and the build pipeline for current hardware and operating systems.</p>
-      <p>Single-player and multiplayer live under one <code>baseoq4/</code> directory with <code>game-sp</code> and <code>game-mp</code>. SDK-derived game code is maintained in the companion <a href="https://github.com/themuffinator/openQ4-game">openQ4-game</a> repository, while BSE is treated as first-party source under <code>src/bse/</code> and linked directly into the client executable.</p>
+      <p>Single-player and multiplayer live under one <code>baseoq4/</code> directory with <code>game-sp</code> and <code>game-mp</code>. SDK-derived game code is maintained in-tree under <code>src/game/</code> and <code>src/mpgame/</code>, with Awakening single-player additions under <code>src/game/awakening/</code>, while BSE is treated as first-party source under <code>src/bse/</code> and linked directly into the client executable.</p>
 
       <div class="note">
         <strong>Asset requirement:</strong> openQ4 does not include Quake 4 assets. You need a legitimate copy of Quake 4 from Steam or GOG to play.
@@ -505,7 +505,7 @@
             <li><code>baseoq4/</code> remains the single game directory for SP and MP</li>
             <li>BSE stays integrated in-tree under <code>src/bse/</code></li>
             <li>Dedicated server builds keep the disabled BSE manager path unless that changes by design</li>
-            <li>Canonical SDK/game-library edits belong in <code>../openQ4-game</code>, not a mirrored <code>src/game</code> tree</li>
+            <li>Canonical SDK/game-library edits belong in <code>src/game/</code> and <code>src/mpgame/</code> in this repository</li>
             <li>Compatibility with proprietary Quake 4 game DLLs is a non-goal</li>
           </ul>
         </article>
@@ -516,7 +516,7 @@
 
     <section class="panel" id="build">
       <h2>Building from Source</h2>
-      <p>Full setup instructions live in <a href="../../BUILDING.md">BUILDING.md</a>. The short version is to keep <a href="https://github.com/themuffinator/openQ4-game">openQ4-game</a> beside this repo at <code>../openQ4-game</code>, use <code>builddir/</code> for local Meson builds, and stage runtime packages into <code>.install/</code>.</p>
+      <p>Full setup instructions live in <a href="../../BUILDING.md">BUILDING.md</a>. The engine checkout includes matching SP/MP game sources. Use <code>builddir/</code> for local Meson builds, and stage runtime packages into <code>.install/</code>.</p>
 
       <div class="card-grid two">
         <article class="card">
@@ -605,9 +605,9 @@ powershell -ExecutionPolicy Bypass -File tools/build/meson_setup.ps1 install -C 
 
     <footer class="footer">
       <p><strong>License:</strong> openQ4 engine code is licensed under <a href="https://www.gnu.org/licenses/gpl-3.0">GPLv3</a>. See <a href="../../LICENSE">LICENSE</a> for the full text.</p>
-      <p>The game-library code in <a href="https://github.com/themuffinator/openQ4-game">openQ4-game</a> is derived from the Quake 4 SDK and remains subject to id Software's SDK EULA. Quake 4 game assets remain the property of id Software and ZeniMax Media.</p>
+      <p>The in-tree game-library code is derived from the Quake 4 SDK and retains <a href="../../LICENSES/QUAKE-4-SDK-EULA.rtf">id Software's SDK EULA</a>. <a href="../../LICENSING.md">LICENSING.md</a> explains the component boundaries and distribution considerations. Quake 4 game assets remain the property of id Software and ZeniMax Media.</p>
       <p>openQ4 is an independent project and is not affiliated with, endorsed by, or sponsored by id Software, Raven Software, Bethesda, or ZeniMax Media. The software is provided "as is" without warranty of any kind and requires a legitimate Quake 4 installation.</p>
-      <p><a href="https://www.darkmatter-quake.com">Website</a> | <a href="https://github.com/themuffinator/openQ4">Repository</a> | <a href="https://github.com/themuffinator/openQ4-game">Game Library</a> | <a href="https://github.com/themuffinator/openQ4/issues">Issue Tracker</a> | <a href="#top">Back to top</a></p>
+      <p><a href="https://www.darkmatter-quake.com">Website</a> | <a href="https://github.com/themuffinator/openQ4">Repository</a> | <a href="https://github.com/themuffinator/openQ4/tree/main/src/game">Game Sources</a> | <a href="https://github.com/themuffinator/openQ4/issues">Issue Tracker</a> | <a href="#top">Back to top</a></p>
       <p>Copyright &copy; 2026 The openQ4 Project</p>
     </footer>
   </main>

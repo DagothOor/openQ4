@@ -70,7 +70,8 @@ bool ApplicationState(const DocumentModel& model, const idDict& dictionary, Stat
 // operations, never console commands; the session maps each one explicitly.
 bool SessionMenuCommand(const std::string& command) {
 	static const std::set<std::string> commands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
-		"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu"};
+		"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
+        "campaigns","campaignQuake4","campaignAwakening","campaignArena","campaignBack","campaignHome"};
 	return commands.contains(command);
 }
 

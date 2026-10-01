@@ -14,20 +14,13 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  # Keep all builds on the companion engine-interface revision used by CI.
-  OPENQ4_GAMELIBS_SHA: 4d87dbdb6934307988b371d3c794190a1380f322
-  # The Awakening's game-library layer: its q4xbase modules build beside baseoq4's.
-  OPENQ4_AWAKENING_SHA: c49842986c0a519feeebc68d78e6f5509d99c3a7
-
 jobs:
   cross-build:
     name: Linux ARM64 Cross Build (x64 host)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}/../openQ4-game
-      OPENQ4_AWAKENING_REPO: ${{ github.workspace }}/../openQ4-game-awakening
+      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}
       PKG_CONFIG_ALLOW_CROSS: "1"
 
     steps:
@@ -35,26 +28,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-
-      - name: Fetch openQ4-game
-        shell: bash
-        run: |
-          set -euo pipefail
-          git init "${OPENQ4_GAMELIBS_REPO}"
-          git -C "${OPENQ4_GAMELIBS_REPO}" remote add origin https://github.com/themuffinator/openQ4-game.git
-          git -C "${OPENQ4_GAMELIBS_REPO}" fetch --depth 1 origin "${OPENQ4_GAMELIBS_SHA}"
-          git -C "${OPENQ4_GAMELIBS_REPO}" checkout --detach "${OPENQ4_GAMELIBS_SHA}"
-          test "$(git -C "${OPENQ4_GAMELIBS_REPO}" rev-parse HEAD)" = "${OPENQ4_GAMELIBS_SHA}"
-
-      - name: Fetch openQ4-game-awakening
-        shell: bash
-        run: |
-          set -euo pipefail
-          git init "${OPENQ4_AWAKENING_REPO}"
-          git -C "${OPENQ4_AWAKENING_REPO}" remote add origin https://github.com/themuffinator/openQ4-game-awakening.git
-          git -C "${OPENQ4_AWAKENING_REPO}" fetch --depth 1 origin "${OPENQ4_AWAKENING_SHA}"
-          git -C "${OPENQ4_AWAKENING_REPO}" checkout --detach "${OPENQ4_AWAKENING_SHA}"
-          test "$(git -C "${OPENQ4_AWAKENING_REPO}" rev-parse HEAD)" = "${OPENQ4_AWAKENING_SHA}"
 
       - name: Setup Python
         uses: actions/setup-python@v7
@@ -132,8 +105,6 @@ jobs:
             builddir-arm64-cross/openQ4-ded_arm64
             builddir-arm64-cross/baseoq4/game-sp_arm64.so
             builddir-arm64-cross/baseoq4/game-mp_arm64.so
-            builddir-arm64-cross/q4xbase/game-sp_arm64.so
-            builddir-arm64-cross/q4xbase/game-mp_arm64.so
           )
 
           for artifact in "${artifacts[@]}"; do

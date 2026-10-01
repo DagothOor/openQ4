@@ -18,7 +18,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GAME_LIBS_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT.parent / "openQ4-game")).resolve()
+GAME_LIBS_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT)).resolve()
 
 
 def read(path: Path) -> str:
@@ -85,6 +85,10 @@ def validate_shutdown_lifecycle_contract(common: str) -> None:
     session_shutdown = shutdown.index("session->Shutdown();")
     early_shutdown = shutdown.index("game->Shutdown();")
     decl_shutdown = shutdown.index("declManager->Shutdown();")
+    collision_shutdown = shutdown.index("collisionModelManager->Shutdown();")
+    renderer_shutdown = shutdown.index("renderSystem->Shutdown();")
+    if not early_shutdown < collision_shutdown < renderer_shutdown < decl_shutdown:
+        raise AssertionError("collision caches must retire after game clips and before renderer/material declarations")
     late_shutdown = shutdown.index("game->ShutdownAfterDecls();")
     unload_dll = shutdown.index("UnloadGameDLL();")
     if false_store > early_shutdown:

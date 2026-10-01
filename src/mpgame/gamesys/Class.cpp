@@ -1487,9 +1487,10 @@ idClassSubstitution *idClassSubstitution::list = NULL;
 idClassSubstitution::idClassSubstitution
 ================
 */
-idClassSubstitution::idClassSubstitution( const char *original, const char *replacement ) {
+idClassSubstitution::idClassSubstitution( const char *original, const char *replacement, const char *requiredGameDir ) {
 	this->original = original;
 	this->replacement = replacement;
+	this->requiredGameDir = requiredGameDir;
 	next = list;
 	list = this;
 }
@@ -1508,7 +1509,8 @@ idTypeInfo *idClassSubstitution::Resolve( idTypeInfo *type ) {
 	for ( int depth = 0; depth < 16; depth++ ) {
 		const idClassSubstitution *sub;
 		for ( sub = list; sub != NULL; sub = sub->next ) {
-			if ( idStr::Cmp( type->classname, sub->original ) == 0 ) {
+			if ( idStr::Cmp( type->classname, sub->original ) == 0 &&
+				 ( sub->requiredGameDir == NULL || idStr::Icmp( sub->requiredGameDir, fileSystem->GetActiveGameDir() ) == 0 ) ) {
 				break;
 			}
 		}
@@ -1536,10 +1538,13 @@ void idClassSubstitution::Validate( void ) {
 			gameLocal.Error( "Class substitution '%s' -> '%s': the replacement must derive from the original", sub->original, sub->replacement );
 		}
 		for ( const idClassSubstitution *other = list; other != NULL; other = other->next ) {
-			if ( other != sub && idStr::Cmp( other->original, sub->original ) == 0 ) {
+			if ( other != sub && idStr::Cmp( other->original, sub->original ) == 0 &&
+				 ( other->requiredGameDir == NULL || sub->requiredGameDir == NULL || idStr::Icmp( other->requiredGameDir, sub->requiredGameDir ) == 0 ) ) {
 				gameLocal.Error( "Class '%s' has more than one substitution", sub->original );
 			}
 		}
-		gameLocal.Printf( "...spawning '%s' as '%s'\n", sub->original, sub->replacement );
+		if ( sub->requiredGameDir == NULL || idStr::Icmp( sub->requiredGameDir, fileSystem->GetActiveGameDir() ) == 0 ) {
+			gameLocal.Printf( "...spawning '%s' as '%s'\n", sub->original, sub->replacement );
+		}
 	}
 }

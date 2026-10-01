@@ -270,9 +270,21 @@ Example:
 
 ## SDK and Game Library
 
-The game code is derived from the [Quake 4 SDK](https://www.moddb.com/games/quake-4/downloads/quake-4-sdk-v15) and maintained in the companion [openQ4-game](https://github.com/themuffinator/openQ4-game) repository. The SDK is subject to id Software's EULA, which permits modification for use with Quake 4 and non-commercial distribution of modifications, but prohibits commercial use and standalone game creation. For complete terms, see the [EULA](https://github.com/themuffinator/openQ4-game/blob/main/doc/legacy/EULA.Development%20Kit.rtf).
+The game code is derived from the Quake 4 SDK and is maintained in
+`src/game/` and `src/mpgame/` in this repository. It retains the
+[SDK EULA](LICENSES/QUAKE-4-SDK-EULA.rtf); the engine retains its GPL and upstream
+Additional Terms. [LICENSING.md](LICENSING.md) records the separate scopes without
+claiming new distribution permission.
 
-A *game-library layer* extends openQ4-game for one mod without replacing any of its files: its own repository holds only new classes, and the openQ4 build links them with the unchanged openQ4-game objects into that mod's game modules. [openQ4-game-awakening](https://github.com/themuffinator/openQ4-game-awakening) is the first, for Quake 4: The Awakening (`q4xbase`); the Meson option `awakening` builds it when the repository sits next to the openQ4 checkout (`../openQ4-game-awakening`) or `OPENQ4_AWAKENING_REPO` names it. A layer that `OPENQ4_AWAKENING_REPO` names must exist: configure fails otherwise, which is how CI makes sure it really built the layer it fetched. Release packages carry the layer's modules and `mod.json` in `q4xbase/` beside `baseoq4/`. On macOS the modules are signed code in `openQ4.app/Contents/Frameworks/q4xbase/` and `mod.json` sits in `Contents/Resources/q4xbase/`. The release packager refuses to build without the layer (`--require-game-layer q4xbase`). See the [Awakening support plan](docs/dev/plans/q4x-awakening.md).
+Awakening additions live in `src/game/awakening/` and compile into the same SP
+module as retail Quake 4. Campaign discovery probes user-supplied loose files or
+PK4 indices without mounting them. Only an active `q4xbase` campaign mounts the
+expansion and enables its class substitution. Its namespace keeps configuration,
+saves and generated caches separate from `baseoq4`. Menu/config overrides remain
+engine-owned, and returning to stock, Arena or multiplayer restarts the filesystem
+to remove expansion declarations and assets. Older `q4xbase` game DLLs are ignored.
+See the [campaign guide](docs/user/campaigns.md) and
+[source consolidation record](docs/dev/plans/game-source-consolidation.md).
 
 ---
 

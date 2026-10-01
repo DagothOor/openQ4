@@ -73,4 +73,9 @@ Before incorporating more external code:
 5. Add an elegant upstream credit in the relevant documentation or README.
 6. Do not import excluded third-party code, game data, proprietary SDK binaries, or source recovered from a retail executable.
 
-The companion `openQ4-game` repository is a separate provenance boundary: its Quake4SDK-derived game-library source remains subject to the Quake 4 SDK EULA. This document inventories this engine repository only.
+The SDK-derived game trees now live in `src/game/` and `src/mpgame/`, including
+the independent Awakening SP extensions. They retain the Quake 4 SDK EULA and
+are a separate licensing scope within this repository. This header-family
+inventory remains an engine attribution audit; it does not relabel game sources
+as GPL. See the [game import record](game-source-provenance.md) and
+[component licensing map](../../LICENSING.md).

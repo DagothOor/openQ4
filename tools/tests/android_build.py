@@ -114,16 +114,15 @@ class AndroidBuildTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="android-wrapper-test-", dir=ROOT / ".tmp") as temporary:
             fixture = Path(temporary)
             project = fixture / "openQ4"
-            game = fixture / "openQ4-game"
+            game = project
             build = project / "builddir"
             scripts = project / "tools/build"
             scripts.mkdir(parents=True)
-            for filename in ("meson_setup.ps1", "gamelibs_stage_path.py"):
+            for filename in ("meson_setup.ps1", "game_source_inventory.py"):
                 shutil.copy2(ROOT / "tools/build" / filename, scripts / filename)
             for module in ("game", "mpgame"):
                 (game / "src" / module).mkdir(parents=True)
                 (game / "src" / module / "Game_local.cpp").write_text("// game\n", encoding="utf-8")
-            (project / "src").mkdir()
             (build / "meson-private").mkdir(parents=True)
             (build / "meson-info").mkdir()
             (build / "meson-private/coredata.dat").touch()
@@ -155,9 +154,10 @@ class AndroidBuildTests(unittest.TestCase):
                 return [json.loads(line) for line in log.read_text().splitlines()]
 
             self.assertEqual([call[0] for call in invoke()], ["setup", "compile"])
-            stage = project / ".tmp/gamelibs_stage-android-arm64"
-            subprocess.run([sys.executable, str(ROOT / "tools/build/stage_gamelibs.py"),
-                            str(project), str(game), str(stage)], check=True, capture_output=True)
+            inventory_path = build / 'openq4_game_sources.json'
+            generated = subprocess.run([sys.executable, str(scripts / 'game_source_inventory.py'), str(project)],
+                                       check=True,capture_output=True,text=True)
+            inventory_path.write_text(generated.stdout,encoding='utf-8')
             self.assertEqual([call[0] for call in invoke()], ["compile"])
             (game / "src/game/Game_local.cpp").write_text("// changed game\n", encoding="utf-8")
             self.assertEqual([call[0] for call in invoke()], ["setup", "compile"])

@@ -14,7 +14,9 @@ macOS stays a preview, not first-class, unless the current release entry below p
 - Validate the collected archive with `python tools/macos/validate_signoff_archive.py <archive> --require-completed-checklist`.
 - Record accepted evidence with `python tools/macos/record_signoff_evidence.py <archive> --version vX.Y.Z --update-index` after adding package artifact names, signing status, and release-note limitations.
 - Record the SHA-256 of the exact archive that passed validation.
-- Record both the openQ4 commit and the `openQ4-game` commit used to stage the game modules.
+- Record the openQ4 commit and game-source inventory used to build the modules.
+  Reports retain the historical `openQ4-game` commit field for compatibility;
+  current in-tree builds set both commit fields to the same openQ4 SHA.
 - Record the architecture policy, actual CPU architecture, and OS matrix role for the run. Use `OPENQ4_MACOS_OS_MATRIX_ROLE=floor-candidate` for oldest-supported-version signoff and `OPENQ4_MACOS_OS_MATRIX_ROLE=latest-public-macos` for current public macOS signoff.
 - Record Xcode and macOS SDK versions from the signoff report so CI/package evidence can be matched to the Apple toolchain that produced it.
 - Record the OpenAL provider, package artifact names, signing/notarization status, and any user-facing limitation that release notes must mention.
@@ -34,7 +36,7 @@ macOS stays a preview, not first-class, unless the current release entry below p
 - [ ] The next macOS signoff archive must include completed manual checklist items for SP, MP, Finder launch, terminal launch, input, audio, display, and package behavior.
 - [ ] The next macOS signoff archive must include mounted-DMG, independently dragged-app, whole-package loose-tool, embedded resource/module path, `fs_basepath`/`fs_cdpath`/`fs_savepath`, and Gatekeeper evidence.
 - [ ] The next macOS signoff archive must include architecture policy, CPU architecture, OS matrix role, Xcode version, and macOS SDK version.
-- [ ] The next macOS signoff archive must include openQ4 and `openQ4-game` commit fields in each bridge report.
+- [ ] The next macOS signoff archive must include the engine and legacy game commit fields in each bridge report, both naming the same openQ4 SHA for an in-tree build.
 - [ ] The next macOS signoff archive must keep OpenGL and Metal bridge renderer evidence separate and must not describe the Metal bridge as native Metal.
 - [ ] Before first-class promotion, accepted evidence must include both a macOS floor-version signoff and a latest-public-macOS signoff for the current Apple Silicon/arm64 matrix.
 - [ ] `docs/dev/release-completion.md` must reference the accepted evidence before macOS support claims are promoted.

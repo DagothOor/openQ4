@@ -1437,6 +1437,8 @@ public:
 	virtual void			Shutdown( bool reloading );
 	virtual bool			IsInitialized( void ) const;
 	virtual bool			PerformingCopyFiles( void ) const;
+	virtual idCampaignContentInfo GetAwakeningContentInfo();
+	virtual const char *GetActiveGameDir() const { return gameFolder.c_str(); }
 	virtual idModList *		ListMods( void );
 	virtual bool			GetModInfo( const char *modDir, idModInfo &modInfo, idStr *reason = NULL );
 	virtual void			FreeModList( idModList *modList );
@@ -1551,6 +1553,7 @@ private:
 	static idCVar			fs_basepath;
 	static idCVar			fs_homepath;
 	static idCVar			fs_savepath;
+	static idCVar			fs_awakeningpath;
 	static idCVar			fs_cachepath;
 	static idCVar			fs_cdpath;
 	static idCVar			fs_game;
@@ -1656,6 +1659,7 @@ idCVar	idFileSystemLocal::fs_savepath( "fs_savepath", "", CVAR_SYSTEM | CVAR_INI
 // there, because a purged cache costs a slow reload and nothing else, while a
 // purged savepath costs the player their config and saves.
 idCVar	idFileSystemLocal::fs_cachepath( "fs_cachepath", "", CVAR_SYSTEM | CVAR_INIT, "regenerable cache directory for the generated/ tree; empty uses fs_savepath" );
+idCVar idFileSystemLocal::fs_awakeningpath( "fs_awakeningpath", "", CVAR_SYSTEM | CVAR_ARCHIVE, "optional Awakening content root (containing q4xbase), mounted only for its single-player campaign" );
 idCVar	idFileSystemLocal::fs_cdpath( "fs_cdpath", "", CVAR_SYSTEM | CVAR_INIT, "" );
 idCVar	idFileSystemLocal::fs_game( "fs_game", OPENQ4_GAMEDIR, CVAR_SYSTEM | CVAR_INIT | CVAR_SERVERINFO, "mod path" );
 idCVar  idFileSystemLocal::fs_game_base( "fs_game_base", "", CVAR_SYSTEM | CVAR_INIT | CVAR_SERVERINFO, "alternate mod path, searched after the main fs_game path, before the basedir" );
@@ -4370,7 +4374,7 @@ idModList *idFileSystemLocal::ListMods( void ) {
 		dirs.Remove( "pb" );
 
 		for ( int i = dirs.Num() - 1; i >= 0; --i ) {
-			if ( dirs[ i ].HasUpper() ) {
+			if ( dirs[ i ].HasUpper() || !dirs[i].Icmp( "q4xbase" ) ) {
 				dirs.RemoveIndex( i );
 			}
 		}
@@ -4563,6 +4567,95 @@ bool idFileSystemLocal::GetModInfo( const char *modDir, idModInfo &modInfo, idSt
 idFileSystemLocal::ValidateConfiguredGameDir
 ===============
 */
+
+static idStr FS_AwakeningRoot() {
+    idStr root = cvarSystem->GetCVarString( "fs_awakeningpath" );
+    root.BackSlashesToSlashes();
+    root.StripTrailing( '/' );
+    idStr leaf;
+    root.ExtractFileName( leaf );
+    if ( !leaf.Icmp( "q4xbase" ) ) {
+        root.StripFilename();
+        root.StripTrailing( '/' );
+    }
+    return root;
+}
+
+idCampaignContentInfo idFileSystemLocal::GetAwakeningContentInfo() {
+    static const char *const required[] = {
+        "def/q4xdamage.def", "def/weapons/spikegun.def",
+        "scripts/main.script", "scripts/events.script",
+        "maps/game/m01_stranarus_trench1.map", "maps/game/m01_stranarus_trench1.proc", "maps/game/m01_stranarus_trench1.cm",
+        "maps/game/m01_stranarus_trench2.map", "maps/game/m01_stranarus_trench2.proc", "maps/game/m01_stranarus_trench2.cm",
+        "maps/game/m02_trianfac.map", "maps/game/m02_trianfac.proc", "maps/game/m02_trianfac.cm",
+        "maps/game/m03_airassault.map", "maps/game/m03_airassault.proc", "maps/game/m03_airassault.cm",
+        "maps/game/m04_prison.map", "maps/game/m04_prison.proc", "maps/game/m04_prison.cm",
+        "maps/game/m05_bio.map", "maps/game/m05_bio.proc", "maps/game/m05_bio.cm",
+        "maps/game/m06_mcc.map", "maps/game/m06_mcc.proc", "maps/game/m06_mcc.cm",
+        "maps/game/m06_mcc_invasion.map", "maps/game/m06_mcc_invasion.proc", "maps/game/m06_mcc_invasion.cm",
+        "maps/game/m07_race.map", "maps/game/m07_race.proc", "maps/game/m07_race.cm",
+        "maps/game/m07_race1.map", "maps/game/m07_race1.proc", "maps/game/m07_race1.cm",
+        "maps/game/m07_race2.map", "maps/game/m07_race2.proc", "maps/game/m07_race2.cm",
+        "maps/game/m08_cryofac.map", "maps/game/m08_cryofac.proc", "maps/game/m08_cryofac.cm",
+        "maps/game/m09_valkaryne.map", "maps/game/m09_valkaryne.proc", "maps/game/m09_valkaryne.cm"
+    };
+    bool found[ sizeof( required ) / sizeof( required[0] ) ] = {};
+    bool seen[ sizeof( required ) / sizeof( required[0] ) ] = {};
+    idCampaignContentInfo info;
+    idStrList roots;
+    roots.AddUnique( fs_savepath.GetString() );
+    roots.AddUnique( fs_cachepath.GetString() );
+    roots.AddUnique( fs_basepath.GetString() );
+    roots.AddUnique( fs_cdpath.GetString() );
+    roots.AddUnique( FS_AwakeningRoot() );
+    // Match SetupGameDirectories/AddGameDirectory precedence without mounting.
+    // A higher-priority empty file must not be hidden by a complete lower copy.
+    for ( int r = roots.Num() - 1; r >= 0; --r ) {
+        if ( roots[r].IsEmpty() ) continue;
+        const idStr directory = BuildOSPath( roots[r], "q4xbase", "" );
+        for ( size_t i = 0; i < sizeof( required ) / sizeof( required[0] ); ++i ) {
+            if ( seen[i] ) continue;
+            idStr filename = BuildOSPath( roots[r], "q4xbase", required[i] );
+            FILE *file = OpenOSFileCorrectName( filename, "rb" );
+            if ( file != NULL ) {
+                found[i] = fgetc( file ) != EOF;
+                seen[i] = true;
+                fclose( file );
+            }
+        }
+        idStrList packs;
+        ListOSFiles( directory, ".pk4", packs );
+        FS_SortPk4FilesForLoadOrder( packs );
+        for ( int p = packs.Num() - 1; p >= 0; --p ) {
+            const idStr filename = BuildOSPath( roots[r], "q4xbase", packs[p] );
+            pack_t *pack = LoadZipFile( filename );
+            if ( pack == NULL ) continue;
+            for ( size_t i = 0; i < sizeof( required ) / sizeof( required[0] ); ++i ) {
+                if ( seen[i] ) continue;
+                for ( fileInPack_t *entry = pack->hashTable[ HashFileName( required[i] ) ]; entry; entry = entry->next ) {
+                    if ( entry->name.Icmp( required[i] ) != 0 ) continue;
+                    seen[i] = true;
+                    unz_file_info zipInfo = {};
+                    found[i] = unzSetCurrentFileInfoPosition( pack->handle, entry->pos ) == UNZ_OK &&
+                        unzGetCurrentFileInfo( pack->handle, &zipInfo, NULL, 0, NULL, 0, NULL, 0 ) == UNZ_OK && zipInfo.uncompressed_size > 0;
+                    break;
+                }
+            }
+            FreePack( pack );
+        }
+    }
+    info.ready = true;
+    for ( size_t i = 0; i < sizeof( required ) / sizeof( required[0] ); ++i ) {
+        info.present = info.present || seen[i];
+        if ( !found[i] ) {
+            info.ready = false;
+            if ( info.missing.Length() ) info.missing += ", ";
+            info.missing += required[i];
+        }
+    }
+    return info;
+}
+
 bool idFileSystemLocal::ValidateConfiguredGameDir( const char *gameDir, idStr *reason ) {
 	if ( reason != NULL ) {
 		reason->Clear();
@@ -4576,8 +4669,13 @@ bool idFileSystemLocal::ValidateConfiguredGameDir( const char *gameDir, idStr *r
 		return true;
 	}
 
-	idModInfo modInfo;
-	return GetModInfo( gameDir, modInfo, reason );
+	if ( !idStr::Icmp( gameDir, "q4xbase" ) ) {
+        const idCampaignContentInfo info = GetAwakeningContentInfo();
+        if ( reason && !info.ready ) *reason = "incomplete Awakening campaign: " + info.missing;
+        return info.ready;
+    }
+    idModInfo modInfo;
+    return GetModInfo( gameDir, modInfo, reason );
 }
 
 /*
@@ -5576,7 +5674,16 @@ void idFileSystemLocal::Startup( void ) {
 		common->Printf( "restarting filesystem with %d addon pak file(s) to include\n", addonChecksums.Num() );
 	}
 
-	idStr invalidReason;
+	// Awakening is a single-player campaign, never a multiplayer/base overlay.
+    if ( !idStr::Icmp( fs_game_base.GetString(), "q4xbase" ) ) fs_game_base.SetString( "" );
+#ifdef ID_DEDICATED
+    const bool awakeningAllowed = false;
+#else
+    const bool awakeningAllowed = !idStr::Icmp( cvarSystem->GetCVarString( "si_gameType" ), "singleplayer" ) &&
+        idStr::Icmp( cvarSystem->GetCVarString( "com_nextGameModule" ), "game_mp" );
+#endif
+    if ( !awakeningAllowed && !idStr::Icmp( fs_game.GetString(), "q4xbase" ) ) fs_game.SetString( OPENQ4_GAMEDIR );
+    idStr invalidReason;
 	if ( fs_game_base.GetString()[ 0 ] &&
 		 idStr::Icmp( fs_game_base.GetString(), BASE_GAMEDIR ) &&
 		 !ValidateConfiguredGameDir( fs_game_base.GetString(), &invalidReason ) ) {
@@ -5629,6 +5736,11 @@ void idFileSystemLocal::Startup( void ) {
 		 idStr::Icmp( fs_game.GetString(), fs_game_base.GetString() ) ) {
 		SetupGameDirectories( fs_game.GetString() );
 	}
+
+	if ( !idStr::Icmp( fs_game.GetString(), "q4xbase" ) ) {
+        const idStr externalRoot = FS_AwakeningRoot();
+        if ( externalRoot.Length() ) AddGameDirectory( externalRoot, "q4xbase" );
+    }
 
 	idStr openQ4PakErrors;
 	if ( !ValidateOpenQ4Paks( openQ4PakErrors ) ) {
@@ -6207,8 +6319,9 @@ void idFileSystemLocal::Init( void ) {
 	common->StartupVariable( "fs_basepath", false );
 	common->StartupVariable( "fs_homepath", false );
 	common->StartupVariable( "fs_savepath", false );
-	common->StartupVariable( "fs_game", false );
-	common->StartupVariable( "fs_game_base", false );
+	common->StartupVariable( "fs_game", true );
+	common->StartupVariable( "fs_game_base", true );
+	common->StartupVariable( "fs_awakeningpath", false );
 	common->StartupVariable( "fs_copyfiles", false );
 	common->StartupVariable( "fs_restrict", false );
 	common->StartupVariable( "fs_searchAddons", false );
@@ -6644,7 +6757,14 @@ idFile *idFileSystemLocal::OpenFileReadFlags( const char *relativePath, int sear
 
 	hash = HashFileName( relativePath );
 
+    const bool protectCampaignNavigation = !gameFolder.Icmp( "q4xbase" ) &&
+        ( !idStr::Icmp( relativePath, "default.cfg" ) || !idStr::Icmp( relativePath, "guis/mainmenu.gui" ) ||
+          !idStr::Icmp( relativePath, "guis/arena_menu.gui" ) || !idStr::Icmp( relativePath, "guis/campaign_menu.gui" ) ||
+          !idStr::Icmpn( relativePath, "guis/menu/", 10 ) );
 	for ( search = searchPaths; search; search = search->next ) {
+        if ( protectCampaignNavigation &&
+             ( (search->dir && !search->dir->gamedir.Icmp( "q4xbase" )) ||
+               (search->pack && IsGameDirPack( search->pack, "q4xbase" )) ) ) continue;
 		if ( search->dir && ( searchFlags & FSFLAG_SEARCH_DIRS ) ) {
 			// check a file in the directory tree
 
@@ -7680,7 +7800,7 @@ void idFileSystemLocal::FindDLL( const char *name, char _dllPath[ MAX_OSPATH ], 
 	}
 
 	const char *moduleGameDir = fs_game.GetString();
-	if ( !moduleGameDir[0] ) {
+	if ( !moduleGameDir[0] || !idStr::Icmp( moduleGameDir, "q4xbase" ) ) {
 		moduleGameDir = OPENQ4_GAMEDIR;
 	}
 	if ( !idGameDirPolicy::IsPortableSegment( moduleGameDir ) ) {

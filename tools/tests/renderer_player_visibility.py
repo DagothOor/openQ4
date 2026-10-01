@@ -26,7 +26,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 RENDERER = ROOT / "src" / "renderer"
 GLPROGS = ROOT / "content" / "baseoq4" / "pak0" / "glprogs"
-GAME_LIBS_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT.parent / "openQ4-game")).resolve()
+GAME_LIBS_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT)).resolve()
 
 # Mirror of RB_PLAYER_OUTLINE_MIN/MAX_WIDTH and cl_player_outline_width.
 PLAYER_OUTLINE_MIN_WIDTH = 0.5

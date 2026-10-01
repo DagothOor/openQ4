@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GAME_LIBS_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT.parent / "openQ4-game")).resolve()
+GAME_LIBS_ROOT = Path(os.environ.get("OPENQ4_GAMELIBS_REPO", ROOT)).resolve()
 
 
 def read(relative_path: str) -> str:
@@ -93,36 +93,18 @@ def validate_engine_corridor() -> None:
 
 
 def validate_companion_corridor() -> None:
-    workflow = read_game(".github/workflows/commit-validation.yml")
-    meson = read_game("src/meson.build")
-    contract = read_game("tools/tests/macos_meson_contract.py")
-    readme = read_game("README.md")
-
-    for token in (
-        "['x86_64', 'aarch64'].contains(host_cpu_family)",
-        "game_arch = 'x64'",
-        "game_arch = 'arm64'",
-        "'-Wl,-install_name,@loader_path/'",
-    ):
-        require(meson, token, "openQ4-game macOS architecture contract")
-
-    for token in (
-        "name: macOS ${{ matrix.arch_label }} GameLibs",
-        "runner: macos-15",
-        "runner: macos-15-intel",
-        "module_arch: arm64",
-        "module_arch: x64",
-        "macho_arch: x86_64",
-        'MACOSX_DEPLOYMENT_TARGET: "11.0"',
-        "lipo -archs",
-        "otool -D",
-        "LC_BUILD_VERSION",
-    ):
-        require(workflow, token, "openQ4-game Intel CI corridor")
-
-    require(contract, "runner: macos-15-intel", "openQ4-game Intel CI regression contract")
-    require(readme, "experimental macOS ARM64 and Intel x64 coverage", "openQ4-game Intel CI documentation")
-    require(readme, "Standalone Intel CI is build evidence only", "openQ4-game Intel support boundary")
+    meson=read('meson.build')
+    modules=read('content/baseoq4/meson.build')
+    workflow=read('.github/workflows/commit-validation.yml')
+    for token in ("binary_arch = 'x64'", "binary_arch = 'arm64'"):
+        require(meson,token,'canonical macOS game architecture')
+    for token in ("'-Wl,-install_name,@loader_path/' + game_sp_binary_name + '.dylib'",
+                  "'-Wl,-install_name,@loader_path/' + game_mp_binary_name + '.dylib'"):
+        require(modules,token,'canonical macOS game install names')
+    for token in ('macos-15-intel','macos-15',"MACOSX_DEPLOYMENT_TARGET: \"11.0\""):
+        require(workflow,token,'canonical macOS CI corridor')
+    reject(workflow,'openQ4-game.git','retired companion checkout')
+    require(read('tools/validation/openq4_validate.py'),'lipo','staged Mach-O architecture guard')
 
 
 def validate_policy_and_wiring() -> None:

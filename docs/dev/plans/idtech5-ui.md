@@ -588,3 +588,14 @@ actual queue disposal, complete audio/image reconstruction and the unified
 durable Apply path remain in development. Scrollbar geometry and editable SYSTEM
 artwork are prepared; shared schema, interaction and rendered qualification are
 being implemented. This progress does not accept any migration or final gate.
+
+## Campaign source consolidation (1 October 2026)
+
+Single Player → Campaign now shares engine-owned discovery and transition
+commands across the compatibility menu and opt-in retained presentation.
+`singleplayer.q4ui` and `campaigns.q4ui` are generated with the existing editable
+Marine vector plates, docked 45-degree bands, typed readiness bindings and
+localized text. The compatibility selector remains available with `ui_retained=0`.
+Campaign setup, Chapters and Arena retain their existing presentation pending
+the wider retained-screen migration. This completes campaign selection only;
+it does not claim the complete UI/editor/migration programme is finished.
