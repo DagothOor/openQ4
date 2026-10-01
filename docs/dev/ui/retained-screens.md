@@ -148,6 +148,12 @@ than the presented home screen.
   scale; a rotated or rounded clip is limited to its bounds and counted in
   `clipMaskFallbacks`. Before this, such content was never clipped (the loading
   bar lit its whole length at any progress).
+- **Additive pictures in layers.** An add-blended picture used to write its
+  texture alpha. Inside a composition layer (any ancestor fading through
+  `opacity`), the layer then composited the picture's whole rectangle as an
+  opaque box: the wordmark darkened its rectangle as the title departed.
+  Additive pictures now draw with zero coverage, which leaves their light
+  unchanged; `ui_retained_layer_pool.py` checks the conversion.
 - **Layer row order on Vulkan.** Opacity below 1 and masks composite through
   engine render textures, which keep GL row order on every backend. Since
   2026-09-25 the Vulkan executor has recorded render textures lower-origin and
@@ -293,6 +299,15 @@ while the home plates are at 0.8. The wordmark sits at 40% while the Exit
 modal is open and is restored 200 ms into its leave. Evidence:
 `.tmp/ui/retained-motion-tokens/validation-evidence.json`, SHA-256
 `0d139aa4bd795cece9cf6e7ebda88883b0b52bd53c1ce8ab9544a9ca3b082218`.
+
+The motion was then captured in the engine, on OpenGL and Vulkan at
+1280x720, from a candidate runtime built from the pushed code. The exit
+confirmation appeared half way in, open, holding, releasing and closed,
+and the plinth was gone 30 ms into a depart. The captures exposed the
+additive-picture layer fault above. Fixed, the wordmark's rectangle reads
+69 on OpenGL and 68.7 on Vulkan instead of a dark 26. Evidence:
+`.tmp/ui/retained-motion-engine/validation-evidence.json`, SHA-256
+`b915a8889da4535c7b4a19fc6c9af500ad8bc1dccd5608dafe6057221189cbf9`.
 
 ## Known limitations
 

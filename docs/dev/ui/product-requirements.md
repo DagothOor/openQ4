@@ -185,6 +185,8 @@ Retained timeline completion programs, based on engine `9171699a34db3ebf4affb6c2
 
 On engine `694889557900c39e7940261dc61810cdffc52627` the retained title and pause screens fade the plinth and its secondary links over 50 ms on depart, give hover feedback at once, and dim the wordmark while the title's Exit modal is open. `MOT-012` gains partial evidence without a status change. Qualified by the native screens test; no engine capture. Evidence: `.tmp/ui/retained-motion-tokens/validation-evidence.json`, SHA-256 `0d139aa4bd795cece9cf6e7ebda88883b0b52bd53c1ce8ab9544a9ca3b082218`.
 
+On engine `98fb185f2bd6051fd9acc1f213913ea84ae2c2d3` the retained title's modal and depart motion was captured in the engine on OpenGL and Vulkan, which exposed and now verifies a host fix: additive pictures no longer black out their rectangle inside a fading composition layer. `MOT-012` gains partial evidence without a status change. Evidence: `.tmp/ui/retained-motion-engine/validation-evidence.json`, SHA-256 `b915a8889da4535c7b4a19fc6c9af500ad8bc1dccd5608dafe6057221189cbf9`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial

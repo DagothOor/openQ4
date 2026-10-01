@@ -107,8 +107,60 @@ int main(){
 '''
 
 
+DRAW_SUPPORT = r'''
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+typedef unsigned char byte;
+typedef int glIndex_t;
+namespace openq4::ui { struct Vertex {float x=0,y=0,u=0,v=0,r=1,g=1,b=1,a=1;}; }
+struct idVec3 {float x=0,y=0,z=0; void Set(float a,float b,float c){x=a;y=b;z=c;}};
+struct idVec2 {float x=0,y=0; void Set(float a,float b){x=a;y=b;}};
+struct idDrawVert {idVec3 xyz; idVec2 st; idVec3 normal; idVec3 tangents[2]; byte color[4]={}; byte color2[4]={}; void Clear(){*this=idDrawVert{};}};
+template<class T> struct idList {std::vector<T> items; void SetNum(int n){items.resize(n);} T& operator[](int i){return items[i];} T* Ptr(){return items.data();}};
+template<class T> T Min(T a,T b){return a<b?a:b;}
+struct idStr {static int Icmpn(const char* a,const char* b,int n){return std::strncmp(a,b,n);} static int Icmp(const char* a,const char* b){return std::strcmp(a,b);}};
+struct idMath {static float ClampFloat(float low,float high,float value){return value<low?low:value>high?high:value;}};
+struct idMaterial {std::string name; const char* GetName() const {return name.c_str();}};
+struct Renderer {
+    std::vector<idDrawVert> drawn; const idMaterial* material=nullptr;
+    void SetColor4(float,float,float,float){}
+    void DrawStretchPic(const idDrawVert* vertices,const glIndex_t*,int count,int,const idMaterial* used,bool){drawn.assign(vertices,vertices+count);material=used;}
+} renderer;
+Renderer* renderSystem=&renderer;
+struct Declarations {idMaterial solid{"_retainedSolid"}; const idMaterial* FindMaterial(const char*){return &solid;}} declarations;
+Declarations* declManager=&declarations;
+struct Host {
+    int viewportWidth=1280,viewportHeight=720;
+'''
+DRAW_MAIN = r'''
+};
+int main(){
+    // Half-tinted premultiplied quad: rgb and a at 0.5.
+    std::vector<openq4::ui::Vertex> quad(4);
+    for (auto& vertex : quad) {vertex.r=vertex.g=vertex.b=vertex.a=.5f;}
+    const std::vector<int> indices{0,1,2,0,2,3};
+    Host host;
+    idMaterial additive{"_retainedAdd/gfx/guis/mainmenu/q4text"},picture{"_retained/gfx/guis/mainmenu/level_mcc"};
+    // Additive light keeps its premultiplied tint and carries no coverage, so
+    // it never writes a composition layer's alpha (an opaque box on composite).
+    host.Draw(quad,indices,reinterpret_cast<std::uintptr_t>(&additive));
+    assert(renderer.material==&additive && renderer.drawn.size()==6);
+    for (const auto& vertex : renderer.drawn) assert(vertex.color[0]==128 && vertex.color[3]==0);
+    // A straight image is unpremultiplied and keeps its coverage.
+    host.Draw(quad,indices,reinterpret_cast<std::uintptr_t>(&picture));
+    for (const auto& vertex : renderer.drawn) assert(vertex.color[0]==255 && vertex.color[3]==128);
+    std::puts("retained host draw: additive pictures write no coverage, straight images keep theirs");
+}
+'''
+
+
 def main():
     source=(ROOT/'src/ui/RetainedUI.cpp').read_text()
+    source_text=source
     bodies=[function_body(source,signature).replace(' override','') for signature in (
         'bool BeginLayer(','void CompositeLayer(','void MaskLayer(','void DrawLayer(')]
     # The Vulkan executor's side of the row-order contract the composites rely on.
@@ -129,6 +181,10 @@ def main():
         source.write_text(code,encoding='utf-8')
         subprocess.run([compiler,'-std=c++17',str(source),'-o',str(binary)],check=True)
         subprocess.run([str(binary)],check=True)
+        draw=Path(temp)/'draw.cpp';drawBinary=Path(temp)/'draw.exe'
+        draw.write_text(DRAW_SUPPORT+function_body(source_text,'void Draw(').replace(' override','')+DRAW_MAIN,encoding='utf-8')
+        subprocess.run([compiler,'-std=c++17',str(draw),'-o',str(drawBinary)],check=True)
+        subprocess.run([str(drawBinary)],check=True)
 
 
 if __name__=='__main__':
