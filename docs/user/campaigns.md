@@ -60,3 +60,9 @@ new-campaign menu after any required restart. Add `start` to begin the fixed
 first map directly. `campaignSelect arena` opens the Arena browser on stock
 content. These commands follow the same content/module rules as menu actions.
 `campaignMenu campaigns` opens the campaign chooser.
+
+## Credits
+
+Quake 4: The Awakening was developed by Raven Software and Ritual
+Entertainment. Justin Marshall recovered and published the expansion. openQ4's
+support for it is written independently and includes none of its content.

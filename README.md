@@ -187,10 +187,11 @@ Developers can also find advanced configuration and file layout in [TECHNICAL.md
 - **[Mikko Mononen, Eric Veach and the libtess2 contributors](https://github.com/memononen/libtess2/tree/8dbd6483e920311a58c9af10a10beb278efebc36)** - SGI-B-2.0 polygon tessellator for the new interface's vector shapes, with an [openQ4 precision patch](subprojects/packagefiles/libtess2/double-precision.patch); [licence notice](docs/licenses/libtess2.txt)
 - **[Q2REX Project Team](https://github.com/themuffinator/Q2REX)** - design reference for the [multiplayer chat panel](docs/user/multiplayer-chat.md)
 - **[MuffMode](https://github.com/themuffinator/MuffMode)** and **[Q4MAX](https://www.moddb.com/mods/q4max)** - multiplayer workflow and usability references
-- **Justin Marshall** - Quake4Doom and early BSE reverse engineering reference work
+- **Justin Marshall** - Quake4Doom and early BSE reverse engineering reference work, and recovering and publishing Quake 4: The Awakening
 - **Robert Beckebans** - renderer modernization reference work, including RBDOOM-3-BFG inspiration
 - **id Software's official Doom 3 and Doom 3 BFG source releases** - retained idTech 4 source lineage; see the [source provenance inventory](docs/dev/source-provenance.md)
 - **id Software** and **Raven Software** - Quake 4 and the underlying technology
+- **Raven Software** and **Ritual Entertainment** - Quake 4: The Awakening, the unreleased expansion whose single-player campaign openQ4 can run
 - **Chris Robinson and the [OpenAL Soft](https://openal-soft.org/) contributors** - cross-platform OpenAL runtime bundled in macOS packages
 - **The Khronos Group and [glslang contributors](https://github.com/KhronosGroup/glslang/tree/15.1.0)** - GLSL-to-SPIR-V compiler used by the Vulkan renderer; its complete licence ships under `licenses/`
 - **[The Khronos Group](https://github.com/KhronosGroup/OpenGL-Registry)** - MIT-licensed OpenGL ES API headers, with their original notices retained

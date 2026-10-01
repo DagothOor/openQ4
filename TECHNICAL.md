@@ -4,7 +4,7 @@
 
 </div>
 
-This document covers technical details for advanced users and developers: compatibility status, file layout, configuration cvars, asset validation, build dependencies, versioning, and the SDK/game library structure.
+This reference is for advanced players, server operators and modders. It covers the install layout, asset checks, useful console settings, file paths, mod packaging and version numbers.
 
 For installation and a feature overview, see the [README](README.md). For building from source, see [BUILDING.md](BUILDING.md).
 
@@ -12,229 +12,191 @@ For installation and a feature overview, see the [README](README.md). For buildi
 
 ## Table of Contents
 
-- [Quake 4 Compatibility Status](#quake-4-compatibility-status)
-- [Game Directory Structure](#game-directory-structure)
+- [Compatibility](#compatibility)
+- [Install Layout](#install-layout)
 - [Asset Validation](#asset-validation)
-- [Advanced Configuration](#advanced-configuration)
-- [Mod Manifests](#mod-manifests)
-- [SDK and Game Library](#sdk-and-game-library)
-- [Dependencies](#dependencies)
-- [Versioning](#versioning)
+- [Console Settings](#console-settings)
+- [File System Paths](#file-system-paths)
+- [Crash Reports](#crash-reports)
+- [Mods](#mods)
+- [Game Code and The Awakening](#game-code-and-the-awakening)
+- [Version Numbers](#version-numbers)
 
 ---
 
-## Quake 4 Compatibility Status
+## Compatibility
 
-This status reflects compatibility with official Quake 4 assets (`q4base` PK4s), not proprietary game DLL compatibility.
+openQ4 runs the official Quake 4 game data (the `q4base` PK4s) with its own engine and game modules. It does not load the original proprietary game DLLs, so mods that depend on them are not supported.
 
-### Compatible
+What works with stock content:
 
-- ✅ **Basic Set of Effects (BSE) Reconstruction**: Core BSE runtime behavior rebuilt and integrated so stock effects execute through the openQ4 engine/game pipeline
-- ✅ **Sound Shaders**: Effect-driven sound shader paths restored, including effect sound capability checks and runtime playback behavior
-- ✅ **Screen Effects**: BSE-driven screen/camera effect paths used by stock content are operational
-- ✅ **Material Shaders**: Material handling compatibility restored to remove startup reliance on custom `q4base` material overrides
-- ✅ **Modern Display Handling**: Automatic aspect-ratio/FOV behavior, multi-monitor targeting, and desktop-native fullscreen paths integrated
-- ✅ **Steam Deck Runtime Path**: Linux SDL3 backend, controller/menu integration, and a dedicated `openQ4-steamdeck` launcher/profile are in place as of March 30, 2026
-- ✅ **Stock-Asset Validation Path**: Repeated validation loops with stock assets keep parser/runtime compatibility regressions visible and actionable
-- ✅ **Door/Trigger Script Progression Stability (OpenD3 Parity)**: Right-associative script compiler pointer-temp handling guards x64 storage width mismatches, preventing interpreter write corruption in affected trigger/door event chains
+- **Effects:** stock particle, sound and screen effects run through openQ4's own effects system.
+- **Materials:** stock materials load without replacement material files.
+- **Scripted sequences:** doors, triggers and scripted events progress correctly in 64-bit builds.
+- **Modern displays:** automatic aspect ratio and FOV, multi-monitor selection and desktop fullscreen.
+- **Steam Deck:** the Linux build includes controller and menu support plus the `openQ4-steamdeck` launcher.
 
-### In Progress
-
-- ❌ **Ongoing Compatibility Sweep**: Additional map-by-map gameplay validation remains in progress to catch residual regressions
-
-Current known regressions and follow-up work are tracked in [TODO.md](TODO.md) and [docs/dev/release-completion.md](docs/dev/release-completion.md).
+Map-by-map gameplay checks are still in progress. Please report anything that breaks on the [issue tracker](https://github.com/themuffinator/openQ4/issues).
 
 ---
 
-## Game Directory Structure
+## Install Layout
+
+Windows and Linux packages use this layout; on macOS the same files live inside `openQ4.app`.
 
 ```
 openQ4/
-├── openQ4-client_x64      # Main executable (.exe on Windows)
-├── openQ4-ded_x64         # Dedicated server (.exe on Windows)
-├── openQ4-steamdeck       # Linux Steam Deck launcher
-└── baseoq4/               # Unified game directory
-    ├── pak0.pk4           # Core openQ4 runtime content
-    ├── pak1.pk4           # Level-related openQ4 content
-    ├── game-sp_x64        # Single-player module (.dll / .so / .dylib)
-    └── game-mp_x64        # Multiplayer module (.dll / .so / .dylib)
+├── openQ4-client_<arch>     # The game (.exe on Windows)
+├── openQ4-ded_<arch>        # Dedicated server (.exe on Windows)
+├── openQ4-steamdeck         # Steam Deck launcher (Linux)
+├── renderer-gl_<arch>       # OpenGL renderer (.dll / .so)
+├── renderer-vk_<arch>       # Experimental Vulkan renderer (.dll / .so / .dylib)
+└── baseoq4/                 # The single openQ4 game directory
+    ├── pak0.pk4             # openQ4 runtime content
+    ├── pak1.pk4             # openQ4 level content
+    ├── mod.json             # Game-directory manifest
+    ├── game-sp_<arch>       # Single-player module (.dll / .so / .dylib)
+    └── game-mp_<arch>       # Multiplayer module (.dll / .so / .dylib)
 ```
 
-- **Single-player**: loads `game-sp_<arch>`
-- **Multiplayer**: loads `game-mp_<arch>`
-- **BSE runtime**: linked directly into `openQ4-client_<arch>`; dedicated server builds keep a disabled/stub path
-- **Source-owned runtime content**: author core runtime overrides in `content/baseoq4/pak0/` and level-related content in `content/baseoq4/pak1/`
-- **Generated staging output**: treat `.install/baseoq4/` as build output, not an editing target
-- **Runtime identity**: the in-game directory remains `baseoq4/` even though the repo source path now lives under `content/baseoq4/`
-- No separate mod folders or manual mode switching required
+- Single-player loads `game-sp_<arch>` and multiplayer loads `game-mp_<arch>`. Quake 4 and The Awakening both use the same single-player module.
+- Your retail game data stays in the Quake 4 install's `q4base` directory; openQ4 reads it from there. Optional Awakening content goes in its own `q4xbase` directory, described in the [campaign guide](docs/user/campaigns.md).
+- Windows packages also include `OpenAL32.dll` and `.pdb` debug symbols. Linux debug symbols are a separate download.
+- When upgrading, replace the whole package. The engine, renderer modules and game modules must come from the same release.
 
 ---
 
 ## Asset Validation
 
-openQ4 automatically validates your Quake 4 installation to ensure you have legitimate, unmodified media files.
+openQ4 checks that your Quake 4 installation has legitimate, unmodified game data.
 
-**How it works:**
-1. Engine validates required official `q4base` media PK4 checksums at startup
-2. Refuses to run if required assets are missing or modified
-3. Ignores retail game-binary PK4 archives such as `game000.pk4` through `game300.pk4` and `gamex*.pk4` because openQ4 ships its own game modules
-4. Allows optional official patch/menu and language PK4s when present without making them startup requirements
-5. Auto-discovers your installation (checks Steam, GOG, or current directory)
+1. At startup it verifies the checksums of the required official `q4base` media PK4s.
+2. It refuses to run if required assets are missing or modified.
+3. It ignores the retail game-code PK4s (`game000.pk4` to `game300.pk4` and `gamex*.pk4`), because openQ4 ships its own game modules.
+4. Optional official patch, menu and language PK4s are used when present but are not required.
+5. It finds your installation automatically in Steam, GOG or the current directory.
 
-**Configuration:**
-- `fs_validateOfficialPaks 1` (default) — Enable asset validation
-- See [official-pk4-checksums.md](docs/dev/official-pk4-checksums.md) for the checksum reference
+`fs_validateOfficialPaks 1` (the default, set at startup) enables these checks. The [official PK4 checksum reference](docs/dev/official-pk4-checksums.md) lists the expected files.
 
 ---
 
-## Advanced Configuration
+## Console Settings
 
-<details>
-<summary><b>Display and Graphics Settings</b></summary>
+Many of these are also in the in-game Settings menu. The [player guides](README.md#player-guides) explain each area in more depth.
 
-### Multi-Monitor Support
-- `r_screen -1` — Auto-detect current display (default)
-- `r_screen 0..N` — Select specific monitor
-- Use `listDisplays` console command to see available monitors
+### Display
 
-### Display Modes
-- `r_fullscreen 0|1` — Toggle fullscreen
-- `r_fullscreenDesktop 1` — Desktop native fullscreen (default)
-- `r_fullscreenDesktop 0` — Exclusive fullscreen (uses `r_mode`)
-- `r_borderless` — Borderless windowed mode
-- Use `listDisplayModes [displayIndex]` to see available modes
+- `r_screen -1` — use the current display (default); `r_screen 0..N` picks a monitor. `listDisplays` lists them.
+- `r_fullscreen 0|1` — windowed or fullscreen.
+- `r_fullscreenDesktop 1` — desktop fullscreen (default); `0` uses exclusive fullscreen at `r_mode`. `listDisplayModes [displayIndex]` lists the available modes.
+- `r_borderless` — borderless window.
+- `r_windowWidth` / `r_windowHeight` — window size. Aspect ratio, FOV and HUD framing follow the render size automatically.
 
-### Window Settings
-- `r_windowWidth` / `r_windowHeight` — Window dimensions
-- Aspect ratio, FOV behavior, and UI framing are automatically derived from render size
-
-### Rendering and Post-Processing
-- `r_bloom 0|1` — Toggle bloom post-processing
-- `r_hdrToneMap 0|1` — Toggle HDR filmic tone mapping and color correction
-- `r_ssao 0|1` — Toggle screen-space ambient occlusion
-- `r_crt 0|1` — Toggle CRT emulation post-processing
-- `r_crtChromatic` — Optional CRT channel convergence offset; defaults to `0` and is capped to a subtle range to avoid global RGB edge artifacts
-- `r_useShadowMap 0|1` — Enable the experimental shadow-map path
-- `r_shadowMapCSM 0|1` — Enable projected-light cascaded shadow maps (when shadow maps are active)
-- `r_shadowMapHashedAlpha 0|1` — Hashed alpha testing for cutout/perforated shadow casters
-- `r_shadowMapTranslucentMoments 0|1` — Experimental blended/translucent shadow overlay
-- `r_stencilTranslucentShadows 0|1` — Let translucent materials cast and receive stencil shadows in the classic shadow-volume path (`regenerateWorld` or a map reload is required after toggling)
-- `r_softParticles 0|1` — Enable optional depth-faded BSE particles so smoke/dust and additive bursts fade against solid scene depth
-- `r_softParticleFadeDistance` — World-unit fade distance used when `r_softParticles` is enabled (default `64`)
-- `r_enhancedMaterials 0|1` — Route eligible stock material interactions through the enhanced GLSL shading path; animated, deformed, and packed character geometry remains on the classic ARB2 interaction path for visual parity
-- `r_enhancedMaterialNormalScale` — Boost tangent-space normal detail when enhanced materials are active
-- `r_enhancedMaterialSpecularBoost` — Increase specular intensity when enhanced materials are active
-- `r_enhancedMaterialFresnel` — Add grazing-angle fresnel to existing materials when enhanced materials are active
-- `r_useRepeatedStateReuse 0|1` — Keep model-space skinned snapshots across transform-only entity updates so repeated-state presentation frames skip CPU re-skinning (default `1`; reuse hits show as `snapshotsReused` under `r_showUpdates 1`)
-- `r_useRedundantStateFiltering 0|1` — Skip redundant legacy-backend GL calls (repeated program env parameters, vertex attrib array toggles, and vertex/index buffer rebinds); default `1`
-- `com_forceGenericSIMD 0|1` — Force the generic scalar math path instead of the SSE2 SIMD processor used for skinning, shadow, and bounds math on x86-64 (default `0`)
-- `r_hdrAutoExposureAsync 0|1` — Read the HDR auto-exposure luminance sample back asynchronously with one frame of latency instead of stalling the GPU pipeline every frame (default `1`)
-- See [docs/user/shadow-mapping.md](docs/user/shadow-mapping.md) for the full shadow-map CVar reference, presets, transparency behavior, and debug modes
-
-### Renderer Backend
-- `r_renderApi best|gl|vulkan|gl-module|gles` — Rendering API; default `gl` on desktop and `gles` on Android. `best` selects that platform default. `vulkan` selects the experimental Vulkan module; `gles` selects Emile Belanger's experimental OpenGL ES 3.0 module. Changes apply on engine restart. See the [Android/GLES guide](docs/dev/android-build.md) for dependencies, limitations and SigmaTouch integration. Vulkan module loading, device admission and startup preparation failures fall back to OpenGL in the same launch; a later legacy `vid_restart` device failure selects OpenGL for the next launch.
-- See [docs/user/display-settings.md](docs/user/display-settings.md#renderer-backend-opengl-default-vulkan-is-experimental)
-
-### Presentation Clock
-- `g_presentationInterpolation 0|1` — Draw movers, and everything riding them, on the same interpolated presentation time as the first-person camera instead of the 60 Hz simulation clock (default `1`). Setting `0` puts the camera and every entity back on the simulation clock together
-- `g_showPresentationPose 0|1` — Developer diagnostic: report per frame whether the local player reached the presentation clock, and the root transform, joint modifier, animation time, and drawn joint the frame used (default `0`)
-
-### Modernization Paths (experimental, default-off)
-
-Each of these is independently reversible, and `r_rendererModernQuality 0` rolls
-back every Milestone F domain at once. They are previews rather than finished
-features; see the [idTech 5 modernization roadmap](docs/dev/idtech5-modernization-roadmap.md)
-for scope and the [engine capability matrix](docs/dev/engine-capability-matrix.md)
-for authoritative status.
-
-- `r_temporalAA 0|1` — Native-history temporal anti-aliasing/upscaling on OpenGL and Vulkan (default `0`); SMAA remains the immediate rollback
-- `r_rendererDynamicResolution 0|1` — GPU-time driven resolution scaling (default `0`), tuned with `r_dynamicResolutionMinScale` / `r_dynamicResolutionMaxScale`
-- `r_rendererModernQuality 0|1` — Master gate for the modern material and advanced-lighting domains (default `1`); `0` rolls all of them back together
-- `r_pbrMaterials 0|1` — Guarded metallic/roughness lighting for dual-authored `pbr { ... }` materials (default `0`); retail materials keep their classic fallback
-- `r_rendererReflectionProbes 0|1` — Authored, bounded OpenGL specular probes (default `0`); incomplete probe data returns to the analytic environment
-- `r_rendererClusteredDecals 0|1` — Bounded OpenGL clustered-decal corridor (default `0`)
-- `r_rendererFroxelVolumetrics 0|1` — Bounded view-aligned froxel volumetrics (default `0`)
-- `r_rendererSSR 0|1` — Bounded depth-normal screen-space reflections (default `0`)
-- `r_rendererSSGI 0|1` — Fixed-tap depth-derived screen-space indirect light (default `0`)
-- `r_gpuSkinning 0|1` — Backend compute skinning for eligible MD5/MD5R surfaces (default `0`); CPU positions stay authoritative for gameplay and stencil volumes
-- `com_levelLoadModernization 0|1` — Learned level-load preload plus generated model, world, collision, and animation caches (default `0`); private to `fs_savepath` and falls back to the installed assets
-- See [docs/user/temporal-presentation.md](docs/user/temporal-presentation.md), [docs/user/advanced-screen-space-lighting.md](docs/user/advanced-screen-space-lighting.md), and [docs/user/level-load-cache.md](docs/user/level-load-cache.md)
+See [Display Settings](docs/user/display-settings.md).
 
 ### Resolution Scaling
-- `r_screenFraction` — `10..200`; values below `100` reduce or simulate reduced resolution, while values above `100` supersample the root scene in a single-sample offscreen target and resolve to the native back buffer
-- `r_resolutionScaleMode 0` — Legacy cropped viewport scaling below native resolution
-- `r_resolutionScaleMode 1` — Bilinear fullscreen upscale
-- `r_resolutionScaleMode 2` — High-quality fullscreen upscale + sharpening
-- `r_resolutionScaleSharpness` — HQ sharpen strength (`0.0` to `1.5`)
 
-### Shader Compatibility
-- `r_interactionColorMode` — Interaction shader mode (`0` auto, `1` packed env16.xy, `2` vector env16/env17)
-- `r_shaderReport 1` — Print shader summaries after startup and `vid_restart`
-- `r_shaderReport 2` — Also warn when invalid ARB programs are skipped at runtime
-- `reportShaderPrograms` — Print current ARB program validity plus material/shadow GLSL load state
+- `r_screenFraction 10..200` — render scale in percent. Below `100` renders fewer pixels; above `100` supersamples.
+- `r_resolutionScaleMode` — `0` legacy cropped viewport, `1` bilinear upscale, `2` high-quality upscale with sharpening.
+- `r_resolutionScaleSharpness 0.0..1.5` — sharpening strength for mode `2`.
 
-</details>
+### Renderer
 
-<details>
-<summary><b>Input and Controller Settings</b></summary>
+- `r_renderApi best|gl|vulkan|gl-module|gles` — `gl` (OpenGL) is the default on desktop. `vulkan` selects the experimental Vulkan renderer and falls back to OpenGL if it cannot start. `gles` is the OpenGL ES 3.0 renderer used on Android. Changes apply after restarting the game. See [Renderer Backend](docs/user/display-settings.md#renderer-backend-opengl-default-vulkan-is-experimental).
+- `g_presentationInterpolation 0|1` — draw the camera, weapons and moving objects smoothly between the game's 60 Hz ticks on high-refresh displays (default `1`). `0` returns everything to the simulation clock.
 
-### Controller Support
-- `in_joystick` — Enable/disable gamepad input
-- `in_joystickDeadZone` — Radial analog stick dead zone
-- `in_joystickLookSensitivity` — Controller look speed scale
-- `in_joystickLookCurve` — Controller look response curve
-- `in_joystickMoveCurve` — Controller movement response curve
-- `in_joystickInvertLook` — Invert controller look pitch
-- `in_joystickSouthpaw` — Swap movement and look sticks
-- `in_joystickTriggerThreshold` — Trigger sensitivity
-- `in_joystickRumble` / `in_joystickRumbleScale` — Enable and scale controller rumble
-- `com_platformProfile` — Startup profile selector (`default` or `steamdeck`)
+### Post-Processing and Materials
 
-### Features
-- Hotplug support — connect or disconnect a controller at any time
-- Dual-stick analog movement and look with radial dead-zone shaping
-- Full button mapping support
-- `K_JOY7` and `K_JOY8` both open the in-game menu
+- `r_bloom 0|1` — bloom.
+- `r_hdrToneMap 0|1` — HDR filmic tone mapping and colour correction.
+- `r_ssao 0|1` — screen-space ambient occlusion.
+- `r_crt 0|1` — CRT monitor filter. `r_crtChromatic` adds a subtle colour-channel offset (default `0`).
+- `r_softParticles 0|1` — fade smoke, dust and bursts softly where they meet walls and floors. `r_softParticleFadeDistance` sets the fade distance in world units (default `64`).
+- `r_enhancedMaterials 0|1` — enhanced shading for eligible stock materials; animated and character surfaces keep the classic look. Tune with `r_enhancedMaterialNormalScale`, `r_enhancedMaterialSpecularBoost` and `r_enhancedMaterialFresnel`.
 
-</details>
+### Shadows
 
-<details>
-<summary><b>File System Paths</b></summary>
+- `r_useShadowMap 0|1` — experimental shadow maps instead of classic stencil shadows.
+- `r_shadowMapCSM 0|1` — cascaded shadow maps for distant outdoor lighting.
+- `r_shadowMapHashedAlpha 0|1` — shadows from cutout surfaces such as grates and fences.
+- `r_shadowMapTranslucentMoments 0|1` — experimental shadows from translucent surfaces.
+- `r_stencilTranslucentShadows 0|1` — let translucent materials cast and receive classic stencil shadows. Reload the map (or run `regenerateWorld`) after changing it.
 
-### Path Discovery Order
-1. Override (if specified via cvar or command line)
-2. Current working directory
-3. Steam installation
-4. GOG installation
+See [Shadow Mapping](docs/user/shadow-mapping.md) for presets and troubleshooting.
 
-On Linux, Steam auto-discovery checks `~/.steam/steam`, `~/.local/share/Steam`, and the Flatpak Steam root at `~/.var/app/com.valvesoftware.Steam/.local/share/Steam`, then expands any extra libraries listed in `libraryfolders.vdf`.
+### Experimental Previews
 
-### Path Variables
-- `fs_basepath` — Game installation directory (auto-detected)
-- `fs_homepath` — Writable user directory
-- `fs_savepath` — Save games and configs (defaults to `fs_homepath`)
-- `fs_cachepath` — Regenerable image/audio cache root (defaults to `fs_savepath`). Android hosts can use the application's cache directory without putting saves or configuration there.
-- `fs_cdpath` — Locked runtime overlay path (use `.install/` as launch dir for testing)
+These are off by default, and each can be turned on independently:
 
-### Manual Path Configuration
+- `r_temporalAA 0|1` — temporal anti-aliasing and upscaling.
+- `r_rendererDynamicResolution 0|1` — adjust resolution automatically to hold frame time, within `r_dynamicResolutionMinScale` and `r_dynamicResolutionMaxScale`.
+- `r_pbrMaterials 0|1` — physically based lighting for materials authored with PBR data; retail materials keep their classic look.
+- `r_rendererReflectionProbes 0|1` — authored reflection probes (OpenGL).
+- `r_rendererClusteredDecals 0|1` — clustered decals (OpenGL).
+- `r_rendererFroxelVolumetrics 0|1` — volumetric lighting.
+- `r_rendererSSR 0|1` — screen-space reflections.
+- `r_rendererSSGI 0|1` — screen-space indirect light.
+- `r_gpuSkinning 0|1` — animate eligible models on the GPU.
+- `com_levelLoadModernization 0|1` — local level-load caches.
 
-If your Quake 4 installation is not auto-detected, launch with:
+`r_rendererModernQuality 0` switches off the modern material and lighting previews together (default `1`). See [Temporal AA and Dynamic Resolution](docs/user/temporal-presentation.md), [Advanced Screen-Space Lighting](docs/user/advanced-screen-space-lighting.md), [PBR Materials](docs/user/pbr-materials.md) and [Level-Load Cache](docs/user/level-load-cache.md).
+
+### Shader Troubleshooting
+
+- `r_shaderReport 1` — print a shader summary after startup and `vid_restart`; `2` also warns when an invalid shader program is skipped.
+- `reportShaderPrograms` — print the current shader program status.
+- `r_interactionColorMode` — interaction shader colour mode (`0` auto, `1` packed, `2` vector). Leave on `0` unless asked to test.
+
+### Controllers
+
+- `in_joystick` — enable or disable gamepad input.
+- `in_joystickDeadZone` — analog stick dead zone.
+- `in_joystickLookSensitivity` — look speed.
+- `in_joystickLookCurve` / `in_joystickMoveCurve` — look and movement response curves.
+- `in_joystickInvertLook` — invert look pitch.
+- `in_joystickSouthpaw` — swap the movement and look sticks.
+- `in_joystickTriggerThreshold` — trigger sensitivity.
+- `in_joystickRumble` / `in_joystickRumbleScale` — enable and scale rumble.
+- `com_platformProfile` — startup profile (`default` or `steamdeck`).
+
+Controllers can be connected or disconnected at any time, every button can be bound, and `K_JOY7` and `K_JOY8` both open the in-game menu. See [Input Settings](docs/user/input-settings.md).
+
+---
+
+## File System Paths
+
+openQ4 looks for your Quake 4 installation in this order:
+
+1. A path you set with a cvar or on the command line
+2. The current working directory
+3. Steam
+4. GOG
+
+On Linux, Steam discovery checks `~/.steam/steam`, `~/.local/share/Steam` and the Flatpak Steam root at `~/.var/app/com.valvesoftware.Steam/.local/share/Steam`, plus any extra libraries listed in `libraryfolders.vdf`.
+
+- `fs_basepath` — Quake 4 installation directory (detected automatically).
+- `fs_homepath` — writable user directory.
+- `fs_savepath` — saves and configuration (defaults to `fs_homepath`). Each game directory keeps its own folder here, so Quake 4 uses `baseoq4` and The Awakening uses `q4xbase`.
+- `fs_cachepath` — regenerable image and audio caches (defaults to `fs_savepath`). Safe to delete.
+- `fs_awakeningpath` — optional location of The Awakening's content; see the [campaign guide](docs/user/campaigns.md).
+
+If your Quake 4 installation is not found automatically, launch with:
 
 ```
 openQ4-client_x64 +set fs_basepath "C:\path\to\Quake 4"
 ```
 
-</details>
+---
 
-### Crash Diagnostics
+## Crash Reports
 
-On Windows, openQ4 installs an unhandled-exception crash handler in packaged and local builds. Crashes write `openq4_crash_*.log` and `openq4_crash_*.dmp` files under a `crashes/` directory beside the executable, for example `.install/crashes/` when launching from the staged package root. Public Windows release packages include matching PDB diagnostic symbols so those dumps can be symbolized.
+On Windows, a crash writes `openq4_crash_*.log` and `openq4_crash_*.dmp` files to a `crashes/` folder beside the executable. Release packages include matching debug symbols, so please attach both files when [reporting a crash](https://github.com/themuffinator/openQ4/issues). On macOS, follow the [macOS support-data guide](docs/user/macos-support-data.md).
 
 ---
 
-## Mod Manifests
+## Mods
 
-Runnable openQ4 mods require a `mod.json` file in the root of the mod directory. This applies to `baseoq4/` as well as any external mod folder selected through the mod menu or requested by multiplayer auto-restart.
+Every runnable mod needs a `mod.json` file in its root directory. This includes `baseoq4/` itself, mods picked from the Mods menu, and mods a multiplayer server switches to.
 
 The manifest is a flat JSON object with these required string fields:
 
@@ -243,73 +205,46 @@ The manifest is a flat JSON object with these required string fields:
 - `releaseDate`
 - `website`
 - `author`
-- `requiredopenQ4Version`
+- `requiredopenQ4Version` — the oldest openQ4 version the mod works with, as `major.minor.patch`
 
-`requiredopenQ4Version` is matched against the current openQ4 engine version. Mods without a manifest, or with a mismatched required engine version, are hidden from the mod menu and rejected for automatic mod switching.
-
-Game modules are optional for mods. At runtime, openQ4 first checks the selected mod directory for the active `game-sp_<arch>` or `game-mp_<arch>` module; if it is not present, the engine falls back to the matching module in `baseoq4/`. Content-only mods therefore need a compatible `mod.json` and their content files, not copied openQ4 dynamic libraries. Mods that intentionally ship custom game code can still provide their own module in the mod directory.
-
-A mod built on the retail base (`fs_game_base` other than `baseoq4`) still gets openQ4's own runtime content: the filesystem searches `baseoq4/` between the mod and `q4base/`, so openQ4's shaders, GUIs and fonts stay available under it.
-
-When a mod ships a declaration file with the same name as one beneath it (a `def/player.def`, say), the engine reads the mod's copy first and then the shadowed copies from the directories below, so the mod's definitions win and the base file's other definitions are still found. Set `decl_layerModFiles 0` (at startup) to go back to a mod's file hiding the base file entirely.
+Mods without a valid manifest, or that need a newer openQ4 than the one running, are hidden from the Mods menu and cannot be switched to automatically.
 
 Example:
 
 ```json
 {
-  "name": "openQ4",
-  "version": "0.1.010",
-  "releaseDate": "2026-04-14",
-  "website": "https://www.darkmatter-quake.com",
-  "author": "themuffinator / DarkMatter Productions",
-  "requiredopenQ4Version": "0.1.010"
+  "name": "My Mod",
+  "version": "1.0.0",
+  "releaseDate": "2026-10-01",
+  "website": "https://example.com",
+  "author": "Your Name",
+  "requiredopenQ4Version": "0.13.2"
 }
 ```
 
----
+Game modules are optional. openQ4 first looks for `game-sp_<arch>` or `game-mp_<arch>` in the mod's directory and otherwise uses the one in `baseoq4/`, so a content-only mod needs just its `mod.json` and content files. Mods with their own game code can ship their own modules.
 
-## SDK and Game Library
+A mod built on the retail base (`fs_game_base` other than `baseoq4`) still gets openQ4's runtime content: the filesystem searches `baseoq4/` between the mod and `q4base/`, so openQ4's shaders, GUIs and fonts remain available.
 
-The game code is derived from the Quake 4 SDK and is maintained in
-`src/game/` and `src/mpgame/` in this repository. It retains the
-[SDK EULA](LICENSES/QUAKE-4-SDK-EULA.rtf); the engine retains its GPL and upstream
-Additional Terms. [LICENSING.md](LICENSING.md) records the separate scopes without
-claiming new distribution permission.
-
-Awakening additions live in `src/game/awakening/` and compile into the same SP
-module as retail Quake 4. Campaign discovery probes user-supplied loose files or
-PK4 indices without mounting them. Only an active `q4xbase` campaign mounts the
-expansion and enables its class substitution. Its namespace keeps configuration,
-saves and generated caches separate from `baseoq4`. Menu/config overrides remain
-engine-owned, and returning to stock, Arena or multiplayer restarts the filesystem
-to remove expansion declarations and assets. Older `q4xbase` game DLLs are ignored.
-See the [campaign guide](docs/user/campaigns.md) and
-[source consolidation record](docs/dev/plans/game-source-consolidation.md).
+When a mod ships a declaration file with the same name as one beneath it (for example `def/player.def`), openQ4 reads the mod's copy first and then the copies below it. The mod's definitions win, and the base file's other definitions are still found. Set `decl_layerModFiles 0` at startup to have a mod's file hide the base file entirely, as in the original game.
 
 ---
 
-## Dependencies
+## Game Code and The Awakening
 
-| Library | Version | Purpose |
-|---------|---------|---------|
-| [SDL3](https://www.libsdl.org/) | 3.4.4 | Cross-platform window/input/display |
-| [GLEW](http://glew.sourceforge.net/) | 2.3.1 | OpenGL extension wrangler |
-| [OpenAL Soft](https://openal-soft.org/) | 1.25.1 | 3D audio rendering |
-| [stb_vorbis](https://github.com/nothings/stb) | 1.22 | Ogg Vorbis audio decoding |
+openQ4's game code is derived from the Quake 4 SDK and lives in [`src/game`](src/game/) and [`src/mpgame`](src/mpgame/). It remains under the [Quake 4 SDK EULA](LICENSES/QUAKE-4-SDK-EULA.rtf), while the engine is GPL-licensed. [LICENSING.md](LICENSING.md) explains the separate terms.
 
-All dependencies are automatically fetched and built during the Meson configure step.
+Support for **Quake 4: The Awakening** is written independently for openQ4 and built into the same single-player module as Quake 4. It is active only while The Awakening campaign is running, keeps its saves and settings separate, and is removed when you return to Quake 4, Arena or multiplayer. The expansion's original game DLLs and older openQ4 `q4xbase` modules are ignored, and its multiplayer changes are not supported. See the [campaign guide](docs/user/campaigns.md).
+
+The Awakening was developed by Raven Software and Ritual Entertainment, and recovered and published by Justin Marshall. openQ4 includes none of its content.
 
 ---
 
-## Versioning
+## Version Numbers
 
-openQ4 uses numeric release versions from `meson.build` and appends an explicit build track when the build is not stable:
+Release builds report a plain version such as `X.Y.Z`. Development and pre-release builds add a track and the source commit, for example `X.Y.Z-dev+gabcdef12` or `X.Y.Z-beta.1+gabcdef12`. Type `si_version` in the console to see the running build's version, and include it in bug reports.
 
-- `stable` — release builds, e.g. `X.Y.Z`
-- `dev` — default local builds, e.g. `X.Y.Z-dev+gabcdef12`
-- `beta` / `rc` — optional pre-release labels, e.g. `X.Y.Z-beta.1+gabcdef12`
-
-Published releases are currently on the `v0.6.x` line; the `0.1.010` version in `meson.build` is the internal repo version floor, not a release line. The manual GitHub release workflow treats the repo version as the minimum next release version, then consults existing stable `v*` tags plus the scale of changes since the previous release to decide whether to emit the next patch release or advance the minor release milestone. Manual release dispatch also exposes explicit `auto`, `major (x..)`, `minor (.x.)`, and `patch (..x)` bump choices. Track labels, git metadata, and Windows/macOS resource/build numbers are generated automatically.
+A release's version number is assigned when it is published, so a build from source can report an older number than the latest release.
 
 ---
 

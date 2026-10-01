@@ -112,8 +112,9 @@ This file describes project goals, rules, and upstream credits for anyone workin
 
 **Upstream Credits**
 - [Emile Belanger (emileb)](https://github.com/emileb): original Android, SigmaTouch and GLES support; see `docs/dev/android-gles-integration.md`.
-- Justin Marshall.
-- Robert Backebans.
+- Justin Marshall, including recovering and publishing Quake 4: The Awakening.
+- Robert Beckebans.
 - id Software.
 - Raven Software.
+- Ritual Entertainment, with Raven Software, for Quake 4: The Awakening.
 
