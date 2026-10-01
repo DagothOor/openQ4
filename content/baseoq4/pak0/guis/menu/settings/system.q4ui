@@ -537,6 +537,11 @@
     "settings.msaaAvailable": {
       "type": "boolean",
       "initial": false
+    },
+    "soft_focus": {
+      "type": "boolean",
+      "initial": false,
+      "cvar": "ui_retainedSoftFocus"
     }
   },
   "actions": {
@@ -2276,6 +2281,36 @@
       }
     },
     {
+      "id": "confirmation-panel-softfocus.display",
+      "node": "confirmation-panel-softfocus",
+      "property": "display",
+      "value": {
+        "op": "select",
+        "args": [
+          {
+            "state": "soft_focus"
+          },
+          "block",
+          "none"
+        ]
+      }
+    },
+    {
+      "id": "confirmation-panel-scrim.display",
+      "node": "confirmation-panel-scrim",
+      "property": "display",
+      "value": {
+        "op": "select",
+        "args": [
+          {
+            "state": "soft_focus"
+          },
+          "none",
+          "block"
+        ]
+      }
+    },
+    {
       "id": "confirmation-message.text",
       "node": "confirmation-message",
       "property": "text",
@@ -2574,6 +2609,36 @@
           },
           "flex",
           "none"
+        ]
+      }
+    },
+    {
+      "id": "discard-panel-softfocus.display",
+      "node": "discard-panel-softfocus",
+      "property": "display",
+      "value": {
+        "op": "select",
+        "args": [
+          {
+            "state": "soft_focus"
+          },
+          "block",
+          "none"
+        ]
+      }
+    },
+    {
+      "id": "discard-panel-scrim.display",
+      "node": "discard-panel-scrim",
+      "property": "display",
+      "value": {
+        "op": "select",
+        "args": [
+          {
+            "state": "soft_focus"
+          },
+          "none",
+          "block"
         ]
       }
     },
@@ -75060,11 +75125,121 @@
               0,
               0,
               0,
-              0.6
+              0
             ]
           }
         },
         "children": [
+          {
+            "id": "confirmation-panel-softfocus",
+            "type": "group",
+            "properties": {
+              "position": {
+                "type": "keyword",
+                "value": "absolute"
+              },
+              "display": {
+                "type": "keyword",
+                "value": "none"
+              },
+              "box-sizing": {
+                "type": "keyword",
+                "value": "border-box"
+              },
+              "opacity": {
+                "type": "number",
+                "value": 1
+              },
+              "left": {
+                "type": "length",
+                "value": 0,
+                "unit": "dp"
+              },
+              "top": {
+                "type": "length",
+                "value": 0,
+                "unit": "dp"
+              },
+              "width": {
+                "type": "length",
+                "value": 100,
+                "unit": "%"
+              },
+              "height": {
+                "type": "length",
+                "value": 100,
+                "unit": "%"
+              },
+              "pointer-events": {
+                "type": "keyword",
+                "value": "none"
+              },
+              "backdrop-blur": {
+                "type": "length",
+                "value": 7.5,
+                "unit": "dp"
+              },
+              "backdrop-saturate": {
+                "type": "number",
+                "value": 0.8
+              }
+            }
+          },
+          {
+            "id": "confirmation-panel-scrim",
+            "type": "group",
+            "properties": {
+              "position": {
+                "type": "keyword",
+                "value": "absolute"
+              },
+              "display": {
+                "type": "keyword",
+                "value": "block"
+              },
+              "box-sizing": {
+                "type": "keyword",
+                "value": "border-box"
+              },
+              "opacity": {
+                "type": "number",
+                "value": 1
+              },
+              "left": {
+                "type": "length",
+                "value": 0,
+                "unit": "dp"
+              },
+              "top": {
+                "type": "length",
+                "value": 0,
+                "unit": "dp"
+              },
+              "width": {
+                "type": "length",
+                "value": 100,
+                "unit": "%"
+              },
+              "height": {
+                "type": "length",
+                "value": 100,
+                "unit": "%"
+              },
+              "pointer-events": {
+                "type": "keyword",
+                "value": "none"
+              },
+              "background-color": {
+                "type": "color",
+                "value": [
+                  0,
+                  0,
+                  0,
+                  0.6
+                ]
+              }
+            }
+          },
           {
             "id": "confirmation-panel-plate",
             "type": "vector",
@@ -77653,11 +77828,121 @@
               0,
               0,
               0,
-              0.6
+              0
             ]
           }
         },
         "children": [
+          {
+            "id": "discard-panel-softfocus",
+            "type": "group",
+            "properties": {
+              "position": {
+                "type": "keyword",
+                "value": "absolute"
+              },
+              "display": {
+                "type": "keyword",
+                "value": "none"
+              },
+              "box-sizing": {
+                "type": "keyword",
+                "value": "border-box"
+              },
+              "opacity": {
+                "type": "number",
+                "value": 1
+              },
+              "left": {
+                "type": "length",
+                "value": 0,
+                "unit": "dp"
+              },
+              "top": {
+                "type": "length",
+                "value": 0,
+                "unit": "dp"
+              },
+              "width": {
+                "type": "length",
+                "value": 100,
+                "unit": "%"
+              },
+              "height": {
+                "type": "length",
+                "value": 100,
+                "unit": "%"
+              },
+              "pointer-events": {
+                "type": "keyword",
+                "value": "none"
+              },
+              "backdrop-blur": {
+                "type": "length",
+                "value": 7.5,
+                "unit": "dp"
+              },
+              "backdrop-saturate": {
+                "type": "number",
+                "value": 0.8
+              }
+            }
+          },
+          {
+            "id": "discard-panel-scrim",
+            "type": "group",
+            "properties": {
+              "position": {
+                "type": "keyword",
+                "value": "absolute"
+              },
+              "display": {
+                "type": "keyword",
+                "value": "block"
+              },
+              "box-sizing": {
+                "type": "keyword",
+                "value": "border-box"
+              },
+              "opacity": {
+                "type": "number",
+                "value": 1
+              },
+              "left": {
+                "type": "length",
+                "value": 0,
+                "unit": "dp"
+              },
+              "top": {
+                "type": "length",
+                "value": 0,
+                "unit": "dp"
+              },
+              "width": {
+                "type": "length",
+                "value": 100,
+                "unit": "%"
+              },
+              "height": {
+                "type": "length",
+                "value": 100,
+                "unit": "%"
+              },
+              "pointer-events": {
+                "type": "keyword",
+                "value": "none"
+              },
+              "background-color": {
+                "type": "color",
+                "value": [
+                  0,
+                  0,
+                  0,
+                  0.6
+                ]
+              }
+            }
+          },
           {
             "id": "discard-panel-plate",
             "type": "vector",

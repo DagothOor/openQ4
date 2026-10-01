@@ -183,7 +183,7 @@ static std::string ReadPopupSource(const std::string& path){std::ifstream f(path
 struct PopupPageHost final:Host {
     std::map<std::string,std::string> strings;unsigned errors=0,draws=0,masks=0;std::uint64_t frame=1;float expansion=1;bool proportional=false;
     bool ReadFile(const std::string&,std::string&)override{return false;}
-    bool ReadCVar(const std::string&,size_t,StateValue&)override{return false;}
+    bool softFocus=false;bool ReadCVar(const std::string& name,size_t type,StateValue& value)override{if(name!="ui_retainedSoftFocus"||type!=1)return false;value=softFocus;return true;}
     std::string Translate(const std::string& id)override{return strings.contains(id)?strings.at(id):id.starts_with("#str_")?"Localized label":id;}
     void Log(bool bad,const std::string& message)override{if(bad){++errors;std::fprintf(stderr,"Runtime: %s\n",message.c_str());}}
     std::uintptr_t LoadMaterial(const std::string&,int& w,int& h)override{w=h=256;return 1;}

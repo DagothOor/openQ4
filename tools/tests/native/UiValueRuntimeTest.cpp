@@ -152,7 +152,7 @@ struct TestHost final : Host {
 	unsigned errors=0; std::uint64_t frame=1; std::vector<Vertex> vertices; std::set<std::pair<std::string,int>> fonts; std::set<unsigned> glyphs;
 	std::map<std::uint32_t,std::vector<Vertex>> layers;std::uint32_t activeLayer=0;
 	bool ReadFile(const std::string&,std::string&) override{return false;}
-	bool ReadCVar(const std::string&,size_t,StateValue&) override{return false;}
+	bool softFocus=false;bool ReadCVar(const std::string& name,size_t type,StateValue& value)override{if(name!="ui_retainedSoftFocus"||type!=1)return false;value=softFocus;return true;}
 	std::string Translate(const std::string& text) override { return text=="#str_options"?"Zero;One <tag>;Two;Three & more;Four;Five":text=="#str_label"?"Label":text; }
 	void Log(bool error,const std::string& text) override {if(error){++errors;std::fprintf(stderr,"Runtime: %s\n",text.c_str());}}
 	std::uintptr_t LoadMaterial(const std::string&,int& width,int& height) override{width=height=256;return 1;}

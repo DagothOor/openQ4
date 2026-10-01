@@ -39,7 +39,7 @@ static std::string Encode(const Json::Value& d){Json::StreamWriterBuilder w;w["i
 static Json::Value& Frame(Json::Value& d){return d["root"]["children"][0];}
 static Json::Value& Bar(Json::Value& d){return Frame(d)["children"][1];}
 struct HostFixture final:Host {unsigned errors=0,draws=0;std::uint64_t frame=0;
- bool ReadFile(const std::string&,std::string&)override{return false;}bool ReadCVar(const std::string&,size_t,StateValue&)override{return false;}
+ bool ReadFile(const std::string&,std::string&)override{return false;}bool softFocus=false;bool ReadCVar(const std::string& name,size_t type,StateValue& value)override{if(name!="ui_retainedSoftFocus"||type!=1)return false;value=softFocus;return true;}unsigned softened=0;float sigma=0,saturation=1;bool SoftenBackdrop(std::uint32_t destination,float s,float sat,const Bounds&)override{Check(destination!=0,"SYSTEM backdrop into a pushed layer");++softened;sigma=s;saturation=sat;return softFocus;}
  std::string Translate(const std::string& value)override{return value.starts_with("#str_")?"Localized":value;}
  void Log(bool bad,const std::string& message)override{if(bad){++errors;std::fprintf(stderr,"Runtime: %s\n",message.c_str());}}
  std::uintptr_t LoadMaterial(const std::string&,int& w,int& h)override{w=h=64;return 1;}
@@ -122,6 +122,16 @@ static void SystemCandidate(const std::string& text){Document document;std::vect
  auto read=runtime.GetWidgetState("settings_body_scrollbar")->scroll;Check(read&&read->available&&read->geometry.usable,"SYSTEM actual body has scrolling readback");Check(Near(thumb->GetBox().GetSize(Rml::BoxArea::Border).y,read->geometry.thumb,.01),"SYSTEM vector thumb derives from body extent");Check(thumb->GetTagName()=="q4-node"||thumb->GetTagName()=="q4-vector","SYSTEM authored thumb retained");
  Check(runtime.FocusControl("settings_brightness",time),"SYSTEM content focus");const auto point=track->GetAbsoluteOffset(Rml::BoxArea::Content)+track->GetBox().GetSize(Rml::BoxArea::Content)*.9f;runtime.PointerMove(point.x,point.y,time);runtime.PointerWheel(1,time);frame();Check(body->GetScrollTop()>0&&runtime.FocusedControl()=="settings_brightness","SYSTEM wheel preserves actual field focus");const double logical=body->GetScrollTop()/density;
  vp.displayScale=density==2?1.f:2.f;frame();Check(Near(body->GetScrollTop(),std::min(logical*vp.DpRatio(),double(body->GetScrollHeight()-body->GetClientHeight()))),"SYSTEM live density preserves scroll or clamps smaller reflow range");Check(runtime.FocusControl("settings_body_scrollbar",time),"SYSTEM bar explicit focus");runtime.MenuAction(MenuInput::End,true,time);runtime.MenuAction(MenuInput::End,false,time);frame();Check(Near(body->GetScrollTop(),body->GetScrollHeight()-body->GetClientHeight()),"SYSTEM End reaches true final row");Check(runtime.TakeActions().empty(),"SYSTEM scrollbar no settings operation");Check(host.draws>0,"SYSTEM actual CPU geometry submitted");
+ if(density==1.f){
+ // The dialogs keep the screen beneath in soft focus where the host can soften it, and their 0.6 backing otherwise.
+ auto shown=[&](const char* id){auto value=runtime.PresentedValue(id,"display");return value&&value->text!="none";};
+ Check(runtime.SetState({{"settings.confirmationVisible",true}},error,time),"SYSTEM confirmation shows");frame();
+ Check(shown("confirmation-panel-scrim")&&!shown("confirmation-panel-softfocus")&&host.softened==0&&runtime.Statistics().backdropFallbacks==0,"SYSTEM dialog keeps its backing without soft focus");
+ host.softFocus=true;frame();
+ Check(!shown("confirmation-panel-scrim")&&shown("confirmation-panel-softfocus")&&host.softened==1&&runtime.Statistics().backdropComposites==1&&Near(host.sigma,7.5*vp.DpRatio(),.01)&&Near(host.saturation,.8,.001),"SYSTEM dialog softens the screen beneath");
+ Check(runtime.SetState({{"settings.confirmationVisible",false}},error,time),"SYSTEM confirmation hides");frame();
+ Check(host.softened==1&&runtime.Statistics().backdropComposites==0,"a closed SYSTEM dialog softens nothing");host.softFocus=false;
+ }
  }}
 int main(int argc,char** argv){Schema();Gestures();DensityKeepsContentFocus();MixedViewportReveal();Persistence();Lifecycle();TwoAxes();ThumbFrames();if(argc>1){std::ifstream file(argv[1],std::ios::binary);std::string text{std::istreambuf_iterator<char>(file),{}};SystemCandidate(text);}
  std::printf("PASS %u checks; actual canonical schema/Interaction/Runtime/Rml layout; counted host, no native input or GPU qualification.\n",checks);}

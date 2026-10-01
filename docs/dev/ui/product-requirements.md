@@ -193,6 +193,8 @@ On engine `f5c865df8bb499987bfe73b696a792136a8958cd` the retained single-player 
 
 On engine `eae2d39ed3cd59f6dd3e45cdda374de56a59a5e2` the developer command `ui_retainedProfile` also profiles the session-owned root views when no preview document is loaded, reporting per submitted frame their retained CPU time, the frame interval, and their layer composites and backdrop passes. It is a measurement interface only; no requirement status changes.
 
+On engine `cc7122143400555b15bcbba427235e3d01c116cd` the SYSTEM page's Apply/Keep/Revert confirmation and unapplied-changes dialogs soften the screen beneath them where the renderer can, keeping their 0.6 backing otherwise. `REN-016` gains partial evidence without a status change; native tests only. Evidence: `.tmp/ui/system-dialog-softfocus/validation-evidence.json`, SHA-256 `4e33e60981080475ab3a66f6098b885008ebb2dd657a7211c570cc8de342a6c5`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial

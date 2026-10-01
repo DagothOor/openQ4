@@ -21,7 +21,7 @@ static void Check(bool ok,const char* why){++checks;if(!ok){std::fprintf(stderr,
 static std::string Read(const std::string& p){std::ifstream f(p,std::ios::binary);Check(bool(f),"bound source readable");return {std::istreambuf_iterator<char>(f),{}};}
 struct TestHost final:Host,SettingsHost {
  StateValues live;std::map<std::string,std::string> strings;unsigned writes=0,observations=0,errors=0,draws=0;std::uint64_t frame=0;float expansion=1;bool writable=false;
- bool ReadFile(const std::string&,std::string&)override{return false;}bool ReadCVar(const std::string&,size_t,StateValue&)override{return false;}
+ bool ReadFile(const std::string&,std::string&)override{return false;}bool softFocus=false;bool ReadCVar(const std::string& name,size_t type,StateValue& value)override{if(name!="ui_retainedSoftFocus"||type!=1)return false;value=softFocus;return true;}
  std::string Translate(const std::string& id)override{return strings.contains(id)?strings.at(id):id.starts_with("#str_")?"Localized label":id;}
  void Log(bool bad,const std::string& s)override{if(bad){++errors;std::fprintf(stderr,"Runtime: %s\n",s.c_str());}}
  std::uintptr_t LoadMaterial(const std::string&,int& w,int& h)override{w=h=256;return 1;}

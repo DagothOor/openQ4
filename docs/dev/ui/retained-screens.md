@@ -191,7 +191,10 @@ than the presented home screen.
   keep GL row order, as the layer composites do.
   `ui_retainedSoftFocus` reports whether a frame can be softened, and the
   documents show the scrim when it cannot. `ui_retainedProfile` counts the
-  backdrop passes and fallbacks.
+  backdrop passes and fallbacks. The SYSTEM page's Apply/Keep/Revert
+  confirmation and unapplied-changes dialogs soften the screen beneath them
+  too, keeping their 0.6 backing as the fallback
+  (`tools/ui/update_system_soft_focus.py`).
 
 ## Pictures and precaching
 
@@ -359,6 +362,14 @@ return and the next pause; without the ramp's restart key it fails.
 Evidence: `.tmp/ui/retained-pause-softfocus/validation-evidence.json`,
 SHA-256 `1443f7b6398db734e30c564d03a831f0aa401f3c3940d726a31bcb0ca9e4268d`.
 
+The SYSTEM page's dialogs were qualified by native tests against the real
+document: without soft focus the 0.6 backing shows and no backdrop pass
+runs; with it the backing hides and one pass softens the screen beneath.
+All SYSTEM tests and updater checks pass; there is no engine capture of
+these dialogs yet. Evidence:
+`.tmp/ui/system-dialog-softfocus/validation-evidence.json`, SHA-256
+`4e33e60981080475ab3a66f6098b885008ebb2dd657a7211c570cc8de342a6c5`.
+
 ## Known limitations
 
 - The pause menu has no OBJECTIVES action yet, so the navigation holds six of
@@ -370,10 +381,12 @@ SHA-256 `1443f7b6398db734e30c564d03a831f0aa401f3c3940d726a31bcb0ca9e4268d`.
 - Resuming, or leaving the pause any other way, drops the softened view at
   once instead of releasing it over 250 ms, and the HUD's crosshair still
   shows through the darkening fallback.
-- Soft focus covers the confirmations and the pause screen, and the
-  opaque-backing option has no Settings row yet (`ui_retainedOpaqueBacking`
-  is a CVar). A node inside a composition layer gets no soft focus, because
-  only the base surface is read. Only the confirmation width exists.
+- Soft focus covers the confirmations, the pause screen and the SYSTEM
+  page's two dialogs. The SYSTEM dialogs have no enter or leave motion, so
+  their soft focus switches with their visibility. The opaque-backing option
+  has no Settings row yet (`ui_retainedOpaqueBacking` is a CVar). A node
+  inside a composition layer gets no soft focus, because only the base
+  surface is read. Only the confirmation width exists.
 - The multiplayer Escape and Welcome menus (section 14.18) keep the stock
   menus: the retained home screen is never presented in a multiplayer game.
 - The loading screen has no tips and no touch prompt (touch counts as desktop
