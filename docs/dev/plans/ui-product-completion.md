@@ -65,6 +65,14 @@ declaring that choice proven for the whole product.
 
 ### Current implementation progress
 
+A third [1 October register revision](../ui/product-requirements.md) follows
+[visual specification](../ui-visual-design.md) 1.12, which adds the 9:16
+portrait view, a multiplayer weapon wheel, the Competitive HUD's match bar and a
+spectator follow camera, outlines the modal title and widens its glow, and gives
+the initializing screen Remastered accents. Register schema 11 supersedes five
+rows and appends four. The register now holds 336 rows, of which 305 define
+acceptance.
+
 A second [1 October register revision](../ui/product-requirements.md) follows
 [visual specification](../ui-visual-design.md) 1.11, which takes the waveform
 out of the weapon wheel, keeps the multiplayer chat clear of the status bar,

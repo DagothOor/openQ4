@@ -50,7 +50,11 @@ band step and a path crumb. Register schema 9 supersedes one row and appends one
 for it. Version 1.11 takes the waveform out of the weapon wheel, keeps the
 multiplayer chat clear of the status bar, rebuilds the scopes from their stock
 layers, catalogues the squad patches and covers The Awakening's HUD content;
-register schema 10 supersedes three rows and appends five for it.
+register schema 10 supersedes three rows and appends five for it. Version 1.12
+adds the 9:16 portrait view, a multiplayer weapon wheel, the Competitive HUD and
+a spectator follow camera, outlines the modal title and gives the initializing
+screen Remastered accents; register schema 11 supersedes five rows and appends
+four for it.
 
 The controller weapon wheel already in openQ4-game (`356dfe56`: 12 slots,
 centered at 77% of the width, cursor selection) differs from section 14.6

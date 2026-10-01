@@ -1,10 +1,10 @@
 {
-  "schema_version": 10,
+  "schema_version": 11,
   "id_namespace": "openq4.ui.product",
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "5ab6a91dd85b9d1445f2e2f3996461cff5123430",
+    "engine_revision": "ac28efdec9f050b65d8b322be0584db4b19b8c0d",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -14,17 +14,17 @@
     "visual": {
       "path": "docs/dev/ui-visual-design.md",
       "authority": "normative visual, interaction and editor contract",
-      "sha256": "16a2e6d63bb38e5cc8c9ee82b042eaeda4d92ae63b27eda3d38eb0d855780abd"
+      "sha256": "eaac60cb6dfa47c9e4402121bdbf10be75065a8dbd19ca331597897a0ec32813"
     },
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "88e43f7fa4c9ace5986aafa5d238384d1bb593f7865edaf83f634519bf6c1767"
+      "sha256": "93a5073c01efebd64fdd1dc2b6fef0a4aa07c54d254f120a5cd685889acb40fc"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "3f7b275d5de8b277496efcdf058ea8a1e63ec5c6998a3d52d3ad9f389fa627a3"
+      "sha256": "8675fc83f3081b39917925fe79f737c2ade0b496154660344cda514df0e34813"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -102,7 +102,7 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "88e43f7fa4c9ace5986aafa5d238384d1bb593f7865edaf83f634519bf6c1767"
+      "sha256": "93a5073c01efebd64fdd1dc2b6fef0a4aa07c54d254f120a5cd685889acb40fc"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
@@ -1034,7 +1034,8 @@
       "ART-023",
       "ART-024",
       "ART-032",
-      "ART-033"
+      "ART-033",
+      "ART-036"
     ],
     "UI-12": [
       "LAY-003",
@@ -1342,6 +1343,61 @@
         "FLOW-051"
       ],
       "normative_change": "Visual 1.11 keeps the chat box clear of the status bar vertically at every aspect, its bottom 8 u above the gauges' top with the input pushing the lines up, instead of beside the status bar at the bottom edge; every other chat rule is carried unchanged.",
+      "source_refs": [
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "INP-013",
+      "successors": [
+        "INP-014"
+      ],
+      "normative_change": "Visual 1.12 lets play run in portrait as well as landscape, with the 9:16 view as the portrait reference and each orientation keeping its own touch layout, instead of landscape only; every other touch rule is carried unchanged.",
+      "source_refs": [
+        "visual:13"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "LAY-019",
+      "successors": [
+        "LAY-020"
+      ],
+      "normative_change": "Visual 1.12 has the center screen fill the view's width in views narrower than 4:3, down to the 9:16 portrait view, instead of always the view's height; every other HUD layout rule is carried unchanged.",
+      "source_refs": [
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "ART-033",
+      "successors": [
+        "ART-036"
+      ],
+      "normative_change": "Visual 1.12 outlines the modal title with a thin black stroke and lets the modal glow fade over a further 16 dp at the sides and run 40 dp beyond the dialog instead of 24 dp; every other construction is carried unchanged.",
+      "source_refs": [
+        "visual:6"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "FLOW-041",
+      "successors": [
+        "FLOW-056"
+      ],
+      "normative_change": "Visual 1.12 takes the spectator lines out of the Remastered center column, giving spectators the follow camera presentation, and points the Competitive top to its own row; every other multiplayer HUD rule is carried unchanged.",
+      "source_refs": [
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "FLOW-049",
+      "successors": [
+        "FLOW-057"
+      ],
+      "normative_change": "Visual 1.12 adds Remastered accents to the initializing screen (a light sweep, a halo, embers, a glint, a pulsing current segment and a flicker on each step) instead of replacing the line at once over a fixed rule; every other initializing rule is carried unchanged.",
       "source_refs": [
         "visual:14"
       ],
@@ -12470,6 +12526,591 @@
           ],
           "cycle_ms": 750
         }
+      }
+    },
+    {
+      "id": "INP-014",
+      "title": "Touch interaction rules",
+      "milestone_owner": "M3",
+      "implementation_owner": "Semantic input and SDL platform integration",
+      "source_refs": [
+        "visual:3",
+        "visual:7",
+        "product:2 UI-09",
+        "product:3 Text, controls and accessibility",
+        "original:Input and application ownership",
+        "visual:13"
+      ],
+      "requirement": "Touch-down shows the focus and hover treatment and press inset at once; moving beyond 8 dp or lifting outside cancels and activation happens on release; a 500 ms long-press opens details; lists scroll with inertia and an edge rim light; tab strips swipe; nothing depends on hover; the input method scrolls fields clear; system Back acts as Back and opens pause in play; menus follow one touch at a time while the gameplay overlay tracks each finger; press haptics follow the system setting; play runs in landscape either way up and in portrait, with the 9:16 view as the portrait reference, and turning the device resizes with the state kept and each orientation's own touch layout.",
+      "dependencies": [
+        "INP-001",
+        "INP-002",
+        "INP-005",
+        "INP-007",
+        "LAY-013"
+      ],
+      "acceptance_evidence_needed": [
+        "Physical-device touch traces for tap, cancel, long-press, scroll, swipe, input method, system Back and multi-touch on phone and tablet. Include a rotation between landscape and portrait in a menu and mid-match."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "cancel_slop_dp": 8,
+        "long_press_ms": 500,
+        "orientations": [
+          "landscape",
+          "portrait"
+        ],
+        "portrait_reference": "9:16",
+        "portrait_reference_dp": [
+          720,
+          1280
+        ]
+      }
+    },
+    {
+      "id": "LAY-020",
+      "title": "HUD screens, anchors and expansion",
+      "milestone_owner": "M5",
+      "implementation_owner": "Retained layout and UI design",
+      "source_refs": [
+        "visual:3",
+        "visual:5",
+        "visual:9",
+        "product:2 UI-12",
+        "product:3 Text, controls and accessibility",
+        "product:5 Visual and interaction qualification",
+        "visual:14"
+      ],
+      "requirement": "Lay out the Remastered HUD with the 4:3 stock canvas as the center screen, filling the view's height in views 4:3 and wider and its width in narrower ones: a wider view adds leading and trailing screens and a narrower one adds top and bottom bands, 16 u each at 5:4 and 329 u each in the 9:16 portrait view, deepening on taller portrait screens. Every group belongs to one of nine anchors and keeps its stock offset from it, so 4:3 lands on the stock rectangles; the ammunition, health and armor gauges form one 438 u status bar centered on the bottom edge with the stock gaps; the pickup lines and weapon strip sit above it; radio chatter, the completion notice and the kill feed anchor top-trailing, the new-objective notice, standing and timer top-leading, chat bottom-leading and powerups bottom-trailing, while the crosshair, hit indicator, brackets and aim text stay on the projection center. Side screens stop at 21:9 unless the HUD width is Full; groups never overlap and never carry a backing wider than their content. HUD scale runs 50-200% about each group's anchor with a 0-10% safe inset, and Classic keeps the stock rectangles.",
+      "dependencies": [
+        "LAY-009",
+        "LAY-014",
+        "FLOW-030"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures of the SP and MP HUD at 9:16, 5:4, 4:3, 16:10, 16:9, 21:9 and 32:9 at 100% and 150% HUD scale, against the anchor table, with Classic at 4:3 matching the stock rectangles."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "status_bar_u": [
+          101,
+          278,
+          414
+        ],
+        "status_bar_width_u": 438,
+        "side_screen_dp": {
+          "16:10": 96,
+          "16:9": 160,
+          "21:9": 373
+        },
+        "default_hud_width": "21:9",
+        "hud_scale_percent": [
+          50,
+          200
+        ],
+        "safe_inset_percent": [
+          0,
+          10
+        ],
+        "center_screen_fills": {
+          "4:3_and_wider": "height",
+          "narrower": "width"
+        },
+        "band_u": {
+          "5:4": 16,
+          "9:16": 329
+        },
+        "portrait_reference_dp": [
+          720,
+          1280
+        ],
+        "portrait_dp_per_u": 1.125
+      }
+    },
+    {
+      "id": "ART-036",
+      "title": "Panel, pop-up and band constructions",
+      "milestone_owner": "M2",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Cards use one marine.rail.card rail around a 0.94 black body with 12 dp cuts at the top-trailing and bottom-leading corners and 3 dp at the other two; small cards keep the 12 dp cut and only one-line hints use 10 dp. Modals are a 0.70 black silhouette over the soft-focused screen with an additive glow graded only vertically across the dialog and the 6 dp lit margin beside it, at half strength at the dialog's top and bottom edges and gone 40 dp beyond them, and fading out over a further 16 dp at each side (over the opaque-backing scrim it keeps the stock column, 87 u above and 108 u below), with a leading tooth, a title slot about 73% wide, a raised trailing section, a deep lower-leading chamfer, square trailing corners and no rails; the five stock widths keep their slot depths and chamfers, the title's baseline sits on the raised top line from the foot of the slot's leading flank, with a thin black outline at 0.85 extruding 1 dp around its strokes behind the fill, and actions sit 30 dp and 33 dp from the edges. The chat box, tab strip, header band, framing and loading bands and corner brackets follow their measured constructions, lengthening only straight spans.",
+      "dependencies": [
+        "ART-001",
+        "REN-001",
+        "REN-014",
+        "REN-016"
+      ],
+      "acceptance_evidence_needed": [
+        "Measured geometry and overlays against the stock at 4:3 and across widths and DPI for every construction; a generic beveled rectangle is insufficient. Include each modal width over the soft focus and over the opaque-backing scrim. Show the title outline and the glow's side fade over a bright softened scene."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "card": {
+          "major_cut_dp": 12,
+          "minor_cut_dp": 3,
+          "one_line_hint_major_cut_dp": 10,
+          "rail_dp": 1.5,
+          "body_alpha": 0.94,
+          "art_inset_u": 2
+        },
+        "modal_widths_dp": {
+          "confirmation_entry_list": {
+            "width": 480,
+            "slot_depth": 17,
+            "chamfer": 38
+          },
+          "system_message_connection_death": {
+            "width": 540,
+            "slot_depth": 20,
+            "chamfer": 46
+          },
+          "ban_list": {
+            "width": 548,
+            "slot_depth": 22,
+            "chamfer": 50
+          },
+          "advanced_options": {
+            "width": [
+              612,
+              642
+            ],
+            "slot_depth": 25,
+            "chamfer": 56
+          }
+        },
+        "modal": {
+          "frame_alpha": 0.7,
+          "leading_tooth_dp": 6,
+          "slot_opening_fraction": 0.73,
+          "slot_floor_fraction": 0.66,
+          "action_inset_dp": [
+            30,
+            33
+          ],
+          "lit_margin_dp": 6,
+          "standard_top_u": 155,
+          "standard_height_u": 136,
+          "backdrop": "modal.softfocus",
+          "soft_focus_glow": {
+            "lit_margin_dp": 6,
+            "half_at": "dialog_top_and_bottom_edges",
+            "extent_beyond_dp": 40,
+            "side_fade_dp": 16
+          },
+          "scrim_glow": {
+            "half_at_height_fraction": [
+              0.28,
+              0.72
+            ],
+            "extent_u": {
+              "above": 87,
+              "below": 108
+            }
+          },
+          "title_outline": {
+            "color": "#000000",
+            "alpha": 0.85,
+            "extrude_dp": 1,
+            "behind_fill": true
+          }
+        },
+        "header_band": {
+          "cut_texels": 8,
+          "fill_full_to_fraction": 0.5,
+          "half_at_fraction": 0.75
+        },
+        "bands": {
+          "flank_degrees": 45,
+          "notch_height_u": 9,
+          "notch_top_u": 36,
+          "notch_pitch_u": 97,
+          "top_riser_u": 35,
+          "rim_light_u": 19,
+          "silhouettes": "visual Appendix B.2"
+        }
+      }
+    },
+    {
+      "id": "FLOW-056",
+      "title": "Multiplayer HUD and its Remastered top",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Reproduce the measured multiplayer HUD per mode and state in Classic, including the corrected Dead Zone flash (pure team color relaxing to white) and without the stock script slips. In Remastered, build the top of the screen from compact HUD plates never wider than their content: deathmatch standing rows with ordinal, name cut with an ellipsis, Chain score, the leader's frag limit and your signed gap and marker; team panels with faction mark, team name, score against the limit and flag state with the carrier's name; the Dead Zone holder; round numbers and clocks; one timer readout per state including elapsed time when untimed, the countdown stated once and the last-minute and last-ten-second cues; the Tourney strip with ellipses, your row marked and finished arenas checked; a center column of notices, warm-up lines and awards that stack without overlapping on their own plates, spectators getting the follow camera presentation of FLOW-059 instead of the stock lines; a trailing-aligned kill feed on per-line plates with ellipses, your lines marked, team kills tagged and spectators included; and the managed-match card under it. The Competitive preset rearranges the top as FLOW-058 states.",
+      "dependencies": [
+        "FLOW-030",
+        "FLOW-014",
+        "WID-029",
+        "TXT-011",
+        "LAY-020",
+        "ART-028"
+      ],
+      "acceptance_evidence_needed": [
+        "MP captures per mode and state (warm-up, countdown, play, last minute, sudden death, overtime, spectating) in Classic and Remastered at 4:3, 16:9 and 21:9, with long names and bright scenery."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "kill_feed_lines": {
+          "default": 4,
+          "tourney": 2
+        },
+        "kill_feed_hold_ms": 2000,
+        "kill_feed_fade_ms": 1000,
+        "kill_feed_release_ms": 3100,
+        "name_ellipsis_u": 84,
+        "line_plate_alpha": 0.35,
+        "standing_plate_u": [
+          150,
+          18
+        ],
+        "team_plate_u": [
+          150,
+          22
+        ],
+        "timer_last_minute": "#FFBE23",
+        "timer_last_ten_seconds": "#E46D56",
+        "team_text_colors": [
+          "#AAE355",
+          "#FF8E00"
+        ]
+      }
+    },
+    {
+      "id": "FLOW-057",
+      "title": "Initializing screen",
+      "milestone_owner": "M4",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14",
+        "visual:8"
+      ],
+      "requirement": "Show the initializing screen from the first frame the renderer can draw until the menus are ready, with the stock status line for each step, localized: LOADING... twice, then INITIALIZING SOUND..., NETWORK..., RENDER SYSTEM... and USER INTERFACE..., LOADING GAME... and INITIALIZING MENUS... (#str_104343 to #str_104351). Classic keeps the stock picture stretched over the canvas, pillarboxed in #181A08 under aspect correction, with the console's 8x16 u line in #F09E0D centered across the canvas with its top at 410 u. Remastered draws the ART-031 layers, extends the field and rings to any view, and sets the line in Marine 16 dp in #F09E0D on the stock line's middle at 418 u, each new step replacing it with a 120 ms flicker in from 0.35, over a 168 u rule of one segment per step (done 0.55, pending 0.15, the current one pulsing between 0.62 and 0.95 over 800 ms). It turns the plate band counterclockwise once every 180 s and the teeth clockwise once every 120 s on the presentation clock, beneath the fixed clamps, emblem and lettering, and repaints at each step and, during a long step, whenever the engine can, at most 30 times a second. Remastered adds quiet accents on the same clock: a warm light sweeping the rings clockwise once every 10 s (additive #5E6E24 rising over its first 7.5 degrees to 0.26 from the inner ring through the teeth and half that on the grooves, fading through a 60-degree tail, with #C9D98A arcs on the ring edges at its leading edge); a #FF8340 halo behind the emblem at up to 0.10, out to 168 u, breathing between 0.40 and 1.00 of that over 6 s; fourteen #FFB070 embers of 0.6-1.2 u rising through the rings over 6-11 s at most 0.50; and a white glint crossing QUAKE 4 in 900 ms every 9 s, clipped to the letters. Classic shows none of them. Reduced motion holds the rings still, keeps the sweep as a fixed key light at the upper left (its leading edge 38 degrees counterclockwise from the top) and the halo at 0.80, and drops the embers, the glint and the pulse.",
+      "dependencies": [
+        "FLOW-047",
+        "ART-031",
+        "MOT-001",
+        "MOT-005",
+        "TXT-005"
+      ],
+      "acceptance_evidence_needed": [
+        "Startup captures on GL, Vulkan and the GLES fallback at 4:3, 16:9 and 21:9 in Classic and Remastered for every step, a trace of the repaint cadence and ring angles across a slow start, and a reduced-motion run. Include one sweep turn and glint in Remastered and their absence in Classic."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "band_turn_ms": 180000,
+        "teeth_turn_ms": 120000,
+        "max_repaint_hz": 30,
+        "classic_line_top_u": 410,
+        "remastered_line_middle_u": 418,
+        "status_color": "#F09E0D",
+        "rule_u": 168,
+        "rule_alpha": {
+          "done": 0.55,
+          "current": [
+            0.62,
+            0.95
+          ],
+          "pending": 0.15
+        },
+        "pillarbox": "#181A08",
+        "steps": [
+          "#str_104343",
+          "#str_104346",
+          "#str_104347",
+          "#str_104348",
+          "#str_104349",
+          "#str_104350",
+          "#str_104351"
+        ],
+        "current_pulse_ms": 800,
+        "step_flicker": {
+          "from_alpha": 0.35,
+          "ms": 120
+        },
+        "accents": {
+          "sweep": {
+            "turn_ms": 10000,
+            "color": "#5E6E24",
+            "alpha": 0.26,
+            "groove_alpha": 0.13,
+            "rise_deg": 7.5,
+            "tail_deg": 60,
+            "rim": "#C9D98A"
+          },
+          "halo": {
+            "color": "#FF8340",
+            "alpha": 0.1,
+            "radius_u": 168,
+            "breathe_ms": 6000,
+            "range": [
+              0.4,
+              1.0
+            ]
+          },
+          "embers": {
+            "count": 14,
+            "size_u": [
+              0.6,
+              1.2
+            ],
+            "color": "#FFB070",
+            "life_ms": [
+              6000,
+              11000
+            ],
+            "max_alpha": 0.5
+          },
+          "glint": {
+            "every_ms": 9000,
+            "cross_ms": 900
+          },
+          "reduced_motion": {
+            "key_light_deg": -38,
+            "halo": 0.8
+          }
+        }
+      }
+    },
+    {
+      "id": "LAY-021",
+      "title": "Portrait view",
+      "milestone_owner": "M5",
+      "implementation_owner": "Retained layout and UI design",
+      "source_refs": [
+        "visual:3",
+        "visual:5",
+        "visual:9",
+        "product:2 UI-12",
+        "product:3 Text, controls and accessibility",
+        "product:5 Visual and interaction qualification",
+        "visual:13",
+        "visual:14"
+      ],
+      "requirement": "Support the 9:16 portrait view at a 720x1280 dp reference, where the 640 u center screen spans the width at 1 u = 1.125 dp between 329 u (370 dp) top and bottom bands that deepen on taller screens. Touch play takes the bottom band as the thumb deck: the move stick floats in its leading half; Fire (88 dp) with the weapon control above it, jump and crouch outside it and zoom and reload inside it gather in its trailing half; every other drag looks, in the deck or in the view above it. The Touch HUD preset raises the readouts to the center screen's bottom edge; pause stays top-leading and the scoreboard and chat move top-trailing, clear of a camera cutout; sizes, spacing, states and the layout editor match landscape, and each orientation keeps its own layout. Menus take the compact-width structure, and the multiplayer menu card keeps its dp size, never closer than 16 dp to the sides.",
+      "dependencies": [
+        "LAY-020",
+        "LAY-015",
+        "LAY-016",
+        "INP-014",
+        "FLOW-021",
+        "FLOW-046"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures of the portrait view at 9:16 and 9:20 on a phone and in a desktop window: the SP and MP HUD, the touch overlay and its editor, the title and settings menus and the multiplayer card, with a rotation mid-match keeping the state."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "reference_dp": [
+          720,
+          1280
+        ],
+        "dp_per_u": 1.125,
+        "band_u": 329,
+        "band_dp": 370,
+        "deck": "bottom_band",
+        "fire_dp": 88,
+        "jump_crouch_dp": 64,
+        "zoom_reload_dp": 56,
+        "pause_dp": 48,
+        "menu_card_side_margin_dp": 16
+      }
+    },
+    {
+      "id": "WID-034",
+      "title": "Multiplayer weapon wheel",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI components and application bindings",
+      "source_refs": [
+        "visual:7",
+        "product:2 UI-03",
+        "product:3 Text, controls and accessibility",
+        "product:4 M3",
+        "visual:14",
+        "visual:9"
+      ],
+      "requirement": "In multiplayer the wheel takes the Marine construction for every team: the multiplayer roster in strip order with the gauntlet in the blaster's place (eleven positions, thirteen under The Awakening); icons in the weapon color code, the pending weapon at full alpha and the rest at 0.60, never the single-player orange; no clips, so the segments and the hub read the reserve alone, the hub naming the weapon over its reserve and nothing else; and your team's text color on the selection ring and its flash, the selected number, the bezel's ticks, the hub's double ring, the compass's bright dot and the pointer (#AAE355 Marine; #FF8E00 Strogg, whose selection light is additive #6B3A08), deathmatch and Tourney keeping the stock #B2CC80 and #B3D06E. The game is never slowed, and releasing equips at once.",
+      "dependencies": [
+        "WID-033",
+        "FLOW-056",
+        "ART-028"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures of the multiplayer wheel for each team and in deathmatch, under Quake 4 and The Awakening, with its open, select and close transitions recorded."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "construction": "marine",
+        "positions": {
+          "quake4": 11,
+          "awakening": 13
+        },
+        "first_slot": "gauntlet",
+        "icon_alpha": {
+          "pending": 1.0,
+          "other": 0.6
+        },
+        "clips": false,
+        "team_colors": {
+          "marine": "#AAE355",
+          "strogg": "#FF8E00",
+          "deathmatch": [
+            "#B2CC80",
+            "#B3D06E"
+          ]
+        },
+        "strogg_selection_light": "#6B3A08"
+      }
+    },
+    {
+      "id": "FLOW-058",
+      "title": "Competitive HUD",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14",
+        "visual:13"
+      ],
+      "requirement": "In the Competitive preset, move the standing or team panels and the timer into a match bar at the top center: three sheared HUD plates from y 6, 26 u tall and 2 u apart, a 60 u timer plate at black 0.72 between 122 u side plates at 0.55. Each side's outer 25 u block holds the team color at 0.85 with the faction mark in team modes, or the rank ordinal in deathmatch and Tourney (the leader's in #FFBE23), followed by the team name in its text color or the name cut with an ellipsis, with the score in Chain 21 dp at the inner end; your side leads, marked in deathmatch, facing the leader, 2nd place when you lead, or your Tourney opponent. The timer reads Chain 15.5 dp with the Remastered timer's states over a Lowpixel sub-label (the limit, ROUND n or ARENA n). Small plates under the bar carry each flag's state with the carrier, the round modes' alive pips and the Dead Zone holder, and network quality follows the bar's trailing end at all times. In team modes your team's status list sits at the leading edge from y 150: 138x14.5 u plates on a 16.5 u pitch with the weapon icon, the name, health in Chain (#E46D56 at 25 and below, #FFBE23 above 100) and armor at 0.60, your row on the header-band plate with the marker and the dead at 0.40 under an ✕. The status bar grows by 15% about the bottom edge with the chat box 8 u above it, the vote moves to the top-leading corner, the Tourney bracket strip leaves the top for the scoreboard's bracket tree, and the kill feed, center column, powerups and managed-match card keep their places.",
+      "dependencies": [
+        "FLOW-056",
+        "FLOW-044",
+        "WID-029",
+        "LAY-020",
+        "FLOW-051",
+        "TXT-011"
+      ],
+      "acceptance_evidence_needed": [
+        "Competitive captures per mode and timer state at 4:3, 16:9, 21:9 and 9:16 with long names, a vote, the chat input open and eight players a team."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "match_bar": {
+          "top_u": 6,
+          "height_u": 26,
+          "gap_u": 2,
+          "side_u": 122,
+          "timer_u": 60,
+          "end_block_u": 25,
+          "side_alpha": 0.55,
+          "timer_alpha": 0.72,
+          "team_block_alpha": 0.85
+        },
+        "team_list": {
+          "top_u": 150,
+          "plate_u": [
+            138,
+            14.5
+          ],
+          "pitch_u": 16.5,
+          "low_health": 25,
+          "low_health_color": "#E46D56",
+          "over_health_color": "#FFBE23",
+          "armor_alpha": 0.6,
+          "dead_alpha": 0.4
+        },
+        "status_bar_scale": 1.15,
+        "chat_clearance_u": 8
+      }
+    },
+    {
+      "id": "FLOW-059",
+      "title": "Spectator follow camera",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Give Remastered spectators a follow camera presentation instead of the stock breathing lines. Following, the followed player's status bar and powerups show without their pickup lines or weapon strip, and the follow card sits directly above the status bar: a 236x30 u HUD plate at black 0.58 with a 7 u block of the followed player's team color (none in deathmatch and Tourney), FOLLOWING in Lowpixel 700 at 0.58 over the name in Lowpixel 13 dp, the rank ordinal in #FFBE23 and the score in Chain at the trailing end, cycle chevrons beside its ends and the active device's Next, Previous and Free camera prompts under it. In the free camera the status bar, crosshair and powerups go, the card drops toward the bottom edge and reads SPECTATING over Free camera with Follow a player and Scores prompts, and players in view carry name tags: a 0.50 plate with a 4 u team-color block and the name, pointing down at the player. In Competitive both teams' status lists flank the view, the Marines at the leading edge and the Strogg trailing-aligned at the trailing edge, the followed player's row lit in the team's text color at 0.22 with the marker and held statistics taking the trailing list's place; in deathmatch and Tourney the match bar's leading side is the followed player, and name tags add a health line. Classic keeps the stock lines in #FFFF8C at 123 and 141 u, breathing over 900 ms.",
+      "dependencies": [
+        "FLOW-056",
+        "FLOW-058",
+        "FLOW-007",
+        "INP-011"
+      ],
+      "acceptance_evidence_needed": [
+        "Captures of following and free-camera spectating per mode in Remastered, Competitive and Classic at 4:3, 16:9 and 9:16, with the prompts on keyboard, controller and touch."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "card_u": [
+          236,
+          30
+        ],
+        "card_alpha": 0.58,
+        "team_block_u": 7,
+        "followed_row_alpha": 0.22,
+        "name_tag_alpha": 0.5,
+        "classic_lines_u": [
+          123,
+          141
+        ],
+        "classic_color": "#FFFF8C",
+        "classic_breathe_ms": 900
       }
     }
   ]
