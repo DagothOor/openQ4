@@ -419,6 +419,22 @@ const std::chrono::steady_clock::time_point epoch = std::chrono::steady_clock::n
 struct ProfileSample { openq4::ui::RuntimeStatistics statistics; double engineMilliseconds; };
 std::vector<ProfileSample> profile;
 int profileFrames = 0;
+// Without a preview document the profile covers the session-owned root views
+// (title, pause, SYSTEM, loading), per rendered frame: their summed CPU
+// submission and statistics, and the wall interval to the next frame, which
+// an uncapped frame rate turns into the whole frame's cost.
+struct RootProfileSample {
+	std::uint64_t frame = 0;
+	std::chrono::steady_clock::time_point at;
+	double cpu = 0;
+	int views = 0;
+	unsigned long long layerComposites = 0, backdropComposites = 0, backdropFallbacks = 0;
+};
+std::vector<RootProfileSample> rootProfile;
+int rootProfileFrames = 0;
+// Counts the frames submitted since startup, one per EndFrame, so a profile
+// groups its views' draws by the frame that presented them.
+std::uint64_t submittedFrames = 0;
 const std::thread::id editThread=std::this_thread::get_id();
 unsigned editWorkDepth=0,editCallDepth=0;
 bool editDraining=false,editShutdownPending=false;
@@ -499,6 +515,40 @@ void RecordProfile(double engineMilliseconds) {
 	common->Printf("Retained UI profile: {\"frames\":%d,\"engine_cpu_p50_ms\":%.6f,\"engine_cpu_p95_ms\":%.6f,\"engine_cpu_max_ms\":%.6f,\"vector_compile_ms\":%.6f,\"paths_compiled\":%llu,\"vector_uploads\":%llu,\"cache_hits\":%llu,\"tracked_peak_bytes\":%llu,\"layer_pushes\":%llu,\"layer_composites\":%llu,\"peak_layer_depth\":%llu,\"mask_snapshots\":%llu,\"mask_applications\":%llu,\"peak_layer_targets\":%llu,\"backdrop_composites\":%llu,\"backdrop_fallbacks\":%llu}\n",
 		profileFrames,percentile(.5),percentile(.95),percentile(1),compileMilliseconds,paths,uploads,hits,peakBytes,layerPushes,layerComposites,peakLayerDepth,maskSnapshots,maskApplications,peakLayerTargets,backdropComposites,backdropFallbacks);
 	profileFrames = 0; profile.clear();
+}
+void ReportRootProfile() {
+	// Each interval runs from one frame's first root draw to the next frame's.
+	std::vector<double> cpu, intervals;
+	unsigned long long layerComposites = 0, backdropComposites = 0, backdropFallbacks = 0;
+	int views = 0;
+	double total = 0;
+	for (int i = 0; i < rootProfileFrames; ++i) {
+		const auto& sample = rootProfile[i];
+		cpu.push_back(sample.cpu);
+		intervals.push_back(std::chrono::duration<double,std::milli>(rootProfile[i+1].at-sample.at).count());
+		total += intervals.back();
+		layerComposites += sample.layerComposites; backdropComposites += sample.backdropComposites; backdropFallbacks += sample.backdropFallbacks;
+		views = Max(views,sample.views);
+	}
+	std::sort(cpu.begin(),cpu.end()); std::sort(intervals.begin(),intervals.end());
+	auto percentile = [](const std::vector<double>& values, double fraction) { return values[static_cast<size_t>(std::ceil(fraction*values.size()))-1]; };
+	common->Printf("Retained UI root profile: {\"frames\":%d,\"views\":%d,\"retained_cpu_p50_ms\":%.6f,\"retained_cpu_p95_ms\":%.6f,\"frame_interval_mean_ms\":%.6f,\"frame_interval_p50_ms\":%.6f,\"frame_interval_p95_ms\":%.6f,\"layer_composites\":%llu,\"backdrop_composites\":%llu,\"backdrop_fallbacks\":%llu}\n",
+		rootProfileFrames,views,percentile(cpu,.5),percentile(cpu,.95),total/rootProfileFrames,percentile(intervals,.5),percentile(intervals,.95),
+		layerComposites,backdropComposites,backdropFallbacks);
+	rootProfileFrames = 0; rootProfile.clear();
+}
+void RecordRootProfile(std::uint64_t frame, std::chrono::steady_clock::time_point started, double cpu, const openq4::ui::RuntimeStatistics& statistics) {
+	if (!rootProfileFrames) return;
+	if (rootProfile.empty() || rootProfile.back().frame != frame) {
+		// The frame after the last measured one only closes its interval.
+		if (static_cast<int>(rootProfile.size()) == rootProfileFrames+1) { ReportRootProfile(); return; }
+		RootProfileSample sample; sample.frame = frame; sample.at = started;
+		rootProfile.push_back(sample);
+	}
+	auto& sample = rootProfile.back();
+	sample.cpu += cpu; ++sample.views;
+	sample.layerComposites += statistics.layerComposites;
+	sample.backdropComposites += statistics.backdropComposites; sample.backdropFallbacks += statistics.backdropFallbacks;
 }
 
 double PresentationTime() { return std::chrono::duration<double>(std::chrono::steady_clock::now()-epoch).count(); }
@@ -766,7 +816,11 @@ void Play_f(const idCmdArgs& args) {
 void Profile_f(const idCmdArgs& args) {
 	const int frames = args.Argc() == 2 ? atoi(args.Argv(1)) : 0;
 	if (frames < 1 || frames > 3600) { common->Printf("usage: ui_retainedProfile <1..3600 frames>\n"); return; }
-	if (!PreviewReady()) { common->Warning("retained UI: profiling requires a loaded document"); return; }
+	if (!PreviewReady()) {
+		rootProfile.clear(); rootProfile.reserve(frames+1); rootProfileFrames = frames;
+		common->Printf("retained UI: profiling the root views for %d frames\n",frames);
+		return;
+	}
 	profile.clear(); profile.reserve(frames); profileFrames = frames;
 }
 void Focus_f(const idCmdArgs& args) {
@@ -958,7 +1012,7 @@ bool RetainedUI_DefaultViewport(openq4::ui::Viewport& viewport) {
 	return viewport.width > 0 && viewport.height > 0;
 }
 double RetainedUI_PresentationTime() { return PresentationTime(); }
-void RetainedUI_FrameSubmitted() { rootSubmissionPending = false; }
+void RetainedUI_FrameSubmitted() { rootSubmissionPending = false; ++submittedFrames; }
 bool RetainedUI_DrawViewRoot(retainedUIView_t* view, const openq4::ui::Viewport& viewport) {
     EditCall call;
 	if (!renderSystem || !renderSystem->IsOpenGLRunning() || viewport.width <= 0 || viewport.height <= 0 || !RetainedUI_PrepareView(view)) return false;
@@ -973,6 +1027,7 @@ bool RetainedUI_DrawViewRoot(retainedUIView_t* view, const openq4::ui::Viewport&
 	host.captureWidth = renderSystem->GetScreenWidth(); host.captureHeight = renderSystem->GetScreenHeight();
 	host.softFocus = UpdateSoftFocus();
 	rootSubmissionPending = true; rootSubmissionFrame = host.RenderFrame();
+	const auto started = std::chrono::steady_clock::now();
 	const double now = PresentationTime();
 	view->runtime->SetReducedMotion(ui_retainedReducedMotion.GetBool(),now);
 	view->runtime->Frame(viewport,now);
@@ -981,6 +1036,9 @@ bool RetainedUI_DrawViewRoot(retainedUIView_t* view, const openq4::ui::Viewport&
 	renderSystem->SetColor4(1,1,1,1);
 	host.viewportWidth = oldWidth; host.viewportHeight = oldHeight;
 	host.viewportX = oldX; host.viewportY = oldY;
+	if (rootProfileFrames && view != previewView)
+		RecordRootProfile(submittedFrames,started,std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count(),
+			view->runtime->Statistics());
 	return true;
 }
 

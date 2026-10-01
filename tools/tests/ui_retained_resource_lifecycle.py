@@ -92,6 +92,7 @@ public:
     void ReleaseInputSources() { assert(loaded); ++releases; Record("release",id); }
     void Shutdown() { loaded=false; state=-1; Record("shutdown",id); }
     void SetReducedMotion(bool,double) { assert(loaded); }
+    RuntimeStatistics Statistics() const { return {}; }
     void Frame(const Viewport& viewport,double now) {
         assert(loaded && viewport.width==host.viewportWidth && viewport.height==host.viewportHeight);
         // Soft focus reads the view's place in the window and the window's size.
@@ -143,6 +144,8 @@ void CancelInput(bool=false,bool=true) { Record("cancel-preview"); }
 bool WindowFocused() { return true; }
 static int softFocusUpdates=0;
 bool UpdateSoftFocus() { ++softFocusUpdates; return true; }
+static int rootProfileRecords=0;
+void RecordRootProfile(std::uint64_t,std::chrono::steady_clock::time_point,double,const openq4::ui::RuntimeStatistics&) { ++rootProfileRecords; }
 struct Owner {
     openq4::ui::Runtime* runtime=nullptr;
     int before=0,restored=0,failed=0;
@@ -251,6 +254,10 @@ int main() {
     assert(RetainedUI_DrawViewRoot(b,viewport));
     assert(host.viewportWidth==777 && host.viewportHeight==333 && host.viewportX==7 && host.viewportY==3 && !renderer.uiViewport);
     assert(softFocusUpdates==2); // Each drawn view refreshes the soft-focus capability first.
+    assert(rootProfileRecords==0); // Root views are profiled only on request.
+    rootProfileFrames=1;
+    assert(RetainedUI_DrawViewRoot(a,viewport) && rootProfileRecords==1);
+    rootProfileFrames=0;
 
     // A dirty resource generation cannot invalidate geometry already queued
     // for this front-end frame. Unchanged-generation peers still prepare.

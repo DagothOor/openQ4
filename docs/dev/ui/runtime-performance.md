@@ -85,6 +85,14 @@ submission and the surrounding GUI flushes. GPU execution, presentation and
 the rest of gameplay are outside this measurement. Profile data does not change
 the presentation clock or inject any input.
 
+Without a preview document, the same command profiles the session-owned root
+views (the title, pause, SYSTEM and loading screens) by submitted frame. Its
+line is prefixed by `Retained UI root profile: ` and reports the views drawn per
+frame, their summed retained CPU time, the wall interval from each frame's first
+root draw to the next frame's, and their layer composites, backdrop passes and
+backdrop fallbacks. A hidden window on Windows is capped at 60 fps, so its
+frame interval measures CPU-bound frames, not GPU cost.
+
 The capture harness accepts `--profile-frames N`, waits for the requested frames
 before taking its engine screenshot and requires completed profile records.
 With video restart, it checks both the original and recreated preview. The

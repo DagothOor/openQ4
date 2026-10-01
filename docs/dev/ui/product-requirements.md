@@ -191,6 +191,8 @@ Retained backdrop soft focus, based on engine `813a8acb759a1b4178f282698bd67a3ad
 
 On engine `f5c865df8bb499987bfe73b696a792136a8958cd` the retained single-player pause screen sits over the paused view softened with modal.softfocus's values, never dimmed, ramping in with menu.fade on every pause; the opaque-backing option and renderers that cannot soften keep a darkening scrim and vignette. Engine captures on OpenGL and Vulkan show the view blurred and the HUD crosshair blurred away. `BEH-007` moves from pending to partial, with acceptance evidence still empty; the release on resume, the multiplayer menus, gameplay traces and input-leak proof remain. `FLOW-048` and `REN-016` gain partial evidence without a status change. Evidence: `.tmp/ui/retained-pause-softfocus/validation-evidence.json`, SHA-256 `1443f7b6398db734e30c564d03a831f0aa401f3c3940d726a31bcb0ca9e4268d`.
 
+On engine `eae2d39ed3cd59f6dd3e45cdda374de56a59a5e2` the developer command `ui_retainedProfile` also profiles the session-owned root views when no preview document is loaded, reporting per submitted frame their retained CPU time, the frame interval, and their layer composites and backdrop passes. It is a measurement interface only; no requirement status changes.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial

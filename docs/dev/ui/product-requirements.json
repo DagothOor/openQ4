@@ -4,7 +4,7 @@
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "766f04e0c197661cc53f7562f85bc690022d89b6",
+    "engine_revision": "eae2d39ed3cd59f6dd3e45cdda374de56a59a5e2",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -174,7 +174,7 @@
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/runtime-performance.md",
       "scope": "Debug CPU fixture counters; release GPU/frame pacing/resource budgets unqualified.",
-      "sha256": "ab201017099126e0625611b2f8e562c3f211c733097d87914c7bf8b853a13071"
+      "sha256": "f8db031d5d88097409b35be685e0f46505e7d2d7eacf2a90b1243110caefce74"
     },
     "instance-persistence-foundation": {
       "kind": "qualified_foundation_checkpoint",
@@ -307,7 +307,7 @@
       "scope": "Current-buffer numeric editing commands, atomic range undo, held-key owner isolation and per-event captured modifier/repeat metadata. Portable native-text broker, strict wire codec, SDL ingress and reviewed Windows observer foundation; observer disabled pending owner/ordered native dispatch integration. Windows build and 27 retained-UI suites pass; two windowed gameplay-based semantic command captures cover 32 operations and ten engine images at SP/OpenGL125% and MP/Vulkan200%. Counted adapter, journal, edit-buffer and actual SDL observer tests reject behavioral mutations. No native character/clipboard/IME field route, physical-device acceptance, full international text, production precise-entry screen, migration, editor or product acceptance.",
       "local_capture_summary": ".tmp/ui/text-routing-integration/validation-evidence.json",
       "local_capture_summary_sha256": "1d62bddd483805ef0576b87571a5d4bae0d7a93c70283e15f8c1d8c366552bc4",
-      "sha256": "fc433726dd1cf1ff900a897b53cd93edca85fd28137b4e3ab6b11ba3eee2a3b5"
+      "sha256": "692f8edbf94126c6f10a4b8a55981e44e5eb977ab58fbfc35f11132fa50b5333"
     },
     "native-owner-store": {
       "kind": "implementation_checkpoint",
@@ -317,7 +317,7 @@
       "scope": "Exact managed editor ownership, engine queue continuity, portable native shadow document and actual Windows SDK text store with application-origin text/selection/layout notifications. First disabled SDL dispatch fence does not prove lossless earlier-event consumption. Windows build and29UI suites plus updatedCOM suite pass; source-bound SP/GL125% and MP/Vulkan200% gameplay captures cover32semantic operations and10engine images. Native field routing, checked queue consumer, complete composition/shaping, production controls, editor, migrations and final gates remain unaccepted.",
       "local_capture_summary": ".tmp/ui/native-owner-integration/validation-evidence.json",
       "local_capture_summary_sha256": "c9313dc2a1361368626a4d5b225e19f39be03fbe8e330bc573c42e8f6aaa168b",
-      "sha256": "fc433726dd1cf1ff900a897b53cd93edca85fd28137b4e3ab6b11ba3eee2a3b5"
+      "sha256": "692f8edbf94126c6f10a4b8a55981e44e5eb977ab58fbfc35f11132fa50b5333"
     },
     "precise-system-fields": {
       "kind": "implementation_checkpoint",
@@ -368,7 +368,7 @@
       "scope": "One constructing-STA Windows text-session controller binds exact editor/native/window/module/association/registration leases through checked SDK activation and quiescence collections. Cleanup retires the engine adoption lease, requires ordinary disposition, retires the store and uses a fresh provider/ledger gate before native ACK. Replacement ownership cannot be disabled or unregistered by fault cleanup. Counted SDK 4544 checks and 19 compiled mutations cover this boundary; the OS COM factory and installed text services are not invoked. Production activation, Session sidecars/pumps, native text/composition/candidate routing, all host input and full text/editor/product qualification remain incomplete.",
       "local_capture_summary": ".tmp/ui/preset-session-integration/validation-evidence.json",
       "local_capture_summary_sha256": "69ccd3f6872a47cf9fa66f632c969c426e9e95f61098ee7b93f9f7c317e526b8",
-      "sha256": "fc433726dd1cf1ff900a897b53cd93edca85fd28137b4e3ab6b11ba3eee2a3b5"
+      "sha256": "692f8edbf94126c6f10a4b8a55981e44e5eb977ab58fbfc35f11132fa50b5333"
     },
     "settings-effect-foundations": {
       "kind": "implementation_checkpoint",
@@ -383,7 +383,7 @@
     "native-disposition-storage": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/text-input-routing.md",
-      "sha256": "fc433726dd1cf1ff900a897b53cd93edca85fd28137b4e3ab6b11ba3eee2a3b5",
+      "sha256": "692f8edbf94126c6f10a4b8a55981e44e5eb977ab58fbfc35f11132fa50b5333",
       "baseline_engine_revision": "efcfdb0ffe6eaffa11dbf2ced026495539156478",
       "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
       "scope": "Native ordinary-event accounting preserves both actual fixed scheduling orders, failed-prefix quarantine, sysEvent sidecars and scalar keyboard/mouse polled-slot ownership. Actual-code compiled mutation suites qualify these boundaries. Storage removal is not delivery; route lifecycle, cancellation, native text provenance, real provider activation and all host/platform qualification remain required.",
