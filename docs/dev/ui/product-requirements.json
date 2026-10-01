@@ -1,10 +1,10 @@
 {
-  "schema_version": 12,
+  "schema_version": 13,
   "id_namespace": "openq4.ui.product",
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "be3852badf08503e2a20aa59a8f42a522aeee7f1",
+    "engine_revision": "63aa36fd6571cc84d4f68104607822ffd0faae07",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -14,17 +14,17 @@
     "visual": {
       "path": "docs/dev/ui-visual-design.md",
       "authority": "normative visual, interaction and editor contract",
-      "sha256": "5c6b694240425926692e0c6bf72a50958d09ca084f4b3d270afabcaad3fc8bba"
+      "sha256": "80391555bc75daebad07a04457bf9b655e1ecd9da55f8bf9416362ab2e22806d"
     },
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "3cee019ad4d38ddb15880b5ddf5a77129f36c95b2c987049845b082fc1c23082"
+      "sha256": "409be20a2249c704787057bbee23c66a188b7d0db502bd975d842f4cb8b1fa55"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "f3424d57708801c8a0393a0759b643bc364167722c44358128f7139dc33359aa"
+      "sha256": "1b04bd61ab4f7d568bad981485b620255cf1767e631ed8f2f8da4152f1ccb839"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -102,7 +102,7 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "3cee019ad4d38ddb15880b5ddf5a77129f36c95b2c987049845b082fc1c23082"
+      "sha256": "409be20a2249c704787057bbee23c66a188b7d0db502bd975d842f4cb8b1fa55"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
@@ -1035,7 +1035,8 @@
       "ART-024",
       "ART-032",
       "ART-033",
-      "ART-036"
+      "ART-036",
+      "ART-037"
     ],
     "UI-12": [
       "LAY-003",
@@ -1411,6 +1412,17 @@
       "normative_change": "Visual 1.13 replaces the walker and hover tank's exit and lock lines with the HUD prompt and keeps the vehicle HUD's transmission display at the trailing screen's corner, adding it where a vehicle HUD has none; every other boss and vehicle rule is carried unchanged.",
       "source_refs": [
         "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "ART-036",
+      "successors": [
+        "ART-037"
+      ],
+      "normative_change": "Visual 1.14 measures the modal against the stock: the title's capitals hang from the raised top line into the lit slot instead of its baseline standing on that line, the silhouette is inset in its rectangle so that the inset is the lit margin, and the first body baseline is placed at 87.5 dp; every other construction is carried unchanged.",
+      "source_refs": [
+        "visual:6"
       ],
       "carried_evidence": []
     }
@@ -13250,6 +13262,133 @@
         "gev": {
           "remastered": "bottom_center",
           "classic": "bottom_leading"
+        }
+      }
+    },
+    {
+      "id": "ART-037",
+      "title": "Panel, pop-up and band constructions",
+      "milestone_owner": "M2",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Cards use one marine.rail.card rail around a 0.94 black body with 12 dp cuts at the top-trailing and bottom-leading corners and 3 dp at the other two; small cards keep the 12 dp cut and only one-line hints use 10 dp. Modals are a 0.70 black silhouette inset in its rectangle as the stock art is (7/512 of the width at each side, 3.6 dp above the raised sections and 5.3 dp below the bottom edge) over the soft-focused screen, with an additive glow graded only vertically across the rectangle, whose inset around the silhouette is the lit margin, at half strength at the rectangle's top and bottom edges and gone 40 dp beyond them, and fading out over a further 16 dp past each side (over the opaque-backing scrim it keeps the stock column, the rectangle's width, 87 u above and 108 u below), with a leading tooth, a title slot about 73% wide, a raised trailing section, a deep lower-leading chamfer, square trailing corners and no rails; the five stock widths keep their slot depths and chamfers, the title starts at the foot of the slot's leading flank with its capitals hanging from the raised top line into the lit slot and its baseline about 6 dp above the floor, with a thin black outline at 0.85 extruding 1 dp around its strokes behind the fill, the first body baseline sits 87.5 dp below the rectangle's top, and actions sit 30 dp and 33 dp from the edges. The chat box, tab strip, header band, framing and loading bands and corner brackets follow their measured constructions, lengthening only straight spans.",
+      "dependencies": [
+        "ART-001",
+        "REN-001",
+        "REN-014",
+        "REN-016"
+      ],
+      "acceptance_evidence_needed": [
+        "Measured geometry and overlays against the stock at 4:3 and across widths and DPI for every construction; a generic beveled rectangle is insufficient. Include each modal width over the soft focus and over the opaque-backing scrim. Show the title outline and the glow's side fade over a bright softened scene. Compare the title's capitals and baseline with an engine capture of the classic exit dialog, and the silhouette's inset with popup_top."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "card": {
+          "major_cut_dp": 12,
+          "minor_cut_dp": 3,
+          "one_line_hint_major_cut_dp": 10,
+          "rail_dp": 1.5,
+          "body_alpha": 0.94,
+          "art_inset_u": 2
+        },
+        "modal_widths_dp": {
+          "confirmation_entry_list": {
+            "width": 480,
+            "slot_depth": 17,
+            "chamfer": 38
+          },
+          "system_message_connection_death": {
+            "width": 540,
+            "slot_depth": 20,
+            "chamfer": 46
+          },
+          "ban_list": {
+            "width": 548,
+            "slot_depth": 22,
+            "chamfer": 50
+          },
+          "advanced_options": {
+            "width": [
+              612,
+              642
+            ],
+            "slot_depth": 25,
+            "chamfer": 56
+          }
+        },
+        "modal": {
+          "frame_alpha": 0.7,
+          "leading_tooth_dp": 6,
+          "slot_opening_fraction": 0.73,
+          "slot_floor_fraction": 0.66,
+          "action_inset_dp": [
+            30,
+            33
+          ],
+          "lit_margin_dp": 6,
+          "standard_top_u": 155,
+          "standard_height_u": 136,
+          "backdrop": "modal.softfocus",
+          "soft_focus_glow": {
+            "full_across": "rectangle",
+            "half_at": "rectangle_top_and_bottom_edges",
+            "extent_beyond_dp": 40,
+            "side_fade_dp": 16
+          },
+          "scrim_glow": {
+            "half_at_height_fraction": [
+              0.28,
+              0.72
+            ],
+            "extent_u": {
+              "above": 87,
+              "below": 108
+            }
+          },
+          "title_outline": {
+            "color": "#000000",
+            "alpha": 0.85,
+            "extrude_dp": 1,
+            "behind_fill": true
+          },
+          "silhouette_inset": {
+            "side_fraction_of_width": 0.013671875,
+            "side_dp_at_480": 6.56,
+            "top_dp": 3.56,
+            "bottom_dp": 5.34
+          },
+          "lit_margin": "silhouette_inset",
+          "title": {
+            "cap_line": "raised_top_line",
+            "baseline_above_floor_dp": 6,
+            "confirmation_baseline_below_top_dp": 13.5
+          },
+          "body_first_baseline_below_top_dp": 87.5
+        },
+        "header_band": {
+          "cut_texels": 8,
+          "fill_full_to_fraction": 0.5,
+          "half_at_fraction": 0.75
+        },
+        "bands": {
+          "flank_degrees": 45,
+          "notch_height_u": 9,
+          "notch_top_u": 36,
+          "notch_pitch_u": 97,
+          "top_riser_u": 35,
+          "rim_light_u": 19,
+          "silhouettes": "visual Appendix B.2"
         }
       }
     }

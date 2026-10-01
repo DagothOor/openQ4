@@ -57,7 +57,9 @@ screen Remastered accents; register schema 11 supersedes five rows and appends
 four for it. Version 1.13 replaces the vehicles' bracketed exit and boost lines
 with HUD prompts and keeps the transmission display in the right-hand screen's
 corner on every HUD; register schema 12 supersedes one row and appends two for
-it.
+it. Version 1.14 measures the modal against the stock (the title hangs in the
+lit slot and the silhouette is inset in its rectangle); register schema 13
+supersedes one row and appends one for it.
 
 The controller weapon wheel already in openQ4-game (`356dfe56`: 12 slots,
 centered at 77% of the width, cursor selection) differs from section 14.6

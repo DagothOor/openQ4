@@ -65,6 +65,13 @@ declaring that choice proven for the whole product.
 
 ### Current implementation progress
 
+A fifth [1 October register revision](../ui/product-requirements.md) follows
+[visual specification](../ui-visual-design.md) 1.14, which measures the modal
+against the stock: its title hangs in the lit slot, its silhouette is inset in
+its rectangle and its body is placed. Register schema 13 supersedes one row and
+appends its successor. The register now holds 340 rows, of which 307 define
+acceptance.
+
 A fourth [1 October register revision](../ui/product-requirements.md) follows
 [visual specification](../ui-visual-design.md) 1.13, which replaces the
 vehicles' bracketed exit and boost lines with HUD prompts, keeps the
