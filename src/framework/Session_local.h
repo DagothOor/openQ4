@@ -232,6 +232,10 @@ public:
 	// A screen's retained document, or NULL while its stock GUI presents
 	// instead; a home screen also needs every legacy page it hands off to.
 	idUserInterface *	FindRetainedGui( const char *path, bool shared, bool home );
+	// A home screen's document, loaded on first use; NULL once it falls back.
+	idUserInterface *	RetainedHomeDocument( idUserInterface *&home, const char *path );
+	// Whether the local player is Strogg, Kane after his stroggification.
+	bool				RetainedPauseIsStrogg();
 	bool				RetainedSystemAvailable() const;
 	// Resolve the screens and their pictures where the stock menus resolve
 	// theirs: at startup, and inside each single-player level load.
@@ -419,6 +423,8 @@ public:
 	idUserInterface *	guiRetainedHome;
 	idUserInterface *	guiRetainedTitle;
 	idUserInterface *	guiRetainedPause;
+	idUserInterface *	guiRetainedPauseStrogg;	// the Strogg family's pause
+	int					retainedPauseStrogg;	// this level's player is Strogg (-1: not asked yet)
 	bool				retainedHomeReturning;
 	// Retained documents that fell back to their stock screens this session.
 	idStrList			retainedStock;

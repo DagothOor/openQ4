@@ -203,6 +203,8 @@ On engine `00436c476dc441697dcd339317cb5008f1ef4476` the retained pause screen's
 
 On engine `b6a7979bf2efe96fe8a2299ed342c3dbd85e8794` the retained pause screen's level block lists the objectives the player holds, newest first, and the time in the mission, which the session asks the game for with the `retainedPauseState` menu command; a game module that publishes neither leaves the map's objective summary. Engine captures on OpenGL and Vulkan show airdefense1's first two objectives and the time line. `FLOW-048` gains partial evidence without a status change; the Objectives action, completed objectives, the total time, the last save and the Strogg variant remain. Evidence: `.tmp/ui/retained-pause-objectives/validation-evidence.json`, SHA-256 `43f7a4867c20868c828296b1faf46a1bd64c1282538da0d113b0e58e7df2074b`.
 
+On engine `9dc4eac7ba8dff03a429b7fbc54bd0a66c60fb23` the retained pause takes the Strogg family after Kane's stroggification (`guis/menu/pause_strogg.q4ui`): the bands' 30-degree shoulders, downward teeth and etched circuit traces, shouldered plates, R_Strogg labels and a chamfered level block, with every label arriving in runes and playing the short credits translation under the scan bar. The session asks the game once a level with the `retainedPauseFamily` menu command, and the Marine pause stands in when the Strogg pause cannot present. Engine captures on OpenGL and Vulkan at 1280x720 and on OpenGL at 1024x768 show game/recomp translating and at rest. `MOT-015` moves from pending to partial, with acceptance evidence still empty: the full credits translation, the intro decode, the changeover, the MCC transmission, the wheel's short forms and sampled timelines remain. `FLOW-048` gains partial evidence without a status change; the Objectives action, completed objectives, the total time and the last save remain. Evidence: `.tmp/ui/retained-pause-strogg/validation-evidence.json`, SHA-256 `2180c19336bea8e678a54440b5eacb20ab01d31a4a5121893dcbc9e725886894`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial
@@ -487,7 +489,7 @@ The [full renderer shutdown increment](image-recovery-ownership.md), based on en
 
 The [editor file publication increment](editor-file-safety.md), based on engine `a11a00181b5997993bb9e225bad63a6422386311`, adds actual native creation of complete new files without replacing an existing or racing document. Windows Clang and MSVC each pass 340 checks, GCC with sanitizers passes 344, and all three reject seven compiled mutations. The full engine build and 78 UI suites pass. Windows symlink and DrvFS FIFO limitations are recorded. This file-only increment has no new game captures. Save As/autosave UI, live document association, overwrite/conflict handling and crash/relaunch recovery remain required. No requirement status, migration acceptance or final gate changes. Evidence: `.tmp/ui/editor-new-file/validation-evidence.json`, SHA-256 `846413e35eb34ed965a57005aa6eb724b5c8d3dbc2fb46f65ba30711a509cc63`.
 
-There are **83 partial, 256 pending and one verified requirement**, counting the
+There are **84 partial, 255 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock

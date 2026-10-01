@@ -5732,6 +5732,11 @@ void idGameLocal::HandleMainMenuCommands( const char *menuCommand, idUserInterfa
 			gui->SetStateString( va( "pause_objective_%d", i ), player->inventory.objectiveNames[ count - 1 - i ].title.c_str() );
 		}
 		gui->SetStateInt( "pause_mission_seconds", time / 1000 );
+	} else if ( !idStr::Icmp( menuCommand, "retainedPauseFamily" ) ) {
+		// openQ4: after Kane's stroggification (the player_strogg definition)
+		// the retained pause screen takes the Strogg family.
+		idPlayer *player = GetLocalPlayer();
+		gui->SetStateBool( "pause_strogg", player != NULL && player->spawnArgs.GetBool( "strogg" ) );
 	}
 
 	return;

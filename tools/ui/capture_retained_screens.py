@@ -52,7 +52,8 @@ SCENARIOS = {
         'openq4_assertMenuActivation 10000', 'waitMsec 1200', 'ui_retainedStatus', 'screenshot "screenshots/pause.tga"',
         'openq4_retainedGui focus nav_restart', 'waitMsec 400', 'screenshot "screenshots/pause-focus.tga"',
         'openq4_retainedGui event quitModalShow', 'waitMsec 500', 'screenshot "screenshots/pause-quit.tga"',
-        'openq4_retainedGui event quitModalHide', 'waitMsec 300',
+        # The modal holds focus until its 300 ms leave completes.
+        'openq4_retainedGui event quitModalHide', 'waitMsec 600',
         'openq4_retainedGui focus nav_resume', 'openq4_retainedGui menu accept 1', 'openq4_retainedGui menu accept 0',
         'waitMsec 800', 'ui_retainedStatus', 'screenshot "screenshots/pause-resumed.tga"',
     ]),
@@ -62,6 +63,17 @@ SCENARIOS = {
         'trigger objectiveIntro', 'waitMsec 500', 'trigger objectiveMedic', 'waitMsec 1500',
         'openq4_assertMenuActivation 10000', 'waitMsec 1200', 'ui_retainedStatus', 'screenshot "screenshots/pause-objectives.tga"',
         'openq4_retainedGui focus nav_resume', 'openq4_retainedGui menu accept 1', 'openq4_retainedGui menu accept 0', 'waitMsec 500',
+    ]),
+    # From game/medlabs on Kane is Strogg and the pause takes the Strogg family:
+    # its labels arrive in runes and translate, and focus runs the scan bar.
+    'pause-strogg': ('game/recomp', [
+        'openq4_assertMenuActivation 10000', 'waitMsec 300', 'screenshot "screenshots/pause-strogg-translating.tga"',
+        'waitMsec 1500', 'ui_retainedStatus', 'screenshot "screenshots/pause-strogg.tga"',
+        'openq4_retainedGui focus nav_restart', 'waitMsec 120', 'screenshot "screenshots/pause-strogg-focus.tga"',
+        'openq4_retainedGui event quitModalShow', 'waitMsec 500', 'screenshot "screenshots/pause-strogg-quit.tga"',
+        'openq4_retainedGui event quitModalHide', 'waitMsec 600',
+        'openq4_retainedGui focus nav_resume', 'openq4_retainedGui menu accept 1', 'openq4_retainedGui menu accept 0',
+        'waitMsec 800', 'ui_retainedStatus', 'screenshot "screenshots/pause-strogg-resumed.tga"',
     ]),
     'loading': (None, [
         'waitMsec 3000', 'testGUI "guis/loading/loading.q4ui"', 'waitMsec 300',

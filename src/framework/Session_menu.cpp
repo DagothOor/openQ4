@@ -4691,6 +4691,7 @@ void idSessionLocal::HandleNoteCommands( const char *menuCommand ) {
 #ifndef ID_DEDICATED
 static const char *const RETAINED_TITLE_GUI = "guis/menu/title.q4ui";
 static const char *const RETAINED_PAUSE_GUI = "guis/menu/pause.q4ui";
+static const char *const RETAINED_PAUSE_STROGG_GUI = "guis/menu/pause_strogg.q4ui";
 static const char *const RETAINED_LOADING_GUI = "guis/loading/loading.q4ui";
 static const char *const RETAINED_SINGLEPLAYER_GUI = "guis/menu/singleplayer.q4ui";
 static const char *const RETAINED_CAMPAIGNS_GUI = "guis/menu/campaigns.q4ui";
@@ -4904,18 +4905,15 @@ void idSessionLocal::UpdateRetainedHome() {
 		const bool handoff = guiRetainedHome != NULL && now < retainedHandoffUntil;
 		if ( atHome || returning || handoff ) {
 			// The paused game's screen or the title; each loads on first use.
-			const char *path = mapSpawned ? RETAINED_PAUSE_GUI : RETAINED_TITLE_GUI;
-			idUserInterface *&home = mapSpawned ? guiRetainedPause : guiRetainedTitle;
-			if ( home == NULL ) {
-				home = FindRetainedGui( path, false, true );
-			} else if ( UI_RetainedViewFailed( home ) ) {
-				// A view that failed to come back after a renderer or language
-				// change draws nothing; the stock home screen takes over.
-				common->Warning( "retained UI: '%s' stopped drawing; the stock screen presents instead", path );
-				retainedStock.AddUnique( path );
-				home = NULL;
+			// After Kane's stroggification the pause takes the Strogg family,
+			// and the Marine pause stands in when that cannot present.
+			if ( mapSpawned && RetainedPauseIsStrogg() ) {
+				want = RetainedHomeDocument( guiRetainedPauseStrogg, RETAINED_PAUSE_STROGG_GUI );
 			}
-			want = home;
+			if ( want == NULL ) {
+				want = mapSpawned ? RetainedHomeDocument( guiRetainedPause, RETAINED_PAUSE_GUI ) :
+					RetainedHomeDocument( guiRetainedTitle, RETAINED_TITLE_GUI );
+			}
 		}
 	}
 	if ( want == guiRetainedHome ) {
@@ -4930,7 +4928,7 @@ void idSessionLocal::UpdateRetainedHome() {
 		PumpApplicationActions( previous );
 	}
 	if ( want != NULL ) {
-		if ( want == guiRetainedPause ) {
+		if ( want == guiRetainedPause || want == guiRetainedPauseStrogg ) {
 			PublishRetainedPauseState( want );
 		} else {
 			Session_PublishRetainedTitleState( want, this );
@@ -4944,6 +4942,35 @@ void idSessionLocal::UpdateRetainedHome() {
 	}
 	retainedHomeReturning = returning;
 #endif
+}
+
+idUserInterface *idSessionLocal::RetainedHomeDocument( idUserInterface *&home, const char *path ) {
+#ifndef ID_DEDICATED
+	if ( home == NULL ) {
+		home = FindRetainedGui( path, false, true );
+	} else if ( UI_RetainedViewFailed( home ) ) {
+		// A view that failed to come back after a renderer or language
+		// change draws nothing; the stock home screen takes over.
+		common->Warning( "retained UI: '%s' stopped drawing; the stock screen presents instead", path );
+		retainedStock.AddUnique( path );
+		home = NULL;
+	}
+	return home;
+#else
+	return NULL;
+#endif
+}
+
+// The game answers once a level, through the main-menu command channel, on
+// the legacy menu's state; a game module that does not answer keeps the
+// Marine pause.
+bool idSessionLocal::RetainedPauseIsStrogg() {
+	if ( retainedPauseStrogg < 0 && game != NULL && mapSpawned && guiMainMenu != NULL ) {
+		guiMainMenu->SetStateBool( "pause_strogg", false );
+		game->HandleMainMenuCommands( "retainedPauseFamily", guiMainMenu );
+		retainedPauseStrogg = guiMainMenu->State().GetBool( "pause_strogg" ) ? 1 : 0;
+	}
+	return retainedPauseStrogg > 0;
 }
 
 void idSessionLocal::RetainedHomeFrameEvent() {
@@ -4983,7 +5010,8 @@ void idSessionLocal::DrawRetainedHome( int presentationTime ) {
 	// The legacy menu keeps its timelines, music and hand-off choreography
 	// running unseen; only the retained screen reaches the output.
 	UI_RunTimeEvents( guiMainMenu, presentationTime );
-	if ( guiRetainedHome == guiRetainedPause && mapSpawned && !com_skipGameDraw.GetBool() && GetLocalClientNum() >= 0 ) {
+	if ( ( guiRetainedHome == guiRetainedPause || guiRetainedHome == guiRetainedPauseStrogg ) && mapSpawned &&
+		!com_skipGameDraw.GetBool() && GetLocalClientNum() >= 0 ) {
 		// The paused view stays behind the pause screen, under its scrim.
 		if ( !game->Draw( GetLocalClientNum() ) ) {
 			renderSystem->SetColor( colorBlack );
@@ -5113,12 +5141,17 @@ void idSessionLocal::PreloadRetainedScreens() {
 void idSessionLocal::PrepareRetainedLevel( const char *mapPath, bool multiplayer ) {
 #ifndef ID_DEDICATED
 	// Inside the level load: opening the pause menu later then reads no file
-	// mid-frame, even when the gate was switched on after startup.
+	// mid-frame, even when the gate was switched on after startup. Whether
+	// the player is Strogg is asked again of each level.
+	retainedPauseStrogg = -1;
 	if ( !Session_RetainedScreensEnabled() || multiplayer ) {
 		return;
 	}
 	if ( guiRetainedPause == NULL ) {
 		guiRetainedPause = FindRetainedGui( RETAINED_PAUSE_GUI, false, true );
+	}
+	if ( guiRetainedPauseStrogg == NULL ) {
+		guiRetainedPauseStrogg = FindRetainedGui( RETAINED_PAUSE_STROGG_GUI, false, true );
 	}
 	UI_RetainedPrecacheImage( RetainedPauseShot( mapPath ).c_str() );
 #endif
@@ -5132,9 +5165,9 @@ void idSessionLocal::ReportRetainedScreens() {
 		stock += i > 0 ? "," : "";
 		stock += retainedStock[i];
 	}
-	common->Printf( "OPENQ4_RETAINED enabled=%d system=%d home=%s title=%d pause=%d handoff=%d views=%d stock=%s\n",
+	common->Printf( "OPENQ4_RETAINED enabled=%d system=%d home=%s title=%d pause=%d strogg=%d handoff=%d views=%d stock=%s\n",
 		Session_RetainedScreensEnabled() ? 1 : 0, Session_RetainedSystemEnabled() ? 1 : 0,
 		guiRetainedHome != NULL ? guiRetainedHome->Name() : "-",
-		guiRetainedTitle != NULL ? 1 : 0, guiRetainedPause != NULL ? 1 : 0,
+		guiRetainedTitle != NULL ? 1 : 0, guiRetainedPause != NULL ? 1 : 0, guiRetainedPauseStrogg != NULL ? 1 : 0,
 		RetainedHomeInputBlocked() ? 1 : 0, RetainedUI_ViewCount(), stock.Length() > 0 ? stock.c_str() : "-" );
 }

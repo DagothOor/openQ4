@@ -33,6 +33,7 @@ import tempfile
 from pathlib import Path
 
 from filesystem_case_segments import function_body
+from lang_table_encoding import font_code_points
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -129,6 +130,7 @@ struct idUserInterface {
     struct StateView {
         const std::map<std::string, std::string>& values;
         int GetInt(const char* key, const char* fallback) const { const auto found = values.find(key); return std::atoi(found == values.end() ? fallback : found->second.c_str()); }
+        bool GetBool(const char* key, const char* fallback = "0") const { return GetInt(key, fallback) != 0; }
     };
     StateView State() const { return {state}; }
     void SetStateString(const char* key, const char* value) { state[key] = value; }
@@ -188,7 +190,8 @@ static const char* va(const char* fmt, ...) {
 class idSessionLocal {
 public:
     idUserInterface *guiActive = nullptr, *guiMainMenu = nullptr, *guiTest = nullptr;
-    idUserInterface *guiRetainedHome = nullptr, *guiRetainedTitle = nullptr, *guiRetainedPause = nullptr;
+    idUserInterface *guiRetainedHome = nullptr, *guiRetainedTitle = nullptr, *guiRetainedPause = nullptr, *guiRetainedPauseStrogg = nullptr;
+    int retainedPauseStrogg = -1;
     bool retainedHomeReturning = false;
     idStrList retainedStock;
     int retainedHandoffUntil = 0;
@@ -218,6 +221,8 @@ public:
     void SetGUI(idUserInterface* gui, void*) { guiActive = gui; }
     idUserInterface* SelectRetainedLoadingGui(idUserInterface*, bool);
     idUserInterface* FindRetainedGui(const char*, bool, bool);
+    idUserInterface* RetainedHomeDocument(idUserInterface*&, const char*);
+    bool RetainedPauseIsStrogg();
     bool RetainedSystemAvailable() const;
     void PreloadRetainedScreens(); void PrepareRetainedLevel(const char*, bool);
     void ReportRetainedScreens();
@@ -225,7 +230,7 @@ public:
 '''
 
 MAIN = r'''
-static const char* const DOCUMENTS[] = {"guis/menu/title.q4ui", "guis/menu/pause.q4ui", "guis/loading/loading.q4ui",
+static const char* const DOCUMENTS[] = {"guis/menu/title.q4ui", "guis/menu/pause.q4ui", "guis/menu/pause_strogg.q4ui", "guis/loading/loading.q4ui",
     "guis/menu/singleplayer.q4ui", "guis/menu/campaigns.q4ui", "guis/menu/settings/system.q4ui"};
 // The documents that fell back to their stock screens, in order.
 static std::vector<std::string> Stock(const idSessionLocal& session) {
@@ -254,7 +259,7 @@ int main() {
         s.HandleRetainedSessionRequest(s.guiMainMenu, "quit");
         CHECK(commonObject.quits == 0 && legacyActions.empty());
         s.ReportRetainedScreens();
-        CHECK(commonObject.output.find("OPENQ4_RETAINED enabled=0 system=0 home=- title=0 pause=0 handoff=0 views=0 stock=-") != std::string::npos);
+        CHECK(commonObject.output.find("OPENQ4_RETAINED enabled=0 system=0 home=- title=0 pause=0 strogg=0 handoff=0 views=0 stock=-") != std::string::npos);
         // Off, the campaign selectors are the stock ones and nothing retained loads.
         s.OpenCampaignSelector(false); CHECK(arenaCampaign.selectors == 1 && managerObject.loads.empty());
         s.OpenCampaignSelector(true); CHECK((managerObject.loads == std::vector<std::string>{"guis/campaign_menu.gui"}));
@@ -338,9 +343,10 @@ int main() {
         s.UpdateRetainedHome(); CHECK(managerObject.loads.size() == 2 && s.guiRetainedHome == s.guiRetainedTitle);
         s.PrepareRetainedLevel("mp/q4dm1", true); CHECK(precached.empty());
         s.PrepareRetainedLevel("game/airdefense1", false);
-        CHECK((precached == std::vector<std::string>{"gfx/guis/loadscreens/generic"}) && managerObject.loads.size() == 2);
+        CHECK((precached == std::vector<std::string>{"gfx/guis/loadscreens/generic"}) && managerObject.loads.size() == 3);
+        CHECK(managerObject.loads.back() == "guis/menu/pause_strogg.q4ui");  // either family may pause the level
         auto late = Session(true); late.PrepareRetainedLevel("game/airdefense1", false); // the gate switched on after startup
-        CHECK((managerObject.loads == std::vector<std::string>{"guis/menu/pause.q4ui"}) && precached.size() == 1);
+        CHECK((managerObject.loads == std::vector<std::string>{"guis/menu/pause.q4ui", "guis/menu/pause_strogg.q4ui"}) && precached.size() == 1);
     }
     {   // Loading: stock screens only, one shared instance, and a failed load reports once.
         auto s = Session(true); idUserInterface generic("guis/loading/generic.gui"), intro("guis/loading/intro.gui"), custom("guis/map/mylevel.gui");
@@ -437,7 +443,7 @@ int main() {
             gui->SetStateString("pause_objective_1", "Reach the bunker"); gui->SetStateInt("pause_mission_seconds", 2530);
         };
         s.UpdateRetainedHome(); auto* pause = s.guiRetainedHome;
-        CHECK(pause && (gameObject.commands == std::vector<std::string>{"retainedPauseState"}));
+        CHECK(pause && (gameObject.commands == std::vector<std::string>{"retainedPauseFamily", "retainedPauseState"}));
         CHECK(pause->state["pause_level"] == "Air Defense Bunker" && pause->state["pause_detail"] == "Corporal");
         CHECK(pause->state["pause_objective_count"] == "2" && pause->state["pause_objective_0"] == "Destroy the battery");
         CHECK(pause->state["pause_stats"] == "0:42:10 in mission");
@@ -446,6 +452,42 @@ int main() {
         quiet.UpdateRetainedHome();
         CHECK(quiet.guiRetainedHome->state["pause_objective_count"] == "0" && quiet.guiRetainedHome->state["pause_stats"].empty());
         CHECK(quiet.guiRetainedHome->state["pause_objectives"] == "Reach the bunker.");
+    }
+    {   // After Kane's stroggification the pause takes the Strogg family. The game
+        // answers once a level, and the Marine pause stands in when the Strogg
+        // pause cannot present.
+        auto s = Session(true, true);
+        gameObject.publish = [](idUserInterface* gui) { gui->SetStateBool("pause_strogg", true); };
+        s.UpdateRetainedHome(); auto* strogg = s.guiRetainedHome;
+        CHECK(strogg && std::string(strogg->Name()) == "guis/menu/pause_strogg.q4ui" && strogg == s.guiRetainedPauseStrogg);
+        CHECK(strogg->active && strogg->named.back() == "open" && strogg->state["pause_level"] == "game/airdefense1");
+        CHECK((gameObject.commands == std::vector<std::string>{"retainedPauseFamily", "retainedPauseState"}));
+        CHECK((managerObject.loads == std::vector<std::string>{"guis/menu/pause_strogg.q4ui"}));
+        s.HandleRetainedSessionRequest(strogg, "resume"); CHECK(s.exits == 1);
+        s.UpdateRetainedHome(); CHECK(s.guiRetainedHome == nullptr && !strogg->active);
+        s.guiActive = s.guiMainMenu; s.UpdateRetainedHome();
+        CHECK(s.guiRetainedHome == strogg && std::count(gameObject.commands.begin(), gameObject.commands.end(), "retainedPauseFamily") == 1);
+        s.ReportRetainedScreens(); CHECK(commonObject.output.find("pause=0 strogg=1 handoff=0") != std::string::npos);
+        // Each level asks again: a Marine level pauses in the Marine family.
+        s.ExitMenu(); s.UpdateRetainedHome(); s.PrepareRetainedLevel("game/airdefense1", false);
+        gameObject.publish = nullptr; s.guiActive = s.guiMainMenu; s.UpdateRetainedHome();
+        CHECK(s.guiRetainedHome && std::string(s.guiRetainedHome->Name()) == "guis/menu/pause.q4ui");
+        CHECK(std::count(gameObject.commands.begin(), gameObject.commands.end(), "retainedPauseFamily") == 2);
+        // A Strogg view that stopped drawing hands over to the Marine pause.
+        s.ExitMenu(); s.UpdateRetainedHome(); s.PrepareRetainedLevel("game/recomp", false);
+        gameObject.publish = [](idUserInterface* gui) { gui->SetStateBool("pause_strogg", true); };
+        strogg->failed = true; s.guiActive = s.guiMainMenu; s.UpdateRetainedHome();
+        CHECK(s.guiRetainedHome && std::string(s.guiRetainedHome->Name()) == "guis/menu/pause.q4ui" && s.guiRetainedPauseStrogg == nullptr);
+        CHECK(commonObject.warnings.size() == 1 && commonObject.warnings[0].find("stopped drawing") != std::string::npos);
+        CHECK((Stock(s) == std::vector<std::string>{"guis/menu/pause_strogg.q4ui"}));
+        // Not installed, it falls back quietly to the Marine pause.
+        auto missing = Session(true, true); fileSystemObject.files.erase("guis/menu/pause_strogg.q4ui");
+        gameObject.publish = [](idUserInterface* gui) { gui->SetStateBool("pause_strogg", true); };
+        missing.UpdateRetainedHome();
+        CHECK(missing.guiRetainedHome && std::string(missing.guiRetainedHome->Name()) == "guis/menu/pause.q4ui" && commonObject.warnings.empty());
+        CHECK((Stock(missing) == std::vector<std::string>{"guis/menu/pause_strogg.q4ui"}));
+        // The title never asks the game.
+        auto title = Session(true); title.UpdateRetainedHome(); CHECK(gameObject.commands.empty());
     }
     std::printf("ui_retained gate: %d checks passed\n", checks);
 }
@@ -515,6 +557,56 @@ def cpp_allowlist(text: str) -> set[str]:
     return set(re.findall(r'"([A-Za-z][A-Za-z0-9]*)"', block.split('{', 2)[2]))
 
 
+FACES = r'''
+#include <cstdint>
+#include <cstdio>
+#include <iostream>
+#include <string>
+'''
+
+FACES_MAIN = r'''
+int main() {
+    for (const char* family : {"marine", "lowpixel", "r_strogg", "strogg", "chain", "Marine", "unknown"})
+        std::printf("family %s %s\n", family, FontFamily(family).c_str());
+    unsigned scalar = 0;
+    while (std::cin >> scalar) std::printf("%u %u\n", scalar, static_cast<unsigned>(RuneScalar(scalar)));
+    return 0;
+}
+'''
+
+
+def check_strogg_faces(compiler: str, directory: Path) -> int:
+    """The Strogg pause names the r_strogg and strogg faces, and every label's
+    rune copy draws through the host's fold. Compile both host functions and
+    check that the faces resolve to themselves, and that every code point of
+    the shipped string tables, and every code point below U+FFFF, folds to a
+    code point the rune face covers or to a space."""
+    host = (ROOT / 'src/ui/RetainedUI.cpp').read_text(encoding='utf-8')
+    source = directory / 'faces.cpp'
+    binary = directory / 'faces.exe'
+    source.write_text(FACES + function_body(host, 'static std::string FontFamily(') + '\n' +
+                      function_body(host, 'static std::uint32_t RuneScalar(') + FACES_MAIN, encoding='utf-8')
+    subprocess.run([compiler, '-std=c++20', '-Wall', '-Wextra', str(source), '-o', str(binary)], check=True)
+    shipped = set()
+    for table in (ROOT / 'content/baseoq4/pak0/strings').glob('*.lang'):
+        shipped.update(ord(ch) for ch in table.read_text(encoding='utf-8'))
+    scalars = sorted(shipped | {s for s in range(0x20, 0x10000) if not 0xD800 <= s <= 0xDFFF})
+    result = subprocess.run([str(binary)], input='\n'.join(map(str, scalars)), capture_output=True, text=True, timeout=60, check=True)
+    lines = result.stdout.splitlines()
+    families = dict(line.split()[1:] for line in lines if line.startswith('family '))
+    assert families == {'marine': 'marine', 'lowpixel': 'lowpixel', 'r_strogg': 'r_strogg', 'strogg': 'strogg',
+                        'chain': 'chain', 'Marine': 'chain', 'unknown': 'chain'}, families
+    runes = font_code_points(ROOT / 'content/baseoq4/pak0/fonts/strogg.ttf')
+    folded = dict(tuple(map(int, line.split())) for line in lines if not line.startswith('family '))
+    assert set(folded) == set(scalars)
+    missing = sorted(hex(s) for s, f in folded.items() if f != 0x20 and f not in runes)
+    assert not missing, f'rune copies would draw the face\'s ? for {missing[:16]}'
+    assert all(folded[s] == s for s in range(0x41, 0x5B)) and all(folded[s] == s for s in range(0x30, 0x3A)), 'letters and digits keep their runes'
+    for blank in (0x21, 0x2019, 0x2026, 0x300, 0x3000):
+        assert folded[blank] == 0x20, f'punctuation U+{blank:04X} must be blank in the runes'
+    return len(scalars)
+
+
 def main() -> int:
     menu = (ROOT / 'src/framework/Session_menu.cpp').read_text(encoding='utf-8')
     session = (ROOT / 'src/framework/Session.cpp').read_text(encoding='utf-8')
@@ -539,8 +631,8 @@ def main() -> int:
     for source, name in ((menu, 'Session_menu.cpp'), (session, 'Session.cpp')):
         for match in re.finditer(r'"([^"]+\.q4ui)"', source):
             path = match.group(1)
-            allowed = {'guis/menu/settings/system.q4ui', 'guis/menu/title.q4ui', 'guis/menu/pause.q4ui', 'guis/loading/loading.q4ui',
-                       'guis/menu/singleplayer.q4ui', 'guis/menu/campaigns.q4ui'}
+            allowed = {'guis/menu/settings/system.q4ui', 'guis/menu/title.q4ui', 'guis/menu/pause.q4ui', 'guis/menu/pause_strogg.q4ui',
+                       'guis/loading/loading.q4ui', 'guis/menu/singleplayer.q4ui', 'guis/menu/campaigns.q4ui'}
             assert path in allowed, f'{name} names an ungated retained document {path}'
     # Every retained document loads through FindRetainedGui, which falls back to
     # the stock screen; the SYSTEM page and the campaign selectors fall back too.
@@ -554,13 +646,14 @@ def main() -> int:
     system_click = system_click[:system_click.index('return;')]
     assert 'if ( !OpenSystemSettings() && !RetainedSystemAvailable() ) {' in system_click
     assert 'UI_RunLegacyWindowAction( guiMainMenu, "set_b_system", false, command )' in system_click, 'a failed SYSTEM page must open the stock one'
-    update_home = function_body(menu, 'void idSessionLocal::UpdateRetainedHome(')
-    assert 'UI_RetainedViewFailed( home )' in update_home and 'retainedStock.AddUnique( path );' in update_home
+    home_document = function_body(menu, 'idUserInterface *idSessionLocal::RetainedHomeDocument(')
+    assert 'UI_RetainedViewFailed( home )' in home_document and 'retainedStock.AddUnique( path );' in home_document
     assert 'retainedStock.Clear();' in function_body(session, 'void idSessionLocal::Clear(')
     campaign_selector = function_body(menu, 'void idSessionLocal::OpenCampaignSelector(')
     assert 'Session_RetainedScreensEnabled() ?' in campaign_selector and 'arenaCampaign.OpenSelector();' in campaign_selector
     assert 'FindGui( "guis/campaign_menu.gui"' in campaign_selector
     assert menu.count('RETAINED_TITLE_GUI') == 3 and menu.count('RETAINED_PAUSE_GUI') == 4 and menu.count('RETAINED_LOADING_GUI') == 2
+    assert menu.count('RETAINED_PAUSE_STROGG_GUI') == 3
     for signature in ('void idSessionLocal::PreloadRetainedScreens(', 'void idSessionLocal::PrepareRetainedLevel('):
         assert 'if ( !Session_RetainedScreensEnabled()' in function_body(menu, signature), f'{signature} must be gated'
     assert 'PreloadRetainedScreens();' in function_body(session, 'void idSessionLocal::Init(')
@@ -583,6 +676,13 @@ def main() -> int:
     assert 'guiLoading = SelectRetainedLoadingGui( guiLoading, isMultiplayerLoad );' in function_body(session, 'void idSessionLocal::LoadLoadingGui(')
     assert 'if ( guiRetainedHome != NULL && guiActive == guiMainMenu ) {' in function_body(menu, 'void idSessionLocal::MenuEvent(')
     assert '"ui_retainedStatus", Session_RetainedStatus_f' in session
+    # The Strogg pause: the session asks the game the command the game answers.
+    game = (ROOT / 'src/game/Game_local.cpp').read_text(encoding='utf-8')
+    assert 'game->HandleMainMenuCommands( "retainedPauseFamily", guiMainMenu );' in function_body(menu, 'bool idSessionLocal::RetainedPauseIsStrogg(')
+    family = game[game.index('!idStr::Icmp( menuCommand, "retainedPauseFamily" )'):]
+    family = family[:family.index('}')]
+    assert 'gui->SetStateBool( "pause_strogg", player != NULL && player->spawnArgs.GetBool( "strogg" ) );' in family
+    assert 'retainedPauseStrogg = -1;' in function_body(menu, 'void idSessionLocal::PrepareRetainedLevel(')
 
     # Documents: current with their generator, verbs allowlisted and handled.
     generator = subprocess.run([sys.executable, str(ROOT / 'tools/ui/build_retained_screens.py'), '--check'], capture_output=True, text=True)
@@ -590,7 +690,9 @@ def main() -> int:
     allowlist = cpp_allowlist(adapter)
     handled = set(re.findall(r'\{ "([A-Za-z][A-Za-z0-9]*)",\s+"main_b_', menu)) | set(re.findall(r'!idStr::Icmp\( request, "([A-Za-z][A-Za-z0-9]*)" \)', menu))
     assert allowlist == handled, f'allowlist {sorted(allowlist)} differs from session handlers {sorted(handled)}'
-    for relative in ('content/baseoq4/pak0/guis/menu/title.q4ui', 'content/baseoq4/pak0/guis/menu/pause.q4ui', 'content/baseoq4/pak0/guis/loading/loading.q4ui', 'content/baseoq4/pak0/guis/menu/singleplayer.q4ui', 'content/baseoq4/pak0/guis/menu/campaigns.q4ui'):
+    for relative in ('content/baseoq4/pak0/guis/menu/title.q4ui', 'content/baseoq4/pak0/guis/menu/pause.q4ui',
+                     'content/baseoq4/pak0/guis/menu/pause_strogg.q4ui', 'content/baseoq4/pak0/guis/loading/loading.q4ui',
+                     'content/baseoq4/pak0/guis/menu/singleplayer.q4ui', 'content/baseoq4/pak0/guis/menu/campaigns.q4ui'):
         text = (ROOT / relative).read_text(encoding='utf-8')
         document = json.loads(re.sub(r'^\s*//.*$', '', text, flags=re.M))
         assert document.get('canvas') == {'height': 720}, relative
@@ -615,7 +717,8 @@ def main() -> int:
         'static void Session_PublishRetainedTitleState(', 'idUserInterface *idSessionLocal::FindRetainedGui(',
         'bool idSessionLocal::RetainedSystemAvailable(', 'void idSessionLocal::OpenCampaignSelector(',
         'bool idSessionLocal::RetainedHomeInputBlocked(',
-        'void idSessionLocal::UpdateRetainedHome(', 'void idSessionLocal::RetainedHomeFrameEvent(',
+        'void idSessionLocal::UpdateRetainedHome(', 'idUserInterface *idSessionLocal::RetainedHomeDocument(',
+        'bool idSessionLocal::RetainedPauseIsStrogg(', 'void idSessionLocal::RetainedHomeFrameEvent(',
         'void idSessionLocal::HandleRetainedSessionRequest(', 'idUserInterface *idSessionLocal::SelectRetainedLoadingGui(',
         'void idSessionLocal::PreloadRetainedScreens(', 'void idSessionLocal::PrepareRetainedLevel(',
         'void idSessionLocal::ReportRetainedScreens(')]
@@ -634,6 +737,8 @@ def main() -> int:
         result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)
+        if result.returncode == 0:
+            print(f'ui_retained gate: the Strogg faces resolve and {check_strogg_faces(compiler, Path(directory))} code points fold onto the rune face')
         return result.returncode
 
 

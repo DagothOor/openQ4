@@ -30,6 +30,7 @@ PAK0 = ROOT / "content" / "baseoq4" / "pak0"
 OUTPUTS = {
     "title": PAK0 / "guis" / "menu" / "title.q4ui",
     "pause": PAK0 / "guis" / "menu" / "pause.q4ui",
+    "pause_strogg": PAK0 / "guis" / "menu" / "pause_strogg.q4ui",
     "loading": PAK0 / "guis" / "loading" / "loading.q4ui",
     "singleplayer": PAK0 / "guis" / "menu" / "singleplayer.q4ui",
     "campaigns": PAK0 / "guis" / "menu" / "campaigns.q4ui",
@@ -232,41 +233,45 @@ def band_edge(points: list, lead_y: float, trail_y: float) -> list:
     return inner
 
 
-def rim(edge_points: list) -> list:
+def rim(edge_points: list, tint: str = RIM, peak: float = 0.37, reach: float = 19.0) -> list:
     """marine.rim: 0.37 falling to nothing across 19 u outside the inner edge,
     measured from the edge (section 6). Ten nested strokes of equal alpha
     accumulate a near-linear falloff; the opaque band fill hides their inner halves."""
     paths = []
     steps = 10
-    alpha = 1 - (1 - 0.37) ** (1 / steps)
+    alpha = 1 - (1 - peak) ** (1 / steps)
     for index in range(steps, 0, -1):
-        width = 2 * 19 * U * index / steps
+        width = 2 * reach * U * index / steps
         paths.append(path(f"rim-{index}", edge_points, closed=False,
-                          stroke=stroke(solid(rgb(RIM, round(alpha, 4))), width, minimum=0, join="round")))
+                          stroke=stroke(solid(rgb(tint, round(alpha, 4))), width, minimum=0, join="round")))
     return paths
 
 
-def framing_bands(prefix: str) -> list:
-    top_edge = band_edge(TOP_HOME, 89.7, 68.5)
-    bottom_edge = band_edge(BOTTOM_HOME, 421.5, 434.6)
+def framing_bands(prefix: str, family: dict | None = None) -> list:
+    """The framing bands with their rim light. `family` swaps the Marine
+    silhouettes and rim for another family's (the Strogg pause)."""
+    family = family or {}
+    top_edge = band_edge(family.get("top", TOP_HOME), *family.get("top_ends", (89.7, 68.5)))
+    bottom_edge = band_edge(family.get("bottom", BOTTOM_HOME), *family.get("bottom_ends", (421.5, 434.6)))
+    lit = {key: family[key] for key in ("tint", "peak", "reach") if key in family}
     top_fill = [(edge(1), -400)] + [(edge(0), -400)] + top_edge
     bottom_fill = bottom_edge + [(edge(1), U * 480 + 400), (edge(0), U * 480 + 400)]
     top = vector(f"{prefix}-top", {**FULL, "transform": transform()},
-                 rim(top_edge) + [path("band", top_fill, fill=solid([0, 0, 0, 1]))])
+                 rim(top_edge, **lit) + [path("band", top_fill, fill=solid([0, 0, 0, 1]))] + family.get("etched_top", []))
     bottom = vector(f"{prefix}-bottom", {**FULL, "transform": transform()},
-                    rim(bottom_edge) + [path("band", bottom_fill, fill=solid([0, 0, 0, 1]))])
+                    rim(bottom_edge, **lit) + [path("band", bottom_fill, fill=solid([0, 0, 0, 1]))] + family.get("etched_bottom", []))
     return [top, bottom]
 
 
 # --------------------------------------------------------------------- backdrop
 
-def grid_path(opacity: float = 0.04) -> dict:
+def grid_path(opacity: float = 0.04, tint: list[float] | None = None, arm_u: float = 6.5) -> dict:
     """The `+` reticle grid: 13 u crosses on a 30 u pitch (section 2, trait 1).
     It covers views up to 21:9 (-240 to 880 u), the side-screen cap of section
     14.4; wider views keep the backdrop and bands but not the faint grid."""
     commands = []
     count = 0
-    arm = 6.5 * U
+    arm = arm_u * U
     for column in range(-8, 29):
         for row in range(0, 16):
             cx = vx(15 + 30 * column)
@@ -276,17 +281,18 @@ def grid_path(opacity: float = 0.04) -> dict:
                 commands.append({"id": f"l{count}", "op": "line", "points": [[{"fraction": 0.5, "dp": round(cx["dp"] + bx, 3)}, round(cy + by, 3)]]})
                 count += 1
     return {"id": "crosses", "commands": commands,
-            "stroke": stroke(solid([1, 1, 1, opacity]), 1.0, minimum=1)}
+            "stroke": stroke(solid((tint or [1, 1, 1])[:3] + [opacity]), 1.0, minimum=1)}
 
 
-def lit_field(prefix: str, peak: float) -> list:
-    """Vignette, additive light band and reticle grid of the Marine menus."""
+def lit_field(prefix: str, peak: float, glow: str = GLOW, grid: dict | None = None) -> list:
+    """Vignette, additive light band and reticle grid of the Marine menus;
+    `glow` and `grid` give another family's light and crosses."""
     vignette = vector(f"{prefix}-vignette", dict(FULL), [path("shade", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})],
         fill=linear((0, 0), (0, {"fraction": 1}), [(0, [0, 0, 0, 0.97]), (0.3, [0, 0, 0, 0]), (0.7, [0, 0, 0, 0]), (1, [0, 0, 0, 0.97])]))])
     light = vector(f"{prefix}-light", dict(FULL), [path("band", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})],
-        fill=linear((0, 0), (0, {"fraction": 1}), [(0, rgb(GLOW, 0)), (0.1, rgb(GLOW, 0)), (0.5, rgb(GLOW, peak)), (0.9, rgb(GLOW, 0)), (1, rgb(GLOW, 0))]),
+        fill=linear((0, 0), (0, {"fraction": 1}), [(0, rgb(glow, 0)), (0.1, rgb(glow, 0)), (0.5, rgb(glow, peak)), (0.9, rgb(glow, 0)), (1, rgb(glow, 0))]),
         blend="additive")])
-    grid = vector(f"{prefix}-grid", dict(FULL), [grid_path()])
+    grid = vector(f"{prefix}-grid", dict(FULL), [grid_path(**(grid or {}))])
     return [vignette, light, grid]
 
 
@@ -676,7 +682,8 @@ def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_a
     return node
 
 
-def prompt_bar(doc: Document, prompts: list) -> dict:
+def prompt_bar(doc: Document, prompts: list, cap_tint: list[float] | None = None,
+               verb_face: tuple = ("marine", 14, [1, 1, 1, 0.8])) -> dict:
     """The prompt bar in the bottom band's raised trailing section (section
     13.4): a keycap plate with a 45-degree cut per prompt, then its verb."""
     items = []
@@ -685,11 +692,12 @@ def prompt_bar(doc: Document, prompts: list) -> dict:
                                                 "height": length(22), "margin-right": length(6), "padding-left": length(8),
                                                 "padding-right": length(8)}, [
             path("cap", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (6, {"fraction": 1}), (0, {"fraction": 1, "dp": -6})],
-                 fill=solid([1, 1, 1, 0.85]))],
+                 fill=solid(cap_tint or [1, 1, 1, 0.85]))],
             [label(f"prompt-{verb[5:]}-key", key_name, {"position": keyword("relative"), "display": keyword("block"),
                     **typeface("lowpixel", 13, 22, [0.04, 0.05, 0.035, 1]), "white-space": keyword("nowrap")})])
+        face, size, tint = verb_face
         verb_node = label(f"prompt-{verb[5:]}-verb", verb, {"position": keyword("relative"), "display": keyword("block"),
-            "margin-right": length(22), **typeface("marine", 14, 22, [1, 1, 1, 0.8]), "white-space": keyword("nowrap")})
+            "margin-right": length(22), **typeface(face, size, 22, tint), "white-space": keyword("nowrap")})
         items += [cap, verb_node]
     return group("prompts", {**absolute(top=U * 447, height=22, right=U * 12),
                              "display": keyword("flex"), "flex-direction": keyword("row"), "align-items": keyword("center")}, items)
@@ -763,7 +771,8 @@ def depth_layer(doc: Document, ident: str, depth: float, children: list) -> dict
 TITLE_SLOT = (39.0, 19.0)   # the page state's screen title (section 9)
 
 
-def title_carry(doc: Document, items: list, continue_rows: bool = False) -> dict:
+def title_carry(doc: Document, items: list, continue_rows: bool = False, face: str = "marine",
+                tint: str = ORANGE) -> dict:
     """Section 13.8 title continuity (title.carry, section 8): during
     frame.dock the activated navigation label travels from its row into the
     page's title slot at 39,19 u and scales from the 24 dp label to the 18 dp
@@ -788,7 +797,7 @@ def title_carry(doc: Document, items: list, continue_rows: bool = False) -> dict
         return doc.timelines.add(ident, 550, [
             track("title-carry", "opacity", [(0, number(1)), (1, number(1)), (550, number(1))]),
             track("title-carry", "transform", [(0, start), (1, start), (50, start, ACCEL), (550, end)]),
-            track("title-carry", "color", [(0, colour(rgb(ORANGE))), (1, colour(rgb(ORANGE))), (50, colour(rgb(ORANGE)), ACCEL),
+            track("title-carry", "color", [(0, colour(rgb(tint))), (1, colour(rgb(tint))), (50, colour(rgb(tint)), ACCEL),
                                            (550, colour([1, 1, 1, 0.5]))]),
         ])
 
@@ -807,7 +816,7 @@ def title_carry(doc: Document, items: list, continue_rows: bool = False) -> dict
     return group("carry", {**absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"),
                            "margin-left": length(-CANVAS_W / 2), "pointer-events": keyword("none")}, [
         label("title-carry", items[-1][1], {**absolute(left=U * TITLE_SLOT[0], top=U * TITLE_SLOT[1], width=width, height=height),
-              **typeface("marine", 24, height, rgb(ORANGE)), "white-space": keyword("nowrap"), "opacity": number(0),
+              **typeface(face, 24, height, rgb(tint)), "white-space": keyword("nowrap"), "opacity": number(0),
               "transform": transform()}),
     ])
 
@@ -1153,8 +1162,481 @@ def level_block(doc: Document) -> dict:
                  [frame, shot, shot_frame, heading, name, detail, objectives_head, objectives, *rows, rule, stats])
 
 
-def pause_document() -> dict:
-    doc = Document("openq4.pause")
+# ----------------------------------------------------------- the Strogg pause
+
+# After Kane's stroggification the pause menu takes the Strogg family
+# (section 13.7, the hud_strogg row of section 3 and the atlas Strogg pause).
+ST_READ = "#FCFFC8"      # R_Strogg labels and readouts
+ST_SELECT = "#FFCC00"    # focus, and the rune copies
+ST_LINE = "#F59512"      # rails, rim light, circuit traces and markers
+ST_FILL = "#FF9000"      # the card header's wash
+ST_BAR = "#FF8000"       # the credits scan bar (section 8)
+ST_LIGHT = "#6B2A0E"     # the backdrop's additive light band
+ST_GRID = "#FFB060"      # the reticle crosses
+ST_PLINTH = "#4A2410"
+ST_CARD = "#0A0503"
+ST_STATS = "#C9A27A"
+
+# The Marine frame with 30-degree shoulders and downward teeth in place of
+# the 45-degree notches, at home, as TOP_HOME and BOTTOM_HOME.
+STROGG_TOP = [(-300, 92), (-283, 102), (24, 102), (41, 112), (86, 112), (103, 102), (150, 102), (167, 112), (212, 112),
+              (229, 102), (308, 102), (327, 91), (334, 91), (352, 66), (520, 66), (537, 76), (578, 76), (595, 66)]
+STROGG_BOTTOM = [(-240, 424), (-223, 434), (-26, 434), (-8, 424), (0, 400), (334, 400), (351, 410), (372, 410),
+                 (394, 444), (580, 444), (597, 434)]
+# The circuit traces etched in the bands, with their junction dots.
+STROGG_TRACES_TOP = ([[(-300, 40), (40, 40), (60, 58), (250, 58)], [(380, 24), (520, 24), (538, 40), (700, 40)]],
+                     [(40, 40), (250, 58), (520, 24), (700, 40)])
+STROGG_TRACES_BOTTOM = ([[(-200, 460), (120, 460), (140, 448), (300, 448)], [(420, 470), (560, 470), (578, 458), (760, 458)]],
+                        [(120, 460), (300, 448), (560, 470)])
+
+# Every Strogg label exists twice on one baseline, in runes and in R_Strogg,
+# so it can translate (section 8; section 14.6 gives the runes 1.2 times the
+# R_Strogg cap height). Both faces are scaled by their whole height, ascent
+# plus descent: the shipped R_Strogg face puts its caps at 0.519 of the size
+# and its baseline 0.800 down; the rune face 0.765 and 0.988.
+RSTROGG_CAP, RSTROGG_ASCENT = 1329 / 2560, 2048 / 2560
+RUNE_CAP, RUNE_ASCENT = 1427 / 1866, 1843 / 1866
+RUNE_SCALE = 1.2 * RSTROGG_CAP / RUNE_CAP
+SCAN_LENGTH = 150 * U     # the credits scan bar: 150 u, its head about 12 u past the line
+
+
+def rune_rise(size: float) -> float:
+    """How far the rune copy's box rises so the baselines meet: a line box
+    puts each face's baseline half its leading plus its ascent down."""
+    return size * RUNE_SCALE * (RUNE_ASCENT - 0.5) - size * (RSTROGG_ASCENT - 0.5)
+
+
+def circle_commands(prefix: str, cx, cy, r: float) -> list:
+    """A circle as four cubic quarter arcs, centered on canvas coordinates."""
+    k = 0.5523 * r
+    def at(dx, dy):
+        return point({**cx, "dp": round(cx["dp"] + dx, 3)}, round(cy + dy, 3))
+    return [{"id": f"{prefix}m", "op": "move", "points": [at(r, 0)]},
+            {"id": f"{prefix}a", "op": "cubic", "points": [at(r, k), at(k, r), at(0, r)]},
+            {"id": f"{prefix}b", "op": "cubic", "points": [at(-k, r), at(-r, k), at(-r, 0)]},
+            {"id": f"{prefix}c", "op": "cubic", "points": [at(-r, -k), at(-k, -r), at(0, -r)]},
+            {"id": f"{prefix}d", "op": "cubic", "points": [at(k, -r), at(r, -k), at(r, 0)]},
+            {"id": f"{prefix}z", "op": "close"}]
+
+
+def circuit_traces(traces: tuple) -> list:
+    """The Strogg bands' etched circuit: #F59512 at 0.32, 0.8 u lines with
+    1.6 u junction dots (the atlas)."""
+    lines, dots = traces
+    paint = rgb(ST_LINE, 0.32)
+    result = [path(f"trace-{index}", [(vx(x), U * y) for x, y in points], closed=False,
+                   stroke=stroke(solid(paint), U * 0.8, minimum=1)) for index, points in enumerate(lines)]
+    commands = []
+    for index, (x, y) in enumerate(dots):
+        commands += circle_commands(f"d{index}", vx(x), U * y, U * 1.6)
+    result.append({"id": "trace-dots", "commands": commands, "fill": solid(paint)})
+    return result
+
+
+STROGG_BANDS = {
+    "top": STROGG_TOP, "top_ends": (92, 66), "bottom": STROGG_BOTTOM, "bottom_ends": (424, 434),
+    # The atlas draws the Strogg rim as a thinner, brighter line than the
+    # Marine one: #F59512, held close to the edge.
+    "tint": ST_LINE, "peak": 0.34, "reach": 11.0,
+    "etched_top": circuit_traces(STROGG_TRACES_TOP), "etched_bottom": circuit_traces(STROGG_TRACES_BOTTOM),
+}
+
+
+def scan_bar(ident: str, height: float, props: dict) -> dict:
+    """The credits scan bar (section 8): an additive #FF8000 ramp that
+    brightens linearly to a rounded head, with soft top and bottom edges.
+    Its head is the node's trailing edge; it reaches SCAN_LENGTH back. The
+    bar slides by its right inset, a percentage of the label's wrapper: from
+    100% (the head at the wrapper's leading edge, where the bar starts in the
+    atlas) to 0% (12 u past the label), so it sweeps any label whole."""
+    def capsule(name: str, half: float, k: float, alphas: list) -> dict:
+        a, c = half * k, 0.5523
+        head, tail = {"fraction": 1}, {"fraction": 1, "dp": -SCAN_LENGTH}
+        def x(dp):
+            return {"fraction": 1, "dp": round(dp, 3)}
+        def y(dp):
+            return {"fraction": 0.5, "dp": round(dp, 3)}
+        commands = [{"id": "m", "op": "move", "points": [[tail, y(-half)]]},
+                    {"id": "top", "op": "line", "points": [[x(-a), y(-half)]]},
+                    {"id": "h1", "op": "cubic", "points": [[x(-a + a * c), y(-half)], [head, y(-half * c)], [head, y(0)]]},
+                    {"id": "h2", "op": "cubic", "points": [[head, y(half * c)], [x(-a + a * c), y(half)], [x(-a), y(half)]]},
+                    {"id": "bottom", "op": "line", "points": [[tail, y(half)]]},
+                    {"id": "close", "op": "close"}]
+        stops = [(at, rgb(ST_BAR, round(alpha, 4))) for at, alpha in alphas]
+        return {"id": name, "commands": commands, "fill": linear((tail, 0), (head, 0), stops), "blend": "additive"}
+    ramp = [(0, 0), (0.25, 0.24), (0.5, 0.55), (0.75, 0.84), (0.9, 0.96), (0.955, 1), (1, 0.7)]
+    soft = capsule("edge", height / 2, 0.6, [(at, alpha * 0.55) for at, alpha in ramp])
+    core = capsule("core", height * 0.29, 0.9, ramp)
+    return vector(ident, {**props, "right": length(0, "%"), "opacity": number(0)}, [soft, core])
+
+
+class Translation:
+    """The short credits translation of the Strogg pause (sections 8 and
+    13.7): every line arrives in runes at 0.80, then cross-fades into
+    R_Strogg while both copies pop 6% larger and settle. Headings and names
+    arrive white and settle to their color 60 ms later over 150 ms. A line
+    whose base is a control's label fades through its wrapper's opacity, so
+    the control's own feedback keeps the label's color."""
+    POP = 1.06
+
+    def __init__(self):
+        self.lines: list[tuple] = []
+        self.bars: list[tuple] = []
+
+    def add(self, prefix: str, delay: float, duration: float, *, rest: list[float] | None = None,
+            white: bool = False, width: float | None = None, runes: bool = True) -> None:
+        """`rest` is the label's color for a color fade; without it the
+        `<prefix>-latin` wrapper fades. `width` keeps a fixed box's leading
+        edge in place as it pops. A line without `runes` has no rune copy
+        and only fades in."""
+        self.lines.append((prefix, delay, duration, rest, white, width, runes))
+
+    def bar(self, ident: str, delay: float, slide: float) -> None:
+        self.bars.append((ident, delay, slide))
+
+    @staticmethod
+    def pop(scale: float, width: float | None) -> dict:
+        return transform(tx=(scale - 1) * width / 2 if width else 0, sx=scale, sy=scale)
+
+    def tracks(self, offset: float) -> tuple:
+        """The tracks with every line offset by `offset` ms, and their end."""
+        result, end = [], 0.0
+
+        def keys(start, value_from, value_to, length):
+            # A play retargets the first key to the current value; the 1 ms
+            # key puts the line back in runes before its own start.
+            steps = [(0, value_from), (1, value_from)]
+            if start > 1:
+                steps.append((start, value_from))
+            steps.append((max(start, 1) + length, value_to))
+            return steps
+
+        for prefix, delay, duration, rest, white, width, has_runes in self.lines:
+            start = offset + delay
+            hidden = [*rgb(ST_SELECT)[:3], 0]
+            runes = [*rgb(ST_SELECT)[:3], 0.8]
+            if has_runes:
+                result.append(track(f"{prefix}-rune", "color", [(at, colour(value)) for at, value in
+                                                                 keys(start, runes, hidden, duration)]))
+                result.append(track(f"{prefix}-rune", "transform", [(at, value) for at, value in
+                                                                     keys(start, self.pop(self.POP, width), transform(), duration)]))
+            latin = f"{prefix}-latin" if rest is None else prefix
+            if has_runes:
+                pop = self.pop(1 + (self.POP - 1) * 0.9, width)
+                result.append(track(latin, "transform", [(at, value) for at, value in keys(start, pop, transform(), duration)]))
+            finish = max(start, 1) + duration
+            if rest is None:
+                result.append(track(latin, "opacity", [(at, number(value)) for at, value in keys(start, 0, 1, duration)]))
+            elif white:
+                steps = [(at, colour(value)) for at, value in keys(start, [1, 1, 1, 0], [1, 1, 1, 1], duration)]
+                steps += [(finish + 60, colour([1, 1, 1, 1])), (finish + 210, colour(rest))]
+                result.append(track(latin, "color", steps))
+                finish += 210
+            else:
+                result.append(track(latin, "color", [(at, colour(value)) for at, value in
+                                                     keys(start, [*rest[:3], 0], rest, duration)]))
+            end = max(end, finish)
+        for ident, delay, slide in self.bars:
+            start = offset + delay
+            # The bar slides in from the leading edge over `slide` ms,
+            # accel(0.4, 0.6), and dims to nothing over 3.33 times as long
+            # (section 8).
+            dim = round(slide * 10 / 3)
+            parked, rested = length(100, "%"), length(0, "%")
+            result.append(track(ident, "right", [(0, parked), (1, parked), *([(start, parked, ACCEL_LATE)] if start > 1 else []),
+                                                 (max(start, 1) + slide, rested)]))
+            # It lights only as it starts to slide, never while parked.
+            assert start > 1
+            result.append(track(ident, "opacity", [(0, number(0)), (1, number(0)), (start, number(0)), (start + 1, number(1)),
+                                                   (start + dim, number(0))]))
+            end = max(end, max(start, 1) + dim)
+        return result, end
+
+    def finish(self, doc: Document) -> None:
+        """`translate` runs with `open`; `translateReturn` waits the 500 ms a
+        page's return takes before the home content shows (section 8). The
+        events replace the timelines of the same names, so the session's
+        open and returnHome play both. Neither is essential: reduced motion
+        shows the translated labels at once."""
+        for ident, offset in (("translate", 0), ("translateReturn", 500)):
+            tracks, end = self.tracks(offset)
+            doc.timelines.add(ident, end, tracks)
+        doc.events["open"] = [{"op": "playTimeline", "timeline": "open"}, {"op": "playTimeline", "timeline": "translate"}]
+        doc.events["returnHome"] = [{"op": "playTimeline", "timeline": "returnHome"},
+                                    {"op": "playTimeline", "timeline": "translateReturn"}]
+
+
+# accel(120, 180) of the credits scan bar: accelerating over 40% of the slide.
+ACCEL_LATE = [0.4, 0.0, 0.45, 1.0]
+
+
+def strogg_text(ident: str, key: str, box: dict, size: float, line: float, tint: list[float], **extra) -> list:
+    """An R_Strogg label and its rune copy on the same baseline. Both rest
+    translated: the rune copy transparent, the label in `tint`; the
+    translation's 1 ms keys put them back in runes when it plays."""
+    latin = label(ident, key, {**box, **typeface("r_strogg", size, line, tint), "white-space": keyword("nowrap"),
+                               "transform": transform(), **extra})
+    rune_box = dict(box)
+    rune_box["top"] = length(box["top"]["value"] - rune_rise(size))
+    rune = label(f"{ident}-rune", key, {**rune_box, **typeface("strogg", round(size * RUNE_SCALE, 3), line, [*rgb(ST_SELECT)[:3], 0]),
+                                        "white-space": keyword("nowrap"), "transform": transform(), "pointer-events": keyword("none"), **extra})
+    return [rune, latin]
+
+
+def strogg_navigation_plate(doc: Document, ident: str, key: str, translation: Translation, index: int, *,
+                            action: str | None = None, event: str | None = None) -> dict:
+    """A Strogg navigation plate (section 13.7 and the atlas): the Marine
+    plate's bleed off the leading edge, ending in a 30-degree shoulder at
+    357 u, the end of its target. The #F59512 rail runs along its foot, up
+    its trailing edge and back over the shoulder; the slanted marker turns
+    #FFCC00 with the label on focus, and the focused plate runs the credits
+    scan bar under its label. The label arrives in runes and translates
+    120 + 45 ms per row after the menu opens, over 200 ms."""
+    lead = NAV_LEAD
+    width = lead + 357 * U
+    x0 = lead
+    top, bottom = U * 2.8, U * 27.2
+    end, shoulder, foot = x0 + 357 * U, x0 + 341 * U, U * 12
+    fade = [(0, [0, 0, 0, 1]), (0.44, [0, 0, 0, 1]), (0.62, [0, 0, 0, 0.5]), (0.88, [0, 0, 0, 0]), (1, [0, 0, 0, 0])]
+    rail = [(0, rgb(ST_LINE, 0.9)), (0.55, rgb(ST_LINE, 0.9)), (1, rgb(ST_LINE, 0.45))]
+    plate = vector(f"{ident}-plate", {**absolute(left=0, top=0, width=width, height=45), "opacity": number(0.4)}, [
+        path("fill", [(0, top), (shoulder, top), (end, foot), (end, bottom), (0, bottom)],
+             fill=linear((x0, 0), (end, 0), fade)),
+        path("rail", [(0, bottom - 0.75), (end - 0.75, bottom - 0.75), (end - 0.75, foot), (shoulder, top + 0.75),
+                      (x0 + 285 * U, top + 0.75)], closed=False, stroke=stroke(linear((x0, 0), (end, 0), rail), 1.5)),
+    ])
+    focus = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=width, height=45), "opacity": number(0)}, [
+        path("inset", [(0, bottom - 3.2), (x0 + 348, bottom - 3.2)], closed=False, stroke=stroke(solid(rgb(ST_SELECT)), 1.2))])
+
+    def slanted(tint: list[float]) -> dict:
+        # A parallelogram 6 u wide, slanted as the atlas draws it.
+        mx, my = x0 + U * 36.4, U * 11.8
+        return path("mark", [(mx, my), (mx + U * 6, my), (mx + U * 4.4, my + U * 6), (mx - U * 1.6, my + U * 6)], fill=solid(tint))
+    marker_rest = vector(f"{ident}-marker", {**absolute(left=0, top=0, width=width, height=45), "opacity": number(0.4)},
+                         [slanted(rgb(ST_LINE))])
+    marker_hot = vector(f"{ident}-marker-hot", {**absolute(left=0, top=0, width=width, height=45), "opacity": number(0)},
+                        [slanted(rgb(ST_SELECT))])
+    # The label's wrapper fits the label, so the scan bar's head can rest
+    # 12 u past it whatever the language; it starts at 30 u, as the bar does.
+    size = 24.0
+    line_height = bottom - top
+    text_node = label(f"{ident}-label", key, {"position": keyword("relative"), "display": keyword("block"),
+                                              **typeface("r_strogg", size, line_height, rgb(ST_READ, 0.8)),
+                                              "white-space": keyword("nowrap"), "transform": transform()})
+    latin = group(f"{ident}-latin", {"position": keyword("relative"), "display": keyword("block"), "margin-left": length(U * 14),
+                                     "margin-right": length(U * 12), "opacity": number(1), "transform": transform()}, [text_node])
+    rune = label(f"{ident}-rune", key, {**absolute(left=U * 14, top=-rune_rise(size)),
+                                        **typeface("strogg", round(size * RUNE_SCALE, 3), line_height, [*rgb(ST_SELECT)[:3], 0]),
+                                        "white-space": keyword("nowrap"), "transform": transform(), "pointer-events": keyword("none")})
+    bar = scan_bar(f"{ident}-scan", U * 15, {**absolute(left=0, top=0, height=line_height), "right": length(0),
+                                             "pointer-events": keyword("none")})
+    fit = group(f"{ident}-fit", {**absolute(left=x0 + U * 30, top=top, height=line_height)}, [bar, rune, latin])
+    translation.add(ident, 120 + 45 * index, 200)
+    slide = 300
+    bar_rest, bar_start = length(0, "%"), length(100, "%")
+    # Focus (and hover) slide the bar in from the leading edge over 300 ms,
+    # accel(0.4, 0.6), and dim it over 1000 ms; any other state lets it go
+    # over its own duration.
+    run_bar = [(f"{ident}-scan", "right", [(0, bar_start), (1, bar_start, ACCEL_LATE), (1 + slide, bar_rest), (1000, bar_rest)]),
+               (f"{ident}-scan", "opacity", [(0, number(1)), (1, number(1)), (1000, number(0))])]
+    def settle(duration: float, alpha: float) -> list:
+        return [(f"{ident}-scan", "right", [(0, bar_rest), (duration, bar_rest)]),
+                (f"{ident}-scan", "opacity", [(0, number(alpha)), (duration, number(alpha))])]
+    ids = doc.states(ident, {
+        "default": [(f"{ident}-plate", "opacity", number(0.4)), (f"{ident}-marker", "opacity", number(0.4)),
+                    (f"{ident}-marker-hot", "opacity", number(0)), (f"{ident}-focus", "opacity", number(0)),
+                    (f"{ident}-label", "color", colour(rgb(ST_READ, 0.8))), (f"{ident}-label", "transform", transform())],
+        "hover": [(f"{ident}-plate", "opacity", number(0.8)), (f"{ident}-marker", "opacity", number(0)),
+                  (f"{ident}-marker-hot", "opacity", number(1)), (f"{ident}-focus", "opacity", number(0)),
+                  (f"{ident}-label", "color", colour(rgb(ST_SELECT))), (f"{ident}-label", "transform", transform(sx=1.03, sy=1.03))],
+        "focus": [(f"{ident}-plate", "opacity", number(0.8)), (f"{ident}-marker", "opacity", number(0)),
+                  (f"{ident}-marker-hot", "opacity", number(1)), (f"{ident}-focus", "opacity", number(1)),
+                  (f"{ident}-label", "color", colour(rgb(ST_SELECT))), (f"{ident}-label", "transform", transform(sx=1.03, sy=1.03))],
+        "pressed": [(f"{ident}-plate", "opacity", number(1)), (f"{ident}-marker", "opacity", number(0)),
+                    (f"{ident}-marker-hot", "opacity", number(1)), (f"{ident}-focus", "opacity", number(1)),
+                    (f"{ident}-label", "color", colour(rgb(ST_SELECT))), (f"{ident}-label", "transform", transform(tx=1, ty=1, sx=1.03, sy=1.03))],
+        "disabled": [(f"{ident}-plate", "opacity", number(0.4)), (f"{ident}-marker", "opacity", number(0.4)),
+                     (f"{ident}-marker-hot", "opacity", number(0)), (f"{ident}-focus", "opacity", number(0)),
+                     (f"{ident}-label", "color", colour(rgb(ST_READ, 0.4))), (f"{ident}-label", "transform", transform())],
+    })
+    extra = {"default": settle(300, 0), "hover": run_bar, "focus": run_bar, "pressed": settle(60, 1), "disabled": settle(150, 0)}
+    for timeline in doc.timelines.items:
+        state = timeline["id"][len(ident) + 1:]
+        if timeline["id"].startswith(ident + ".") and state in extra:
+            for node, prop, keys in extra[state]:
+                timeline["tracks"].append(track(node, prop, keys))
+            timeline["durationMs"] = max(timeline["durationMs"], max(key[0] for _, _, keys in extra[state] for key in keys))
+    control = {"role": "button", "label": key, "states": ids}
+    if action:
+        control["action"] = action
+    else:
+        control["event"] = event
+    return group(ident, {"position": keyword("relative"), "display": keyword("block"),
+                         "margin-left": length(-lead), "width": length(width), "height": length(30 * U)},
+                 [plate, focus, marker_rest, marker_hot, fit], control=control)
+
+
+def strogg_link(doc: Document, ident: str, key: str, translation: Translation, delay: float, *, event: str) -> dict:
+    """EXIT on the Strogg plinth: R_Strogg 16 dp at 0.50 behind the slanted
+    marker; hover and focus turn both #FFCC00. It arrives in runes and
+    translates at `delay` over 200 ms, after the navigation."""
+    def slanted(name: str, tint: list[float], alpha: float) -> dict:
+        return vector(name, {**absolute(left=0, top=0, width=U * 7, height=U * 17), "opacity": number(alpha)}, [
+            path("mark", [(U * 1.2, U * 7.25), (U * 5.7, U * 7.25), (U * 4.5, U * 11.75), (0, U * 11.75)], fill=solid(tint))])
+    marker, hot = slanted(f"{ident}-marker", rgb(ST_LINE), 0.4), slanted(f"{ident}-marker-hot", rgb(ST_SELECT), 0)
+    text_node = label(f"{ident}-label", key, {"position": keyword("relative"), "display": keyword("block"),
+        **typeface("r_strogg", 16, U * 17, rgb(ST_READ, 0.5)), "white-space": keyword("nowrap")})
+    latin = group(f"{ident}-latin", {"position": keyword("relative"), "display": keyword("block"), "margin-left": length(U * 7),
+                                     "opacity": number(1), "transform": transform()}, [text_node])
+    rune = label(f"{ident}-rune", key, {**absolute(left=U * 7, top=-rune_rise(16)),
+                                        **typeface("strogg", round(16 * RUNE_SCALE, 3), U * 17, [*rgb(ST_SELECT)[:3], 0]),
+                                        "white-space": keyword("nowrap"), "transform": transform(), "pointer-events": keyword("none")})
+    translation.add(ident, delay, 200)
+    rest, lit = colour(rgb(ST_READ, 0.5)), colour(rgb(ST_SELECT))
+    ids = doc.states(ident, {
+        "default": [(f"{ident}-marker", "opacity", number(0.4)), (f"{ident}-marker-hot", "opacity", number(0)), (f"{ident}-label", "color", rest)],
+        "hover": [(f"{ident}-marker", "opacity", number(0)), (f"{ident}-marker-hot", "opacity", number(1)), (f"{ident}-label", "color", lit)],
+        "focus": [(f"{ident}-marker", "opacity", number(0)), (f"{ident}-marker-hot", "opacity", number(1)), (f"{ident}-label", "color", lit)],
+        "pressed": [(f"{ident}-marker", "opacity", number(0)), (f"{ident}-marker-hot", "opacity", number(1)),
+                    (f"{ident}-label", "color", colour(rgb(ST_READ)))],
+        "disabled": [(f"{ident}-marker", "opacity", number(0.4)), (f"{ident}-marker-hot", "opacity", number(0)),
+                     (f"{ident}-label", "color", colour(rgb(ST_READ, 0.25)))],
+    })
+    return group(ident, {"position": keyword("relative"), "display": keyword("block"), "height": length(U * 17),
+                         "margin-right": length(U * 14)}, [marker, hot, rune, latin],
+                 control={"role": "button", "label": key, "states": ids, "event": event})
+
+
+def strogg_plinth(links: list) -> dict:
+    """The plinth in #4A2410 at 0.30 with the Strogg shoulder at its
+    trailing end and a steeper leading cut (the atlas)."""
+    left, right, top, bottom = 24.0, 361.2, 403.3, 422.1
+    width, height = U * (right - left), U * (bottom - top)
+    shape = path("plinth", [(0, 0), (width - U * 10.7, 0), (width, U * 12.5), (width, height), (U * 7.2, height), (0, height - U * 6.3)],
+                 fill=solid(rgb(ST_PLINTH, 0.3)))
+    row = group("plinth-links", {**absolute(left=U * (32 - left), top=U * -0.3, height=U * 17),
+                                  "display": keyword("flex"), "flex-direction": keyword("row"),
+                                  "align-items": keyword("flex-start")}, links)
+    return vector("plinth", {**absolute(left=U * left, top=U * top, width=width, height=height), "opacity": number(1)}, [shape], [row])
+
+
+def strogg_level_block(doc: Document, translation: Translation, start: float) -> dict:
+    """The Strogg level block (section 13.7): the Marine block's content in a
+    chamfered card (10 u at every corner, #0A0503 at 0.94 in a #F59512 rail
+    at 0.75) under the stock HUD grain, the header washed #FF9000, the
+    levelshot chamfered in an orange frame, and every line in R_Strogg,
+    translating from runes after the actions from `start` ms."""
+    x, y, w, h = U * 374, U * 118, U * 262, U * 270
+    cut, header = U * 10, 40.0
+    card = [(cut, 0), (w - cut, 0), (w, cut), (w, h - cut), (w - cut, h), (cut, h), (0, h - cut), (0, cut)]
+    frame = vector("level-card", absolute(left=0, top=0, width=w, height=h), [
+        path("body", card, fill=solid(rgb(ST_CARD, 0.94))),
+        path("wash", [(cut + 0.75, 0.75), (w - cut - 0.75, 0.75), (w - 0.75, cut + 0.75), (w - 0.75, header), (0.75, header), (0.75, cut + 0.75)],
+             fill=linear((0, 0), (w, 0), [(0, rgb(ST_FILL, 0.16)), (0.5, rgb(ST_FILL, 0.1)), (1, [1, 1, 1, 0])])),
+        path("rule", [(0, header), (w, header)], closed=False, stroke=stroke(solid(rgb(ST_LINE, 0.5)), 1)),
+        path("rail", card, stroke=stroke(solid(rgb(ST_LINE, 0.75)), 1.5)),
+        path("mark", [(U * 12, U * 9.8), (U * 18, U * 9.8), (U * 16.4, U * 16.2), (U * 10.4, U * 16.2)], fill=solid(rgb(ST_LINE))),
+    ])
+    # The masked grain: the stock Strogg HUD static (s_static), added warm and
+    # faint in tiles of its own 128 texels, inside the chamfers.
+    inset, tile = cut / 2, 128.0
+    tiles = []
+    columns, rows_needed = math.ceil((w - 2 * inset) / tile), math.ceil((h - 2 * inset) / tile)
+    for row in range(rows_needed):
+        for column in range(columns):
+            tiles.append(picture(f"level-grain-{row}-{column}", "gfx/guis/hud/s_static",
+                                 {**absolute(left=column * tile, top=row * tile, width=tile, height=tile),
+                                  "image-blend": keyword("additive"), "image-color": colour([1, 0.75, 0.4, 0.14])}, fit="fill"))
+    grain = group("level-grain", {**absolute(left=inset, top=inset, width=w - 2 * inset, height=h - 2 * inset),
+                                  "overflow": keyword("hidden"), "pointer-events": keyword("none")}, tiles)
+    pw, ph = w - 30, U * 118
+    px, py, chamfer = 15, header + 12, U * 6
+    shot = picture("level-shot", "", {**absolute(left=px, top=py, width=pw, height=ph)})
+    corners = vector("level-shot-frame", absolute(left=px, top=py, width=pw, height=ph), [
+        path("lead", [(0, 0), (chamfer, 0), (0, chamfer)], fill=solid(rgb(ST_CARD))),
+        path("trail", [({"fraction": 1}, {"fraction": 1, "dp": -chamfer}), ({"fraction": 1}, {"fraction": 1}),
+                       ({"fraction": 1, "dp": -chamfer}, {"fraction": 1})], fill=solid(rgb(ST_CARD))),
+        path("frame", [(chamfer, 0.5), ({"fraction": 1, "dp": -0.5}, 0.5), ({"fraction": 1, "dp": -0.5}, {"fraction": 1, "dp": -chamfer}),
+                       ({"fraction": 1, "dp": -chamfer}, {"fraction": 1, "dp": -0.5}), (0.5, {"fraction": 1, "dp": -0.5}), (0.5, chamfer)],
+             stroke=stroke(solid(rgb(ST_LINE, 0.6)), 1.5)),
+    ])
+    lines = []
+    def line(ident: str, key: str, box: dict, size: float, height_dp: float, tint: list[float], delay: float, duration: float,
+             white: bool = False, **extra) -> None:
+        lines.extend(strogg_text(ident, key, {**box, "height": length(height_dp)}, size, height_dp, tint, **extra))
+        translation.add(ident, start + delay, duration, rest=tint, white=white, width=box["width"]["value"])
+    line("level-heading", "#str_230030", absolute(left=U * 24, top=0, width=w - U * 34), 15, header, rgb(ST_READ), 0, 300, white=True)
+    below = header + 12 + ph + 10
+    line("level-name", "#str_230030", absolute(left=15, top=below, width=pw), 21, 24, rgb(ST_READ), 80, 400, white=True)
+    line("level-detail", "#str_230030", absolute(left=15, top=below + 26, width=pw), 17, 20, rgb(ST_SELECT), 140, 200)
+    line("level-objectives-head", "#str_200291", absolute(left=15, top=below + 54, width=pw), 14.5, 18, rgb(ST_SELECT), 180, 200,
+         display=keyword("block"))
+    rows_top, row_h, stats_rule = below + 76, U * 12.5, h - U * 22
+    # A map's own objectives summary wraps, so it fades in with its heading
+    # rather than translating.
+    objectives = label("level-objectives", "#str_230030", {**absolute(left=15, top=rows_top, width=pw, height=stats_rule - rows_top - 3),
+        **typeface("r_strogg", 14, 18, rgb(ST_READ, 0.85)), "overflow": keyword("hidden"), "display": keyword("block")})
+    translation.add("level-objectives", start + 180, 200, rest=rgb(ST_READ, 0.85), runes=False)
+    rows = []
+    for index in range(OBJECTIVE_ROWS):
+        ident = f"level-objective-{index}"
+        mark = vector(f"{ident}-mark", absolute(left=15, top=4, width=9, height=9), [
+            path("mark", [(1.95, 0), (9, 0), (7.05, 7.5), (0, 7.5)], fill=solid(rgb(ST_LINE, 0.6)))])
+        text_parts = strogg_text(f"{ident}-text", "#str_230030", absolute(left=33, top=0, width=pw - 18, height=row_h),
+                                 16, row_h, rgb(ST_READ), overflow=keyword("hidden"))
+        translation.add(f"{ident}-text", start + 220 + 60 * index, 200, rest=rgb(ST_READ), width=pw - 18)
+        rows.append(group(ident, {**absolute(left=0, top=rows_top + index * row_h, width=w, height=row_h), "display": keyword("none")},
+                          [mark, *text_parts]))
+        doc.bind(f"{ident}.display", ident, "display",
+                 {"op": "select", "args": [{"op": ">", "args": [{"state": "pause_objective_count"}, index]}, "block", "none"]})
+        doc.bind(f"{ident}-text.text", f"{ident}-text", "text", {"state": f"pause_objective_{index}"})
+        doc.bind(f"{ident}-text-rune.text", f"{ident}-text-rune", "text", {"state": f"pause_objective_{index}"})
+    rule = vector("level-stats-rule", {**absolute(left=15, top=stats_rule, width=pw, height=1), "display": keyword("none")},
+                  [path("rule", [(0, 0.5), (pw, 0.5)], closed=False, stroke=stroke(solid([1, 1, 1, 0.1]), 1))])
+    stats = label("level-stats", "#str_230030", {**absolute(left=15, top=h - U * 20, width=pw, height=U * 14),
+        **typeface("lowpixel", 11, U * 14, rgb(ST_STATS)), "white-space": keyword("nowrap")})
+    doc.bind("level-stats.text", "level-stats", "text", {"state": "pause_stats"})
+    doc.bind("level-stats-rule.display", "level-stats-rule", "display",
+             {"op": "select", "args": [{"op": "==", "args": [{"state": "pause_stats"}, ""]}, "none", "block"]})
+    doc.bind("level-shot.image", "level-shot", "image", {"state": "pause_shot"})
+    for ident, value in (("level-name", "pause_level"), ("level-detail", "pause_detail")):
+        doc.bind(f"{ident}.text", ident, "text", {"state": value})
+        doc.bind(f"{ident}-rune.text", f"{ident}-rune", "text", {"state": value})
+    doc.bind("level-objectives.text", "level-objectives", "text", {"state": "pause_objectives"})
+    published = {"op": ">", "args": [{"state": "pause_objective_count"}, 0]}
+    doc.bind("level-objectives.display", "level-objectives", "display", {"op": "select", "args": [published, "none", "block"]})
+    shown = {"op": "select", "args": [{"op": "||", "args": [published, {"op": "!=", "args": [{"state": "pause_objectives"}, ""]}]},
+                                      "block", "none"]}
+    doc.bind("level-objectives-head.display", "level-objectives-head", "display", shown)
+    doc.bind("level-objectives-head-rune.display", "level-objectives-head-rune", "display", shown)
+    return group("level-block", absolute(left=x, top=y, width=w, height=h),
+                 [frame, grain, shot, corners, *lines, objectives, *rows, rule, stats])
+
+
+def strogg_title(translation: Translation) -> dict:
+    """GAME PAUSED in R_Strogg #FCFFC8, translating from runes at 60 ms over
+    500 ms under the scan bar, arriving white (section 13.7)."""
+    size, height = 18.5, U * 24
+    rest = rgb(ST_READ)
+    text_node = label("paused-title", "#str_230031", {"position": keyword("relative"), "display": keyword("block"),
+        **typeface("r_strogg", size, height, rest), "white-space": keyword("nowrap"), "transform": transform()})
+    latin = group("paused-title-latin", {"position": keyword("relative"), "display": keyword("block"), "margin-left": length(U * 14),
+                                         "margin-right": length(U * 12)}, [text_node])
+    rune = label("paused-title-rune", "#str_230031", {**absolute(left=U * 14, top=-rune_rise(size)),
+        **typeface("strogg", round(size * RUNE_SCALE, 3), height, [*rgb(ST_SELECT)[:3], 0]), "white-space": keyword("nowrap"),
+        "transform": transform(), "pointer-events": keyword("none")})
+    bar = scan_bar("paused-title-scan", U * 16, {**absolute(left=0, top=0, height=height), "right": length(0),
+                                                  "pointer-events": keyword("none")})
+    translation.add("paused-title", 60, 500, rest=rest, white=True)
+    translation.bar("paused-title-scan", 60, 150)
+    return group("paused-title-fit", {**absolute(left=U * 30, top=U * 134, height=height), "pointer-events": keyword("none")},
+                 [bar, rune, latin])
+
+
+def pause_document(strogg: bool = False) -> dict:
+    """The single-player pause (section 13.7). `strogg` builds the Strogg
+    pause that the session presents after Kane's stroggification."""
+    doc = Document("openq4.pause_strogg" if strogg else "openq4.pause")
     doc.state.update({
         "pause_level": {"type": "string", "initial": ""},
         "pause_detail": {"type": "string", "initial": ""},
@@ -1174,23 +1656,30 @@ def pause_document() -> dict:
     quit_modal = confirmation(doc, "quitModal", "#str_200004", "#str_200174", "quitToMenu")
     exit_modal = confirmation(doc, "exitModal", "#str_200169", "#str_200170", "quit", frame_leave_ms=200)
     doc.events["onBack"] = [{"op": "action", "action": "resume"}]
+    items = [("nav_resume", "#str_200381", "resume", None), ("nav_savegame", "#str_200003", "saveGame", None),
+             ("nav_loadgame", "#str_200001", "loadGame", None), ("nav_restart", "#str_229983", "restartLevel", None),
+             ("nav_settings", "#str_200009", "settings", None), ("nav_quit", "#str_230025", None, "quitModalShow")]
+    translation = Translation() if strogg else None
+    if strogg:
+        plates = [strogg_navigation_plate(doc, ident, key, translation, index, action=action, event=event)
+                  for index, (ident, key, action, event) in enumerate(items)]
+    else:
+        plates = [navigation_plate(doc, ident, key, action=action, event=event) for ident, key, action, event in items]
     nav = group("nav", {**absolute(left=0, top=U * 182.2, width=U * 413), "display": keyword("flex"),
-                        "flex-direction": keyword("column")}, [
-        navigation_plate(doc, "nav_resume", "#str_200381", action="resume"),
-        navigation_plate(doc, "nav_savegame", "#str_200003", action="saveGame"),
-        navigation_plate(doc, "nav_loadgame", "#str_200001", action="loadGame"),
-        navigation_plate(doc, "nav_restart", "#str_229983", action="restartLevel"),
-        navigation_plate(doc, "nav_settings", "#str_200009", action="settings"),
-        navigation_plate(doc, "nav_quit", "#str_230025", event="quitModalShow"),
-    ])
+                        "flex-direction": keyword("column")}, plates)
+    if strogg:
+        # The actions translate 45 ms apart, EXIT after them, and the level
+        # block's lines follow.
+        exit_link = strogg_link(doc, "link_exit", "#str_200013", translation, 120 + 45 * len(items), event="exitModalShow")
+        home_parts = [strogg_title(translation), nav, strogg_level_block(doc, translation, 120 + 45 * (len(items) + 1)),
+                      strogg_plinth([exit_link])]
+    else:
+        home_parts = [label("paused-title", "#str_230031", {**absolute(left=U * 44, top=U * 134, width=U * 330, height=U * 24),
+                            **typeface("marine", 18, U * 24, [1, 1, 1, 0.5]), "white-space": keyword("nowrap")}),
+                      nav, level_block(doc), plinth(doc, [link(doc, "link_exit", "#str_200013", event="exitModalShow")])]
     content = group("home", {**FULL, "transform": transform(), "opacity": number(1)}, [
-        group("home-content", {**absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"), "margin-left": length(-CANVAS_W / 2)}, [
-            label("paused-title", "#str_230031", {**absolute(left=U * 44, top=U * 134, width=U * 330, height=U * 24),
-                  **typeface("marine", 18, U * 24, [1, 1, 1, 0.5]), "white-space": keyword("nowrap")}),
-            nav,
-            level_block(doc),
-            plinth(doc, [link(doc, "link_exit", "#str_200013", event="exitModalShow")]),
-        ]),
+        group("home-content", {**absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"), "margin-left": length(-CANVAS_W / 2)},
+              home_parts),
     ])
     # The paused view, softened and never dimmed (sections 9 and 13.7). The
     # specification gives scene softening no values of its own, so the pause
@@ -1207,15 +1696,29 @@ def pause_document() -> dict:
         path("lead", [(0, 0), (vx(413), 0), (vx(413), {"fraction": 1}), (0, {"fraction": 1})],
              fill=linear((vx(-107), 0), (vx(413), 0), [(0, [0, 0, 0, 0.7]), (0.55, [0, 0, 0, 0.35]), (1, [0, 0, 0, 0])])),
     ])
+    prompts = [("#str_107019", "#str_200747"), ("#str_107020", "#str_200381")]
+    carries = [("saveGame", "#str_200003", 212.2), ("loadGame", "#str_200001", 242.2),
+               ("restartLevel", "#str_229983", 272.2), ("settings", "#str_200009", 302.2)]
+    if strogg:
+        # The Strogg light, crosses and bands; the confirmations stay the
+        # stock dialogs of section 6.
+        field = lit_field("field", 0.55, glow=ST_LIGHT, grid={"tint": rgb(ST_GRID), "arm_u": 5.5})
+        bands = framing_bands("band", STROGG_BANDS)
+        prompt = prompt_bar(doc, prompts, cap_tint=rgb(ST_SELECT, 0.85), verb_face=("r_strogg", 14, rgb(ST_READ, 0.8)))
+        carry = title_carry(doc, carries, face="r_strogg", tint=ST_SELECT)
+    else:
+        field = lit_field("field", 0.45)
+        bands = framing_bands("band")
+        prompt = prompt_bar(doc, prompts)
+        carry = title_carry(doc, carries)
     root = group("screen", {**FULL, "font-family": font("marine"), "font-size": length(16), "color": colour([1, 1, 1, 0.8])}, [
         softened,
         scrim,
-        *lit_field("field", 0.45),
-        *framing_bands("band"),
+        *field,
+        *bands,
         content,
-        prompt_bar(doc, [("#str_107019", "#str_200747"), ("#str_107020", "#str_200381")]),
-        title_carry(doc, [("saveGame", "#str_200003", 212.2), ("loadGame", "#str_200001", 242.2),
-                          ("restartLevel", "#str_229983", 272.2), ("settings", "#str_200009", 302.2)]),
+        prompt,
+        carry,
         quit_modal,
         exit_modal,
         group("fade", {**FULL, "background-color": colour([0, 0, 0, 0]), "pointer-events": keyword("none")}),
@@ -1231,6 +1734,8 @@ def pause_document() -> dict:
         track("scene-softfocus", "backdrop-saturate", [(0, number(1)), (1, number(1)), (250, number(SOFT_FOCUS_SATURATION))]),
     ]
     hide_carry_at_home(doc)
+    if strogg:
+        translation.finish(doc)
     return doc.build(root)
 
 
@@ -1503,7 +2008,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true", help="fail when a generated document differs from its source")
     args = parser.parse_args()
-    documents = {"title": title_document(), "pause": pause_document(), "loading": loading_document(),
+    documents = {"title": title_document(), "pause": pause_document(), "pause_strogg": pause_document(strogg=True),
+                 "loading": loading_document(),
                  "singleplayer": campaign_document(False), "campaigns": campaign_document(True)}
     stale = []
     for name, document in documents.items():

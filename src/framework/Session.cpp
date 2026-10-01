@@ -3794,7 +3794,8 @@ void idSessionLocal::Clear() {
 	guiSystem = guiSystemParent = NULL;
 	guiSystemParentHandle = NULL;
 	systemGuiTransition = systemGuiBackEvent = false;
-	guiRetainedHome = guiRetainedTitle = guiRetainedPause = NULL;
+	guiRetainedHome = guiRetainedTitle = guiRetainedPause = guiRetainedPauseStrogg = NULL;
+	retainedPauseStrogg = -1;
 	retainedHomeReturning = false;
 	retainedStock.Clear();
 	retainedHandoffUntil = 0;

@@ -58,8 +58,11 @@ LANGUAGE_RANGES = {
     "cp1251": ((0x0400, 0x04FF),),
 }
 
-# 'strogg' is a decorative alien face used for hardcoded credits text, and is
-# Latin-only by design; it is never asked to draw a string table.
+# 'strogg' is a decorative alien face, Latin-only by design. The retained Strogg
+# pause draws every label's rune copy in it, through the host's fold of the
+# code points it lacks (RuneScalar in src/ui/RetainedUI.cpp), and
+# ui_retained_gate.py checks that fold against this face for every shipped
+# string, so it needs no coverage of its own here.
 LATIN_ONLY_FACES = {"strogg"}
 
 # Codes that land on a .notdef cell in every stock Quake 4 font.  The engine

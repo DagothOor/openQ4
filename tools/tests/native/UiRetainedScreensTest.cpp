@@ -185,7 +185,7 @@ static bool Additive(const ScreenHost& host) {
 }
 
 int main(int argc, char** argv) {
-	Check(argc == 4,"usage: title.q4ui pause.q4ui loading.q4ui");
+	Check(argc == 5,"usage: title.q4ui pause.q4ui loading.q4ui pause_strogg.q4ui");
 	CheckSchema();
 	ScreenHost host;
 	CheckTransformedClip(host);
@@ -533,6 +533,126 @@ int main(int argc, char** argv) {
 			Check(again && Near(static_cast<float>(again->data[0]),3.75f,.05f),"each pause ramps the softening in from nothing");
 			host.softFocus = false;
 		}
+	}
+	// Strogg pause (section 13.7): the Marine pause's level block and verbs in
+	// the Strogg family, every label arriving in runes and translating.
+	{
+		const auto source = Read(argv[4]);
+		Document document; std::vector<Diagnostic> diagnostics;
+		const bool valid = document.Load(source,diagnostics);
+		for (const auto& diagnostic : diagnostics) std::fprintf(stderr,"strogg pause %s: %s\n",diagnostic.pointer.c_str(),diagnostic.message.c_str());
+		Check(valid && document.Model().id == "openq4.pause_strogg","the Strogg pause validates");
+		CheckSessionActions(document);
+		Runtime runtime(host);
+		Check(runtime.Initialize() && runtime.LoadDocument(source,"guis/menu/pause_strogg.q4ui",diagnostics),"the Strogg pause loads into a runtime");
+		std::string error;
+		Check(runtime.SetState({{"pause_level",std::string("Strogg Medical Facilities")},{"pause_shot",std::string("gfx/guis/loadscreens/medlabs")},
+			{"pause_objective_count",1.0},{"pause_objective_0",std::string("Escape the medical facility")},
+			{"pause_stats",std::string("0:18:40 in mission")}},error,1),"publish the level block");
+		Viewport viewport; viewport.canvasHeight = 720;
+		host.materials.clear();
+		runtime.Frame(viewport,1.1);
+		const auto face = runtime.PresentedValue("nav_resume-label","font-family");
+		const auto runeFace = runtime.PresentedValue("nav_resume-rune","font-family");
+		Check(face && face->text == "r_strogg" && runeFace && runeFace->text == "strogg","labels are R_Strogg over a rune copy");
+		const auto rowRunes = runtime.PresentedValue("level-objective-0-text-rune","text");
+		const auto nameRunes = runtime.PresentedValue("level-name-rune","text");
+		Check(rowRunes && rowRunes->text == "Escape the medical facility" && nameRunes && nameRunes->text == "Strogg Medical Facilities",
+			"the rune copies follow the published lines");
+		Check(std::find(host.materials.begin(),host.materials.end(),"gfx/guis/loadscreens/medlabs") != host.materials.end(),
+			"the level block shows the levelshot");
+		Check(std::find(host.materials.begin(),host.materials.end(),"q4-add/gfx/guis/hud/s_static") != host.materials.end(),
+			"the level block adds the Strogg HUD's grain");
+		// The label's wrapper fits the label, so the scan bar's head rests
+		// 12 u past it whatever the language: the test face advances 0.6 of
+		// the 24 dp size per glyph, and labels read "Label".
+		Bounds fit, labelBox, bar;
+		Check(runtime.GetBounds("nav_resume-fit",fit) && runtime.GetBounds("nav_resume-label",labelBox) &&
+			runtime.GetBounds("nav_resume-scan",bar),"the Strogg plate is laid out");
+		Check(Near(labelBox.width,5*.6f*24) && Near(fit.width,labelBox.width+26*1.5f) && Near(bar.x,fit.x) && Near(bar.width,fit.width),
+			"the wrapper fits the label and the scan bar spans it");
+		Check(Near(labelBox.x,160+66),"Strogg labels sit at 44 u like the Marine ones");
+		// Opening: the actions translate 120 + 45 ms per row apart over 200 ms,
+		// EXIT after them (390 ms), GAME PAUSED from 60 ms over 500 ms under
+		// the scan bar, arriving white, and the level block's lines last (435 ms).
+		Check(runtime.HasEvent("open") && runtime.HasEvent("returnHome"),"opening and returning play the translation");
+		Runtime::EventEffects open;
+		Check(runtime.RunEvent("open",2,open,error),"the Strogg pause opens");
+		runtime.Frame(viewport,2.05);
+		const auto resumeIn = runtime.PresentedValue("nav_resume-latin","opacity");
+		const auto resumeRunes = runtime.PresentedValue("nav_resume-rune","color");
+		Check(resumeIn && Near(static_cast<float>(resumeIn->data[0]),0,.001f) && resumeRunes && Near(static_cast<float>(resumeRunes->data[3]),.8f,.001f),
+			"RESUME arrives in runes");
+		runtime.Frame(viewport,2.33);
+		const auto resumeDone = runtime.PresentedValue("nav_resume-latin","opacity");
+		const auto resumeGone = runtime.PresentedValue("nav_resume-rune","color");
+		const auto quitWaits = runtime.PresentedValue("nav_quit-latin","opacity");
+		const auto heading = runtime.PresentedValue("level-heading","color");
+		Check(resumeDone && Near(static_cast<float>(resumeDone->data[0]),1,.001f) && resumeGone && Near(static_cast<float>(resumeGone->data[3]),0,.001f),
+			"RESUME has translated by 320 ms");
+		const auto exitWaits = runtime.PresentedValue("link_exit-latin","opacity");
+		Check(quitWaits && Near(static_cast<float>(quitWaits->data[0]),0,.001f) && heading && Near(static_cast<float>(heading->data[3]),0,.001f) &&
+			exitWaits && Near(static_cast<float>(exitWaits->data[0]),0,.001f),"QUIT TO MENU, EXIT and the level block wait their turn");
+		const auto titleMid = runtime.PresentedValue("paused-title","color");
+		const auto scanMid = runtime.PresentedValue("paused-title-scan","opacity");
+		Check(titleMid && Near(static_cast<float>(titleMid->data[0]),1,.001f) && Near(static_cast<float>(titleMid->data[3]),.54f,.02f) &&
+			scanMid && Near(static_cast<float>(scanMid->data[0]),.46f,.02f),"GAME PAUSED fades in white while the scan bar dims");
+		runtime.Frame(viewport,3.2);
+		const auto titleRest = runtime.PresentedValue("paused-title","color");
+		const auto headingRest = runtime.PresentedValue("level-heading","color");
+		const auto rowRest = runtime.PresentedValue("level-objective-0-text","color");
+		const auto quitDone = runtime.PresentedValue("nav_quit-latin","opacity");
+		Check(titleRest && Near(static_cast<float>(titleRest->data[1]),1,.001f) && Near(static_cast<float>(titleRest->data[2]),200/255.f,.002f) &&
+			Near(static_cast<float>(titleRest->data[3]),1,.002f),"GAME PAUSED settles to #FCFFC8");
+		const auto exitDone = runtime.PresentedValue("link_exit-latin","opacity");
+		const auto exitRunes = runtime.PresentedValue("link_exit-rune","color");
+		Check(exitDone && Near(static_cast<float>(exitDone->data[0]),1,.001f) && exitRunes && Near(static_cast<float>(exitRunes->data[3]),0,.001f),
+			"EXIT has translated");
+		Check(headingRest && Near(static_cast<float>(headingRest->data[3]),1,.001f) && rowRest && Near(static_cast<float>(rowRest->data[3]),1,.001f) &&
+			quitDone && Near(static_cast<float>(quitDone->data[0]),1,.001f),"every line has translated by 1.2 s");
+		// Focus runs the credits scan bar under the label: its head sweeps in
+		// from the wrapper's leading edge over 300 ms, by its right inset, so
+		// it crosses any label whole, and the bar dims over a second.
+		Check(runtime.FocusControl("nav_savegame",4),"focus reaches a Strogg plate");
+		runtime.Frame(viewport,4.002);
+		Bounds parked, half, rest;
+		Check(runtime.GetBounds("nav_savegame-fit",fit) && runtime.GetBounds("nav_savegame-scan",parked) &&
+			parked.x+parked.width <= fit.x+2,"the bar's head starts at the label wrapper's leading edge");
+		runtime.Frame(viewport,4.15);
+		const auto sliding = runtime.PresentedValue("nav_savegame-scan","right");
+		const auto lit = runtime.PresentedValue("nav_savegame-scan","opacity");
+		Check(sliding && sliding->unit == "%" && sliding->data[0] > 1 && sliding->data[0] < 99 && lit && lit->data[0] > .8 &&
+			runtime.GetBounds("nav_savegame-scan",half) && half.x+half.width > fit.x+2 && half.x+half.width < fit.x+fit.width-2,
+			"the scan bar sweeps across the focused label");
+		runtime.Frame(viewport,5.2);
+		const auto rested = runtime.PresentedValue("nav_savegame-scan","right");
+		const auto dimmed = runtime.PresentedValue("nav_savegame-scan","opacity");
+		Check(rested && Near(static_cast<float>(rested->data[0]),0,.01f) && dimmed && Near(static_cast<float>(dimmed->data[0]),0,.001f) &&
+			runtime.GetBounds("nav_savegame-scan",rest) && Near(rest.x+rest.width,fit.x+fit.width),
+			"the bar rests 12 u past the label and dims away");
+		const auto focusColour = runtime.PresentedValue("nav_savegame-label","color");
+		Check(focusColour && Near(static_cast<float>(focusColour->data[0]),1,.001f) && Near(static_cast<float>(focusColour->data[1]),.8f,.002f) &&
+			Near(static_cast<float>(focusColour->data[2]),0,.001f),"a focused label turns #FFCC00");
+		// Reduced motion shows the translated labels at once.
+		runtime.SetReducedMotion(true,6);
+		Check(runtime.RunEvent("open",6,open,error),"the Strogg pause opens again with reduced motion");
+		runtime.Frame(viewport,6.09);
+		const auto quitAtOnce = runtime.PresentedValue("nav_quit-latin","opacity");
+		const auto runesGone = runtime.PresentedValue("nav_quit-rune","color");
+		const auto titleAtOnce = runtime.PresentedValue("paused-title","color");
+		Check(quitAtOnce && Near(static_cast<float>(quitAtOnce->data[0]),1,.001f) && runesGone && Near(static_cast<float>(runesGone->data[3]),0,.001f) &&
+			titleAtOnce && Near(static_cast<float>(titleAtOnce->data[3]),1,.002f),"reduced motion shows the translated labels at once");
+		runtime.SetReducedMotion(false,6.1);
+		// The paused view softens as the Marine pause's does.
+		host.softFocus = true; host.softened.clear();
+		Check(runtime.RunEvent("open",7,open,error),"the Strogg pause opens over the softened view");
+		runtime.Frame(viewport,7.4);
+		Check(!host.softened.empty() && Near(host.softened.back().sigma,7.5f,.01f) && Near(host.softened.back().saturation,.8f,.001f),
+			"the Strogg pause rests in modal.softfocus");
+		host.softFocus = false;
+		ActionInvocation invocation;
+		Check(runtime.ResolveAction("resume",invocation,error) && std::get<std::string>(invocation.arguments.at("command")) == "resume",
+			"RESUME returns to the game");
 	}
 	// Loading: progress, the continue prompt and the multiplayer server card.
 	{

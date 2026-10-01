@@ -493,7 +493,10 @@
   picture of your latest quick or manual save as well as autosaves, and the
   pause menu's level card shows the same picture as the level's loading
   screen instead of the generic art. The card now lists the objectives you
-  hold and how long you have been in the mission.
+  hold and how long you have been in the mission. Once Kane has been
+  stroggified, the pause menu turns Strogg: an orange frame with angular
+  shoulders and circuit traces, Strogg lettering, and labels that decode from
+  Strogg runes as the menu opens (shown at once with reduced motion).
   Choosing a page carries its name up into the page title as the frame docks,
   and the title screen's backdrop leans slightly away from the pointer or the
   right stick (off with reduced motion). Exiting or quitting asks in a dialog
@@ -509,8 +512,8 @@
   The modern title screen now uses well under half as much CPU per frame, with
   no visible change, and holds its frame rate better, most of all on Vulkan.
   Multiplayer loads show the server's name, address, mode and limits on a card
-  and read JOINING when done. The pause menu's Objectives action, the Strogg
-  variant, loading tips and the multiplayer menus remain in development.
+  and read JOINING when done. The pause menu's Objectives action, loading
+  tips and the multiplayer menus remain in development.
 
 - The experimental SYSTEM page adds window and custom fullscreen width/height
   fields with localized whole-pixel validation. Custom dimensions select Custom

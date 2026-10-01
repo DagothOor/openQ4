@@ -113,6 +113,43 @@ after editing the script; `--check` fails when an output is stale.
   over 250 ms with the screen's fade from black. With the opaque-backing
   option, or on a renderer that cannot soften the view, a darkening scrim and
   vignette stand in. Back resumes the game.
+- **Strogg pause** (`guis/menu/pause_strogg.q4ui`, section 13.7 and the atlas
+  Strogg pause). After Kane's stroggification the pause takes the Strogg
+  family; it offers the same actions, level block and confirmations.
+  - **Frame.** The bands keep their frame but trade the 45-degree notches for
+    30-degree shoulders and downward teeth. Their rim light, and the circuit
+    traces etched in them, are #F59512, over a warm light band and #FFB060
+    crosses.
+  - **Plates and labels.** The plates end in a 30-degree shoulder at the end
+    of their target (357 u), outlined by their rail. Markers are slanted, as
+    the atlas draws them. Labels are R_Strogg in #FCFFC8, turning #FFCC00 on
+    focus.
+  - **Level block.** The block takes a card chamfered 10 u at every corner,
+    with the stock Strogg HUD static added faintly inside it. The levelshot
+    sits in a chamfered orange frame.
+  - **Translation.** Every label arrives in runes and plays a short form of
+    the credits translation (section 8). The rune copy sits on the label's
+    baseline at 1.2 times its cap height. It cross-fades into R_Strogg while
+    both copies pop 6% larger and settle.
+  - **Timing.** GAME PAUSED translates from 60 ms over 500 ms under the scan
+    bar, arriving white and settling. The actions follow, 120 ms plus 45 ms
+    per row, over 200 ms each, then EXIT. The level block's lines come after
+    them, and a map's own objectives summary fades in with its heading. The
+    prompt bar and the time line are readable from the start. Returning from
+    a page plays the same once the home content shows.
+  - **Focus.** A focused plate runs the scan bar under its label. The bar's
+    wrapper fits the label, and the bar slides by its right inset, so its
+    head sweeps in from the leading edge and rests 12 u past the label in any
+    language.
+  - **Input and reduced motion.** Input works from the first frame. Reduced
+    motion shows the translated labels at once.
+  - **Choosing it.** The session asks the game once a level, with the
+    `retainedPauseFamily` menu command, whether the player is Strogg (the
+    `player_strogg` definition, from game/medlabs on). Every single-player
+    level load resolves both pause documents. When the Strogg pause cannot
+    present (not installed, unable to load, or stopped drawing), the Marine
+    pause stands in for the rest of the session. A game module that does not
+    answer keeps the Marine pause.
 - **Loading** (section 14.17). Replaces the stock `generic`, `splevel`,
   `mplevel` and `intro` loading GUIs; a map's own loading GUI stays. The
   levelshot, reticle grid, framing bands, brackets and dot matrix frame the
@@ -194,6 +231,15 @@ than the presented home screen.
 
 ## Runtime additions
 
+- **Strogg faces.** Documents may name the `r_strogg` and `strogg` (rune)
+  faces besides `marine` and `lowpixel`; any other name still draws in
+  Chain. The rune face maps the Latin alphabet and leaves most punctuation
+  blank, so the host folds what it lacks for the rune copies. Punctuation it
+  has no rune for, combining marks and general punctuation become a space.
+  Of the letters past ASCII it keeps Latin-1's, with ß, Æ, Ø, Ð, Þ and Ł
+  folded to S, E, O, D, P and L; every other letter, in any script, folds
+  onto the alphabet. A translated label therefore never shows the face's `?`
+  in its runes, which the gate test checks against every shipped string.
 - **Image nodes.** An `image` node draws a relative VFS image or material,
   with `image-fit` (fill, contain, cover), `image-align-x/y`, `image-color` and
   `image-blend` (normal or additive light). Sources are validated, can be bound
@@ -283,7 +329,7 @@ controller or the mouse switches the prompt.
 
 ## Validation
 
-- `openq4-ui-retained-screens` (native) loads the three production documents,
+- `openq4-ui-retained-screens` (native) loads the four production documents,
   lays them out at 1280x720 (the title also at 1920x1080) and drives their
   state. It checks the schema additions, the additive and multiplied draws,
   the transformed clip, the emblem glint and its reduced-motion rule, the
@@ -294,7 +340,11 @@ controller or the mouse switches the prompt.
   enter and leave timing with the contents and focus waiting for the
   entrance, a completion due before an event running before its program and
   a reopen during the leave, and that every action is an allowlisted session
-  verb.
+  verb. For the Strogg pause it checks the faces, the rune copies of the
+  published lines, the grain, the label wrapper that the scan bar spans, the
+  translation's order and timing (RESUME by 320 ms, QUIT TO MENU and the
+  level block still waiting, GAME PAUSED white and settling to #FCFFC8 at
+  0.80), the focus scan bar, reduced motion and the soft focus.
 - `openq4-retained-ui` and `openq4-ui-document` cover timeline completion
   programs: firing once at the end, cancellation, replay, pause, reduced
   motion and a snapshot taken while a completion is due, and the rejected
@@ -305,7 +355,13 @@ controller or the mouse switches the prompt.
 - `tools/tests/ui_retained_gate.py` qualifies the gate as described above,
   including the startup preload, the level-load precache, the loading phase
   line and the published pointer, and pins the frame pump order that lets
-  RESUME retire the pause screen.
+  RESUME retire the pause screen. It covers the Strogg pause's selection: the
+  game asked once a level and again after each level load, the title never
+  asking, and the Marine pause standing in for a Strogg pause that is not
+  installed or stopped drawing. It pins the game's `retainedPauseFamily`
+  answer, and compiles the host's face names and rune fold to check that
+  every code point of the shipped string tables, and every other one below
+  U+FFFF, folds onto a rune the face has or onto a space.
 - `tools/ui/capture_retained_screens.py` captures the screens in the engine
   from a hidden window with engine screenshots and semantic
   `openq4_retainedGui` operations, never OS input. With `--gate 0` the title
@@ -318,6 +374,10 @@ controller or the mouse switches the prompt.
   the savepath is searched last): a title, SYSTEM or Single Player document
   that cannot load, and a main menu without its Demos page. `system-default`
   and `system-optin` press the SYSTEM button with the page off and opted into.
+  `pause-strogg` pauses game/recomp, where Kane is Strogg, mid-translation
+  and at rest, then focuses a plate, opens the quit confirmation and resumes.
+  The pause scenarios wait for the confirmation's 300 ms leave before they
+  focus RESUME, because the modal keeps focus until it closes.
 
 ## Evidence
 
@@ -463,6 +523,16 @@ rule; without them it shows the time line alone. Evidence:
 `.tmp/ui/retained-pause-objectives/validation-evidence.json`, SHA-256
 `43f7a4867c20868c828296b1faf46a1bd64c1282538da0d113b0e58e7df2074b`.
 
+The Strogg pause was captured over game/recomp, where Kane is Strogg, on
+OpenGL and Vulkan at 1280x720 and on OpenGL at 1024x768: mid-translation,
+with the actions still in runes, then at rest, with a focused plate's scan
+bar, the quit confirmation and RESUME. airdefense1 still pauses in the
+Marine family. Vulkan matches OpenGL within two levels at rest, and with
+`ui_retained 0` the Strogg level loaded nothing retained. All runs exited
+cleanly with no errors, and all 109 Meson tests pass. Evidence:
+`.tmp/ui/retained-pause-strogg/validation-evidence.json`, SHA-256
+`2180c19336bea8e678a54440b5eacb20ab01d31a4a5121893dcbc9e725886894`.
+
 ## Known limitations
 
 - The pause menu has no OBJECTIVES action yet, so the navigation holds six of
@@ -471,8 +541,10 @@ rule; without them it shows the time line alone. Evidence:
   input work. The level block lists the open objectives but not completed
   ones (the game drops an objective when it completes), and it has no total
   time or last save.
-- The Strogg pause variant (R_Strogg labels, the translation reveal, 30-degree
-  shoulders) is not implemented; the Marine screen is used throughout.
+- The Strogg pause keeps the stock confirmation dialogs, and its grain does
+  not drift. Its translation is the menu's short form: the full credits
+  translation, with its 2000 ms rune fade-in and 250 ms line stagger, is not
+  built.
 - Resuming, or leaving the pause any other way, drops the softened view at
   once instead of releasing it over 250 ms, and the HUD's crosshair still
   shows through the darkening fallback.

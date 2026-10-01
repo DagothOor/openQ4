@@ -302,7 +302,9 @@ public:
 		return {font->ascender*scale, font->descender*scale, font->fontHeight*scale, x ? x->height*scale : size*.5f};
 	}
 	openq4::ui::Glyph GetGlyph(const std::string& family, int size, std::uint32_t codepoint) override {
-		const auto found = scalableFaces.find(FontFamily(family));
+		const std::string key = FontFamily(family);
+		if (key == "strogg") codepoint = RuneScalar(codepoint);
+		const auto found = scalableFaces.find(key);
 		renderFontGlyph_t scaled;
 		if (found != scalableFaces.end() && renderSystem->GetRetainedFontGlyph(found->second.c_str(),size,codepoint,scaled))
 			return {scaled.advance,scaled.left,scaled.top,scaled.width,scaled.height,
@@ -433,7 +435,40 @@ private:
 	bool backdropCreated = false;
 	int blurWidth = 0, blurHeight = 0;
 	static std::string FontFamily(const std::string& family) {
-		return family == "marine" ? "marine" : family == "lowpixel" ? "lowpixel" : "chain";
+		// The faces a document may name; anything else draws in Chain.
+		static const char* const faces[] = {"marine","lowpixel","r_strogg","strogg"};
+		for (const char* face : faces) if (family == face) return face;
+		return "chain";
+	}
+	// The rune face maps the Latin alphabet onto Strogg runes and leaves most
+	// punctuation blank (visual specification section 5). Text in any other
+	// script still reads as runes: its letters fold onto the alphabet and its
+	// punctuation becomes a space, so a translated label never shows the
+	// face's '?' in the rune copy. Of the letters past ASCII the face carries
+	// only Latin-1's, less the six folded here; every other letter folds.
+	static std::uint32_t RuneScalar(std::uint32_t scalar) {
+		if (scalar < 0x20 || scalar == 0x7f) return ' ';   // controls
+		if (scalar < 0x80) {
+			static const char blank[] = "!#$%&*+<=>@^_`~";
+			for (const char* c = blank; *c; ++c) if (scalar == static_cast<unsigned char>(*c)) return ' ';
+			return scalar;
+		}
+		switch (scalar) {
+		case 0xdf: return 'S';                       // sharp s
+		case 0xc6: case 0xe6: return 'E';            // ae
+		case 0xd8: case 0xf8: return 'O';            // o with stroke
+		case 0xd0: case 0xf0: return 'D';            // eth
+		case 0xde: case 0xfe: return 'P';            // thorn
+		case 0x141: case 0x142: return 'L';          // l with stroke
+		default: break;
+		}
+		if (scalar < 0xc0 || scalar == 0xd7 || scalar == 0xf7) return ' ';
+		if (scalar < 0x100) return scalar;           // Latin-1 letters
+		// Combining marks, general and CJK punctuation, and the variation
+		// selectors and specials carry no letter of their own.
+		if ((scalar >= 0x300 && scalar < 0x370) || (scalar >= 0x2000 && scalar < 0x2070) ||
+			(scalar >= 0x3000 && scalar < 0x3040) || (scalar >= 0xfe00 && scalar < 0xfe10) || scalar >= 0xfff0) return ' ';
+		return 'A'+scalar%26;
 	}
 	void ReportFontFallback() {
 		if (fontFallbackReported) return;
