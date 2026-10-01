@@ -44,9 +44,6 @@ It is for players who want the original Quake 4 experience on today's hardware.
 > [!NOTE]
 > openQ4 does **not** include Quake 4 assets. You still need a legitimate Quake 4 copy from Steam or GOG.
 
-> [!IMPORTANT]
-> Another point to make, as sadly luddites have become more common rather than less in 2026 and certainly more vocal than ever. Yes, this software is mostly vibe coded and with the extensive work that has gone into it it wouldn't be humanly possible to achieve without a small studio. That does not mean it isn't thoroughly checked and tested by multiple people, it also doesn't mean it is unsafe for use, nor does it mean we don't understand the codebase. It does have a few remaining issues to iron out - remaining macOS support being the main one - but as feedback will show it is otherwise stable. Whether you choose to follow unsubstantiated claims by luddites is entirely up to you, but I would first take a moment to examine their track records before presuming their expertise and credibility on the matter.
-
 ---
 
 ## Features
