@@ -462,6 +462,49 @@ int main(int argc, char** argv) {
 		const auto carried = runtime.PresentedValue("title-carry","text");
 		Check(begin && Near(static_cast<float>(begin->data[1]),(212.2f+2.8f-19)*1.5f,.2f) && carried && carried->text == "#str_200003",
 			"SAVE GAME starts on its row");
+		// The paused view (sections 9 and 13.7) at 1280x720, a pixel a dp:
+		// without soft focus the darkening scrim stands in; with it the view
+		// is softened by modal.softfocus, never dimmed, ramping in with
+		// menu.fade, and the quit modal softens the pause screen above it.
+		{
+			runtime.Frame(viewport,2.5);
+			const auto dimmed = runtime.PresentedValue("scrim","display");
+			const auto plain = runtime.PresentedValue("scene-softfocus","display");
+			Check(dimmed && dimmed->text == "block" && plain && plain->text == "none" && runtime.Statistics().backdropComposites == 0,
+				"without soft focus the darkening scrim stands in for the softened view");
+			host.softFocus = true;
+			Check(runtime.PlayTimeline("open",3),"the pause fades in");
+			host.softened.clear();
+			runtime.Frame(viewport,3.125);
+			const auto blur = runtime.PresentedValue("scene-softfocus","backdrop-blur");
+			const auto scrim = runtime.PresentedValue("scrim","display");
+			Check(blur && Near(static_cast<float>(blur->data[0]),3.75f,.05f) && scrim && scrim->text == "none",
+				"the softening ramps in with menu.fade and replaces the darkening scrim");
+			Check(host.softened.size() == 1 && Near(host.softened[0].sigma,3.75f,.05f) && Near(host.softened[0].saturation,.9f,.005f) &&
+				host.softened[0].region.x <= 0 && host.softened[0].region.x+host.softened[0].region.width >= 1280,
+				"the whole paused view is softened");
+			runtime.Frame(viewport,3.4);
+			Check(host.softened.size() == 2 && Near(host.softened[1].sigma,7.5f,.01f) && Near(host.softened[1].saturation,.8f,.001f),
+				"at rest the paused view stays in modal.softfocus");
+			Runtime::EventEffects quit;
+			Check(runtime.RunEvent("quitModalShow",3.5,quit,error),"the quit confirmation opens");
+			runtime.Frame(viewport,3.8);
+			Check(host.softened.size() == 4 && Near(host.softened[2].sigma,7.5f,.01f) && Near(host.softened[3].sigma,7.5f,.01f) &&
+				runtime.Statistics().backdropComposites == 2,"the quit modal softens the pause screen above the softened view");
+			Check(runtime.RunEvent("quitModalHide",3.9,quit,error),"the quit confirmation closes");
+			runtime.Frame(viewport,4.3);
+			// The pause document outlives each pause: a page's return keeps the
+			// view softened, and the next pause ramps in from nothing again.
+			Check(runtime.PlayTimeline("returnHome",4.4),"a page returns home");
+			runtime.Frame(viewport,4.5);
+			const auto kept = runtime.PresentedValue("scene-softfocus","backdrop-blur");
+			Check(kept && Near(static_cast<float>(kept->data[0]),7.5f,.01f),"returning from a page keeps the softened view");
+			Check(runtime.PlayTimeline("open",5),"the game pauses again");
+			runtime.Frame(viewport,5.125);
+			const auto again = runtime.PresentedValue("scene-softfocus","backdrop-blur");
+			Check(again && Near(static_cast<float>(again->data[0]),3.75f,.05f),"each pause ramps the softening in from nothing");
+			host.softFocus = false;
+		}
 	}
 	// Loading: progress, the continue prompt and the multiplayer server card.
 	{

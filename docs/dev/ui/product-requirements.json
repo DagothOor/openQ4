@@ -4,7 +4,7 @@
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "f5c865df8bb499987bfe73b696a792136a8958cd",
+    "engine_revision": "766f04e0c197661cc53f7562f85bc690022d89b6",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -24,7 +24,7 @@
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "84432697ffde594eeed9555fcc3ab2a8140704c88f6835b12f66828b1ba7bbb3"
+      "sha256": "93e5c3069057d7934694715ce33f6f3d6f90049727a3d98faefaeaeba0c566a1"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -634,67 +634,73 @@
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Opt-in retained title, single-player pause and stock loading screens behind the single ui_retained gate, with image nodes, additive and multiply path blends, a view-height canvas, typed session menu requests and exact overflow clipping under translation and scale. Windowed OpenGL/Vulkan 16:9, OpenGL 4:3 and gate-off engine captures only; the Objectives action, the Strogg variant, soft focus, Remastered loading details, multiplayer menus, GLES and complete product acceptance stay open.",
-      "sha256": "b6bf4c93fcf573aa1667386a541b9165005f31e3449c92c165fe85ebd10cddda"
+      "sha256": "17549318509ca5258958f4e6f0887898d4a21ab36164f1c072df7181fb5bae1e"
     },
     "retained-loading-progress": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained loading screen's Remastered progress behind ui_retained: the levelshot drift, the difficulty line, LOADING over a 240 u bar with the loader's phase and its place or asset count, the percentage, the load time and a continue prompt that follows the last input family. Real single-player loads traced the phases in order on OpenGL and Vulkan; the rendered line was captured through testGUI. Tips, touch and device-family glyphs, the Remastered multiplayer screen and complete product acceptance stay open.",
-      "sha256": "b6bf4c93fcf573aa1667386a541b9165005f31e3449c92c165fe85ebd10cddda"
+      "sha256": "17549318509ca5258958f4e6f0887898d4a21ab36164f1c072df7181fb5bae1e"
     },
     "retained-loading-multiplayer": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained loading screen's Remastered multiplayer composition behind ui_retained: the bottom band kept low, a section 6 server card on the leading side with the server name, address, mode and limits, JOINING when a multiplayer load ends, and the name strip darkening the message line. Captured through testGUI on OpenGL and Vulkan; players by team, the server message, the arsenal, the Welcome hand-off and complete product acceptance stay open.",
-      "sha256": "b6bf4c93fcf573aa1667386a541b9165005f31e3449c92c165fe85ebd10cddda"
+      "sha256": "17549318509ca5258958f4e6f0887898d4a21ab36164f1c072df7181fb5bae1e"
     },
     "retained-title-carry": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Section 13.8 refinements on the retained title and single-player pause menus behind ui_retained: the soft additive focus glow beside the focus rail, the emblem's rim light and glint, and the title carry, in which a page hand-off carries the chosen navigation label into the page title slot as the bands dock. Captured on OpenGL and Vulkan; the depth shift, the high-contrast rail, symbols, tags, HDR rules and complete product acceptance stay open.",
-      "sha256": "b6bf4c93fcf573aa1667386a541b9165005f31e3449c92c165fe85ebd10cddda"
+      "sha256": "17549318509ca5258958f4e6f0887898d4a21ab36164f1c072df7181fb5bae1e"
     },
     "retained-title-depth": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Section 13.8 depth on the retained title behind ui_retained: the backdrop, the light and grid, and the framing bands lean up to 6 dp away from the pointer the session publishes, deeper layers further, while content stays fixed; reduced motion holds them still. Captured on OpenGL and Vulkan; the right stick, device tilt, the Phone default and complete product acceptance stay open.",
-      "sha256": "b6bf4c93fcf573aa1667386a541b9165005f31e3449c92c165fe85ebd10cddda"
+      "sha256": "17549318509ca5258958f4e6f0887898d4a21ab36164f1c072df7181fb5bae1e"
     },
     "retained-title-depth-stick": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained title's depth lean follows a held look stick while it leads and the pointer otherwise. Qualified by ui_retained_gate.py compiling the production session frame code against counted doubles, not by an engine capture, since no input is injected. Device tilt, the Phone default and complete product acceptance stay open.",
-      "sha256": "b6bf4c93fcf573aa1667386a541b9165005f31e3449c92c165fe85ebd10cddda"
+      "sha256": "17549318509ca5258958f4e6f0887898d4a21ab36164f1c072df7181fb5bae1e"
     },
     "retained-modal-confirmation": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained confirmation modal at the 480 dp confirmation width behind ui_retained, in its opaque-backing form: the stock glow column across the dialog's 320 u rectangle with the stock art's black 0.70 silhouette inset 6.5625 dp from each side, 3.5625 dp at the top and 5.34 dp at the bottom, so the lit margin and slot outline it; the leading tooth, title slot, raised trailing section, 38 dp lower-leading chamfer and square trailing corners without rails; the title at the foot of the slot's leading flank with its capitals hanging from the raised top line and a 1 dp black outline at 0.85 composited once behind the fill; the first body baseline 87.5 dp down and the actions at the stock row. Captured on OpenGL and Vulkan at 16:9 and OpenGL at 4:3 beside an engine capture of the stock exit dialog; the capture record names ART-036, which ART-037 supersedes. Soft focus, the other four widths, modal motion and complete product acceptance stay open.",
-      "sha256": "b6bf4c93fcf573aa1667386a541b9165005f31e3449c92c165fe85ebd10cddda"
+      "sha256": "17549318509ca5258958f4e6f0887898d4a21ab36164f1c072df7181fb5bae1e"
     },
     "retained-modal-motion": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained title and single-player pause screens behind ui_retained author the stock screen choreography with the section 8 tokens: menu.fade over 250 ms; frame.dock and screen.depart accel(250, 250) over 500 ms from 50 ms with the home layer sweeping 640 u; content.out of the home content over 250 ms; the bands' return from 0 ms and content.in over 150 ms. Their confirmations run modal.enter (scrim, glow and frame over 200 ms, contents together at 200 ms, no scale) and modal.leave (contents at once, then after 50 ms the scrim and glow over 250 ms and the frame over 200 ms for Exit or 250 ms), on timeline completion programs. Modal timing is qualified by native runtime tests; no engine capture of the transitions, and no sampled comparison with the stock timelines.",
-      "sha256": "b6bf4c93fcf573aa1667386a541b9165005f31e3449c92c165fe85ebd10cddda"
+      "sha256": "17549318509ca5258958f4e6f0887898d4a21ab36164f1c072df7181fb5bae1e"
     },
     "retained-motion-tokens": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained title and single-player pause screens fade the plinth and its secondary links over 50 ms on depart while the home plates take 250 ms, bring them back with content.in, give hover feedback at once, and dim the wordmark to 40% gray while the title's Exit modal is open. Qualified by the native screens test; no engine capture.",
-      "sha256": "b6bf4c93fcf573aa1667386a541b9165005f31e3449c92c165fe85ebd10cddda"
+      "sha256": "17549318509ca5258958f4e6f0887898d4a21ab36164f1c072df7181fb5bae1e"
     },
     "retained-motion-engine": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Engine captures, on OpenGL and Vulkan at 1280x720, of the retained title's exit confirmation entering, open, leaving and closed, and of the plinth gone 30 ms into a depart, from a candidate runtime of the pushed code; with the host fix that keeps additive pictures from blacking out their rectangle inside a fading composition layer. Frame times follow console waits and are approximate.",
-      "sha256": "b6bf4c93fcf573aa1667386a541b9165005f31e3449c92c165fe85ebd10cddda"
+      "sha256": "17549318509ca5258958f4e6f0887898d4a21ab36164f1c072df7181fb5bae1e"
     },
     "retained-modal-softfocus": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Backdrop soft focus behind the retained title's exit and the pause menu's quit confirmations on OpenGL and Vulkan: a two-pass separable Gaussian of 5 u at 0.80 saturation ramping with modal.enter and modal.leave, the glow cut to the dialog, and the scrim and stock column for the opaque-backing option and renderers without GLSL; engine captures at 1280x720 on both backends and 1920x1080 on OpenGL, native tests, a host harness and its mutants.",
-      "sha256": "b6bf4c93fcf573aa1667386a541b9165005f31e3449c92c165fe85ebd10cddda"
+      "sha256": "17549318509ca5258958f4e6f0887898d4a21ab36164f1c072df7181fb5bae1e"
+    },
+    "retained-pause-softfocus": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/retained-screens.md",
+      "scope": "The retained single-player pause screen over the paused view softened with modal.softfocus's values, never dimmed, ramping in with menu.fade on every pause, with a darkening scrim and vignette for the opaque-backing option and renderers that cannot soften; engine captures on OpenGL and Vulkan at 1280x720 over airdefense1, native tests and generator mutants.",
+      "sha256": "17549318509ca5258958f4e6f0887898d4a21ab36164f1c072df7181fb5bae1e"
     }
   },
   "groups": {
@@ -2668,10 +2674,13 @@
       "acceptance_evidence_needed": [
         "SP/MP paused/unpaused gameplay traces and layered panel teardown captures; controls cannot leak gameplay input."
       ],
-      "status": "pending",
-      "current_evidence": [],
+      "status": "partial",
+      "current_evidence": [
+        "retained-pause-softfocus",
+        "retained-modal-softfocus"
+      ],
       "acceptance_evidence": [],
-      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required."
+      "remaining": "Behind ui_retained, the single-player pause screen owns the softening of the paused view and each confirmation its own soft focus, stacked over it; each is released when its owner closes or the screen goes away, and ui_retainedOpaqueBacking offers the local opaque backing. The 250 ms release of the softening on resume and every other way out, the multiplayer Escape and Welcome menus that never pause the server, other stacked in-game panels, paused and unpaused gameplay traces, layered teardown captures, proof that controls cannot leak gameplay input, and complete acceptance remain."
     },
     {
       "id": "SUR-001",
@@ -11574,10 +11583,11 @@
       ],
       "status": "partial",
       "current_evidence": [
-        "retained-screens"
+        "retained-screens",
+        "retained-pause-softfocus"
       ],
       "acceptance_evidence": [],
-      "remaining": "Behind ui_retained, the title shows the emblem watermark, the wordmark and the message line explaining the focused item, and the single-player pause replaces them with GAME PAUSED and the level block (levelshot, mission, difficulty and the map's objective summary), leads with Resume and keeps only EXIT on the plinth. The Objectives action and live objectives with their state, times and last save, the softened scene, the navigation start at 172 u, the Strogg variant with its translation reveal, and complete qualification remain.",
+      "remaining": "Behind ui_retained, the title shows the emblem watermark, the wordmark and the message line explaining the focused item, and the single-player pause replaces them with GAME PAUSED and the level block (levelshot, mission, difficulty and the map's objective summary), leads with Resume and keeps only EXIT on the plinth, over the paused view softened with modal.softfocus's values, never dimmed (a darkening scrim and vignette with the opaque-backing option or without soft focus). The Objectives action and live objectives with their state, times and last save, the navigation start at 172 u, the Strogg variant with its translation reveal, and complete qualification remain.",
       "constraints": {
         "message_line_u": [
           44,
@@ -11962,7 +11972,8 @@
       ],
       "status": "partial",
       "current_evidence": [
-        "retained-modal-softfocus"
+        "retained-modal-softfocus",
+        "retained-pause-softfocus"
       ],
       "acceptance_evidence": [],
       "remaining": "Behind ui_retained, the title's exit and the single-player pause menu's quit confirmations soften the screen beneath them on OpenGL and Vulkan: the frame as composed so far, whether the title or the paused view under the pause screen, blurred by a two-pass separable Gaussian of 5 u (7.5 dp, following the view's scale through the 720 dp canvas) at 0.80 saturation and never dimmed, ramping over modal.enter's 200 ms and released over modal.leave's 250 ms after its 50 ms hold. GLES, a renderer without GLSL and the opaque-backing option (ui_retainedOpaqueBacking) show the stock 0.94 scrim and glow column instead, and the pass's targets are rebuilt after a renderer restart. Soft focus behind a settings page's dialogs, in-game panels and the multiplayer menus, behind a node inside a composition layer, the darkening vignette fallback, GLES, 4:3 and high-DPI-scale captures, the pass's measured GPU cost, a Settings row for the opaque-backing option and complete acceptance remain.",

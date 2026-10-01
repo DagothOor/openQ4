@@ -493,14 +493,14 @@
   and it fades in and out as the stock dialog does. Instead of blacking out
   the screen, the dialog softly blurs and slightly desaturates what is behind
   it on OpenGL and Vulkan; `ui_retainedOpaqueBacking 1` restores the stock
-  dark backing, which the GLES renderer always uses.
+  dark backing, which the GLES renderer always uses. The pause menu sits over
+  a softly blurred view of the game instead of a darkened one.
   While a level loads, its picture drifts slowly closer, the bar shows what is
   loading and how far along it is, the finished load reports how long it took,
   and the continue prompt shows your controller's button once you use one.
   Multiplayer loads show the server's name, address, mode and limits on a card
   and read JOINING when done. The pause menu's Objectives action, the Strogg
-  variant, a softened pause backdrop, loading tips and the multiplayer menus
-  remain in development.
+  variant, loading tips and the multiplayer menus remain in development.
 
 - The experimental SYSTEM page adds window and custom fullscreen width/height
   fields with localized whole-pixel validation. Custom dimensions select Custom

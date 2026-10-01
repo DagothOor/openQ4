@@ -189,6 +189,8 @@ On engine `98fb185f2bd6051fd9acc1f213913ea84ae2c2d3` the retained title's modal 
 
 Retained backdrop soft focus, based on engine `813a8acb759a1b4178f282698bd67a3ad1888343`, softens the screen behind the title's exit and the pause menu's quit confirmations on OpenGL and Vulkan: a 5 u blur at 0.80 saturation, never dimmed, ramping with modal.enter and modal.leave, with the glow cut to the dialog. The opaque-backing option and renderers without GLSL keep the scrim and the stock column. `REN-016` moves from pending to partial, with acceptance evidence still empty; settings-page, in-game panel and multiplayer modals, nested layers, GLES and scale captures and the GPU cost remain. `ART-037` and `MOT-012` gain partial evidence without a status change. Evidence: `.tmp/ui/retained-softfocus/validation-evidence.json`, SHA-256 `ae57a44a9b1ddf3d582d1caa7d8565e82582b76a3c63f09717a7f8e5efec6eaf`.
 
+On engine `f5c865df8bb499987bfe73b696a792136a8958cd` the retained single-player pause screen sits over the paused view softened with modal.softfocus's values, never dimmed, ramping in with menu.fade on every pause; the opaque-backing option and renderers that cannot soften keep a darkening scrim and vignette. Engine captures on OpenGL and Vulkan show the view blurred and the HUD crosshair blurred away. `BEH-007` moves from pending to partial, with acceptance evidence still empty; the release on resume, the multiplayer menus, gameplay traces and input-leak proof remain. `FLOW-048` and `REN-016` gain partial evidence without a status change. Evidence: `.tmp/ui/retained-pause-softfocus/validation-evidence.json`, SHA-256 `1443f7b6398db734e30c564d03a831f0aa401f3c3940d726a31bcb0ca9e4268d`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial
@@ -473,7 +475,7 @@ The [full renderer shutdown increment](image-recovery-ownership.md), based on en
 
 The [editor file publication increment](editor-file-safety.md), based on engine `a11a00181b5997993bb9e225bad63a6422386311`, adds actual native creation of complete new files without replacing an existing or racing document. Windows Clang and MSVC each pass 340 checks, GCC with sanitizers passes 344, and all three reject seven compiled mutations. The full engine build and 78 UI suites pass. Windows symlink and DrvFS FIFO limitations are recorded. This file-only increment has no new game captures. Save As/autosave UI, live document association, overwrite/conflict handling and crash/relaunch recovery remain required. No requirement status, migration acceptance or final gate changes. Evidence: `.tmp/ui/editor-new-file/validation-evidence.json`, SHA-256 `846413e35eb34ed965a57005aa6eb724b5c8d3dbc2fb46f65ba30711a509cc63`.
 
-There are **81 partial, 258 pending and one verified requirement**, counting the
+There are **82 partial, 257 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock

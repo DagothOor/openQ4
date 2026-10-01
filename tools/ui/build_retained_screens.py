@@ -1157,14 +1157,23 @@ def pause_document() -> dict:
             plinth(doc, [link(doc, "link_exit", "#str_200013", event="exitModalShow")]),
         ]),
     ])
-    # The paused view, softened by a darkening scrim and vignette where the
-    # scene effect is unavailable (sections 9 and 13.6).
-    scrim = vector("scrim", dict(FULL), [
+    # The paused view, softened and never dimmed (sections 9 and 13.7). The
+    # specification gives scene softening no values of its own, so the pause
+    # takes modal.softfocus's; it ramps in with menu.fade. With the
+    # opaque-backing option, or where the renderer cannot soften the view, a
+    # darkening scrim and vignette stand in (section 13.6).
+    doc.state["soft_focus"] = {"type": "boolean", "initial": False, "cvar": "ui_retainedSoftFocus"}
+    softened = group("scene-softfocus", {**FULL, "display": keyword("none"), "backdrop-blur": length(SOFT_FOCUS_BLUR),
+                                         "backdrop-saturate": number(SOFT_FOCUS_SATURATION)})
+    doc.bind("scene-softfocus.display", "scene-softfocus", "display", {"op": "select", "args": [{"state": "soft_focus"}, "block", "none"]})
+    doc.bind("scrim.display", "scrim", "display", {"op": "select", "args": [{"state": "soft_focus"}, "none", "block"]})
+    scrim = vector("scrim", {**FULL, "display": keyword("block")}, [
         path("dim", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})], fill=solid([0, 0, 0, 0.45])),
         path("lead", [(0, 0), (vx(413), 0), (vx(413), {"fraction": 1}), (0, {"fraction": 1})],
              fill=linear((vx(-107), 0), (vx(413), 0), [(0, [0, 0, 0, 0.7]), (0.55, [0, 0, 0, 0.35]), (1, [0, 0, 0, 0])])),
     ])
     root = group("screen", {**FULL, "font-family": font("marine"), "font-size": length(16), "color": colour([1, 1, 1, 0.8])}, [
+        softened,
         scrim,
         *lit_field("field", 0.45),
         *framing_bands("band"),
@@ -1177,6 +1186,15 @@ def pause_document() -> dict:
         group("fade", {**FULL, "background-color": colour([0, 0, 0, 0]), "pointer-events": keyword("none")}),
     ])
     band_motion(doc, "band", "home", [], quick=("plinth",))
+    # The softened view rests at modal.softfocus, so a page's return keeps it.
+    # A play retargets its first key from the current value, and the pause
+    # document outlives each pause; the second key restarts the ramp from
+    # nothing every time the pause opens, behind menu.fade's black.
+    opening = next(timeline for timeline in doc.timelines.items if timeline["id"] == "open")
+    opening["tracks"] += [
+        track("scene-softfocus", "backdrop-blur", [(0, length(0)), (1, length(0)), (250, length(SOFT_FOCUS_BLUR))]),
+        track("scene-softfocus", "backdrop-saturate", [(0, number(1)), (1, number(1)), (250, number(SOFT_FOCUS_SATURATION))]),
+    ]
     hide_carry_at_home(doc)
     return doc.build(root)
 
