@@ -441,7 +441,9 @@ int main(int argc, char** argv) {
 	{
 		const auto source = Read(argv[2]);
 		Document document; std::vector<Diagnostic> diagnostics;
-		Check(document.Load(source,diagnostics) && document.Model().id == "openq4.pause","pause document validates");
+		const bool valid = document.Load(source,diagnostics);
+		for (const auto& diagnostic : diagnostics) std::fprintf(stderr,"pause %s: %s\n",diagnostic.pointer.c_str(),diagnostic.message.c_str());
+		Check(valid && document.Model().id == "openq4.pause","pause document validates");
 		CheckSessionActions(document);
 		Runtime runtime(host);
 		Check(runtime.Initialize() && runtime.LoadDocument(source,"guis/menu/pause.q4ui",diagnostics),"pause loads into a runtime");
@@ -458,6 +460,26 @@ int main(int argc, char** argv) {
 		runtime.Frame(viewport,1.4);
 		const auto shown = runtime.PresentedValue("level-objectives-head","display");
 		Check(shown && shown->text == "block","objectives bring their heading");
+		// The objectives the game publishes take the summary's place, a row
+		// each, with the time in the mission under them (section 13.7).
+		const auto stillHidden = runtime.PresentedValue("level-stats-rule","display");
+		Check(stillHidden && stillHidden->text == "none","no time line before the game publishes one");
+		Check(runtime.SetState({{"pause_objective_count",2.0},{"pause_objective_0",std::string("Destroy the anti-aircraft battery")},
+			{"pause_objective_1",std::string("Reach the bunker")},{"pause_stats",std::string("0:42:10 in mission")}},error,1.5),
+			"publish the open objectives and the time in the mission");
+		runtime.Frame(viewport,1.6);
+		const auto first = runtime.PresentedValue("level-objective-0","display");
+		const auto second = runtime.PresentedValue("level-objective-1","display");
+		const auto third = runtime.PresentedValue("level-objective-2","display");
+		const auto summary = runtime.PresentedValue("level-objectives","display");
+		const auto firstText = runtime.PresentedValue("level-objective-0-text","text");
+		Check(first && first->text == "block" && second && second->text == "block" && third && third->text == "none",
+			"one row for each open objective");
+		Check(summary && summary->text == "none" && firstText && firstText->text == "Destroy the anti-aircraft battery",
+			"the open objectives replace the map's summary, newest first");
+		const auto stats = runtime.PresentedValue("level-stats","text");
+		const auto rule = runtime.PresentedValue("level-stats-rule","display");
+		Check(stats && stats->text == "0:42:10 in mission" && rule && rule->text == "block","the time in the mission shows under a rule");
 		ActionInvocation invocation;
 		Check(runtime.ResolveAction("resume",invocation,error) && std::get<std::string>(invocation.arguments.at("command")) == "resume","RESUME returns to the game");
 		// SAVE GAME's label carries from its row at 212.2 u into the title slot.

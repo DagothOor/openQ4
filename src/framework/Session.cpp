@@ -6040,6 +6040,17 @@ void idSessionLocal::PublishRetainedPauseState( idUserInterface *gui ) {
 	gui->SetStateString( "pause_detail", Session_GetSkillName() );
 	gui->SetStateString( "pause_objectives", objectives );
 	gui->SetStateString( "pause_shot", RetainedPauseShot( mapPath ).c_str() );
+	// The game publishes the objectives the player holds and the time in the
+	// mission. A game module that does not leaves the map's own summary and
+	// no time line.
+	gui->SetStateInt( "pause_objective_count", 0 );
+	gui->SetStateInt( "pause_mission_seconds", -1 );
+	if ( game != NULL && mapSpawned ) {
+		game->HandleMainMenuCommands( "retainedPauseState", gui );
+	}
+	const int seconds = gui->State().GetInt( "pause_mission_seconds", "-1" );
+	gui->SetStateString( "pause_stats", seconds < 0 ? "" : va( "%d:%02d:%02d %s", seconds / 3600, seconds / 60 % 60, seconds % 60,
+		common->GetLanguageDict()->GetString( "#str_230046" ) ) );
 	gui->StateChanged( common->GetPresentationTime() );
 #endif
 }

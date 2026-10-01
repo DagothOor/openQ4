@@ -56,6 +56,13 @@ SCENARIOS = {
         'openq4_retainedGui focus nav_resume', 'openq4_retainedGui menu accept 1', 'openq4_retainedGui menu accept 0',
         'waitMsec 800', 'ui_retainedStatus', 'screenshot "screenshots/pause-resumed.tga"',
     ]),
+    # The level block's open objectives: airdefense1's first two objective
+    # entities fire before the pause menu opens (trigger works in single player).
+    'pause-objectives': ('game/airdefense1', [
+        'trigger objectiveIntro', 'waitMsec 500', 'trigger objectiveMedic', 'waitMsec 1500',
+        'openq4_assertMenuActivation 10000', 'waitMsec 1200', 'ui_retainedStatus', 'screenshot "screenshots/pause-objectives.tga"',
+        'openq4_retainedGui focus nav_resume', 'openq4_retainedGui menu accept 1', 'openq4_retainedGui menu accept 0', 'waitMsec 500',
+    ]),
     'loading': (None, [
         'waitMsec 3000', 'testGUI "guis/loading/loading.q4ui"', 'waitMsec 300',
         'openq4_retainedGui pending loading_levelshot gfx/guis/loadscreens/airdefense',

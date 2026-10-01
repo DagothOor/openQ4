@@ -5720,6 +5720,18 @@ void idGameLocal::HandleMainMenuCommands( const char *menuCommand, idUserInterfa
 	} else if ( !idStr::Icmp( menuCommand, "server_clearSort" ) ) {
 		filterMod = -1;
 		gui->SetStateString( "filterMod", common->GetLocalizedString( "#str_123008" ) );
+	} else if ( !idStr::Icmp( menuCommand, "retainedPauseState" ) ) {
+		// openQ4: the retained pause screen's level block. The objectives the
+		// local player holds, newest first as the objective screen stacks
+		// them, and the time spent in this mission (game time restarts with
+		// each map and is saved with it).
+		idPlayer *player = GetLocalPlayer();
+		const int count = player != NULL ? player->inventory.objectiveNames.Num() : 0;
+		gui->SetStateInt( "pause_objective_count", count );
+		for ( int i = 0; i < count; i++ ) {
+			gui->SetStateString( va( "pause_objective_%d", i ), player->inventory.objectiveNames[ count - 1 - i ].title.c_str() );
+		}
+		gui->SetStateInt( "pause_mission_seconds", time / 1000 );
 	}
 
 	return;

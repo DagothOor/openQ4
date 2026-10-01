@@ -201,6 +201,8 @@ On engine `31028407323741ded6b1a737f7f227d741aebba3` the retained screens are on
 
 On engine `00436c476dc441697dcd339317cb5008f1ef4476` the retained pause screen's level block chooses its levelshot as the loading screen chooses its picture: the map's `loadimage`, the intro art for a map that loads through the intro screen, then the map's own levelshot, each only when it is installed, ending at the generic art. Engine captures on OpenGL and Vulkan show airdefense1's intro art where the generic loadscreen was. No requirement status changes. Evidence: `.tmp/ui/retained-pause-shot/validation-evidence.json`, SHA-256 `d3b289962528acd575ddf5fc17033f8ece7e2e159d89d3724d2e10d36ffa6a06`.
 
+On engine `b6a7979bf2efe96fe8a2299ed342c3dbd85e8794` the retained pause screen's level block lists the objectives the player holds, newest first, and the time in the mission, which the session asks the game for with the `retainedPauseState` menu command; a game module that publishes neither leaves the map's objective summary. Engine captures on OpenGL and Vulkan show airdefense1's first two objectives and the time line. `FLOW-048` gains partial evidence without a status change; the Objectives action, completed objectives, the total time, the last save and the Strogg variant remain. Evidence: `.tmp/ui/retained-pause-objectives/validation-evidence.json`, SHA-256 `43f7a4867c20868c828296b1faf46a1bd64c1282538da0d113b0e58e7df2074b`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial

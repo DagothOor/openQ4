@@ -99,8 +99,15 @@ after editing the script; `--check` fails when an output is stale.
   RESUME leads, followed by SAVE GAME, LOAD GAME, RESTART LEVEL, SETTINGS and
   QUIT TO MENU; only EXIT stays on the plinth, and both quits ask first. The
   current level block takes the emblem's place: a card with the levelshot, the
-  mission, the difficulty and the map's objectives (the heading hides when the
-  map has none). The paused view stays behind the screen, softened and never
+  mission, the difficulty, the objectives the player holds and the time in the
+  mission. The session asks the game for them with the `retainedPauseState`
+  menu command when the screen opens: up to three open objectives, newest
+  first as the stock objective screen stacks them, each on a row behind the
+  atlas marker, and the mission's game time (it restarts with each map and is
+  saved with it) as "0:42:10 in mission" under a faint rule. A game module
+  that publishes neither leaves the map's own objective summary and no time
+  line, and the heading hides when there is nothing to list. The paused view
+  stays behind the screen, softened and never
   dimmed: the specification gives scene softening no values of its own, so
   it takes `modal.softfocus` (a 7.5 dp blur at 0.80 saturation), ramping in
   over 250 ms with the screen's fade from black. With the opaque-backing
@@ -449,12 +456,21 @@ where it showed the generic loadscreen. Evidence:
 `.tmp/ui/retained-pause-shot/validation-evidence.json`, SHA-256
 `d3b289962528acd575ddf5fc17033f8ece7e2e159d89d3724d2e10d36ffa6a06`.
 
+The live level block was captured over airdefense1 on OpenGL and Vulkan at
+1280x720. With the level's first two objectives given, it lists Retrieve
+Medic above Regroup with Rhino Squad and the time in the mission under the
+rule; without them it shows the time line alone. Evidence:
+`.tmp/ui/retained-pause-objectives/validation-evidence.json`, SHA-256
+`43f7a4867c20868c828296b1faf46a1bd64c1282538da0d113b0e58e7df2074b`.
+
 ## Known limitations
 
 - The pause menu has no OBJECTIVES action yet, so the navigation holds six of
-  the seven actions of section 13.7, and the level block shows the map's
-  objective summary rather than the live objectives with their state, time in
-  mission, total time and last save.
+  the seven actions of section 13.7: the stock objective screen shows only
+  while the scores button is held, so opening it from the menu needs game
+  input work. The level block lists the open objectives but not completed
+  ones (the game drops an objective when it completes), and it has no total
+  time or last save.
 - The Strogg pause variant (R_Strogg labels, the translation reveal, 30-degree
   shoulders) is not implemented; the Marine screen is used throughout.
 - Resuming, or leaving the pause any other way, drops the softened view at

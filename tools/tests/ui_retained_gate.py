@@ -79,6 +79,7 @@ struct Common {
     void DPrintf(const char* fmt, ...) { char text[2048]; va_list args; va_start(args, fmt); std::vsnprintf(text, sizeof(text), fmt, args); va_end(args); developer.push_back(text); }
     void Warning(const char* fmt, ...) { char text[2048]; va_list args; va_start(args, fmt); std::vsnprintf(text, sizeof(text), fmt, args); va_end(args); warnings.push_back(text); }
     void Quit() { ++quits; }
+    const struct LanguageDict* GetLanguageDict() const;
 } commonObject, *common = &commonObject;
 // The installed files the session can find, and the Awakening content probe.
 struct idCampaignContentInfo { bool ready = true, present = true; idStr missing; };
@@ -104,6 +105,14 @@ static bool Session_GetMapDeclDict(const char* map, const char*, idDict& out) {
     const auto found = mapDecls.find(map); if (found == mapDecls.end()) return false; out = found->second; return true;
 }
 static bool Session_FileExistsInSearchPaths(const char* path) { return fileSystemObject.files.count(path) != 0; }
+struct LanguageDict { const char* GetString(const char* key) const { return !std::strcmp(key, "#str_230046") ? "in mission" : key; } } languageObject;
+const LanguageDict* Common::GetLanguageDict() const { return &languageObject; }
+static const char* Session_GetSkillName() { return "Corporal"; }
+struct idUserInterface;
+struct Game {
+    std::vector<std::string> commands; std::function<void(idUserInterface*)> publish;
+    void HandleMainMenuCommands(const char* command, idUserInterface* gui) { commands.push_back(command); if (publish) publish(gui); }
+} gameObject, *game = &gameObject;
 struct CVar { bool value = false; bool GetBool() const { return value; } } ui_retained, ui_retainedSystem;
 enum { SE_NONE = 0, CMD_EXEC_APPEND = 1 };
 struct sysEvent_t { int evType = SE_NONE; };
@@ -116,6 +125,12 @@ struct idUserInterface {
     void HandleNamedEvent(const char* name) { named.push_back(name); }
     const char* HandleEvent(const sysEvent_t*, int) { return ""; }
     void SetStateBool(const char* key, bool value) { state[key] = value ? "1" : "0"; }
+    void SetStateInt(const char* key, int value) { state[key] = std::to_string(value); }
+    struct StateView {
+        const std::map<std::string, std::string>& values;
+        int GetInt(const char* key, const char* fallback) const { const auto found = values.find(key); return std::atoi(found == values.end() ? fallback : found->second.c_str()); }
+    };
+    StateView State() const { return {state}; }
     void SetStateString(const char* key, const char* value) { state[key] = value; }
     void SetStateFloat(const char* key, float value) { state[key] = std::to_string(value); }
     float cursorX = 320, cursorY = 240;
@@ -191,7 +206,8 @@ public:
     void GetSaveGameList(idStrList& files, idList<fileTIME_T>& times) {
         for (size_t i = 0; i < saves.size(); ++i) { files.Append(idStr(saves[i])); times.Append({static_cast<int>(i), 100 - static_cast<ID_TIME_T>(i)}); }
     }
-    void PublishRetainedPauseState(idUserInterface*) { ++pauseStates; }
+    idStr currentMapName = idStr("game/airdefense1");
+    void PublishRetainedPauseState(idUserInterface*);
     MapSpawnData mapSpawnData;
     idStr RetainedPauseShot(const char*) const;
     void UpdateRetainedHome(); bool RetainedHomeInputBlocked() const; void RetainedHomeFrameEvent();
@@ -220,6 +236,7 @@ static idSessionLocal Session(bool gate, bool inGame = false) {
     legacyActionAvailable = true; preview = false; ui_retained.value = gate; ui_retainedSystem.value = false;
     fileSystemObject.files = std::set<std::string>(std::begin(DOCUMENTS), std::end(DOCUMENTS)); arenaCampaign = ArenaCampaign{};
     legacyMissing.clear(); reloaded.clear(); describedShot = "savegames/quick.tga"; mapDecls.clear(); fileSystemObject.screenshots.clear();
+    gameObject = Game{};
     static idUserInterface menu("guis/mainmenu.gui"); menu = idUserInterface("guis/mainmenu.gui");
     idSessionLocal session; session.guiActive = session.guiMainMenu = &menu; session.mapSpawned = inGame;
     legacy["desktop::curr"] = 0; legacy["desktop::active"] = 0; legacy["desktop::dest"] = 0;
@@ -302,7 +319,7 @@ int main() {
     }
     {   // Single-player pause and its verbs; multiplayer keeps the stock in-game menu.
         auto s = Session(true, true); s.UpdateRetainedHome();
-        CHECK(s.guiRetainedHome && std::string(s.guiRetainedHome->Name()) == "guis/menu/pause.q4ui" && s.pauseStates == 1);
+        CHECK(s.guiRetainedHome && std::string(s.guiRetainedHome->Name()) == "guis/menu/pause.q4ui" && s.guiRetainedHome->state["pause_level"] == "game/airdefense1");
         auto* pause = s.guiRetainedHome;
         s.HandleRetainedSessionRequest(pause, "quitToMenu"); CHECK(commands.buffered == std::vector<std::string>{"disconnect\n"});
         s.HandleRetainedSessionRequest(pause, "restartLevel"); CHECK(legacyActions.back() == "main_b_difficulty");
@@ -411,6 +428,24 @@ int main() {
         CHECK(s.RetainedPauseShot("game/airdefense1") == "gfx/guis/loadscreens/e3_load");
         CHECK(s.RetainedPauseShot("game/building_b") == "gfx/guis/loadscreens/defstation.tga"); // its loadimage is not installed
         CHECK(s.RetainedPauseShot("game/unknown") == "gfx/guis/loadscreens/generic");
+    }
+    {   // The level block asks the game for the open objectives and the time in the mission.
+        auto s = Session(true, true);
+        mapDecls["game/airdefense1"] = idDict{{{"name", "Air Defense Bunker"}, {"objectives", "Reach the bunker."}}};
+        gameObject.publish = [](idUserInterface* gui) {
+            gui->SetStateInt("pause_objective_count", 2); gui->SetStateString("pause_objective_0", "Destroy the battery");
+            gui->SetStateString("pause_objective_1", "Reach the bunker"); gui->SetStateInt("pause_mission_seconds", 2530);
+        };
+        s.UpdateRetainedHome(); auto* pause = s.guiRetainedHome;
+        CHECK(pause && (gameObject.commands == std::vector<std::string>{"retainedPauseState"}));
+        CHECK(pause->state["pause_level"] == "Air Defense Bunker" && pause->state["pause_detail"] == "Corporal");
+        CHECK(pause->state["pause_objective_count"] == "2" && pause->state["pause_objective_0"] == "Destroy the battery");
+        CHECK(pause->state["pause_stats"] == "0:42:10 in mission");
+        // A game module that publishes nothing leaves the map's summary and no time line.
+        auto quiet = Session(true, true); mapDecls["game/airdefense1"] = idDict{{{"objectives", "Reach the bunker."}}};
+        quiet.UpdateRetainedHome();
+        CHECK(quiet.guiRetainedHome->state["pause_objective_count"] == "0" && quiet.guiRetainedHome->state["pause_stats"].empty());
+        CHECK(quiet.guiRetainedHome->state["pause_objectives"] == "Reach the bunker.");
     }
     std::printf("ui_retained gate: %d checks passed\n", checks);
 }
@@ -585,7 +620,8 @@ def main() -> int:
         'void idSessionLocal::PreloadRetainedScreens(', 'void idSessionLocal::PrepareRetainedLevel(',
         'void idSessionLocal::ReportRetainedScreens(')]
     bodies += [function_body(session, signature) for signature in (
-        'static bool Session_ImageInstalled(', 'idStr idSessionLocal::RetainedPauseShot(')]
+        'static bool Session_ImageInstalled(', 'idStr idSessionLocal::RetainedPauseShot(',
+        'void idSessionLocal::PublishRetainedPauseState(')]
     compiler = next((found for name in ('clang++', 'g++', 'c++') if (found := shutil.which(name))), None)
     if not compiler:
         raise RuntimeError('C++ compiler required')

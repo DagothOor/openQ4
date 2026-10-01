@@ -57,6 +57,8 @@ PLINTH = "#3E4A21"
 PROGRESS = "#E06C00"
 PICTURE = "#414624"
 OBJECTIVE_HEAD = "#FF8000"
+OBJECTIVE_MARK = "#B0CD6B"   # an open objective's marker (the atlas pause block)
+LEVEL_STATS = "#8C947A"
 LOAD_SPILL = "#181D0A"
 DOTS = "#1C2613"
 
@@ -1077,11 +1079,16 @@ def campaign_document(campaigns: bool) -> dict:
 
 # ------------------------------------------------------------------- the pause
 
+OBJECTIVE_ROWS = 3   # the stock objective screen's three slots
+
+
 def level_block(doc: Document) -> dict:
     """The current level block in the emblem's place (section 13.7): a card
     (section 6: black 0.94 in a marine.rail.card rail, 12 and 3 dp cuts, a
     40 dp header) with the levelshot in a picture frame, the level, the
-    difficulty and the map's objectives."""
+    difficulty, the objectives the player holds and the time in the mission.
+    The game publishes the objectives, newest first; a map's own objectives
+    summary stands in while it publishes none."""
     x, y, w, h = U * 374, U * 118, U * 262, U * 270
     major, minor = 12.0, 3.0
     card = [(minor, 0), (w - major, 0), (w, major), (w, h - minor), (w - minor, h), (major, h), (0, h - major), (0, minor)]
@@ -1108,17 +1115,42 @@ def level_block(doc: Document) -> dict:
         **typeface("lowpixel", 17, 20, [1, 1, 1, 0.6]), "white-space": keyword("nowrap")})
     objectives_head = label("level-objectives-head", "#str_200291", {**absolute(left=15, top=below + 54, width=pw, height=18),
         **typeface("marine", 14, 18, rgb(OBJECTIVE_HEAD)), "white-space": keyword("nowrap"), "display": keyword("block")})
-    objectives = label("level-objectives", "#str_230030", {**absolute(left=15, top=below + 76, width=pw, height=h - below - 90),
-        **typeface("lowpixel", 14, 18, [0.82, 0.87, 0.71, 1]), "overflow": keyword("hidden")})
+    rows_top, row_h, stats_rule = below + 76, U * 12.5, h - U * 22
+    objectives = label("level-objectives", "#str_230030", {**absolute(left=15, top=rows_top, width=pw, height=stats_rule - rows_top - 3),
+        **typeface("lowpixel", 14, 18, [0.82, 0.87, 0.71, 1]), "overflow": keyword("hidden"), "display": keyword("block")})
+    # Each open objective: the atlas marker, then its title (13 dp, white 0.9).
+    rows = []
+    for index in range(OBJECTIVE_ROWS):
+        ident = f"level-objective-{index}"
+        mark = vector(f"{ident}-mark", absolute(left=15, top=4, width=9, height=9),
+                      [path("mark", [(0, 0), (9, 0), (0, 9)], fill=solid(rgb(OBJECTIVE_MARK, 0.4)))])
+        title = label(f"{ident}-text", "#str_230030", {**absolute(left=33, top=0, width=pw - 18, height=row_h),
+            **typeface("lowpixel", 13, row_h, [1, 1, 1, 0.9]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+        rows.append(group(ident, {**absolute(left=0, top=rows_top + index * row_h, width=w, height=row_h), "display": keyword("none")},
+                          [mark, title]))
+        doc.bind(f"{ident}.display", ident, "display",
+                 {"op": "select", "args": [{"op": ">", "args": [{"state": "pause_objective_count"}, index]}, "block", "none"]})
+        doc.bind(f"{ident}-text.text", f"{ident}-text", "text", {"state": f"pause_objective_{index}"})
+    # The time in the mission under a faint rule at the foot of the card.
+    rule = vector("level-stats-rule", {**absolute(left=15, top=stats_rule, width=pw, height=1), "display": keyword("none")},
+                  [path("rule", [(0, 0.5), (pw, 0.5)], closed=False, stroke=stroke(solid([1, 1, 1, 0.1]), 1))])
+    stats = label("level-stats", "#str_230030", {**absolute(left=15, top=h - U * 20, width=pw, height=U * 14),
+        **typeface("lowpixel", 11, U * 14, rgb(LEVEL_STATS)), "white-space": keyword("nowrap")})
+    doc.bind("level-stats.text", "level-stats", "text", {"state": "pause_stats"})
+    doc.bind("level-stats-rule.display", "level-stats-rule", "display",
+             {"op": "select", "args": [{"op": "==", "args": [{"state": "pause_stats"}, ""]}, "none", "block"]})
     doc.bind("level-shot.image", "level-shot", "image", {"state": "pause_shot"})
     doc.bind("level-name.text", "level-name", "text", {"state": "pause_level"})
     doc.bind("level-detail.text", "level-detail", "text", {"state": "pause_detail"})
     doc.bind("level-objectives.text", "level-objectives", "text", {"state": "pause_objectives"})
+    published = {"op": ">", "args": [{"state": "pause_objective_count"}, 0]}
+    doc.bind("level-objectives.display", "level-objectives", "display", {"op": "select", "args": [published, "none", "block"]})
     # A map without objectives shows no empty heading.
     doc.bind("level-objectives-head.display", "level-objectives-head", "display",
-             {"op": "select", "args": [{"op": "==", "args": [{"state": "pause_objectives"}, ""]}, "none", "block"]})
+             {"op": "select", "args": [{"op": "||", "args": [published, {"op": "!=", "args": [{"state": "pause_objectives"}, ""]}]},
+                                       "block", "none"]})
     return group("level-block", absolute(left=x, top=y, width=w, height=h),
-                 [frame, shot, shot_frame, heading, name, detail, objectives_head, objectives])
+                 [frame, shot, shot_frame, heading, name, detail, objectives_head, objectives, *rows, rule, stats])
 
 
 def pause_document() -> dict:
@@ -1128,6 +1160,9 @@ def pause_document() -> dict:
         "pause_detail": {"type": "string", "initial": ""},
         "pause_objectives": {"type": "string", "initial": ""},
         "pause_shot": {"type": "string", "initial": ""},
+        "pause_objective_count": {"type": "number", "initial": 0},
+        **{f"pause_objective_{index}": {"type": "string", "initial": ""} for index in range(OBJECTIVE_ROWS)},
+        "pause_stats": {"type": "string", "initial": ""},
     })
     doc.session("resume", "resume")
     doc.session("saveGame", "saveGame")
