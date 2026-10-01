@@ -363,9 +363,46 @@ static void CheckEventSchema() {
 		Check(document.Load(bounded("{\"event\":["+step+"]}"),errors)==(depth==32),"event structural depth includes its exact boundary");
 	}
 }
+// Timeline completion programs: the event must exist, the timeline must end,
+// the program (through calls and both branches) cannot invoke an action, and
+// completions cannot lead back to a timeline already completing.
+static void CheckCompletionSchema() {
+	const auto document = [](const std::string& a, const std::string& b) {
+		return R"json({"format":"openq4-ui","version":1,"id":"completion-schema",
+		 "state":{"done":{"type":"boolean","initial":false}},
+		 "root":{"id":"root","type":"group","properties":{"opacity":{"type":"number","value":1},"left":{"type":"length","value":0,"unit":"dp"}}},
+		 "actions":{"leave":{"operation":"test.leave","arguments":{}}},
+		 "timelines":[
+		  {"id":"a","durationMs":100,)json"+a+R"json("tracks":[{"node":"root","property":"opacity","keys":[
+		   {"atMs":0,"value":{"type":"number","value":1}},{"atMs":100,"value":{"type":"number","value":0}}]}]},
+		  {"id":"b","durationMs":100,)json"+b+R"json("tracks":[{"node":"root","property":"left","keys":[
+		   {"atMs":0,"value":{"type":"length","value":0,"unit":"dp"}},{"atMs":100,"value":{"type":"length","value":5,"unit":"dp"}}]}]}],
+		 "events":{
+		  "Finish":[{"op":"setState","values":{"done":true}},{"op":"playTimeline","timeline":"b"}],
+		  "again":[{"op":"playTimeline","timeline":"a"}],
+		  "settle":[{"op":"setState","values":{"done":false}}],
+		  "nested":[{"op":"if","condition":{"state":"done"},"then":[{"op":"call","event":"leaveNow"}]}],
+		  "leaveNow":[{"op":"action","action":"leave"}]}})json";
+	};
+	const auto loads = [](const std::string& source, Document& out) { std::vector<Diagnostic> errors; return out.Load(source,errors); };
+	Document valid;
+	Check(loads(document(R"("complete":"FINISH",)",""),valid) && valid.Model().timelines[0].complete == "finish" &&
+		valid.Model().timelines[1].complete.empty(),"a completion names a case-folded event");
+	Document rejected;
+	Check(!loads(document(R"("complete":"missing",)",""),rejected),"an unknown completion event is rejected");
+	Check(!loads(document(R"("iterations":0,"complete":"finish",)",""),rejected),"a timeline that repeats until cancelled never completes");
+	Check(!loads(document(R"("complete":"leaveNow",)",""),rejected),"a completion program cannot invoke an action");
+	Check(!loads(document(R"("complete":"nested",)",""),rejected),"nor through a call in a conditional branch");
+	Check(!loads(document(R"("complete":"again",)",""),rejected),"a completion cannot replay its own timeline");
+	Check(!loads(document(R"("complete":"finish",)",R"("complete":"again",)"),rejected),"nor return to it through another completion");
+	Check(!loads(document("",R"("complete":"finish",)"),rejected),"a timeline's completion cannot replay it through the same program");
+	Check(loads(document(R"("complete":"finish",)",R"("complete":"settle",)"),valid),"a completion may play another timeline that completes elsewhere");
+}
+
 int main() {
 	CheckEventSchema();
 	CheckPresentationSchema();
+	CheckCompletionSchema();
 	Document document;
 	std::vector<Diagnostic> errors;
 	Check(document.Load(Source,errors),"parse typed commented document");

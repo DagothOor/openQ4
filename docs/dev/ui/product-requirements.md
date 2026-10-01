@@ -181,6 +181,8 @@ On engine `d491aa476c82c42e0828f06b5ff7b74caf22384b` the retained title's depth 
 
 The retained confirmation modal, based on engine `e039c0ecad7c0010c8a52966235c791dc9dbd8b7`, rebuilds the title's exit and the pause menu's quit confirmations on the stock dialog's construction over the scrim: the stock art's silhouette sits inside the glow column so a 6 dp lit margin outlines it, and the title's capitals hang from the raised top line with a 1 dp black outline at 0.85. Engine captures on OpenGL and Vulkan at 16:9 and OpenGL at 4:3 were compared with a capture of the stock exit dialog. The same change makes retained layer composites sample GL row order on Vulkan, where every faded or masked element had vanished since 2026-09-25. `ART-037` moves from pending to partial, with acceptance evidence still empty; cards, the soft-focus glow, the other dialog widths, the chat box, tab strip and header band remain. Evidence: `.tmp/ui/retained-modal/validation-evidence.json`, SHA-256 `32b9bbf8b67cf36b59dca317274579f637bb2eda2bc7c3000b7122160b9f8945`.
 
+Retained timeline completion programs, based on engine `9171699a34db3ebf4affb6c2880604eb3aee643b`, let a timeline name an event to run when it plays to its end: no actions, no completion cycles, and cancellation, replay or a takeover never complete it. The retained confirmations use them for the stock modal.enter and modal.leave. With the retained screens' authored band and content choreography, `MOT-012` moves from pending to partial, with acceptance evidence still empty; the links' 50 ms fade, page-side timing, band.slide, row.flash, list.unfold, light.up, destination backings and the sampled comparison with the stock timelines remain. Native tests only; no engine capture of the transitions. Evidence: `.tmp/ui/retained-modal-motion/validation-evidence.json`, SHA-256 `a23a96a22a4abd67ded93a9a00624ffa6dba93d4d4275170346aafc0c2ba5b70`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial
@@ -465,7 +467,7 @@ The [full renderer shutdown increment](image-recovery-ownership.md), based on en
 
 The [editor file publication increment](editor-file-safety.md), based on engine `a11a00181b5997993bb9e225bad63a6422386311`, adds actual native creation of complete new files without replacing an existing or racing document. Windows Clang and MSVC each pass 340 checks, GCC with sanitizers passes 344, and all three reject seven compiled mutations. The full engine build and 78 UI suites pass. Windows symlink and DrvFS FIFO limitations are recorded. This file-only increment has no new game captures. Save As/autosave UI, live document association, overwrite/conflict handling and crash/relaunch recovery remain required. No requirement status, migration acceptance or final gate changes. Evidence: `.tmp/ui/editor-new-file/validation-evidence.json`, SHA-256 `846413e35eb34ed965a57005aa6eb724b5c8d3dbc2fb46f65ba30711a509cc63`.
 
-There are **78 partial, 261 pending and one verified requirement**, counting the
+There are **79 partial, 260 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock

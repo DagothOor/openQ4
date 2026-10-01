@@ -42,7 +42,14 @@ public:
 	// External presentation writes change current values without cancelling any
 	// track. An existing animation can write again on its next sample.
 	bool WriteValues(const PropertyValues& changes, std::string& error);
+	// Timelines with a completion program whose playback reached its end since
+	// the last call, in completion order: the last owned track finished while
+	// advancing, or reduced motion jumped every track at once. Cancellation,
+	// replay and losing every track to another timeline never complete.
+	std::vector<std::string> TakeCompleted();
 private:
+	void NoteCompleted(const std::string& id);
+	std::vector<std::string> completed;
 	struct Playing {
 		std::string owner;
 		Track track;

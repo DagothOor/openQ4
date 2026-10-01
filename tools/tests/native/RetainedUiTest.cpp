@@ -200,6 +200,90 @@ struct TestHost final : Host {
 	}
 };
 
+// Timeline completion programs: a fade hides its box when it plays to its end,
+// once. Cancellation suppresses it, replay restarts it, pause delays it, and
+// reduced motion completes a spatial timeline inside the event that plays it.
+static void CheckCompletionPrograms(TestHost& host) {
+	const std::string source = R"json({"format":"openq4-ui","version":1,"id":"completion-programs",
+	 "state":{"shown":{"type":"boolean","initial":true},"phase":{"type":"number","initial":0}},
+	 "root":{"id":"root","type":"group","properties":{"width":{"type":"length","value":100,"unit":"%"},"height":{"type":"length","value":100,"unit":"%"}},
+	  "children":[{"id":"box","type":"group","properties":{"position":{"type":"keyword","value":"absolute"},
+	   "left":{"type":"length","value":10,"unit":"dp"},"top":{"type":"length","value":10,"unit":"dp"},
+	   "width":{"type":"length","value":50,"unit":"dp"},"height":{"type":"length","value":50,"unit":"dp"},
+	   "display":{"type":"keyword","value":"block"},"opacity":{"type":"number","value":1},
+	   "transform":{"type":"transform","unit":"dp","value":[0,0,1,1,0]}}}]},
+	 "bindings":[{"id":"shown","node":"box","property":"display","value":{"op":"select","args":[{"state":"shown"},"block","none"]}}],
+	 "timelines":[
+	  {"id":"fade","durationMs":300,"complete":"Faded","tracks":[{"node":"box","property":"opacity","keys":[
+	   {"atMs":0,"value":{"type":"number","value":1}},{"atMs":300,"value":{"type":"number","value":0}}]}]},
+	  {"id":"slide","durationMs":200,"complete":"slid","tracks":[{"node":"box","property":"transform","keys":[
+	   {"atMs":0,"value":{"type":"transform","unit":"dp","value":[0,0,1,1,0]}},{"atMs":200,"value":{"type":"transform","unit":"dp","value":[20,0,1,1,0]}}]}]}],
+	 "events":{
+	  "show":[{"op":"setState","values":{"shown":true}}],
+	  "hide":[{"op":"playTimeline","timeline":"fade"}],
+	  "faded":[{"op":"setState","values":{"shown":false,"phase":{"op":"+","args":[{"state":"phase"},1]}}}],
+	  "stop":[{"op":"cancelTimeline","timeline":"fade","policy":"hold"}],
+	  "pause":[{"op":"pauseTimeline","timeline":"fade"}],
+	  "resume":[{"op":"resumeTimeline","timeline":"fade"}],
+	  "move":[{"op":"playTimeline","timeline":"slide"}],
+	  "slid":[{"op":"setState","values":{"phase":{"op":"+","args":[{"state":"phase"},10]}}}]}})json";
+	Runtime runtime(host);
+	std::vector<Diagnostic> diagnostics;
+	Check(runtime.Initialize() && runtime.LoadDocument(source,"completion.q4ui",diagnostics),"completion document loads");
+	Viewport viewport; viewport.width = 640; viewport.height = 480;
+	const auto state = [&](const char* key) { return runtime.GetState(false).at(key); };
+	const auto run = [&](const char* name, double seconds) {
+		Runtime::EventEffects effects; std::string error;
+		Check(runtime.RunEvent(name,seconds,effects,error),"completion test event runs");
+		return effects;
+	};
+	runtime.Frame(viewport,1);
+	Check(run("hide",1).stateChanges.empty(),"playing a fade completes nothing yet");
+	runtime.Frame(viewport,1.1);
+	Check(std::get<bool>(state("shown")) && runtime.TakeCompletionWrites().empty(),"no completion before the end");
+	runtime.Frame(viewport,1.31);
+	const auto writes = runtime.TakeCompletionWrites();
+	const auto display = runtime.PresentedValue("box","display");
+	Check(!std::get<bool>(state("shown")) && writes.size() == 2 && !std::get<bool>(writes.at("shown")) &&
+		std::get<double>(writes.at("phase")) == 1 && display && display->text == "none","the end of the fade runs its program and hides the box");
+	runtime.Frame(viewport,1.4);
+	Check(runtime.TakeCompletionWrites().empty() && std::get<double>(state("phase")) == 1,"a completion runs once");
+	run("show",2); run("hide",2); run("stop",2.1);
+	runtime.Frame(viewport,2.5);
+	Check(std::get<bool>(state("shown")) && std::get<double>(state("phase")) == 1,"cancellation never completes");
+	run("hide",3); run("hide",3.2);
+	runtime.Frame(viewport,3.35);
+	Check(std::get<bool>(state("shown")),"a replay restarts the run");
+	runtime.Frame(viewport,3.55);
+	Check(!std::get<bool>(state("shown")) && std::get<double>(state("phase")) == 2,"the replayed run completes");
+	run("show",4); run("hide",4); run("pause",4.1);
+	runtime.Frame(viewport,4.5);
+	Check(std::get<bool>(state("shown")),"a paused run does not complete");
+	run("resume",5);
+	runtime.Frame(viewport,5.25);
+	Check(!std::get<bool>(state("shown")) && std::get<double>(state("phase")) == 3,"a resumed run completes on its remaining time");
+	runtime.TakeCompletionWrites();
+	runtime.SetReducedMotion(true,6);
+	const auto moved = run("move",6);
+	Check(moved.stateChanges.contains("phase") && std::get<double>(moved.stateChanges.at("phase")) == 13 &&
+		runtime.TakeCompletionWrites().empty(),"reduced motion completes a spatial timeline inside its event, with the event's writes");
+	runtime.SetReducedMotion(false,6.1);
+	// A snapshot taken after a completion became due, before any frame ran it,
+	// carries its effect, and the restored instance never runs it again.
+	run("show",7); run("hide",7);
+	std::string snapshot, error;
+	Check(runtime.SaveSnapshot(snapshot,error,7.4),"snapshot after the fade ended, before a frame ran its completion");
+	Check(std::get<bool>(state("shown")) && std::get<double>(state("phase")) == 13,"saving does not run the completion on the live instance");
+	Runtime restored(host);
+	Check(restored.Initialize() && restored.LoadDocument(source,"completion.q4ui",diagnostics) && restored.RestoreSnapshot(snapshot,error,7.4),
+		"restore the snapshot");
+	restored.Frame(viewport,7.5); restored.Frame(viewport,7.8);
+	const auto after = restored.GetState(false);
+	Check(!std::get<bool>(after.at("shown")) && std::get<double>(after.at("phase")) == 14 && restored.TakeCompletionWrites().empty(),
+		"the snapshot carries the due completion and the restore never replays it");
+	Check(host.errors == 0,"completion programs log no errors");
+}
+
 int main(int argc, char** argv) {
 	CheckTypedActionDescriptors();
 	Viewport viewport;
@@ -993,5 +1077,6 @@ int main(int argc, char** argv) {
 	}
 	host.samplePoints.clear();
 	Check(host.errors==0,"no library warnings or errors");
-	std::puts("Retained UI: density, layout, input, clipping, motion, bindings, independent contexts, bounded backend reuse, transactional instance snapshots and restart passed");
+	CheckCompletionPrograms(host);
+	std::puts("Retained UI: density, layout, input, clipping, motion, bindings, independent contexts, bounded backend reuse, transactional instance snapshots, restart and completion programs passed");
 }

@@ -454,6 +454,8 @@ public:
     }
     StateValues GetState(bool=true) const { return state; }
     bool HasEvent(const std::string& name) const { eventQueries.push_back(name); return eventPlans.contains(PresentationAliasKey(name)); }
+    StateValues completionWrites; unsigned completionTakes=0;
+    StateValues TakeCompletionWrites() { ++completionTakes; StateValues result; result.swap(completionWrites); return result; }
     bool RunEvent(const std::string& name,double,EventEffects& effects,std::string& error,
                   const StateValues& application={},const ActionValidator& validate={},size_t maxActions=256) {
         const auto key=PresentationAliasKey(name);
@@ -915,6 +917,22 @@ static void Drain(idUserInterfaceRetained& gui,const std::vector<std::pair<std::
 }
 static bool Semantic(idUserInterfaceRetained& gui,const char* input,bool down) {
     return UI_RetainedDiagnostic(&gui,idCmdArgs{{"openq4_retainedGui","menu",input,down?"1":"0"}});
+}
+// Timeline completion programs run inside the runtime's frame. Redraw takes
+// their application writes and publishes them like event effects, leaving
+// unrelated dictionary keys alone.
+static void CheckCompletionWrites() {
+    assert(views.empty()); cvars=CVars{}; consoleObject.open=false; windowFocused=true;
+    eventPlans={}; eventHistory.clear();
+    idUserInterfaceRetained gui;
+    assert(gui.InitFromFile("test.q4ui")); gui.Activate(true,0);
+    gui.SetStateString("unrelated","unmodified");
+    Live().completionWrites={{"flag",true},{"text",std::string("finished")}};
+    const unsigned takes=Live().completionTakes;
+    gui.Redraw(0);
+    assert(Live().completionTakes>takes && Live().completionWrites.empty());
+    assert(gui.GetStateBool("flag") && std::string(gui.GetStateString("text"))=="finished" &&
+           std::string(gui.GetStateString("unrelated"))=="unmodified");
 }
 static void CheckEventBridge() {
     assert(views.empty()); cvars=CVars{}; consoleObject.open=false; windowFocused=true;
@@ -2341,6 +2359,7 @@ int main() {
     unsafe=modelTemplate; unsafe.state["NUMBER"]={1.0,""}; assert(!ValidateApplication(unsafe,error));
     unsafe=modelTemplate; unsafe.state["NaMe"]={1.0,""}; assert(!ValidateApplication(unsafe,error));
     CheckEventBridge();
+    CheckCompletionWrites();
     CheckEventEligibility();
     CheckNodeInspection();
     CheckSettingsBoundary();

@@ -798,6 +798,36 @@ struct Runtime::Impl {
 	bool initialized = false;
 	std::map<std::string,bool> inputAllowed;
 	std::string modalError;
+	StateValues completionWrites;
+	// Completion programs run in completion order at the time that completed
+	// them, each as its own transaction with no action budget, on the given
+	// candidate state and motion. A failed program is logged and skipped, as a
+	// frame has no caller to fail. The document's completion graph is acyclic;
+	// the round cap only bounds a pathological chain of replays.
+	// Returns whether any program committed.
+	bool RunCompletions(State& candidateState, Motion& candidateMotion, double now, StateValues& writes) const {
+		if (!canonical) { candidateMotion.TakeCompleted(); return false; }
+		const auto& model = canonical->Model();
+		bool committed = false;
+		for (unsigned round = 0; round < 64; ++round) {
+			const auto finished = candidateMotion.TakeCompleted();
+			if (finished.empty()) return committed;
+			for (const auto& id : finished) {
+				const auto timeline = std::find_if(model.timelines.begin(),model.timelines.end(),[&](const Timeline& item) { return item.id == id; });
+				if (timeline == model.timelines.end() || timeline->complete.empty()) continue;
+				EventResult candidate; std::string error;
+				if (!EvaluateEvent(model,candidateState,candidateMotion,timeline->complete,now,candidate,error,{},0) ||
+					!ValidModals(candidate.state,candidate.motion,error)) {
+					host.Log(true,"Completion program of timeline '"+id+"' failed: "+error); continue;
+				}
+				for (auto& [key,value] : candidate.stateChanges) writes[key] = std::move(value);
+				candidateState = std::move(candidate.state); candidateMotion = std::move(candidate.motion);
+				committed = true;
+			}
+		}
+		host.Log(true,"Timeline completion programs did not settle within 64 rounds");
+		return committed;
+	}
 	bool PrepareNumberEdit(double seconds, std::string& error) {
 		if (!canonical || !document || !std::isfinite(seconds) || seconds < 0) {
 			error = "Number editing requires a canonical document and valid presentation time"; return false;
@@ -1409,10 +1439,16 @@ bool Runtime::SaveSnapshot(std::string& snapshot, std::string& error, double sec
         }
 		Interaction interaction = impl->interaction;
 		Motion motion = impl->motion;
+		// A completion due by the snapshot's time belongs in it: run it on these
+		// copies, so a restore neither replays it nor loses it.
+		State snapshotState = impl->state;
+		motion.Advance(now);
+		StateValues completed;
+		impl->RunCompletions(snapshotState,motion,now,completed);
 		const bool authoredModals = interaction.HasAuthoredModals();
 		if (authoredModals) {
-			motion.Advance(now); std::vector<std::string> roots;
-			if (!impl->VisibleModals(impl->state,motion,roots,error) || !interaction.SyncAuthoredModals(roots,error)) return false;
+			std::vector<std::string> roots;
+			if (!impl->VisibleModals(snapshotState,motion,roots,error) || !interaction.SyncAuthoredModals(roots,error)) return false;
 		}
 		interaction.Cancel();
 		// A press/hover is transient. Preserve a continuous transition toward
@@ -1427,21 +1463,21 @@ bool Runtime::SaveSnapshot(std::string& snapshot, std::string& error, double sec
 		identity["version"] = 1; identity["id"] = impl->canonical->Model().id;
 		identity["path"] = impl->sourcePath; identity["source"] = impl->canonical->Source();
 		root["application"] = Json::Value(Json::objectValue);
-		for (const auto& [id,value] : GetState(false))
+		for (const auto& [id,value] : snapshotState.Variables()) if (snapshotState.Declarations().at(id).cvar.empty())
 			std::visit([&](const auto& primitive) { root["application"][id] = primitive; },value);
 		if (authoredModals) {
 			root["hostSources"] = Json::Value(Json::objectValue);
-			for (const auto& [id,declaration] : impl->state.Declarations()) if (!declaration.cvar.empty())
-				std::visit([&](const auto& primitive) { root["hostSources"][id] = primitive; },impl->state.Variables().at(id));
+			for (const auto& [id,declaration] : snapshotState.Declarations()) if (!declaration.cvar.empty())
+				std::visit([&](const auto& primitive) { root["hostSources"][id] = primitive; },snapshotState.Variables().at(id));
 		}
 		auto& aliasState = root["presentationState"];
 		aliasState["variables"] = Json::Value(Json::objectValue);
-		for (const auto& [id,cell] : impl->state.Presentation().variables) {
+		for (const auto& [id,cell] : snapshotState.Presentation().variables) {
 			auto& item = aliasState["variables"][id]; item["value"] = SnapshotPresentationValue(cell.value);
 			item["expressionDisabled"] = cell.expressionDisabled; item["pending"] = cell.pending;
 		}
 		aliasState["properties"] = Json::Value(Json::arrayValue);
-		for (const auto& [key,cell] : impl->state.Presentation().properties) {
+		for (const auto& [key,cell] : snapshotState.Presentation().properties) {
 			Json::Value item(Json::objectValue);
 			item["node"] = key.first; item["property"] = key.second; item["value"] = SnapshotValue(cell.value);
 			item["expressionDisabled"] = cell.expressionDisabled;
@@ -1472,7 +1508,7 @@ bool Runtime::SaveSnapshot(std::string& snapshot, std::string& error, double sec
 			semantics["modals"].append(std::move(item));
 		}
 		semantics["enabled"] = Json::Value(Json::objectValue);
-		for (const auto& [id,enabled] : input.enabled) if (!impl->state.Enabled().contains(id)) semantics["enabled"][id] = enabled;
+		for (const auto& [id,enabled] : input.enabled) if (!snapshotState.Enabled().contains(id)) semantics["enabled"][id] = enabled;
 		semantics["presented"] = Json::Value(Json::objectValue);
 		for (const auto& [id,state] : input.presented) semantics["presented"][id] = unsigned(state);
 		root["widgets"] = Json::Value(Json::objectValue);
@@ -1726,13 +1762,27 @@ bool Runtime::RunEvent(const std::string& name, double seconds, EventEffects& ef
 	State state = impl->state;
 	if (!state.SetCombined(application,sources,error)) return false;
 	const double now = std::max(impl->time,seconds);
+	// Timelines that ended by this event's time complete before its program,
+	// and any the program completes at once (reduced motion) after it. All of
+	// it commits with the event, and their writes are published with its own.
+	Motion motion = impl->motion; motion.Advance(now);
+	StateValues before, after;
+	impl->RunCompletions(state,motion,now,before);
 	EventResult candidate;
-	if (!EvaluateEvent(model,state,impl->motion,name,now,candidate,error,validate,maxActions)) return false;
+	if (!EvaluateEvent(model,state,motion,name,now,candidate,error,validate,maxActions)) return false;
+	impl->RunCompletions(candidate.state,candidate.motion,now,after);
 	if (!impl->ValidModals(candidate.state,candidate.motion,error)) return false;
-	EventEffects published{std::move(candidate.stateChanges),std::move(candidate.actions)};
+	EventEffects published{std::move(before),std::move(candidate.actions)};
+	for (auto& [key,value] : candidate.stateChanges) published.stateChanges[key] = std::move(value);
+	for (auto& [key,value] : after) published.stateChanges[key] = std::move(value);
 	impl->state = std::move(candidate.state); impl->motion = std::move(candidate.motion); impl->time = now;
 	impl->stateError.clear(); impl->ApplyControlBindings(); impl->UpdateInteraction(now);
 	effects = std::move(published); return true;
+}
+StateValues Runtime::TakeCompletionWrites() {
+	StateValues result;
+	result.swap(impl->completionWrites);
+	return result;
 }
 bool Runtime::ResolveAction(const std::string& id, ActionInvocation& invocation, std::string& error, const StateValue* input) const {
 	if (!impl->canonical) { error = "Action requires a canonical document"; return false; }
@@ -1769,6 +1819,7 @@ bool Runtime::Layout(const Viewport& viewport,double seconds) {
 	ContextClock clock(*impl->services,impl->time,impl->strictPreparation?&impl->preparationFailed:nullptr);
 	impl->ReadStateSources();
 	impl->motion.Advance(impl->time);
+	if (impl->RunCompletions(impl->state,impl->motion,impl->time,impl->completionWrites)) impl->ApplyControlBindings();
 	impl->ApplyMotion();
 	impl->context->SetDimensions({viewport.width, viewport.height});
 	impl->context->SetDensityIndependentPixelRatio(viewport.DpRatio());

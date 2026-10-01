@@ -248,6 +248,7 @@ public:
 		ReadAliases(root);
 		ReadActions(root);
 		ReadEvents(root);
+		ValidateCompletions(root);
 		ValidateControls(root["root"],model.root,"/root",false);
 		State initial; std::string stateError;
 		Require(initial.Reset(model,stateError),root["bindings"],"/bindings",stateError);
@@ -582,6 +583,62 @@ private:
 		}
 		for (const auto& name : events.getMemberNames())
 			model.events.at(PresentationAliasKey(name)).steps = ReadSteps(events[name],"/events/"+PointerPart(name),0);
+	}
+	// A completion program runs from the presentation frame, with no application
+	// caller to deliver host work to: it may change state, presentation and
+	// motion but never invoke an action. Completions also may not chain back to
+	// a timeline already on their path, so one frame always settles.
+	void ValidateCompletions(const Json::Value& root) {
+		std::set<std::string> settled;
+		for (size_t i = 0; i < model.timelines.size(); ++i) {
+			const auto& timeline = model.timelines[i];
+			if (timeline.complete.empty()) continue;
+			const auto& at = root["timelines"][static_cast<Json::ArrayIndex>(i)]["complete"];
+			const auto path = "/timelines/"+std::to_string(i)+"/complete";
+			Require(model.events.contains(timeline.complete),at,path,"Unknown completion event");
+			std::set<std::string> visited;
+			Require(!InvokesAction(timeline.complete,visited),at,path,"A completion program cannot invoke actions");
+			std::vector<std::string> chain{timeline.id};
+			Require(!CompletionCycle(timeline,chain,settled),at,path,"Completion programs lead back to a timeline already completing");
+		}
+	}
+	bool InvokesAction(const std::string& event, std::set<std::string>& visited) const {
+		if (!visited.insert(event).second) return false;
+		const std::function<bool(const std::vector<EventStep>&)> scan = [&](const std::vector<EventStep>& steps) {
+			for (const auto& step : steps) {
+				if (step.op == EventOp::Action) return true;
+				if (step.op == EventOp::Call && InvokesAction(step.target,visited)) return true;
+				if (step.op == EventOp::If && (scan(step.thenSteps) || scan(step.elseSteps))) return true;
+			}
+			return false;
+		};
+		return scan(model.events.at(event).steps);
+	}
+	// Every timeline a program can play, through calls and both branches.
+	void PlayedTimelines(const std::string& event, std::set<std::string>& visited, std::set<std::string>& played) const {
+		if (!visited.insert(event).second) return;
+		const std::function<void(const std::vector<EventStep>&)> scan = [&](const std::vector<EventStep>& steps) {
+			for (const auto& step : steps) {
+				if (step.op == EventOp::PlayTimeline) played.insert(step.target);
+				if (step.op == EventOp::Call) PlayedTimelines(step.target,visited,played);
+				if (step.op == EventOp::If) { scan(step.thenSteps); scan(step.elseSteps); }
+			}
+		};
+		scan(model.events.at(event).steps);
+	}
+	bool CompletionCycle(const Timeline& timeline, std::vector<std::string>& chain, std::set<std::string>& settled) const {
+		if (timeline.complete.empty() || settled.contains(timeline.id)) return false;
+		std::set<std::string> visited, played;
+		PlayedTimelines(timeline.complete,visited,played);
+		for (const auto& id : played) {
+			if (std::find(chain.begin(),chain.end(),id) != chain.end()) return true;
+			const auto next = std::find_if(model.timelines.begin(),model.timelines.end(),[&](const Timeline& item) { return item.id == id; });
+			chain.push_back(id);
+			if (next != model.timelines.end() && CompletionCycle(*next,chain,settled)) return true;
+			chain.pop_back();
+		}
+		settled.insert(timeline.id);
+		return false;
 	}
 	// Application strings are checked when a binding evaluates; literals here.
 	bool ImageSourceResult(const Expression& expression) const {
@@ -1315,13 +1372,18 @@ private:
 			ValidateControls(sourceNode["children"][static_cast<Json::ArrayIndex>(i)],node.children[i],path+"/children/"+std::to_string(i),ancestorControl || node.control.has_value());
 	}
 	Timeline ReadTimeline(const Json::Value& value, const std::string& path) {
-		Fields(value,path,{"id","durationMs","iterations","essential","tracks","extensions"});
+		Fields(value,path,{"id","durationMs","iterations","essential","complete","tracks","extensions"});
 		Timeline timeline;
 		timeline.id = Id(value["id"],path+"/id");
 		timeline.durationMs = Numeric(value["durationMs"],path+"/durationMs",0.001,86400000);
 		if (value.isMember("iterations")) {
 			Require(value["iterations"].isUInt() && value["iterations"].asUInt() <= 1000000,value["iterations"],path+"/iterations","Expected an integer iteration count 0..1000000 (0 repeats until cancelled)");
 			timeline.iterations = value["iterations"].asUInt();
+		}
+		// Events are read after timelines; ValidateCompletions resolves the name.
+		if (value.isMember("complete")) {
+			Require(timeline.iterations != 0,value["complete"],path+"/complete","A timeline that repeats until cancelled never completes");
+			timeline.complete = EventName(value["complete"],path+"/complete");
 		}
 		if (value.isMember("essential")) {
 			Require(value["essential"].isBool(),value["essential"],path+"/essential","Expected a boolean");

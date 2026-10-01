@@ -12,7 +12,9 @@
   "pause_objectives": {"type": "string", "initial": ""},
   "pause_shot": {"type": "string", "initial": ""},
   "quitModal.visible": {"type": "boolean", "initial": false},
+  "quitModal.contents": {"type": "boolean", "initial": false},
   "exitModal.visible": {"type": "boolean", "initial": false},
+  "exitModal.contents": {"type": "boolean", "initial": false},
   "carry_item": {"type": "number", "initial": 0}
  },
  "actions": {
@@ -25,10 +27,26 @@
   "quit": {"operation": "session.menu", "arguments": {"command": "quit"}}
  },
  "events": {
-  "quitModalShow": [{"op": "setState", "values": {"quitModal.visible": true}}],
-  "quitModalHide": [{"op": "setState", "values": {"quitModal.visible": false}}],
-  "exitModalShow": [{"op": "setState", "values": {"exitModal.visible": true}}],
-  "exitModalHide": [{"op": "setState", "values": {"exitModal.visible": false}}],
+  "quitModalShow": [
+   {"op": "setState", "values": {"quitModal.visible": true, "quitModal.contents": false}},
+   {"op": "playTimeline", "timeline": "quitModalEnter"}
+  ],
+  "quitModalShown": [{"op": "setState", "values": {"quitModal.contents": true}}],
+  "quitModalHide": [
+   {"op": "setState", "values": {"quitModal.contents": false}},
+   {"op": "playTimeline", "timeline": "quitModalLeave"}
+  ],
+  "quitModalHidden": [{"op": "setState", "values": {"quitModal.visible": false}}],
+  "exitModalShow": [
+   {"op": "setState", "values": {"exitModal.visible": true, "exitModal.contents": false}},
+   {"op": "playTimeline", "timeline": "exitModalEnter"}
+  ],
+  "exitModalShown": [{"op": "setState", "values": {"exitModal.contents": true}}],
+  "exitModalHide": [
+   {"op": "setState", "values": {"exitModal.contents": false}},
+   {"op": "playTimeline", "timeline": "exitModalLeave"}
+  ],
+  "exitModalHidden": [{"op": "setState", "values": {"exitModal.visible": false}}],
   "onBack": [{"op": "action", "action": "resume"}],
   "carry_saveGame": [{"op": "setState", "values": {"carry_item": 1}}, {"op": "playTimeline", "timeline": "carry-saveGame"}],
   "carry_loadGame": [{"op": "setState", "values": {"carry_item": 2}}, {"op": "playTimeline", "timeline": "carry-loadGame"}],
@@ -43,10 +61,22 @@
    "value": {"op": "select", "args": [{"state": "quitModal.visible"}, "block", "none"]}
   },
   {
+   "id": "quitModal.contents",
+   "node": "quitModal-contents",
+   "property": "display",
+   "value": {"op": "select", "args": [{"state": "quitModal.contents"}, "block", "none"]}
+  },
+  {
    "id": "exitModal.display",
    "node": "exitModal",
    "property": "display",
    "value": {"op": "select", "args": [{"state": "exitModal.visible"}, "block", "none"]}
+  },
+  {
+   "id": "exitModal.contents",
+   "node": "exitModal-contents",
+   "property": "display",
+   "value": {"op": "select", "args": [{"state": "exitModal.contents"}, "block", "none"]}
   },
   {"id": "level-shot.image", "node": "level-shot", "property": "image", "value": {"state": "pause_shot"}},
   {"id": "level-name.text", "node": "level-name", "property": "text", "value": {"state": "pause_level"}},
@@ -646,6 +676,65 @@
    ]
   },
   {
+   "id": "quitModalEnter",
+   "durationMs": 200,
+   "tracks": [
+    {
+     "node": "quitModal",
+     "property": "background-color",
+     "keys": [
+      {"atMs": 0, "value": {"type": "color", "value": [0, 0, 0, 0]}},
+      {"atMs": 200, "value": {"type": "color", "value": [0, 0, 0, 0.94]}}
+     ]
+    },
+    {
+     "node": "quitModal-glow",
+     "property": "opacity",
+     "keys": [{"atMs": 0, "value": {"type": "number", "value": 0}}, {"atMs": 200, "value": {"type": "number", "value": 1}}]
+    },
+    {
+     "node": "quitModal-frame",
+     "property": "opacity",
+     "keys": [{"atMs": 0, "value": {"type": "number", "value": 0}}, {"atMs": 200, "value": {"type": "number", "value": 1}}]
+    }
+   ],
+   "complete": "quitModalShown"
+  },
+  {
+   "id": "quitModalLeave",
+   "durationMs": 300,
+   "tracks": [
+    {
+     "node": "quitModal",
+     "property": "background-color",
+     "keys": [
+      {"atMs": 0, "value": {"type": "color", "value": [0, 0, 0, 0.94]}},
+      {"atMs": 50, "value": {"type": "color", "value": [0, 0, 0, 0.94]}},
+      {"atMs": 300, "value": {"type": "color", "value": [0, 0, 0, 0]}}
+     ]
+    },
+    {
+     "node": "quitModal-glow",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 1}},
+      {"atMs": 50, "value": {"type": "number", "value": 1}},
+      {"atMs": 300, "value": {"type": "number", "value": 0}}
+     ]
+    },
+    {
+     "node": "quitModal-frame",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 1}},
+      {"atMs": 50, "value": {"type": "number", "value": 1}},
+      {"atMs": 300, "value": {"type": "number", "value": 0}}
+     ]
+    }
+   ],
+   "complete": "quitModalHidden"
+  },
+  {
    "id": "exitModal_yes.default",
    "durationMs": 300,
    "tracks": [
@@ -1204,6 +1293,66 @@
      ]
     }
    ]
+  },
+  {
+   "id": "exitModalEnter",
+   "durationMs": 200,
+   "tracks": [
+    {
+     "node": "exitModal",
+     "property": "background-color",
+     "keys": [
+      {"atMs": 0, "value": {"type": "color", "value": [0, 0, 0, 0]}},
+      {"atMs": 200, "value": {"type": "color", "value": [0, 0, 0, 0.94]}}
+     ]
+    },
+    {
+     "node": "exitModal-glow",
+     "property": "opacity",
+     "keys": [{"atMs": 0, "value": {"type": "number", "value": 0}}, {"atMs": 200, "value": {"type": "number", "value": 1}}]
+    },
+    {
+     "node": "exitModal-frame",
+     "property": "opacity",
+     "keys": [{"atMs": 0, "value": {"type": "number", "value": 0}}, {"atMs": 200, "value": {"type": "number", "value": 1}}]
+    }
+   ],
+   "complete": "exitModalShown"
+  },
+  {
+   "id": "exitModalLeave",
+   "durationMs": 300,
+   "tracks": [
+    {
+     "node": "exitModal",
+     "property": "background-color",
+     "keys": [
+      {"atMs": 0, "value": {"type": "color", "value": [0, 0, 0, 0.94]}},
+      {"atMs": 50, "value": {"type": "color", "value": [0, 0, 0, 0.94]}},
+      {"atMs": 300, "value": {"type": "color", "value": [0, 0, 0, 0]}}
+     ]
+    },
+    {
+     "node": "exitModal-glow",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 1}},
+      {"atMs": 50, "value": {"type": "number", "value": 1}},
+      {"atMs": 300, "value": {"type": "number", "value": 0}}
+     ]
+    },
+    {
+     "node": "exitModal-frame",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 1}},
+      {"atMs": 50, "value": {"type": "number", "value": 1}},
+      {"atMs": 250, "value": {"type": "number", "value": 0}},
+      {"atMs": 300, "value": {"type": "number", "value": 0}}
+     ]
+    }
+   ],
+   "complete": "exitModalHidden"
   },
   {
    "id": "nav_resume.default",
@@ -8272,7 +8421,7 @@
      "width": {"type": "length", "value": 100, "unit": "%"},
      "height": {"type": "length", "value": 100, "unit": "%"},
      "display": {"type": "keyword", "value": "none"},
-     "background-color": {"type": "color", "value": [0, 0, 0, 0.94]}
+     "background-color": {"type": "color", "value": [0, 0, 0, 0]}
     },
     "children": [
      {
@@ -8306,7 +8455,8 @@
            "left": {"type": "length", "value": 0, "unit": "dp"},
            "top": {"type": "length", "value": -130.5, "unit": "dp"},
            "width": {"type": "length", "value": 480.0, "unit": "dp"},
-           "height": {"type": "length", "value": 496.5, "unit": "dp"}
+           "height": {"type": "length", "value": 496.5, "unit": "dp"},
+           "opacity": {"type": "number", "value": 0}
           },
           "paths": [
            {
@@ -8343,7 +8493,8 @@
            "left": {"type": "length", "value": 0, "unit": "dp"},
            "top": {"type": "length", "value": 0, "unit": "dp"},
            "width": {"type": "length", "value": 480.0, "unit": "dp"},
-           "height": {"type": "length", "value": 204.0, "unit": "dp"}
+           "height": {"type": "length", "value": 204.0, "unit": "dp"},
+           "opacity": {"type": "number", "value": 0}
           },
           "paths": [
            {
@@ -8365,559 +8516,573 @@
           ]
          },
          {
-          "id": "quitModal-title-outline",
+          "id": "quitModal-contents",
           "type": "group",
           "properties": {
            "position": {"type": "keyword", "value": "absolute"},
-           "left": {"type": "length", "value": 27.125, "unit": "dp"},
-           "top": {"type": "length", "value": -7.0, "unit": "dp"},
-           "width": {"type": "length", "value": 322.625, "unit": "dp"},
-           "height": {"type": "length", "value": 30.0, "unit": "dp"},
-           "opacity": {"type": "number", "value": 0.85},
-           "pointer-events": {"type": "keyword", "value": "none"}
+           "left": {"type": "length", "value": 0, "unit": "dp"},
+           "top": {"type": "length", "value": 0, "unit": "dp"},
+           "width": {"type": "length", "value": 100, "unit": "%"},
+           "height": {"type": "length", "value": 100, "unit": "%"},
+           "display": {"type": "keyword", "value": "none"}
           },
           "children": [
            {
-            "id": "quitModal-title-outline-1",
+            "id": "quitModal-title-outline",
+            "type": "group",
+            "properties": {
+             "position": {"type": "keyword", "value": "absolute"},
+             "left": {"type": "length", "value": 27.125, "unit": "dp"},
+             "top": {"type": "length", "value": -7.0, "unit": "dp"},
+             "width": {"type": "length", "value": 322.625, "unit": "dp"},
+             "height": {"type": "length", "value": 30.0, "unit": "dp"},
+             "opacity": {"type": "number", "value": 0.85},
+             "pointer-events": {"type": "keyword", "value": "none"}
+            },
+            "children": [
+             {
+              "id": "quitModal-title-outline-1",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200004"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 2.0, "unit": "dp"},
+               "top": {"type": "length", "value": 3.0, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "quitModal-title-outline-2",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200004"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 4.0, "unit": "dp"},
+               "top": {"type": "length", "value": 3.0, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "quitModal-title-outline-3",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200004"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 3.0, "unit": "dp"},
+               "top": {"type": "length", "value": 2.0, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "quitModal-title-outline-4",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200004"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 3.0, "unit": "dp"},
+               "top": {"type": "length", "value": 4.0, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "quitModal-title-outline-5",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200004"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 2.293, "unit": "dp"},
+               "top": {"type": "length", "value": 2.293, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "quitModal-title-outline-6",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200004"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 3.707, "unit": "dp"},
+               "top": {"type": "length", "value": 2.293, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "quitModal-title-outline-7",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200004"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 2.293, "unit": "dp"},
+               "top": {"type": "length", "value": 3.707, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "quitModal-title-outline-8",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200004"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 3.707, "unit": "dp"},
+               "top": {"type": "length", "value": 3.707, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             }
+            ]
+           },
+           {
+            "id": "quitModal-title",
             "type": "text",
             "properties": {
              "text": {"type": "text", "value": "#str_200004"},
              "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 2.0, "unit": "dp"},
-             "top": {"type": "length", "value": 3.0, "unit": "dp"},
+             "left": {"type": "length", "value": 30.125, "unit": "dp"},
+             "top": {"type": "length", "value": -4, "unit": "dp"},
              "width": {"type": "length", "value": 316.625, "unit": "dp"},
              "height": {"type": "length", "value": 24, "unit": "dp"},
              "font-family": {"type": "font", "value": "marine"},
              "font-size": {"type": "length", "value": 20, "unit": "dp"},
              "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
+             "color": {"type": "color", "value": [1, 1, 1, 0.9]},
              "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
              "white-space": {"type": "keyword", "value": "nowrap"}
             }
            },
            {
-            "id": "quitModal-title-outline-2",
+            "id": "quitModal-body",
             "type": "text",
             "properties": {
-             "text": {"type": "text", "value": "#str_200004"},
+             "text": {"type": "text", "value": "#str_200174"},
              "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 4.0, "unit": "dp"},
-             "top": {"type": "length", "value": 3.0, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
+             "left": {"type": "length", "value": 33, "unit": "dp"},
+             "top": {"type": "length", "value": 71, "unit": "dp"},
+             "width": {"type": "length", "value": 414.0, "unit": "dp"},
+             "height": {"type": "length", "value": 73, "unit": "dp"},
+             "font-family": {"type": "font", "value": "lowpixel"},
+             "font-size": {"type": "length", "value": 17, "unit": "dp"},
+             "line-height": {"type": "length", "value": 22, "unit": "dp"},
+             "color": {"type": "color", "value": [1, 1, 1, 0.8]}
             }
            },
            {
-            "id": "quitModal-title-outline-3",
-            "type": "text",
+            "id": "quitModal_yes",
+            "type": "group",
             "properties": {
-             "text": {"type": "text", "value": "#str_200004"},
              "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 3.0, "unit": "dp"},
-             "top": {"type": "length", "value": 2.0, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
+             "left": {"type": "length", "value": 30, "unit": "dp"},
+             "top": {"type": "length", "value": 144.0, "unit": "dp"},
+             "width": {"type": "length", "value": 180, "unit": "dp"},
+             "height": {"type": "length", "value": 45, "unit": "dp"}
+            },
+            "children": [
+             {
+              "id": "quitModal_yes-plate",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 0, "unit": "dp"},
+               "top": {"type": "length", "value": 0, "unit": "dp"},
+               "width": {"type": "length", "value": 180, "unit": "dp"},
+               "height": {"type": "length", "value": 45, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0.4}
+              },
+              "paths": [
+               {
+                "id": "fill",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0, 5.0]]},
+                 {"id": "p1", "op": "line", "points": [[180, 5.0]]},
+                 {"id": "p2", "op": "line", "points": [[180, 40.0]]},
+                 {"id": "p3", "op": "line", "points": [[20.0, 40.0]]},
+                 {"id": "p4", "op": "line", "points": [[0, 20.0]]},
+                 {"id": "close", "op": "close"}
+                ],
+                "fill": {
+                 "type": "linear",
+                 "from": [0, 0],
+                 "to": [180, 0],
+                 "stops": [
+                  {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
+                  {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
+                  {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
+                 ]
+                }
+               },
+               {
+                "id": "rail",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0.75, 5.0]]},
+                 {"id": "p1", "op": "line", "points": [[0.75, 20.0]]},
+                 {"id": "p2", "op": "line", "points": [[20.0, 39.25]]},
+                 {"id": "p3", "op": "line", "points": [[180, 39.25]]}
+                ],
+                "stroke": {
+                 "paint": {
+                  "type": "linear",
+                  "from": [0, 0],
+                  "to": [180, 0],
+                  "stops": [
+                   {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
+                   {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
+                   {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
+                  ]
+                 },
+                 "widthDp": 1.5,
+                 "minimumPixels": 1,
+                 "join": "miter",
+                 "cap": "butt"
+                }
+               }
+              ]
+             },
+             {
+              "id": "quitModal_yes-focus",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 0, "unit": "dp"},
+               "top": {"type": "length", "value": 0, "unit": "dp"},
+               "width": {"type": "length", "value": 180, "unit": "dp"},
+               "height": {"type": "length", "value": 45, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0}
+              },
+              "paths": [
+               {
+                "id": "inset",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[3.5, 8.0]]},
+                 {"id": "p1", "op": "line", "points": [[3.5, 21.5]]},
+                 {"id": "p2", "op": "line", "points": [[21.5, 36.5]]},
+                 {"id": "p3", "op": "line", "points": [[160, 36.5]]}
+                ],
+                "stroke": {
+                 "paint": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
+                 "widthDp": 1.2,
+                 "minimumPixels": 1,
+                 "join": "miter",
+                 "cap": "butt"
+                }
+               }
+              ]
+             },
+             {
+              "id": "quitModal_yes-marker",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 14, "unit": "dp"},
+               "top": {"type": "length", "value": 14, "unit": "dp"},
+               "width": {"type": "length", "value": 8, "unit": "dp"},
+               "height": {"type": "length", "value": 8, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0.4}
+              },
+              "paths": [
+               {
+                "id": "mark",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0, 0]]},
+                 {"id": "p1", "op": "line", "points": [[8, 0]]},
+                 {"id": "p2", "op": "line", "points": [[8, 8]]},
+                 {"id": "close", "op": "close"}
+                ],
+                "fill": {"type": "solid", "color": {"type": "color", "value": [0.5647, 0.6039, 0.2863, 1.0]}}
+               }
+              ]
+             },
+             {
+              "id": "quitModal_yes-marker-hot",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 14, "unit": "dp"},
+               "top": {"type": "length", "value": 14, "unit": "dp"},
+               "width": {"type": "length", "value": 8, "unit": "dp"},
+               "height": {"type": "length", "value": 8, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0}
+              },
+              "paths": [
+               {
+                "id": "mark",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0, 0]]},
+                 {"id": "p1", "op": "line", "points": [[8, 0]]},
+                 {"id": "p2", "op": "line", "points": [[8, 8]]},
+                 {"id": "close", "op": "close"}
+                ],
+                "fill": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
+               }
+              ]
+             },
+             {
+              "id": "quitModal_yes-label",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200157"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 26, "unit": "dp"},
+               "top": {"type": "length", "value": 0, "unit": "dp"},
+               "width": {"type": "length", "value": 150, "unit": "dp"},
+               "height": {"type": "length", "value": 45, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 45, "unit": "dp"},
+               "color": {"type": "color", "value": [1, 1, 1, 0.8]},
+               "white-space": {"type": "keyword", "value": "nowrap"},
+               "transform": {"type": "transform", "unit": "dp", "value": [0, 0, 1, 1, 0]}
+              }
+             }
+            ],
+            "control": {
+             "role": "button",
+             "label": "#str_200157",
+             "states": {
+              "default": "quitModal_yes.default",
+              "hover": "quitModal_yes.hover",
+              "focus": "quitModal_yes.focus",
+              "pressed": "quitModal_yes.pressed",
+              "disabled": "quitModal_yes.disabled"
+             },
+             "action": "quitToMenu"
             }
            },
            {
-            "id": "quitModal-title-outline-4",
-            "type": "text",
+            "id": "quitModal_no",
+            "type": "group",
             "properties": {
-             "text": {"type": "text", "value": "#str_200004"},
              "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 3.0, "unit": "dp"},
-             "top": {"type": "length", "value": 4.0, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
-            }
-           },
-           {
-            "id": "quitModal-title-outline-5",
-            "type": "text",
-            "properties": {
-             "text": {"type": "text", "value": "#str_200004"},
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 2.293, "unit": "dp"},
-             "top": {"type": "length", "value": 2.293, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
-            }
-           },
-           {
-            "id": "quitModal-title-outline-6",
-            "type": "text",
-            "properties": {
-             "text": {"type": "text", "value": "#str_200004"},
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 3.707, "unit": "dp"},
-             "top": {"type": "length", "value": 2.293, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
-            }
-           },
-           {
-            "id": "quitModal-title-outline-7",
-            "type": "text",
-            "properties": {
-             "text": {"type": "text", "value": "#str_200004"},
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 2.293, "unit": "dp"},
-             "top": {"type": "length", "value": 3.707, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
-            }
-           },
-           {
-            "id": "quitModal-title-outline-8",
-            "type": "text",
-            "properties": {
-             "text": {"type": "text", "value": "#str_200004"},
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 3.707, "unit": "dp"},
-             "top": {"type": "length", "value": 3.707, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
+             "left": {"type": "length", "value": 267.0, "unit": "dp"},
+             "top": {"type": "length", "value": 144.0, "unit": "dp"},
+             "width": {"type": "length", "value": 180, "unit": "dp"},
+             "height": {"type": "length", "value": 45, "unit": "dp"}
+            },
+            "children": [
+             {
+              "id": "quitModal_no-plate",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 0, "unit": "dp"},
+               "top": {"type": "length", "value": 0, "unit": "dp"},
+               "width": {"type": "length", "value": 180, "unit": "dp"},
+               "height": {"type": "length", "value": 45, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0.4}
+              },
+              "paths": [
+               {
+                "id": "fill",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0, 5.0]]},
+                 {"id": "p1", "op": "line", "points": [[180, 5.0]]},
+                 {"id": "p2", "op": "line", "points": [[180, 40.0]]},
+                 {"id": "p3", "op": "line", "points": [[20.0, 40.0]]},
+                 {"id": "p4", "op": "line", "points": [[0, 20.0]]},
+                 {"id": "close", "op": "close"}
+                ],
+                "fill": {
+                 "type": "linear",
+                 "from": [0, 0],
+                 "to": [180, 0],
+                 "stops": [
+                  {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
+                  {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
+                  {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
+                 ]
+                }
+               },
+               {
+                "id": "rail",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0.75, 5.0]]},
+                 {"id": "p1", "op": "line", "points": [[0.75, 20.0]]},
+                 {"id": "p2", "op": "line", "points": [[20.0, 39.25]]},
+                 {"id": "p3", "op": "line", "points": [[180, 39.25]]}
+                ],
+                "stroke": {
+                 "paint": {
+                  "type": "linear",
+                  "from": [0, 0],
+                  "to": [180, 0],
+                  "stops": [
+                   {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
+                   {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
+                   {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
+                  ]
+                 },
+                 "widthDp": 1.5,
+                 "minimumPixels": 1,
+                 "join": "miter",
+                 "cap": "butt"
+                }
+               }
+              ]
+             },
+             {
+              "id": "quitModal_no-focus",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 0, "unit": "dp"},
+               "top": {"type": "length", "value": 0, "unit": "dp"},
+               "width": {"type": "length", "value": 180, "unit": "dp"},
+               "height": {"type": "length", "value": 45, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0}
+              },
+              "paths": [
+               {
+                "id": "inset",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[3.5, 8.0]]},
+                 {"id": "p1", "op": "line", "points": [[3.5, 21.5]]},
+                 {"id": "p2", "op": "line", "points": [[21.5, 36.5]]},
+                 {"id": "p3", "op": "line", "points": [[160, 36.5]]}
+                ],
+                "stroke": {
+                 "paint": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
+                 "widthDp": 1.2,
+                 "minimumPixels": 1,
+                 "join": "miter",
+                 "cap": "butt"
+                }
+               }
+              ]
+             },
+             {
+              "id": "quitModal_no-marker",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 14, "unit": "dp"},
+               "top": {"type": "length", "value": 14, "unit": "dp"},
+               "width": {"type": "length", "value": 8, "unit": "dp"},
+               "height": {"type": "length", "value": 8, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0.4}
+              },
+              "paths": [
+               {
+                "id": "mark",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0, 0]]},
+                 {"id": "p1", "op": "line", "points": [[8, 0]]},
+                 {"id": "p2", "op": "line", "points": [[8, 8]]},
+                 {"id": "close", "op": "close"}
+                ],
+                "fill": {"type": "solid", "color": {"type": "color", "value": [0.5647, 0.6039, 0.2863, 1.0]}}
+               }
+              ]
+             },
+             {
+              "id": "quitModal_no-marker-hot",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 14, "unit": "dp"},
+               "top": {"type": "length", "value": 14, "unit": "dp"},
+               "width": {"type": "length", "value": 8, "unit": "dp"},
+               "height": {"type": "length", "value": 8, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0}
+              },
+              "paths": [
+               {
+                "id": "mark",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0, 0]]},
+                 {"id": "p1", "op": "line", "points": [[8, 0]]},
+                 {"id": "p2", "op": "line", "points": [[8, 8]]},
+                 {"id": "close", "op": "close"}
+                ],
+                "fill": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
+               }
+              ]
+             },
+             {
+              "id": "quitModal_no-label",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200158"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 26, "unit": "dp"},
+               "top": {"type": "length", "value": 0, "unit": "dp"},
+               "width": {"type": "length", "value": 150, "unit": "dp"},
+               "height": {"type": "length", "value": 45, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 45, "unit": "dp"},
+               "color": {"type": "color", "value": [1, 1, 1, 0.8]},
+               "white-space": {"type": "keyword", "value": "nowrap"},
+               "transform": {"type": "transform", "unit": "dp", "value": [0, 0, 1, 1, 0]}
+              }
+             }
+            ],
+            "control": {
+             "role": "button",
+             "label": "#str_200158",
+             "states": {
+              "default": "quitModal_no.default",
+              "hover": "quitModal_no.hover",
+              "focus": "quitModal_no.focus",
+              "pressed": "quitModal_no.pressed",
+              "disabled": "quitModal_no.disabled"
+             },
+             "event": "quitModalHide"
             }
            }
           ]
-         },
-         {
-          "id": "quitModal-title",
-          "type": "text",
-          "properties": {
-           "text": {"type": "text", "value": "#str_200004"},
-           "position": {"type": "keyword", "value": "absolute"},
-           "left": {"type": "length", "value": 30.125, "unit": "dp"},
-           "top": {"type": "length", "value": -4, "unit": "dp"},
-           "width": {"type": "length", "value": 316.625, "unit": "dp"},
-           "height": {"type": "length", "value": 24, "unit": "dp"},
-           "font-family": {"type": "font", "value": "marine"},
-           "font-size": {"type": "length", "value": 20, "unit": "dp"},
-           "line-height": {"type": "length", "value": 24, "unit": "dp"},
-           "color": {"type": "color", "value": [1, 1, 1, 0.9]},
-           "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-           "white-space": {"type": "keyword", "value": "nowrap"}
-          }
-         },
-         {
-          "id": "quitModal-body",
-          "type": "text",
-          "properties": {
-           "text": {"type": "text", "value": "#str_200174"},
-           "position": {"type": "keyword", "value": "absolute"},
-           "left": {"type": "length", "value": 33, "unit": "dp"},
-           "top": {"type": "length", "value": 71, "unit": "dp"},
-           "width": {"type": "length", "value": 414.0, "unit": "dp"},
-           "height": {"type": "length", "value": 73, "unit": "dp"},
-           "font-family": {"type": "font", "value": "lowpixel"},
-           "font-size": {"type": "length", "value": 17, "unit": "dp"},
-           "line-height": {"type": "length", "value": 22, "unit": "dp"},
-           "color": {"type": "color", "value": [1, 1, 1, 0.8]}
-          }
-         },
-         {
-          "id": "quitModal_yes",
-          "type": "group",
-          "properties": {
-           "position": {"type": "keyword", "value": "absolute"},
-           "left": {"type": "length", "value": 30, "unit": "dp"},
-           "top": {"type": "length", "value": 144.0, "unit": "dp"},
-           "width": {"type": "length", "value": 180, "unit": "dp"},
-           "height": {"type": "length", "value": 45, "unit": "dp"}
-          },
-          "children": [
-           {
-            "id": "quitModal_yes-plate",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 0, "unit": "dp"},
-             "top": {"type": "length", "value": 0, "unit": "dp"},
-             "width": {"type": "length", "value": 180, "unit": "dp"},
-             "height": {"type": "length", "value": 45, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0.4}
-            },
-            "paths": [
-             {
-              "id": "fill",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0, 5.0]]},
-               {"id": "p1", "op": "line", "points": [[180, 5.0]]},
-               {"id": "p2", "op": "line", "points": [[180, 40.0]]},
-               {"id": "p3", "op": "line", "points": [[20.0, 40.0]]},
-               {"id": "p4", "op": "line", "points": [[0, 20.0]]},
-               {"id": "close", "op": "close"}
-              ],
-              "fill": {
-               "type": "linear",
-               "from": [0, 0],
-               "to": [180, 0],
-               "stops": [
-                {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
-                {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
-                {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
-               ]
-              }
-             },
-             {
-              "id": "rail",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0.75, 5.0]]},
-               {"id": "p1", "op": "line", "points": [[0.75, 20.0]]},
-               {"id": "p2", "op": "line", "points": [[20.0, 39.25]]},
-               {"id": "p3", "op": "line", "points": [[180, 39.25]]}
-              ],
-              "stroke": {
-               "paint": {
-                "type": "linear",
-                "from": [0, 0],
-                "to": [180, 0],
-                "stops": [
-                 {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
-                 {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
-                 {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
-                ]
-               },
-               "widthDp": 1.5,
-               "minimumPixels": 1,
-               "join": "miter",
-               "cap": "butt"
-              }
-             }
-            ]
-           },
-           {
-            "id": "quitModal_yes-focus",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 0, "unit": "dp"},
-             "top": {"type": "length", "value": 0, "unit": "dp"},
-             "width": {"type": "length", "value": 180, "unit": "dp"},
-             "height": {"type": "length", "value": 45, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0}
-            },
-            "paths": [
-             {
-              "id": "inset",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[3.5, 8.0]]},
-               {"id": "p1", "op": "line", "points": [[3.5, 21.5]]},
-               {"id": "p2", "op": "line", "points": [[21.5, 36.5]]},
-               {"id": "p3", "op": "line", "points": [[160, 36.5]]}
-              ],
-              "stroke": {
-               "paint": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
-               "widthDp": 1.2,
-               "minimumPixels": 1,
-               "join": "miter",
-               "cap": "butt"
-              }
-             }
-            ]
-           },
-           {
-            "id": "quitModal_yes-marker",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 14, "unit": "dp"},
-             "top": {"type": "length", "value": 14, "unit": "dp"},
-             "width": {"type": "length", "value": 8, "unit": "dp"},
-             "height": {"type": "length", "value": 8, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0.4}
-            },
-            "paths": [
-             {
-              "id": "mark",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0, 0]]},
-               {"id": "p1", "op": "line", "points": [[8, 0]]},
-               {"id": "p2", "op": "line", "points": [[8, 8]]},
-               {"id": "close", "op": "close"}
-              ],
-              "fill": {"type": "solid", "color": {"type": "color", "value": [0.5647, 0.6039, 0.2863, 1.0]}}
-             }
-            ]
-           },
-           {
-            "id": "quitModal_yes-marker-hot",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 14, "unit": "dp"},
-             "top": {"type": "length", "value": 14, "unit": "dp"},
-             "width": {"type": "length", "value": 8, "unit": "dp"},
-             "height": {"type": "length", "value": 8, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0}
-            },
-            "paths": [
-             {
-              "id": "mark",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0, 0]]},
-               {"id": "p1", "op": "line", "points": [[8, 0]]},
-               {"id": "p2", "op": "line", "points": [[8, 8]]},
-               {"id": "close", "op": "close"}
-              ],
-              "fill": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
-             }
-            ]
-           },
-           {
-            "id": "quitModal_yes-label",
-            "type": "text",
-            "properties": {
-             "text": {"type": "text", "value": "#str_200157"},
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 26, "unit": "dp"},
-             "top": {"type": "length", "value": 0, "unit": "dp"},
-             "width": {"type": "length", "value": 150, "unit": "dp"},
-             "height": {"type": "length", "value": 45, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 45, "unit": "dp"},
-             "color": {"type": "color", "value": [1, 1, 1, 0.8]},
-             "white-space": {"type": "keyword", "value": "nowrap"},
-             "transform": {"type": "transform", "unit": "dp", "value": [0, 0, 1, 1, 0]}
-            }
-           }
-          ],
-          "control": {
-           "role": "button",
-           "label": "#str_200157",
-           "states": {
-            "default": "quitModal_yes.default",
-            "hover": "quitModal_yes.hover",
-            "focus": "quitModal_yes.focus",
-            "pressed": "quitModal_yes.pressed",
-            "disabled": "quitModal_yes.disabled"
-           },
-           "action": "quitToMenu"
-          }
-         },
-         {
-          "id": "quitModal_no",
-          "type": "group",
-          "properties": {
-           "position": {"type": "keyword", "value": "absolute"},
-           "left": {"type": "length", "value": 267.0, "unit": "dp"},
-           "top": {"type": "length", "value": 144.0, "unit": "dp"},
-           "width": {"type": "length", "value": 180, "unit": "dp"},
-           "height": {"type": "length", "value": 45, "unit": "dp"}
-          },
-          "children": [
-           {
-            "id": "quitModal_no-plate",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 0, "unit": "dp"},
-             "top": {"type": "length", "value": 0, "unit": "dp"},
-             "width": {"type": "length", "value": 180, "unit": "dp"},
-             "height": {"type": "length", "value": 45, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0.4}
-            },
-            "paths": [
-             {
-              "id": "fill",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0, 5.0]]},
-               {"id": "p1", "op": "line", "points": [[180, 5.0]]},
-               {"id": "p2", "op": "line", "points": [[180, 40.0]]},
-               {"id": "p3", "op": "line", "points": [[20.0, 40.0]]},
-               {"id": "p4", "op": "line", "points": [[0, 20.0]]},
-               {"id": "close", "op": "close"}
-              ],
-              "fill": {
-               "type": "linear",
-               "from": [0, 0],
-               "to": [180, 0],
-               "stops": [
-                {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
-                {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
-                {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
-               ]
-              }
-             },
-             {
-              "id": "rail",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0.75, 5.0]]},
-               {"id": "p1", "op": "line", "points": [[0.75, 20.0]]},
-               {"id": "p2", "op": "line", "points": [[20.0, 39.25]]},
-               {"id": "p3", "op": "line", "points": [[180, 39.25]]}
-              ],
-              "stroke": {
-               "paint": {
-                "type": "linear",
-                "from": [0, 0],
-                "to": [180, 0],
-                "stops": [
-                 {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
-                 {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
-                 {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
-                ]
-               },
-               "widthDp": 1.5,
-               "minimumPixels": 1,
-               "join": "miter",
-               "cap": "butt"
-              }
-             }
-            ]
-           },
-           {
-            "id": "quitModal_no-focus",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 0, "unit": "dp"},
-             "top": {"type": "length", "value": 0, "unit": "dp"},
-             "width": {"type": "length", "value": 180, "unit": "dp"},
-             "height": {"type": "length", "value": 45, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0}
-            },
-            "paths": [
-             {
-              "id": "inset",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[3.5, 8.0]]},
-               {"id": "p1", "op": "line", "points": [[3.5, 21.5]]},
-               {"id": "p2", "op": "line", "points": [[21.5, 36.5]]},
-               {"id": "p3", "op": "line", "points": [[160, 36.5]]}
-              ],
-              "stroke": {
-               "paint": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
-               "widthDp": 1.2,
-               "minimumPixels": 1,
-               "join": "miter",
-               "cap": "butt"
-              }
-             }
-            ]
-           },
-           {
-            "id": "quitModal_no-marker",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 14, "unit": "dp"},
-             "top": {"type": "length", "value": 14, "unit": "dp"},
-             "width": {"type": "length", "value": 8, "unit": "dp"},
-             "height": {"type": "length", "value": 8, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0.4}
-            },
-            "paths": [
-             {
-              "id": "mark",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0, 0]]},
-               {"id": "p1", "op": "line", "points": [[8, 0]]},
-               {"id": "p2", "op": "line", "points": [[8, 8]]},
-               {"id": "close", "op": "close"}
-              ],
-              "fill": {"type": "solid", "color": {"type": "color", "value": [0.5647, 0.6039, 0.2863, 1.0]}}
-             }
-            ]
-           },
-           {
-            "id": "quitModal_no-marker-hot",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 14, "unit": "dp"},
-             "top": {"type": "length", "value": 14, "unit": "dp"},
-             "width": {"type": "length", "value": 8, "unit": "dp"},
-             "height": {"type": "length", "value": 8, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0}
-            },
-            "paths": [
-             {
-              "id": "mark",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0, 0]]},
-               {"id": "p1", "op": "line", "points": [[8, 0]]},
-               {"id": "p2", "op": "line", "points": [[8, 8]]},
-               {"id": "close", "op": "close"}
-              ],
-              "fill": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
-             }
-            ]
-           },
-           {
-            "id": "quitModal_no-label",
-            "type": "text",
-            "properties": {
-             "text": {"type": "text", "value": "#str_200158"},
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 26, "unit": "dp"},
-             "top": {"type": "length", "value": 0, "unit": "dp"},
-             "width": {"type": "length", "value": 150, "unit": "dp"},
-             "height": {"type": "length", "value": 45, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 45, "unit": "dp"},
-             "color": {"type": "color", "value": [1, 1, 1, 0.8]},
-             "white-space": {"type": "keyword", "value": "nowrap"},
-             "transform": {"type": "transform", "unit": "dp", "value": [0, 0, 1, 1, 0]}
-            }
-           }
-          ],
-          "control": {
-           "role": "button",
-           "label": "#str_200158",
-           "states": {
-            "default": "quitModal_no.default",
-            "hover": "quitModal_no.hover",
-            "focus": "quitModal_no.focus",
-            "pressed": "quitModal_no.pressed",
-            "disabled": "quitModal_no.disabled"
-           },
-           "event": "quitModalHide"
-          }
          }
         ]
        }
@@ -8936,7 +9101,7 @@
      "width": {"type": "length", "value": 100, "unit": "%"},
      "height": {"type": "length", "value": 100, "unit": "%"},
      "display": {"type": "keyword", "value": "none"},
-     "background-color": {"type": "color", "value": [0, 0, 0, 0.94]}
+     "background-color": {"type": "color", "value": [0, 0, 0, 0]}
     },
     "children": [
      {
@@ -8970,7 +9135,8 @@
            "left": {"type": "length", "value": 0, "unit": "dp"},
            "top": {"type": "length", "value": -130.5, "unit": "dp"},
            "width": {"type": "length", "value": 480.0, "unit": "dp"},
-           "height": {"type": "length", "value": 496.5, "unit": "dp"}
+           "height": {"type": "length", "value": 496.5, "unit": "dp"},
+           "opacity": {"type": "number", "value": 0}
           },
           "paths": [
            {
@@ -9007,7 +9173,8 @@
            "left": {"type": "length", "value": 0, "unit": "dp"},
            "top": {"type": "length", "value": 0, "unit": "dp"},
            "width": {"type": "length", "value": 480.0, "unit": "dp"},
-           "height": {"type": "length", "value": 204.0, "unit": "dp"}
+           "height": {"type": "length", "value": 204.0, "unit": "dp"},
+           "opacity": {"type": "number", "value": 0}
           },
           "paths": [
            {
@@ -9029,559 +9196,573 @@
           ]
          },
          {
-          "id": "exitModal-title-outline",
+          "id": "exitModal-contents",
           "type": "group",
           "properties": {
            "position": {"type": "keyword", "value": "absolute"},
-           "left": {"type": "length", "value": 27.125, "unit": "dp"},
-           "top": {"type": "length", "value": -7.0, "unit": "dp"},
-           "width": {"type": "length", "value": 322.625, "unit": "dp"},
-           "height": {"type": "length", "value": 30.0, "unit": "dp"},
-           "opacity": {"type": "number", "value": 0.85},
-           "pointer-events": {"type": "keyword", "value": "none"}
+           "left": {"type": "length", "value": 0, "unit": "dp"},
+           "top": {"type": "length", "value": 0, "unit": "dp"},
+           "width": {"type": "length", "value": 100, "unit": "%"},
+           "height": {"type": "length", "value": 100, "unit": "%"},
+           "display": {"type": "keyword", "value": "none"}
           },
           "children": [
            {
-            "id": "exitModal-title-outline-1",
+            "id": "exitModal-title-outline",
+            "type": "group",
+            "properties": {
+             "position": {"type": "keyword", "value": "absolute"},
+             "left": {"type": "length", "value": 27.125, "unit": "dp"},
+             "top": {"type": "length", "value": -7.0, "unit": "dp"},
+             "width": {"type": "length", "value": 322.625, "unit": "dp"},
+             "height": {"type": "length", "value": 30.0, "unit": "dp"},
+             "opacity": {"type": "number", "value": 0.85},
+             "pointer-events": {"type": "keyword", "value": "none"}
+            },
+            "children": [
+             {
+              "id": "exitModal-title-outline-1",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200169"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 2.0, "unit": "dp"},
+               "top": {"type": "length", "value": 3.0, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "exitModal-title-outline-2",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200169"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 4.0, "unit": "dp"},
+               "top": {"type": "length", "value": 3.0, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "exitModal-title-outline-3",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200169"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 3.0, "unit": "dp"},
+               "top": {"type": "length", "value": 2.0, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "exitModal-title-outline-4",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200169"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 3.0, "unit": "dp"},
+               "top": {"type": "length", "value": 4.0, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "exitModal-title-outline-5",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200169"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 2.293, "unit": "dp"},
+               "top": {"type": "length", "value": 2.293, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "exitModal-title-outline-6",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200169"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 3.707, "unit": "dp"},
+               "top": {"type": "length", "value": 2.293, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "exitModal-title-outline-7",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200169"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 2.293, "unit": "dp"},
+               "top": {"type": "length", "value": 3.707, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             },
+             {
+              "id": "exitModal-title-outline-8",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200169"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 3.707, "unit": "dp"},
+               "top": {"type": "length", "value": 3.707, "unit": "dp"},
+               "width": {"type": "length", "value": 316.625, "unit": "dp"},
+               "height": {"type": "length", "value": 24, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 24, "unit": "dp"},
+               "color": {"type": "color", "value": [0, 0, 0, 1]},
+               "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
+               "white-space": {"type": "keyword", "value": "nowrap"}
+              }
+             }
+            ]
+           },
+           {
+            "id": "exitModal-title",
             "type": "text",
             "properties": {
              "text": {"type": "text", "value": "#str_200169"},
              "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 2.0, "unit": "dp"},
-             "top": {"type": "length", "value": 3.0, "unit": "dp"},
+             "left": {"type": "length", "value": 30.125, "unit": "dp"},
+             "top": {"type": "length", "value": -4, "unit": "dp"},
              "width": {"type": "length", "value": 316.625, "unit": "dp"},
              "height": {"type": "length", "value": 24, "unit": "dp"},
              "font-family": {"type": "font", "value": "marine"},
              "font-size": {"type": "length", "value": 20, "unit": "dp"},
              "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
+             "color": {"type": "color", "value": [1, 1, 1, 0.9]},
              "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
              "white-space": {"type": "keyword", "value": "nowrap"}
             }
            },
            {
-            "id": "exitModal-title-outline-2",
+            "id": "exitModal-body",
             "type": "text",
             "properties": {
-             "text": {"type": "text", "value": "#str_200169"},
+             "text": {"type": "text", "value": "#str_200170"},
              "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 4.0, "unit": "dp"},
-             "top": {"type": "length", "value": 3.0, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
+             "left": {"type": "length", "value": 33, "unit": "dp"},
+             "top": {"type": "length", "value": 71, "unit": "dp"},
+             "width": {"type": "length", "value": 414.0, "unit": "dp"},
+             "height": {"type": "length", "value": 73, "unit": "dp"},
+             "font-family": {"type": "font", "value": "lowpixel"},
+             "font-size": {"type": "length", "value": 17, "unit": "dp"},
+             "line-height": {"type": "length", "value": 22, "unit": "dp"},
+             "color": {"type": "color", "value": [1, 1, 1, 0.8]}
             }
            },
            {
-            "id": "exitModal-title-outline-3",
-            "type": "text",
+            "id": "exitModal_yes",
+            "type": "group",
             "properties": {
-             "text": {"type": "text", "value": "#str_200169"},
              "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 3.0, "unit": "dp"},
-             "top": {"type": "length", "value": 2.0, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
+             "left": {"type": "length", "value": 30, "unit": "dp"},
+             "top": {"type": "length", "value": 144.0, "unit": "dp"},
+             "width": {"type": "length", "value": 180, "unit": "dp"},
+             "height": {"type": "length", "value": 45, "unit": "dp"}
+            },
+            "children": [
+             {
+              "id": "exitModal_yes-plate",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 0, "unit": "dp"},
+               "top": {"type": "length", "value": 0, "unit": "dp"},
+               "width": {"type": "length", "value": 180, "unit": "dp"},
+               "height": {"type": "length", "value": 45, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0.4}
+              },
+              "paths": [
+               {
+                "id": "fill",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0, 5.0]]},
+                 {"id": "p1", "op": "line", "points": [[180, 5.0]]},
+                 {"id": "p2", "op": "line", "points": [[180, 40.0]]},
+                 {"id": "p3", "op": "line", "points": [[20.0, 40.0]]},
+                 {"id": "p4", "op": "line", "points": [[0, 20.0]]},
+                 {"id": "close", "op": "close"}
+                ],
+                "fill": {
+                 "type": "linear",
+                 "from": [0, 0],
+                 "to": [180, 0],
+                 "stops": [
+                  {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
+                  {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
+                  {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
+                 ]
+                }
+               },
+               {
+                "id": "rail",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0.75, 5.0]]},
+                 {"id": "p1", "op": "line", "points": [[0.75, 20.0]]},
+                 {"id": "p2", "op": "line", "points": [[20.0, 39.25]]},
+                 {"id": "p3", "op": "line", "points": [[180, 39.25]]}
+                ],
+                "stroke": {
+                 "paint": {
+                  "type": "linear",
+                  "from": [0, 0],
+                  "to": [180, 0],
+                  "stops": [
+                   {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
+                   {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
+                   {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
+                  ]
+                 },
+                 "widthDp": 1.5,
+                 "minimumPixels": 1,
+                 "join": "miter",
+                 "cap": "butt"
+                }
+               }
+              ]
+             },
+             {
+              "id": "exitModal_yes-focus",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 0, "unit": "dp"},
+               "top": {"type": "length", "value": 0, "unit": "dp"},
+               "width": {"type": "length", "value": 180, "unit": "dp"},
+               "height": {"type": "length", "value": 45, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0}
+              },
+              "paths": [
+               {
+                "id": "inset",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[3.5, 8.0]]},
+                 {"id": "p1", "op": "line", "points": [[3.5, 21.5]]},
+                 {"id": "p2", "op": "line", "points": [[21.5, 36.5]]},
+                 {"id": "p3", "op": "line", "points": [[160, 36.5]]}
+                ],
+                "stroke": {
+                 "paint": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
+                 "widthDp": 1.2,
+                 "minimumPixels": 1,
+                 "join": "miter",
+                 "cap": "butt"
+                }
+               }
+              ]
+             },
+             {
+              "id": "exitModal_yes-marker",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 14, "unit": "dp"},
+               "top": {"type": "length", "value": 14, "unit": "dp"},
+               "width": {"type": "length", "value": 8, "unit": "dp"},
+               "height": {"type": "length", "value": 8, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0.4}
+              },
+              "paths": [
+               {
+                "id": "mark",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0, 0]]},
+                 {"id": "p1", "op": "line", "points": [[8, 0]]},
+                 {"id": "p2", "op": "line", "points": [[8, 8]]},
+                 {"id": "close", "op": "close"}
+                ],
+                "fill": {"type": "solid", "color": {"type": "color", "value": [0.5647, 0.6039, 0.2863, 1.0]}}
+               }
+              ]
+             },
+             {
+              "id": "exitModal_yes-marker-hot",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 14, "unit": "dp"},
+               "top": {"type": "length", "value": 14, "unit": "dp"},
+               "width": {"type": "length", "value": 8, "unit": "dp"},
+               "height": {"type": "length", "value": 8, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0}
+              },
+              "paths": [
+               {
+                "id": "mark",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0, 0]]},
+                 {"id": "p1", "op": "line", "points": [[8, 0]]},
+                 {"id": "p2", "op": "line", "points": [[8, 8]]},
+                 {"id": "close", "op": "close"}
+                ],
+                "fill": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
+               }
+              ]
+             },
+             {
+              "id": "exitModal_yes-label",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200157"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 26, "unit": "dp"},
+               "top": {"type": "length", "value": 0, "unit": "dp"},
+               "width": {"type": "length", "value": 150, "unit": "dp"},
+               "height": {"type": "length", "value": 45, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 45, "unit": "dp"},
+               "color": {"type": "color", "value": [1, 1, 1, 0.8]},
+               "white-space": {"type": "keyword", "value": "nowrap"},
+               "transform": {"type": "transform", "unit": "dp", "value": [0, 0, 1, 1, 0]}
+              }
+             }
+            ],
+            "control": {
+             "role": "button",
+             "label": "#str_200157",
+             "states": {
+              "default": "exitModal_yes.default",
+              "hover": "exitModal_yes.hover",
+              "focus": "exitModal_yes.focus",
+              "pressed": "exitModal_yes.pressed",
+              "disabled": "exitModal_yes.disabled"
+             },
+             "action": "quit"
             }
            },
            {
-            "id": "exitModal-title-outline-4",
-            "type": "text",
+            "id": "exitModal_no",
+            "type": "group",
             "properties": {
-             "text": {"type": "text", "value": "#str_200169"},
              "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 3.0, "unit": "dp"},
-             "top": {"type": "length", "value": 4.0, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
-            }
-           },
-           {
-            "id": "exitModal-title-outline-5",
-            "type": "text",
-            "properties": {
-             "text": {"type": "text", "value": "#str_200169"},
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 2.293, "unit": "dp"},
-             "top": {"type": "length", "value": 2.293, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
-            }
-           },
-           {
-            "id": "exitModal-title-outline-6",
-            "type": "text",
-            "properties": {
-             "text": {"type": "text", "value": "#str_200169"},
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 3.707, "unit": "dp"},
-             "top": {"type": "length", "value": 2.293, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
-            }
-           },
-           {
-            "id": "exitModal-title-outline-7",
-            "type": "text",
-            "properties": {
-             "text": {"type": "text", "value": "#str_200169"},
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 2.293, "unit": "dp"},
-             "top": {"type": "length", "value": 3.707, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
-            }
-           },
-           {
-            "id": "exitModal-title-outline-8",
-            "type": "text",
-            "properties": {
-             "text": {"type": "text", "value": "#str_200169"},
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 3.707, "unit": "dp"},
-             "top": {"type": "length", "value": 3.707, "unit": "dp"},
-             "width": {"type": "length", "value": 316.625, "unit": "dp"},
-             "height": {"type": "length", "value": 24, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 24, "unit": "dp"},
-             "color": {"type": "color", "value": [0, 0, 0, 1]},
-             "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-             "white-space": {"type": "keyword", "value": "nowrap"}
+             "left": {"type": "length", "value": 267.0, "unit": "dp"},
+             "top": {"type": "length", "value": 144.0, "unit": "dp"},
+             "width": {"type": "length", "value": 180, "unit": "dp"},
+             "height": {"type": "length", "value": 45, "unit": "dp"}
+            },
+            "children": [
+             {
+              "id": "exitModal_no-plate",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 0, "unit": "dp"},
+               "top": {"type": "length", "value": 0, "unit": "dp"},
+               "width": {"type": "length", "value": 180, "unit": "dp"},
+               "height": {"type": "length", "value": 45, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0.4}
+              },
+              "paths": [
+               {
+                "id": "fill",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0, 5.0]]},
+                 {"id": "p1", "op": "line", "points": [[180, 5.0]]},
+                 {"id": "p2", "op": "line", "points": [[180, 40.0]]},
+                 {"id": "p3", "op": "line", "points": [[20.0, 40.0]]},
+                 {"id": "p4", "op": "line", "points": [[0, 20.0]]},
+                 {"id": "close", "op": "close"}
+                ],
+                "fill": {
+                 "type": "linear",
+                 "from": [0, 0],
+                 "to": [180, 0],
+                 "stops": [
+                  {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
+                  {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
+                  {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
+                 ]
+                }
+               },
+               {
+                "id": "rail",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0.75, 5.0]]},
+                 {"id": "p1", "op": "line", "points": [[0.75, 20.0]]},
+                 {"id": "p2", "op": "line", "points": [[20.0, 39.25]]},
+                 {"id": "p3", "op": "line", "points": [[180, 39.25]]}
+                ],
+                "stroke": {
+                 "paint": {
+                  "type": "linear",
+                  "from": [0, 0],
+                  "to": [180, 0],
+                  "stops": [
+                   {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
+                   {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
+                   {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
+                  ]
+                 },
+                 "widthDp": 1.5,
+                 "minimumPixels": 1,
+                 "join": "miter",
+                 "cap": "butt"
+                }
+               }
+              ]
+             },
+             {
+              "id": "exitModal_no-focus",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 0, "unit": "dp"},
+               "top": {"type": "length", "value": 0, "unit": "dp"},
+               "width": {"type": "length", "value": 180, "unit": "dp"},
+               "height": {"type": "length", "value": 45, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0}
+              },
+              "paths": [
+               {
+                "id": "inset",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[3.5, 8.0]]},
+                 {"id": "p1", "op": "line", "points": [[3.5, 21.5]]},
+                 {"id": "p2", "op": "line", "points": [[21.5, 36.5]]},
+                 {"id": "p3", "op": "line", "points": [[160, 36.5]]}
+                ],
+                "stroke": {
+                 "paint": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
+                 "widthDp": 1.2,
+                 "minimumPixels": 1,
+                 "join": "miter",
+                 "cap": "butt"
+                }
+               }
+              ]
+             },
+             {
+              "id": "exitModal_no-marker",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 14, "unit": "dp"},
+               "top": {"type": "length", "value": 14, "unit": "dp"},
+               "width": {"type": "length", "value": 8, "unit": "dp"},
+               "height": {"type": "length", "value": 8, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0.4}
+              },
+              "paths": [
+               {
+                "id": "mark",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0, 0]]},
+                 {"id": "p1", "op": "line", "points": [[8, 0]]},
+                 {"id": "p2", "op": "line", "points": [[8, 8]]},
+                 {"id": "close", "op": "close"}
+                ],
+                "fill": {"type": "solid", "color": {"type": "color", "value": [0.5647, 0.6039, 0.2863, 1.0]}}
+               }
+              ]
+             },
+             {
+              "id": "exitModal_no-marker-hot",
+              "type": "vector",
+              "properties": {
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 14, "unit": "dp"},
+               "top": {"type": "length", "value": 14, "unit": "dp"},
+               "width": {"type": "length", "value": 8, "unit": "dp"},
+               "height": {"type": "length", "value": 8, "unit": "dp"},
+               "opacity": {"type": "number", "value": 0}
+              },
+              "paths": [
+               {
+                "id": "mark",
+                "commands": [
+                 {"id": "p0", "op": "move", "points": [[0, 0]]},
+                 {"id": "p1", "op": "line", "points": [[8, 0]]},
+                 {"id": "p2", "op": "line", "points": [[8, 8]]},
+                 {"id": "close", "op": "close"}
+                ],
+                "fill": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
+               }
+              ]
+             },
+             {
+              "id": "exitModal_no-label",
+              "type": "text",
+              "properties": {
+               "text": {"type": "text", "value": "#str_200158"},
+               "position": {"type": "keyword", "value": "absolute"},
+               "left": {"type": "length", "value": 26, "unit": "dp"},
+               "top": {"type": "length", "value": 0, "unit": "dp"},
+               "width": {"type": "length", "value": 150, "unit": "dp"},
+               "height": {"type": "length", "value": 45, "unit": "dp"},
+               "font-family": {"type": "font", "value": "marine"},
+               "font-size": {"type": "length", "value": 20, "unit": "dp"},
+               "line-height": {"type": "length", "value": 45, "unit": "dp"},
+               "color": {"type": "color", "value": [1, 1, 1, 0.8]},
+               "white-space": {"type": "keyword", "value": "nowrap"},
+               "transform": {"type": "transform", "unit": "dp", "value": [0, 0, 1, 1, 0]}
+              }
+             }
+            ],
+            "control": {
+             "role": "button",
+             "label": "#str_200158",
+             "states": {
+              "default": "exitModal_no.default",
+              "hover": "exitModal_no.hover",
+              "focus": "exitModal_no.focus",
+              "pressed": "exitModal_no.pressed",
+              "disabled": "exitModal_no.disabled"
+             },
+             "event": "exitModalHide"
             }
            }
           ]
-         },
-         {
-          "id": "exitModal-title",
-          "type": "text",
-          "properties": {
-           "text": {"type": "text", "value": "#str_200169"},
-           "position": {"type": "keyword", "value": "absolute"},
-           "left": {"type": "length", "value": 30.125, "unit": "dp"},
-           "top": {"type": "length", "value": -4, "unit": "dp"},
-           "width": {"type": "length", "value": 316.625, "unit": "dp"},
-           "height": {"type": "length", "value": 24, "unit": "dp"},
-           "font-family": {"type": "font", "value": "marine"},
-           "font-size": {"type": "length", "value": 20, "unit": "dp"},
-           "line-height": {"type": "length", "value": 24, "unit": "dp"},
-           "color": {"type": "color", "value": [1, 1, 1, 0.9]},
-           "letter-spacing": {"type": "length", "value": -0.075, "unit": "em"},
-           "white-space": {"type": "keyword", "value": "nowrap"}
-          }
-         },
-         {
-          "id": "exitModal-body",
-          "type": "text",
-          "properties": {
-           "text": {"type": "text", "value": "#str_200170"},
-           "position": {"type": "keyword", "value": "absolute"},
-           "left": {"type": "length", "value": 33, "unit": "dp"},
-           "top": {"type": "length", "value": 71, "unit": "dp"},
-           "width": {"type": "length", "value": 414.0, "unit": "dp"},
-           "height": {"type": "length", "value": 73, "unit": "dp"},
-           "font-family": {"type": "font", "value": "lowpixel"},
-           "font-size": {"type": "length", "value": 17, "unit": "dp"},
-           "line-height": {"type": "length", "value": 22, "unit": "dp"},
-           "color": {"type": "color", "value": [1, 1, 1, 0.8]}
-          }
-         },
-         {
-          "id": "exitModal_yes",
-          "type": "group",
-          "properties": {
-           "position": {"type": "keyword", "value": "absolute"},
-           "left": {"type": "length", "value": 30, "unit": "dp"},
-           "top": {"type": "length", "value": 144.0, "unit": "dp"},
-           "width": {"type": "length", "value": 180, "unit": "dp"},
-           "height": {"type": "length", "value": 45, "unit": "dp"}
-          },
-          "children": [
-           {
-            "id": "exitModal_yes-plate",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 0, "unit": "dp"},
-             "top": {"type": "length", "value": 0, "unit": "dp"},
-             "width": {"type": "length", "value": 180, "unit": "dp"},
-             "height": {"type": "length", "value": 45, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0.4}
-            },
-            "paths": [
-             {
-              "id": "fill",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0, 5.0]]},
-               {"id": "p1", "op": "line", "points": [[180, 5.0]]},
-               {"id": "p2", "op": "line", "points": [[180, 40.0]]},
-               {"id": "p3", "op": "line", "points": [[20.0, 40.0]]},
-               {"id": "p4", "op": "line", "points": [[0, 20.0]]},
-               {"id": "close", "op": "close"}
-              ],
-              "fill": {
-               "type": "linear",
-               "from": [0, 0],
-               "to": [180, 0],
-               "stops": [
-                {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
-                {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
-                {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
-               ]
-              }
-             },
-             {
-              "id": "rail",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0.75, 5.0]]},
-               {"id": "p1", "op": "line", "points": [[0.75, 20.0]]},
-               {"id": "p2", "op": "line", "points": [[20.0, 39.25]]},
-               {"id": "p3", "op": "line", "points": [[180, 39.25]]}
-              ],
-              "stroke": {
-               "paint": {
-                "type": "linear",
-                "from": [0, 0],
-                "to": [180, 0],
-                "stops": [
-                 {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
-                 {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
-                 {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
-                ]
-               },
-               "widthDp": 1.5,
-               "minimumPixels": 1,
-               "join": "miter",
-               "cap": "butt"
-              }
-             }
-            ]
-           },
-           {
-            "id": "exitModal_yes-focus",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 0, "unit": "dp"},
-             "top": {"type": "length", "value": 0, "unit": "dp"},
-             "width": {"type": "length", "value": 180, "unit": "dp"},
-             "height": {"type": "length", "value": 45, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0}
-            },
-            "paths": [
-             {
-              "id": "inset",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[3.5, 8.0]]},
-               {"id": "p1", "op": "line", "points": [[3.5, 21.5]]},
-               {"id": "p2", "op": "line", "points": [[21.5, 36.5]]},
-               {"id": "p3", "op": "line", "points": [[160, 36.5]]}
-              ],
-              "stroke": {
-               "paint": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
-               "widthDp": 1.2,
-               "minimumPixels": 1,
-               "join": "miter",
-               "cap": "butt"
-              }
-             }
-            ]
-           },
-           {
-            "id": "exitModal_yes-marker",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 14, "unit": "dp"},
-             "top": {"type": "length", "value": 14, "unit": "dp"},
-             "width": {"type": "length", "value": 8, "unit": "dp"},
-             "height": {"type": "length", "value": 8, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0.4}
-            },
-            "paths": [
-             {
-              "id": "mark",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0, 0]]},
-               {"id": "p1", "op": "line", "points": [[8, 0]]},
-               {"id": "p2", "op": "line", "points": [[8, 8]]},
-               {"id": "close", "op": "close"}
-              ],
-              "fill": {"type": "solid", "color": {"type": "color", "value": [0.5647, 0.6039, 0.2863, 1.0]}}
-             }
-            ]
-           },
-           {
-            "id": "exitModal_yes-marker-hot",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 14, "unit": "dp"},
-             "top": {"type": "length", "value": 14, "unit": "dp"},
-             "width": {"type": "length", "value": 8, "unit": "dp"},
-             "height": {"type": "length", "value": 8, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0}
-            },
-            "paths": [
-             {
-              "id": "mark",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0, 0]]},
-               {"id": "p1", "op": "line", "points": [[8, 0]]},
-               {"id": "p2", "op": "line", "points": [[8, 8]]},
-               {"id": "close", "op": "close"}
-              ],
-              "fill": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
-             }
-            ]
-           },
-           {
-            "id": "exitModal_yes-label",
-            "type": "text",
-            "properties": {
-             "text": {"type": "text", "value": "#str_200157"},
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 26, "unit": "dp"},
-             "top": {"type": "length", "value": 0, "unit": "dp"},
-             "width": {"type": "length", "value": 150, "unit": "dp"},
-             "height": {"type": "length", "value": 45, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 45, "unit": "dp"},
-             "color": {"type": "color", "value": [1, 1, 1, 0.8]},
-             "white-space": {"type": "keyword", "value": "nowrap"},
-             "transform": {"type": "transform", "unit": "dp", "value": [0, 0, 1, 1, 0]}
-            }
-           }
-          ],
-          "control": {
-           "role": "button",
-           "label": "#str_200157",
-           "states": {
-            "default": "exitModal_yes.default",
-            "hover": "exitModal_yes.hover",
-            "focus": "exitModal_yes.focus",
-            "pressed": "exitModal_yes.pressed",
-            "disabled": "exitModal_yes.disabled"
-           },
-           "action": "quit"
-          }
-         },
-         {
-          "id": "exitModal_no",
-          "type": "group",
-          "properties": {
-           "position": {"type": "keyword", "value": "absolute"},
-           "left": {"type": "length", "value": 267.0, "unit": "dp"},
-           "top": {"type": "length", "value": 144.0, "unit": "dp"},
-           "width": {"type": "length", "value": 180, "unit": "dp"},
-           "height": {"type": "length", "value": 45, "unit": "dp"}
-          },
-          "children": [
-           {
-            "id": "exitModal_no-plate",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 0, "unit": "dp"},
-             "top": {"type": "length", "value": 0, "unit": "dp"},
-             "width": {"type": "length", "value": 180, "unit": "dp"},
-             "height": {"type": "length", "value": 45, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0.4}
-            },
-            "paths": [
-             {
-              "id": "fill",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0, 5.0]]},
-               {"id": "p1", "op": "line", "points": [[180, 5.0]]},
-               {"id": "p2", "op": "line", "points": [[180, 40.0]]},
-               {"id": "p3", "op": "line", "points": [[20.0, 40.0]]},
-               {"id": "p4", "op": "line", "points": [[0, 20.0]]},
-               {"id": "close", "op": "close"}
-              ],
-              "fill": {
-               "type": "linear",
-               "from": [0, 0],
-               "to": [180, 0],
-               "stops": [
-                {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
-                {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0.49]}},
-                {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
-               ]
-              }
-             },
-             {
-              "id": "rail",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0.75, 5.0]]},
-               {"id": "p1", "op": "line", "points": [[0.75, 20.0]]},
-               {"id": "p2", "op": "line", "points": [[20.0, 39.25]]},
-               {"id": "p3", "op": "line", "points": [[180, 39.25]]}
-              ],
-              "stroke": {
-               "paint": {
-                "type": "linear",
-                "from": [0, 0],
-                "to": [180, 0],
-                "stops": [
-                 {"at": 0, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
-                 {"at": 0.33, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]}},
-                 {"at": 1, "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 0]}}
-                ]
-               },
-               "widthDp": 1.5,
-               "minimumPixels": 1,
-               "join": "miter",
-               "cap": "butt"
-              }
-             }
-            ]
-           },
-           {
-            "id": "exitModal_no-focus",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 0, "unit": "dp"},
-             "top": {"type": "length", "value": 0, "unit": "dp"},
-             "width": {"type": "length", "value": 180, "unit": "dp"},
-             "height": {"type": "length", "value": 45, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0}
-            },
-            "paths": [
-             {
-              "id": "inset",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[3.5, 8.0]]},
-               {"id": "p1", "op": "line", "points": [[3.5, 21.5]]},
-               {"id": "p2", "op": "line", "points": [[21.5, 36.5]]},
-               {"id": "p3", "op": "line", "points": [[160, 36.5]]}
-              ],
-              "stroke": {
-               "paint": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}},
-               "widthDp": 1.2,
-               "minimumPixels": 1,
-               "join": "miter",
-               "cap": "butt"
-              }
-             }
-            ]
-           },
-           {
-            "id": "exitModal_no-marker",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 14, "unit": "dp"},
-             "top": {"type": "length", "value": 14, "unit": "dp"},
-             "width": {"type": "length", "value": 8, "unit": "dp"},
-             "height": {"type": "length", "value": 8, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0.4}
-            },
-            "paths": [
-             {
-              "id": "mark",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0, 0]]},
-               {"id": "p1", "op": "line", "points": [[8, 0]]},
-               {"id": "p2", "op": "line", "points": [[8, 8]]},
-               {"id": "close", "op": "close"}
-              ],
-              "fill": {"type": "solid", "color": {"type": "color", "value": [0.5647, 0.6039, 0.2863, 1.0]}}
-             }
-            ]
-           },
-           {
-            "id": "exitModal_no-marker-hot",
-            "type": "vector",
-            "properties": {
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 14, "unit": "dp"},
-             "top": {"type": "length", "value": 14, "unit": "dp"},
-             "width": {"type": "length", "value": 8, "unit": "dp"},
-             "height": {"type": "length", "value": 8, "unit": "dp"},
-             "opacity": {"type": "number", "value": 0}
-            },
-            "paths": [
-             {
-              "id": "mark",
-              "commands": [
-               {"id": "p0", "op": "move", "points": [[0, 0]]},
-               {"id": "p1", "op": "line", "points": [[8, 0]]},
-               {"id": "p2", "op": "line", "points": [[8, 8]]},
-               {"id": "close", "op": "close"}
-              ],
-              "fill": {"type": "solid", "color": {"type": "color", "value": [0.8902, 0.5373, 0.0, 1.0]}}
-             }
-            ]
-           },
-           {
-            "id": "exitModal_no-label",
-            "type": "text",
-            "properties": {
-             "text": {"type": "text", "value": "#str_200158"},
-             "position": {"type": "keyword", "value": "absolute"},
-             "left": {"type": "length", "value": 26, "unit": "dp"},
-             "top": {"type": "length", "value": 0, "unit": "dp"},
-             "width": {"type": "length", "value": 150, "unit": "dp"},
-             "height": {"type": "length", "value": 45, "unit": "dp"},
-             "font-family": {"type": "font", "value": "marine"},
-             "font-size": {"type": "length", "value": 20, "unit": "dp"},
-             "line-height": {"type": "length", "value": 45, "unit": "dp"},
-             "color": {"type": "color", "value": [1, 1, 1, 0.8]},
-             "white-space": {"type": "keyword", "value": "nowrap"},
-             "transform": {"type": "transform", "unit": "dp", "value": [0, 0, 1, 1, 0]}
-            }
-           }
-          ],
-          "control": {
-           "role": "button",
-           "label": "#str_200158",
-           "states": {
-            "default": "exitModal_no.default",
-            "hover": "exitModal_no.hover",
-            "focus": "exitModal_no.focus",
-            "pressed": "exitModal_no.pressed",
-            "disabled": "exitModal_no.disabled"
-           },
-           "event": "exitModalHide"
-          }
          }
         ]
        }

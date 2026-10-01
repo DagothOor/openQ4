@@ -186,6 +186,9 @@ struct Timeline {
 	double durationMs = 0;
 	unsigned iterations = 1; // Zero repeats until cancelled.
 	bool essential = false;
+	// Case-folded event run when this timeline plays to its end; empty for none.
+	// The program cannot invoke actions or lead back into its own completion.
+	std::string complete;
 	std::vector<Track> tracks;
 };
 struct DocumentModel {
