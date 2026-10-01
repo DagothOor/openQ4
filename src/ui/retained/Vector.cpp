@@ -7,7 +7,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
-#include <map>
 #include <memory>
 #include <new>
 #include <sstream>
@@ -242,10 +241,18 @@ public:
 		if (source.type != PaintType::Linear) { Polygon(shape,output,options,coverage); return; }
 		// Split at every stop plane. A triangle spanning several stops cannot
 		// reproduce them by interpolating only the triangle's corner colours.
+		// Clip keeps a shape wholly on the kept side of a plane unchanged and
+		// empties one wholly on the other, so only crossing planes clip.
+		corners.clear();
+		for (const auto& point : shape) corners.push_back(Parameter(point));
 		for (size_t i = 0; i <= source.stops.size(); ++i) {
-			auto polygon = shape;
-			if (i > 0) Clip(polygon,source.stops[i-1].at,true);
-			if (i < source.stops.size()) Clip(polygon,source.stops[i].at,false);
+			const bool low = i > 0, high = i < source.stops.size();
+			const int below = low ? Side(source.stops[i-1].at,true) : 1, above = high ? Side(source.stops[i].at,false) : 1;
+			if (below < 0 || above < 0) continue;
+			if (below > 0 && above > 0) { Polygon(shape,output,options,coverage); continue; }
+			polygon.assign(shape.begin(),shape.end());
+			if (low) Clip(polygon,source.stops[i-1].at,true);
+			if (high) Clip(polygon,source.stops[i].at,false);
 			Polygon(polygon,output,options,coverage);
 		}
 	}
@@ -253,9 +260,17 @@ private:
 	static void Validate(VectorColour c) {
 		for (double value : {c.r,c.g,c.b,c.a}) Require(std::isfinite(value) && value >= 0 && value <= 1,"paint colour must be finite normalized RGBA");
 	}
+	// Clip's own keep test for every corner of the shape: 1 when all keep
+	// their place, -1 when none does, 0 when the plane crosses the shape.
+	int Side(double edge, bool greater) const {
+		bool all = true, none = true;
+		for (const double parameter : corners) ((parameter-edge)*(greater ? 1 : -1) >= 0 ? none : all) = false;
+		return all ? 1 : none ? -1 : 0;
+	}
 	void Clip(std::vector<VectorPoint>& polygon, double edge, bool greater) const {
 		if (polygon.empty()) return;
-		std::vector<VectorPoint> clipped;
+		auto& clipped = clipScratch;
+		clipped.clear();
 		auto previous = polygon.back();
 		double before = (Parameter(previous)-edge)*(greater ? 1 : -1);
 		for (auto point : polygon) {
@@ -277,6 +292,9 @@ private:
 	VectorTransform inverse;
 	VectorPoint from, direction;
 	double length2 = 1;
+	// Per-shape scratch, reused across the many cells of one path.
+	mutable std::vector<double> corners;
+	mutable std::vector<VectorPoint> polygon, clipScratch;
 };
 
 // Integrate normalized region boundaries over output pixel cells. For each
@@ -321,21 +339,25 @@ public:
 		});
 		struct Rectangle { int left, top, right, bottom; double coverage; };
 		std::vector<Rectangle> rectangles;
-		std::map<std::pair<int,int>,size_t> previous;
+		// A row's runs reach emit left to right and never overlap, so they are
+		// already in key order: a binary search of the previous row's runs
+		// finds a rectangle to extend.
+		struct Run { int left, right; size_t rectangle; };
+		std::vector<Run> previous, current;
 		size_t index = 0;
 		while (index < events.size()) {
 			const int row = events[index].y;
-			std::map<std::pair<int,int>,size_t> current;
+			current.clear();
 			auto emit = [&](int left, int right, double coverage) {
 				if (left >= right || coverage == 0) return;
-				const auto key = std::make_pair(left,right);
-				auto found = previous.find(key);
-				if (found != previous.end() && rectangles[found->second].bottom == row &&
-					std::abs(rectangles[found->second].coverage-coverage) < 1e-12) {
-					rectangles[found->second].bottom = row+1; current[key] = found->second;
+				const auto found = std::lower_bound(previous.begin(),previous.end(),std::make_pair(left,right),
+					[](const Run& run, const std::pair<int,int>& key) { return std::make_pair(run.left,run.right) < key; });
+				if (found != previous.end() && found->left == left && found->right == right && rectangles[found->rectangle].bottom == row &&
+					std::abs(rectangles[found->rectangle].coverage-coverage) < 1e-12) {
+					rectangles[found->rectangle].bottom = row+1; current.push_back({left,right,found->rectangle});
 				} else {
 					Require(rectangles.size() < options.maximumVertices/4,"coverage exceeds output rectangle budget");
-					current[key] = rectangles.size(); rectangles.push_back({left,row,right,row+1,coverage});
+					current.push_back({left,right,rectangles.size()}); rectangles.push_back({left,row,right,row+1,coverage});
 				}
 			};
 			double sum = 0, pendingCoverage = 0;
@@ -358,11 +380,14 @@ public:
 			Require(std::abs(sum) < 1e-7,"coverage row has an unclosed boundary");
 			previous.swap(current);
 		}
-		for (const auto& r : rectangles) paint.Shape({
-			{static_cast<double>(r.left),static_cast<double>(r.top)},
-			{static_cast<double>(r.right),static_cast<double>(r.top)},
-			{static_cast<double>(r.right),static_cast<double>(r.bottom)},
-			{static_cast<double>(r.left),static_cast<double>(r.bottom)}},output,options,r.coverage);
+		std::vector<VectorPoint> cell(4);
+		for (const auto& r : rectangles) {
+			cell[0] = {static_cast<double>(r.left),static_cast<double>(r.top)};
+			cell[1] = {static_cast<double>(r.right),static_cast<double>(r.top)};
+			cell[2] = {static_cast<double>(r.right),static_cast<double>(r.bottom)};
+			cell[3] = {static_cast<double>(r.left),static_cast<double>(r.bottom)};
+			paint.Shape(cell,output,options,r.coverage);
+		}
 	}
 private:
 	struct Event { int y, x; double delta; };
@@ -427,14 +452,14 @@ void Fill(const Contours& contours, FillRule rule, const VectorPaint& paint, con
 		}
 		coverage.Emit(evaluator,output); return;
 	}
+	std::vector<VectorPoint> triangle(3);
 	for (int i = 0; i < elementCount; ++i) {
-		VectorPoint triangle[3];
 		for (int j = 0; j < 3; ++j) {
 			const int index = indices[i*3+j];
 			Require(index >= 0 && index < vertexCount,"invalid polygon output index");
 			triangle[j] = {points[index*2],points[index*2+1]};
 		}
-		evaluator.Shape({triangle[0],triangle[1],triangle[2]},output,options);
+		evaluator.Shape(triangle,output,options);
 	}
 }
 void Validate(const VectorOptions& options) {

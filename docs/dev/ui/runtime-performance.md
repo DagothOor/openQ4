@@ -150,6 +150,16 @@ and cold compilation therefore remain explicit optimization/qualification work.
 All three native test targets pass after the precision patch. Client, dedicated
 and both renderer modules were built/staged before the final gameplay profiles.
 
+`--screen` runs a production root document as the session presents it:
+`onInit`, the `open` timeline and a four-second settle, then timed 60 Hz frames
+on its view-height canvas, with each declared CVar source at its type's default.
+It reports frame, update, render and tessellation times, paths compiled, draw
+calls, submitted vertices, and layers pushed and elided:
+
+```powershell
+& builddir/openq4-retained-ui-benchmark.exe --screen content/baseoq4/pak0/guis/menu/title.q4ui 240 1280 720
+```
+
 ## Gameplay evidence
 
 The final hidden, windowed runs used the registered engine screenshot command
@@ -194,12 +204,104 @@ python tools/ui/capture_legacy_baseline.py --assets $assets --mode sp --renderer
 python tools/ui/capture_legacy_baseline.py --assets $assets --mode mp --renderer vulkan --retained-document tools/ui/fixtures/vector-smoke.q4ui --density 2 --timeline enter --profile-frames 180 --output .tmp/ui/performance/mp-vulkan-review
 ```
 
+## Retained title screen CPU
+
+1 October 2026. With `ui_retained 1` the title screen took 9.5 ms of retained
+CPU a frame on a debugoptimized build, and 15-19 ms when the GPU fell behind
+the hidden window's 60 fps cap: graphics calls inside the timed region then
+block. The title is mostly static, so nearly all of that was work repeated
+every frame. A temporary per-phase probe on the 1280x720 home screen split it:
+
+| Work per frame (debugoptimized, 60 fps cap) | Before | After |
+| --- | ---: | ---: |
+| Path tessellation | 3.1 ms, 2 paths | 0.4 ms, 1 path |
+| Host vertex conversion | 2.4 ms, 192,000 indices | none for unchanged meshes |
+| Composition layers | 33 | 15 |
+| Runtime update | 1.1 ms | 0.7 ms |
+
+The changes keep the presentation:
+
+- **Zero-opacity layers.** Any opacity below 1 is an isolated `filter`
+  layer, and the hidden focus rails, hot markers and message lines sit at 0.
+  A pushed layer now stays pending, recording its draws, until something
+  needs its target: a nested layer, a mask snapshot, a backdrop or a visible
+  composite. Composited at zero opacity, or into an empty clip, it is dropped
+  without a target, a clear or a composite, which is exact: a premultiplied
+  composite at zero opacity leaves its destination unchanged. The new
+  `layerElisions` statistic counts them, and `layerPushes` now counts the
+  layers that received a target.
+- **Sub-pixel jitter.** The glint's rim turns back under its turning parent,
+  so it stays put, but single-precision composition moves its sub-pixel phase
+  by about 1e-4 px between frames, and the exact-match cache key compiled it
+  almost every frame. A phase change below 1/1024 px now keeps the compiled
+  mesh. Coverage moves no further than the phase, a quarter of one 8-bit step;
+  every other key term must still match exactly.
+- **Tessellation.** The coverage emitter extends rows through sorted vectors
+  instead of a map per row, gradient stop planes clip only the cells they
+  cross, and scratch buffers are reused. The turning wedge mask, which must be
+  tessellated every frame, falls from 0.9 to 0.3 ms natively. A local harness compiled
+  the committed tessellator beside this one and compared 264,984 cases, every
+  path and mask of the six production screens and three fixtures across
+  sizes, densities, sub-pixel phases, rotations, mirroring, bounds and both
+  antialiasing modes: every mesh is byte-identical.
+- **Retained meshes.** `RenderGeometry` keeps each geometry's transformed and
+  clipped submission and reuses it while its translation, transform, clip,
+  texture and multiply resolution are unchanged. Hosts receive a stable mesh
+  identity and a revision through the optional `Host::DrawMesh` and
+  `ReleaseMesh`, whose defaults draw immediately. The engine host converts
+  a mesh once per revision, material and view size. Each chunk passes the
+  contiguous vertex range its whole triangles use, so vertices are no longer
+  duplicated per index, and the material is classified once per mesh rather
+  than once per vertex.
+- **Update.** `ApplyMotion` holds every authored property, nearly all static,
+  and formatted all of them each frame. A value already applied under the same
+  state revision and text ratio is now skipped; text and backdrop pairs are
+  still reapplied. Input eligibility looked up each canonical node with its own
+  search of the element tree, and now resolves all of them with one
+  breadth-first walk in `GetElementById`'s order.
+
+Each pair alternated a baseline client (origin/main `c5119c41`) with this
+change on one machine (Windows 11, RTX 4060 Laptop GPU): a hidden 1280x720
+window, the title at home for 4 s, then `ui_retainedProfile 120`. Medians of
+`retained_cpu_p50_ms`, with the median frame interval:
+
+| Build and renderer | Before | After |
+| --- | ---: | ---: |
+| debugoptimized, OpenGL, 60 fps cap | 9.59 ms | 3.59 ms |
+| debugoptimized, OpenGL, uncapped | 9.43 ms | 3.51 ms |
+| debugoptimized, Vulkan, 60 fps cap | 9.72 ms (19.8 ms frames) | 3.77 ms (16.7 ms frames) |
+| release (`b_ndebug=true`), OpenGL, 60 fps cap | 10.21 ms | 3.89 ms |
+| release, OpenGL, uncapped | 9.53 ms | 4.77 ms |
+| release, Vulkan, 60 fps cap | 9.69 ms (20.1 ms frames) | 3.55 ms (16.7 ms frames) |
+
+Baseline runs also fell into a slower, GPU-bound mode at times: Vulkan at
+25-27 ms with 38 ms frames, OpenGL at 15.6 ms with 19.7 ms frames. The native
+`--screen` benchmark of the title, with an empty draw host, falls from 5.3 to
+1.0-1.3 ms on debugoptimized and 0.96 ms on release.
+
+Engine captures of the title scenario in
+`tools/ui/capture_retained_screens.py`, with reduced motion so that every frame
+settles, are byte-identical before and after on OpenGL and Vulkan for the home,
+depth, focus, exit-confirmation (over soft focus), and depart screenshots. The
+hand-off to the stock settings page differs between two baseline runs as well,
+because of its own animation. A motion-on capture shows the glint, rim and
+montage unchanged.
+
+What remains per frame: the engine's GUI path still copies every retained
+vertex, into the GUI model and then into frame memory and the vertex cache at
+each flush. That is about 2 ms for the title's 127,000 vertices, and static GPU
+buffers for retained meshes would remove it. The wedge mask turns and is
+tessellated every frame. Fifteen layers remain, for the 0.4-opacity rails and
+markers and for the glint and its mask. A cold first frame takes 45-50 ms,
+most of it stroke unions, the reticle grid alone 28 ms.
+
 ## Remaining requirements
 
 Fractional motion and cold compilation still need optimized-build profiling,
 and long documents need resource/performance stress tests. Geometry preparation
 for opacity, retained clipping and engine vertex conversion can be improved
-further. GPU timings, frame pacing at the supported refresh rates, the complete
+further, and the engine GUI path still copies every retained vertex each
+frame. GPU timings, frame pacing at the supported refresh rates, the complete
 density/aspect matrix, all GUI families and other platforms remain unqualified.
 Composition/masks, complete paints/strokes/fonts, the visual editor and all
 current GUI replacements remain separate required work.

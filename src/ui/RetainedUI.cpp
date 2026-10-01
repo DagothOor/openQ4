@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstring>
 #include <map>
+#include <unordered_map>
 #include <atomic>
 #include <limits>
 #include <thread>
@@ -128,45 +129,23 @@ public:
 		return material != NULL && material->GetState() != DS_DEFAULTED ? reinterpret_cast<std::uintptr_t>(material) : 0;
 	}
 	void Draw(const std::vector<openq4::ui::Vertex>& vertices, const std::vector<int>& indices, std::uintptr_t handle) override {
-		const idMaterial* material = handle ? reinterpret_cast<const idMaterial*>(handle) : declManager->FindMaterial("_retainedSolid");
-		// Chunk whole triangles below the engine's surface vertex limit. This
-		// also works when a large vector mesh uses indices wider than glIndex_t.
-		idList<idDrawVert> converted;
-		idList<glIndex_t> localIndices;
-		const float sx = 640.f / viewportWidth, sy = 480.f / viewportHeight;
-		for (size_t start = 0; start < indices.size(); start += 12000) {
-			const int count = static_cast<int>(Min<size_t>(12000, indices.size() - start));
-			converted.SetNum(count); localIndices.SetNum(count);
-			for (int i = 0; i < count; ++i) {
-				const auto& source = vertices[indices[start+i]];
-				idDrawVert& v = converted[i];
-				v.Clear();
-				v.xyz.Set(source.x * sx, source.y * sy, 0);
-				v.st.Set(source.u, source.v);
-				v.normal.Set(0,0,1); v.tangents[0].Set(1,0,0); v.tangents[1].Set(0,1,0);
-				// Untextured vectors use premultiplied blending all the way to
-				// the target. Current engine font images store straight coverage;
-				// their uniform text tint is unpremultiplied at this boundary.
-				// Multiply factors are plain colours for a dst*src blend.
-				// Additive pictures keep premultiplied tints: the tint scales their light.
-				// Light carries no coverage: its zero alpha keeps an add blend from
-				// writing a composition layer's alpha, which would otherwise
-				// composite the picture's whole rectangle as an opaque box.
-				const bool additiveImage = handle && idStr::Icmpn(material->GetName(),"_retainedAdd/",13) == 0;
-				const bool straightImage = handle && idStr::Icmpn(material->GetName(),"_retainedLayer/",15) != 0 &&
-					idStr::Icmp(material->GetName(),"_retainedMultiply") != 0 && !additiveImage;
-				const float inverseAlpha = straightImage ? (source.a > 0 ? 1.f/source.a : 0) : 1.f;
-				const float components[4] = {source.r*inverseAlpha, source.g*inverseAlpha, source.b*inverseAlpha, additiveImage ? 0.f : source.a};
-				for (int channel = 0; channel < 4; ++channel) {
-					v.color[channel] = static_cast<byte>(idMath::ClampFloat(0,1,components[channel]) * 255.f + .5f);
-					v.color2[channel] = 255;
-				}
-				localIndices[i] = static_cast<glIndex_t>(i);
-			}
-			renderSystem->SetColor4(1,1,1,1);
-			renderSystem->DrawStretchPic(converted.Ptr(), localIndices.Ptr(), count, count, material, false);
-		}
+		const idMaterial* material = Material(handle);
+		Convert(vertices,indices,material,handle,scratchMesh);
+		Submit(scratchMesh,material);
 	}
+	// Static retained geometry reaches the host unchanged every frame, so it
+	// converts once for each revision, material and view size.
+	void DrawMesh(std::uint64_t mesh, std::uint64_t revision, const std::vector<openq4::ui::Vertex>& vertices,
+		const std::vector<int>& indices, std::uintptr_t handle) override {
+		const idMaterial* material = Material(handle);
+		auto& cached = meshes[mesh];
+		if (cached.revision != revision || cached.handle != handle || cached.width != viewportWidth || cached.height != viewportHeight) {
+			Convert(vertices,indices,material,handle,cached);
+			cached.revision = revision; cached.handle = handle; cached.width = viewportWidth; cached.height = viewportHeight;
+		}
+		Submit(cached,material);
+	}
+	void ReleaseMesh(std::uint64_t mesh) override { meshes.erase(mesh); }
 	std::uint64_t RenderFrame() const override {
 		renderPresentationState_t state;
 		renderSystem->GetPresentationState(state);
@@ -341,6 +320,7 @@ public:
 			material ? material->GetName() : ""};
 	}
 	void Reset() {
+		meshes.clear();
 		renderSystem->ResetRetainedFontCache();
 		scalableFaces.clear(); fontFallbackReported = false;
 		fonts.clear();
@@ -360,6 +340,91 @@ public:
 	int captureWidth = 0, captureHeight = 0;
 	bool softFocus = false;
 private:
+	// Engine vertices and the chunks that submit them, for one mesh.
+	struct HostMesh {
+		struct Chunk { int first, count; size_t index, indices; };
+		std::vector<idDrawVert> vertices;
+		std::vector<glIndex_t> indices;
+		std::vector<Chunk> chunks;
+		std::uint64_t revision = 0;
+		std::uintptr_t handle = 0;
+		int width = 0, height = 0;
+	};
+	HostMesh scratchMesh;
+	std::unordered_map<std::uint64_t,HostMesh> meshes;
+	const idMaterial* Material(std::uintptr_t handle) const {
+		return handle ? reinterpret_cast<const idMaterial*>(handle) : declManager->FindMaterial("_retainedSolid");
+	}
+	void Convert(const std::vector<openq4::ui::Vertex>& vertices, const std::vector<int>& indices, const idMaterial* material,
+		std::uintptr_t handle, HostMesh& mesh) const {
+		// Untextured vectors use premultiplied blending all the way to
+		// the target. Current engine font images store straight coverage;
+		// their uniform text tint is unpremultiplied at this boundary.
+		// Multiply factors are plain colours for a dst*src blend.
+		// Additive pictures keep premultiplied tints: the tint scales their light.
+		// Light carries no coverage: its zero alpha keeps an add blend from
+		// writing a composition layer's alpha, which would otherwise
+		// composite the picture's whole rectangle as an opaque box.
+		const bool additiveImage = handle && idStr::Icmpn(material->GetName(),"_retainedAdd/",13) == 0;
+		const bool straightImage = handle && idStr::Icmpn(material->GetName(),"_retainedLayer/",15) != 0 &&
+			idStr::Icmp(material->GetName(),"_retainedMultiply") != 0 && !additiveImage;
+		const float sx = 640.f / viewportWidth, sy = 480.f / viewportHeight;
+		mesh.vertices.resize(vertices.size());
+		for (size_t i = 0; i < vertices.size(); ++i) {
+			const auto& source = vertices[i];
+			idDrawVert& v = mesh.vertices[i];
+			v.xyz.Set(source.x * sx, source.y * sy, 0);
+			v.st.Set(source.u, source.v);
+			v.normal.Set(0,0,1); v.tangents[0].Set(1,0,0); v.tangents[1].Set(0,1,0);
+			const float inverseAlpha = straightImage ? (source.a > 0 ? 1.f/source.a : 0) : 1.f;
+			const float components[4] = {source.r*inverseAlpha, source.g*inverseAlpha, source.b*inverseAlpha, additiveImage ? 0.f : source.a};
+			for (int channel = 0; channel < 4; ++channel) {
+				v.color[channel] = static_cast<byte>(idMath::ClampFloat(0,1,components[channel]) * 255.f + .5f);
+				v.color2[channel] = 255;
+			}
+		}
+		// Chunk whole triangles below the engine's surface vertex limit and a
+		// frame allocation block of indices. A chunk passes the contiguous range
+		// of vertices its triangles use, which tessellated meshes fill in order,
+		// so local indices also work when a large vector mesh uses indices wider
+		// than glIndex_t. A triangle spanning more than a chunk gets its own copy.
+		constexpr int chunkVertices = 12000;
+		constexpr size_t chunkIndices = 36000;
+		mesh.indices.clear(); mesh.chunks.clear();
+		size_t start = 0;
+		int low = 0, high = -1; // An empty range.
+		const auto flush = [&](size_t end) {
+			if (end <= start) return;
+			mesh.chunks.push_back({low,high-low+1,mesh.indices.size(),end-start});
+			for (size_t i = start; i < end; ++i) mesh.indices.push_back(static_cast<glIndex_t>(indices[i]-low));
+		};
+		const size_t count = indices.size()-indices.size()%3;
+		for (size_t i = 0; i < count; i += 3) {
+			const int a = indices[i], b = indices[i+1], c = indices[i+2];
+			const int triangleLow = Min(a,Min(b,c)), triangleHigh = Max(a,Max(b,c));
+			if (triangleHigh-triangleLow >= chunkVertices) {
+				flush(i);
+				const idDrawVert corners[3] = {mesh.vertices[a],mesh.vertices[b],mesh.vertices[c]};
+				mesh.chunks.push_back({static_cast<int>(mesh.vertices.size()),3,mesh.indices.size(),3});
+				mesh.vertices.insert(mesh.vertices.end(),corners,corners+3);
+				mesh.indices.insert(mesh.indices.end(),{0,1,2});
+				start = i+3; high = -1; continue;
+			}
+			const bool empty = high < low;
+			const int nextLow = empty ? triangleLow : Min(low,triangleLow), nextHigh = empty ? triangleHigh : Max(high,triangleHigh);
+			if (!empty && (nextHigh-nextLow >= chunkVertices || i+3-start > chunkIndices)) {
+				flush(i); start = i; low = triangleLow; high = triangleHigh;
+			} else { low = nextLow; high = nextHigh; }
+		}
+		flush(count);
+	}
+	void Submit(const HostMesh& mesh, const idMaterial* material) {
+		for (const auto& chunk : mesh.chunks) {
+			renderSystem->SetColor4(1,1,1,1);
+			renderSystem->DrawStretchPic(mesh.vertices.data()+chunk.first, mesh.indices.data()+chunk.index, chunk.count,
+				static_cast<int>(chunk.indices), material, false);
+		}
+	}
 	struct Layer { idRenderTexture* target = nullptr; const idMaterial* material = nullptr; const idMaterial* maskMaterial = nullptr; int width = 0, height = 0; };
 	std::vector<Layer> layers;
 	idRenderTexture* blurScratch = nullptr;

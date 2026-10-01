@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iterator>
 #include <stdexcept>
+#include <string>
 
 using namespace openq4::ui;
 namespace {
@@ -32,10 +33,75 @@ double Percentile(std::vector<double> values, double percentile) {
 	std::sort(values.begin(),values.end());
 	return values[static_cast<size_t>(std::ceil(percentile*values.size()))-1];
 }
+// A production screen reads its declared CVar sources; each reads its type's
+// default, as a fresh configuration does. Draws are counted, not converted.
+struct ScreenHost final : Host {
+	std::string error;
+	bool ReadCVar(const std::string&, size_t type, StateValue& value) override {
+		if (type == 1) value = false; else if (type == 2) value = std::string(); else value = 0.0;
+		return true;
+	}
+	bool ReadFile(const std::string&, std::string&) override { return false; }
+	std::string Translate(const std::string& text) override { return text; }
+	void Log(bool failed, const std::string& text) override { if (failed && error.empty()) error = text; }
+	std::uintptr_t LoadMaterial(const std::string&, int& width, int& height) override { width = height = 256; return 1; }
+	void Draw(const std::vector<Vertex>&, const std::vector<int>&, std::uintptr_t) override {}
+	std::uint64_t RenderFrame() const override { return 0; }
+	bool BeginLayer(std::uint32_t, int, int) override { return true; }
+	void CompositeLayer(std::uint32_t, std::uint32_t, float, const Bounds&) override {}
+	void MaskLayer(std::uint32_t, std::uint32_t, const Bounds&) override {}
+	void EndLayer(std::uint32_t) override {}
+	FontMetrics GetFontMetrics(const std::string&, int size) override { return {size*.8f,size*.2f,size*1.2f,size*.5f}; }
+	Glyph GetGlyph(const std::string&, int size, std::uint32_t) override { return {size*.6f,0,-size*.8f,size*.6f,static_cast<float>(size),0,0,1,1,"benchmark-font"}; }
+};
+// The session's presentation of a root screen: onInit, the open timeline, a
+// four second settle, then timed 60 Hz frames on its view-height canvas.
+void Screen(const std::string& path, int frames, int width, int height) {
+	std::ifstream file(path,std::ios::binary);
+	if (!file) throw std::runtime_error("Cannot read screen document");
+	const std::string source{std::istreambuf_iterator<char>(file),{}};
+	Document model; std::vector<Diagnostic> diagnostics;
+	if (!model.Load(source,diagnostics)) throw std::runtime_error("Invalid screen document");
+	ScreenHost host; Runtime runtime(host);
+	if (!runtime.LoadDocument(source,path,diagnostics)) throw std::runtime_error("Cannot load screen runtime document");
+	Viewport viewport; viewport.width = width; viewport.height = height;
+	viewport.canvasHeight = static_cast<float>(model.Model().canvasHeight);
+	const double start = 1;
+	Runtime::EventEffects effects; std::string error;
+	if (runtime.HasEvent("onInit") && !runtime.RunEvent("onInit",start,effects,error)) throw std::runtime_error("onInit: "+error);
+	runtime.PlayTimeline("open",start);
+	runtime.Frame(viewport,start);
+	const double cold = runtime.Statistics().frameMilliseconds;
+	for (int i = 1; i <= 240; ++i) runtime.Frame(viewport,start+i/60.0);
+	std::vector<double> frame, update, render, compile, paths, uploads, draws, vertices, layers, elisions;
+	for (int i = 1; i <= frames; ++i) {
+		runtime.Frame(viewport,start+4+i/60.0);
+		const auto stats = runtime.Statistics();
+		frame.push_back(stats.frameMilliseconds); update.push_back(stats.updateMilliseconds); render.push_back(stats.renderMilliseconds);
+		compile.push_back(stats.vectorCompileMilliseconds); paths.push_back(static_cast<double>(stats.vectorPathsCompiled));
+		uploads.push_back(static_cast<double>(stats.vectorUploads)); draws.push_back(static_cast<double>(stats.drawCalls));
+		vertices.push_back(static_cast<double>(stats.submittedVertices)); layers.push_back(static_cast<double>(stats.layerPushes));
+		elisions.push_back(static_cast<double>(stats.layerElisions));
+	}
+	if (!host.error.empty()) throw std::runtime_error("Screen logged an error: "+host.error);
+	std::printf("{\"scenario\":\"screen\",\"document\":\"%s\",\"width\":%d,\"height\":%d,\"frames\":%d,\"cold_ms\":%.6f,\"p50_ms\":%.6f,\"p95_ms\":%.6f,\"max_ms\":%.6f,"
+		"\"update_p50_ms\":%.6f,\"render_p50_ms\":%.6f,\"vector_compile_p50_ms\":%.6f,\"paths_compiled_p50\":%.0f,\"uploads_p50\":%.0f,"
+		"\"draw_calls_p50\":%.0f,\"submitted_vertices_p50\":%.0f,\"layer_pushes_p50\":%.0f,\"layer_elisions_p50\":%.0f}\n",
+		path.c_str(),width,height,frames,cold,Percentile(frame,.5),Percentile(frame,.95),Percentile(frame,1),Percentile(update,.5),Percentile(render,.5),
+		Percentile(compile,.5),Percentile(paths,.5),Percentile(uploads,.5),Percentile(draws,.5),Percentile(vertices,.5),Percentile(layers,.5),Percentile(elisions,.5));
+	runtime.CloseDocument(); runtime.Shutdown();
+}
 }
 int main(int argc, char** argv) {
 	try {
-		if (argc < 2 || argc > 4) throw std::runtime_error("usage: openq4-retained-ui-benchmark <vector-smoke.q4ui> [density=1.25] [frames=60]");
+		if (argc >= 3 && std::string(argv[1]) == "--screen") {
+			if (argc > 6) throw std::runtime_error("usage: openq4-retained-ui-benchmark --screen <document.q4ui> [frames=120] [width=1280] [height=720]");
+			const int frames = argc > 3 ? std::stoi(argv[3]) : 120, width = argc > 4 ? std::stoi(argv[4]) : 1280, height = argc > 5 ? std::stoi(argv[5]) : 720;
+			if (frames < 2 || frames > 3600 || width < 64 || width > 8192 || height < 64 || height > 8192) throw std::runtime_error("Invalid screen frame count or size");
+			Screen(argv[2],frames,width,height);
+			return 0;
+		}
+		if (argc < 2 || argc > 4) throw std::runtime_error("usage: openq4-retained-ui-benchmark <vector-smoke.q4ui> [density=1.25] [frames=60] | --screen <document.q4ui> [frames] [width] [height]");
 		Viewport viewport;
 		viewport.displayScale = argc > 2 ? std::stof(argv[2]) : 1.25f;
 		const int frames = argc > 3 ? std::stoi(argv[3]) : 60;

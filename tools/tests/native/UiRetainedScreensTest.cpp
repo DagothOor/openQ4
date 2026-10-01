@@ -240,6 +240,12 @@ int main(int argc, char** argv) {
 			"half way round at 4.5 s, the rim held in place");
 		// Statistics are per frame, and the glint is the title's only mask.
 		Check(runtime.Statistics().maskApplications == 1,"the wedge masks the glint");
+		// A settled title draws its artwork from cache: only the turning wedge
+		// tessellates again (its counter-turned rim stays put within float
+		// jitter), and the zero-opacity rails, markers and lines take no layers.
+		runtime.Frame(viewport,6+4.6);
+		Check(runtime.Statistics().vectorPathsCompiled == 1,"a settled title tessellates only the turning wedge");
+		Check(runtime.Statistics().layerElisions > 0,"zero-opacity controls take no composition layers");
 		const auto shown = runtime.PresentedValue("emblem-glint","display");
 		host.reducedMotion = true;
 		runtime.Frame(viewport,11);

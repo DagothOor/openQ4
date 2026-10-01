@@ -23,6 +23,7 @@
 #include <map>
 #include <stdexcept>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 
 namespace openq4::ui {
@@ -197,6 +198,29 @@ void Clip(std::vector<Vertex>& polygon, std::vector<Vertex>& output, int axis, f
 struct Geometry {
 	std::vector<Rml::Vertex> vertices;
 	std::vector<int> indices;
+	// A static element renders the same geometry with the same state every
+	// frame. RenderGeometry keeps its last submission and reuses it while all
+	// of the inputs it was computed from are unchanged; the host receives the
+	// geometry's identity and a revision that changes with that submission.
+	std::uint64_t identity = 0, revision = 0;
+	struct Submission {
+		Rml::Vector2f translation;
+		Rml::Matrix4f transform = Rml::Matrix4f::Identity();
+		std::array<float,4> clip{};
+		Rml::TextureHandle texture = 0;
+		std::uintptr_t multiply = 0;
+		bool hasTransform = false, clipping = false;
+		bool Matches(const Submission& other) const {
+			return std::memcmp(&translation,&other.translation,sizeof(translation)) == 0 && hasTransform == other.hasTransform &&
+				(!hasTransform || std::memcmp(&transform,&other.transform,sizeof(transform)) == 0) && clipping == other.clipping &&
+				(!clipping || std::memcmp(clip.data(),other.clip.data(),sizeof(clip)) == 0) && texture == other.texture && multiply == other.multiply;
+		}
+		std::vector<Vertex> vertices; // Transformed, or clipped with indices.
+		std::vector<int> indices;
+		std::uintptr_t material = 0;
+		bool draws = false, inside = false, fallback = false;
+	};
+	std::unique_ptr<Submission> submission;
 };
 struct Filter {
 	float opacity = 1;
@@ -231,10 +255,10 @@ public:
 		viewportWidth = width; viewportHeight = height; failed = false;
 	}
 	void EndFrame() {
-		if (!layers.empty()) {
+		if (!stack.empty()) {
 			host.Log(true,"Unbalanced retained composition layers"); host.EndLayer(0);
-			for (const auto slot : layers) ReleaseSlot(slot);
-			layers.clear();
+			for (const auto& layer : stack) ReleaseSlot(layer.slot);
+			stack.clear();
 		}
 	}
 	Rml::CompiledGeometryHandle CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) override {
@@ -243,6 +267,8 @@ public:
 		auto geometry = std::make_unique<Geometry>();
 		geometry->vertices.assign(vertices.begin(), vertices.end());
 		geometry->indices.assign(indices.begin(), indices.end());
+		static std::uint64_t nextIdentity = 0;
+		geometry->identity = ++nextIdentity;
 		++statistics.geometryCompiles; ++statistics.residentGeometryCount;
 		statistics.residentGeometryBytes += Bytes(*geometry);
 		return reinterpret_cast<Rml::CompiledGeometryHandle>(geometry.release());
@@ -251,25 +277,53 @@ public:
 		if (!handle) return;
 		auto* geometry = reinterpret_cast<Geometry*>(handle);
 		--statistics.residentGeometryCount; statistics.residentGeometryBytes -= Bytes(*geometry);
+		if (geometry->submission) host.ReleaseMesh(geometry->identity);
 		delete geometry;
 	}
 	void RenderGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector2f translation, Rml::TextureHandle texture) override {
 		float left = 0, top = 0, right = 0, bottom = 0;
 		const bool clipping = ActiveClip(left, top, right, bottom);
 		if (failed || !handle || (clipping && (right <= left || bottom <= top))) return;
-		const Geometry& geometry = *reinterpret_cast<const Geometry*>(handle);
-		std::vector<Vertex> vertices;
-		vertices.reserve(geometry.vertices.size());
+		Geometry& geometry = *reinterpret_cast<Geometry*>(handle);
+		Geometry::Submission inputs;
+		inputs.translation = translation; inputs.hasTransform = hasTransform; inputs.clipping = clipping; inputs.texture = texture;
+		if (hasTransform) inputs.transform = transform;
+		if (clipping) inputs.clip = {left,top,right,bottom};
+		if (texture == MultiplyTexture) inputs.multiply = stack.empty() ? host.MultiplyMaterial() : 0;
+		if (!geometry.submission || !geometry.submission->Matches(inputs)) {
+			if (!geometry.submission) geometry.submission = std::make_unique<Geometry::Submission>();
+			auto& output = *geometry.submission;
+			output.translation = inputs.translation; output.transform = inputs.transform; output.clip = inputs.clip; output.texture = inputs.texture; output.multiply = inputs.multiply;
+			output.hasTransform = inputs.hasTransform; output.clipping = inputs.clipping;
+			Prepare(geometry,output,translation,left,top,right,bottom);
+			++geometry.revision;
+		}
+		const auto& output = *geometry.submission;
+		if (output.fallback) ++statistics.multiplyFallbacks;
+		if (output.draws) Submit(output.vertices,output.inside ? geometry.indices : output.indices,output.material,geometry.identity,geometry.revision);
+	}
+	// Transform, clip and resolve one geometry's submission into its cache.
+	void Prepare(const Geometry& geometry, Geometry::Submission& output, Rml::Vector2f translation, float left, float top, float right, float bottom) {
+		output.draws = output.inside = output.fallback = false; output.indices.clear();
+		const bool clipping = output.clipping;
+		std::uintptr_t texture = output.texture;
+		auto& vertices = output.vertices;
+		vertices.resize(geometry.vertices.size());
 		float minX = OpenClip, minY = OpenClip, maxX = -OpenClip, maxY = -OpenClip;
-		for (const auto& source : geometry.vertices) {
-			const Rml::Vector4f p(source.position.x + translation.x, source.position.y + translation.y, 0, 1);
-			const auto transformed = hasTransform ? transform * p : p;
-			if (!std::isfinite(transformed.x) || !std::isfinite(transformed.y) || !std::isfinite(transformed.w) || transformed.w <= 0) return;
-			vertices.push_back({transformed.x / transformed.w, transformed.y / transformed.w,
-				source.tex_coord.x, source.tex_coord.y,
-				source.colour.red / 255.f, source.colour.green / 255.f, source.colour.blue / 255.f, source.colour.alpha / 255.f});
-			minX = std::min(minX,vertices.back().x); maxX = std::max(maxX,vertices.back().x);
-			minY = std::min(minY,vertices.back().y); maxY = std::max(maxY,vertices.back().y);
+		// Without a transform w is 1, and dividing by it is exact.
+		static const auto unit = [] { std::array<float,256> values{}; for (int i = 0; i < 256; ++i) values[i] = i / 255.f; return values; }();
+		for (size_t i = 0; i < geometry.vertices.size(); ++i) {
+			const auto& source = geometry.vertices[i];
+			float x = source.position.x + translation.x, y = source.position.y + translation.y;
+			if (output.hasTransform) {
+				const auto transformed = output.transform * Rml::Vector4f(x, y, 0, 1);
+				if (!std::isfinite(transformed.x) || !std::isfinite(transformed.y) || !std::isfinite(transformed.w) || transformed.w <= 0) return;
+				x = transformed.x / transformed.w; y = transformed.y / transformed.w;
+			} else if (!std::isfinite(x) || !std::isfinite(y)) return;
+			vertices[i] = {x, y, source.tex_coord.x, source.tex_coord.y,
+				unit[source.colour.red], unit[source.colour.green], unit[source.colour.blue], unit[source.colour.alpha]};
+			minX = std::min(minX,x); maxX = std::max(maxX,x);
+			minY = std::min(minY,y); maxY = std::max(maxY,y);
 		}
 		// Whole geometry outside the clip draws nothing; inside, it needs no cut.
 		if (clipping && (maxX <= left || minX >= right || maxY <= top || minY >= bottom)) return;
@@ -280,19 +334,20 @@ public:
 			// layer starts transparent, and its composite is premultiplied over.
 			// There, and on hosts without the material, darken by the factor's
 			// luminance so the element still reads as a shadow cast in the light.
-			const auto material = layers.empty() ? host.MultiplyMaterial() : 0;
+			const auto material = output.multiply;
 			if (material) texture = material;
 			else {
-				texture = 0; ++statistics.multiplyFallbacks;
+				texture = 0; output.fallback = true;
 				for (auto& vertex : vertices) {
 					const float factor = .2126f*vertex.r + .7152f*vertex.g + .0722f*vertex.b;
 					vertex.r = vertex.g = vertex.b = 0; vertex.a = std::clamp(1-factor,0.f,1.f);
 				}
 			}
 		}
-		if (inside) { Submit(vertices, geometry.indices, texture); return; }
+		output.material = texture;
+		if (inside) { output.draws = output.inside = true; return; }
 		std::vector<Vertex> clipped, polygon, scratch;
-		std::vector<int> indices;
+		auto& indices = output.indices;
 		for (size_t i = 0; i < geometry.indices.size(); i += 3) {
 			polygon.assign({vertices[geometry.indices[i]], vertices[geometry.indices[i+1]], vertices[geometry.indices[i+2]]});
 			Clip(polygon, scratch, 0, left, true);
@@ -306,7 +361,8 @@ public:
 				indices.insert(indices.end(), {base, base + j - 1, base + j});
 			}
 		}
-		if (!indices.empty()) Submit(clipped, indices, texture);
+		vertices.swap(clipped);
+		output.draws = !indices.empty();
 	}
 	Rml::TextureHandle LoadTexture(Rml::Vector2i& dimensions, const Rml::String& source) override {
 		if (source == MultiplySource) { dimensions = {1,1}; return MultiplyTexture; }
@@ -364,20 +420,27 @@ public:
 		hasTransform = value != nullptr;
 		if (value) transform = *value;
 	}
+	// A pushed layer stays pending, recording its draws, until something needs
+	// its target: a nested layer, a mask snapshot, a backdrop or a visible
+	// composite. Composited at zero opacity, or clipped away, it adds nothing,
+	// so its draws are dropped without a target, a clear or a composite.
+	// Handles are logical, nonzero even after an allocation failure, so RmlUi
+	// can unwind its stack while this renderer suppresses the failed frame.
 	Rml::LayerHandle PushLayer() override {
-		const auto slot = AllocateSlot();
-		// Keep a nonzero logical handle even when allocation failed, so RmlUi
-		// can unwind its stack while this renderer suppresses the failed frame.
-		layers.push_back(slot ? slot : static_cast<std::uint32_t>(49+layers.size()));
-		++statistics.layerPushes; statistics.peakLayerDepth = std::max<std::uint64_t>(statistics.peakLayerDepth,layers.size());
-		return layers.back();
+		if (!stack.empty()) Materialize(stack.back());
+		if (++nextHandle == 0) nextHandle = 1;
+		stack.push_back({nextHandle,0,true,{}});
+		statistics.peakLayerDepth = std::max<std::uint64_t>(statistics.peakLayerDepth,stack.size());
+		return stack.back().handle;
 	}
 	void PopLayer() override {
-		if (layers.empty()) { host.Log(true,"Retained composition layer underflow"); failed = true; return; }
-		ReleaseSlot(layers.back()); layers.pop_back();
+		if (stack.empty()) { host.Log(true,"Retained composition layer underflow"); failed = true; return; }
+		// A layer that never got a target never changed the host's binding.
+		const bool bound = !stack.back().pending;
+		ReleaseSlot(stack.back().slot); stack.pop_back();
 		// Restore the base even after an allocation failure. No further draws
 		// are accepted in a failed frame, preventing paint on the wrong target.
-		if (!failed || layers.empty()) host.EndLayer(TopLayer());
+		if ((bound || failed) && (!failed || stack.empty())) host.EndLayer(TopLayer());
 	}
 	Rml::CompiledFilterHandle CompileFilter(const Rml::String& name, const Rml::Dictionary& parameters) override {
 		const auto value = parameters.find("value");
@@ -398,7 +461,9 @@ public:
 		host.Log(true,"Unsupported retained filter: "+name); return 0;
 	}
 	Rml::CompiledFilterHandle SaveLayerAsMaskImage() override {
-		if (failed || layers.empty()) return 0;
+		if (failed || stack.empty()) return 0;
+		Materialize(stack.back());
+		if (failed) return 0;
 		const auto snapshot = AllocateSlot();
 		if (!snapshot) return 0;
 		// A copy owns its slot until ReleaseFilter: popping/reusing the source
@@ -427,8 +492,9 @@ public:
 		}
 		if (backdrop) {
 			const Bounds region = ClipBounds();
-			if (!source && destination && ActiveLayer(destination) && mode == Rml::BlendMode::Blend && region.width > 0 && region.height > 0 &&
-				host.SoftenBackdrop(static_cast<std::uint32_t>(destination),blur,saturation,region)) ++statistics.backdropComposites;
+			if (auto* target = Find(destination)) Materialize(*target);
+			if (!failed && !source && destination && ActiveLayer(destination) && mode == Rml::BlendMode::Blend && region.width > 0 && region.height > 0 &&
+				host.SoftenBackdrop(Slot(destination),blur,saturation,region)) ++statistics.backdropComposites;
 			else ++statistics.backdropFallbacks;
 			return;
 		}
@@ -448,24 +514,57 @@ public:
 			}
 		}
 		const Bounds clip = ClipBounds();
+		auto& layer = *Find(source);
+		// Over the premultiplied destination a zero opacity composite is exact
+		// identity, so a layer still pending need never be drawn at all. Its
+		// recording stays until the pop, should it be composited again.
+		if (layer.pending && (opacity == 0 || clip.width <= 0 || clip.height <= 0)) { ++statistics.layerElisions; return; }
+		Materialize(layer);
+		if (auto* target = Find(destination)) Materialize(*target);
+		if (failed) return;
 		if (clip.width > 0 && clip.height > 0) {
 			std::uint32_t scratch = 0;
 			if (!masks.empty()) {
 				scratch = AllocateSlot();
 				if (!scratch) return;
 				// Filters cannot mutate the source: it may be composited again.
-				host.CompositeLayer(static_cast<std::uint32_t>(source),scratch,1,clip);
+				host.CompositeLayer(layer.slot,scratch,1,clip);
 				for (const auto mask : masks) { host.MaskLayer(mask,scratch,clip); ++statistics.maskApplications; }
 			}
-			host.CompositeLayer(scratch ? scratch : static_cast<std::uint32_t>(source),static_cast<std::uint32_t>(destination),opacity,clip);
+			host.CompositeLayer(scratch ? scratch : layer.slot,Slot(destination),opacity,clip);
 			ReleaseSlot(scratch);
 			++statistics.layerComposites;
 		}
 	}
 private:
-	std::uint32_t TopLayer() const { return layers.empty() ? 0 : layers.back(); }
-	bool ActiveLayer(Rml::LayerHandle handle) const {
-		return !handle || std::find(layers.begin(),layers.end(),handle) != layers.end();
+	struct Draw { std::vector<Vertex> vertices; std::vector<int> indices; std::uintptr_t texture = 0; std::uint64_t mesh = 0, revision = 0; };
+	struct Layer {
+		Rml::LayerHandle handle = 0;
+		std::uint32_t slot = 0; // Host target once materialized; zero after allocation failure.
+		bool pending = true;
+		std::vector<Draw> draws; // Recorded while pending, replayed into the target.
+	};
+	Layer* Find(Rml::LayerHandle handle) {
+		for (auto& layer : stack) if (layer.handle == handle) return &layer;
+		return nullptr;
+	}
+	std::uint32_t Slot(Rml::LayerHandle handle) {
+		const auto* layer = handle ? Find(handle) : nullptr;
+		return layer ? layer->slot : 0;
+	}
+	// Only the top of the stack is ever pending: pushing materializes its parent.
+	void Materialize(Layer& layer) {
+		if (!layer.pending) return;
+		layer.pending = false;
+		layer.slot = AllocateSlot(); // Binds and clears the target; fails the frame when exhausted.
+		if (!layer.slot) { layer.draws.clear(); return; }
+		++statistics.layerPushes;
+		auto draws = std::move(layer.draws); layer.draws.clear();
+		for (const auto& draw : draws) Submit(draw.vertices,draw.indices,draw.texture,draw.mesh,draw.revision);
+	}
+	std::uint32_t TopLayer() const { return stack.empty() ? 0 : stack.back().slot; }
+	bool ActiveLayer(Rml::LayerHandle handle) {
+		return !handle || Find(handle);
 	}
 	std::uint32_t AllocateSlot() {
 		if (failed) return 0;
@@ -519,9 +618,12 @@ private:
 	static size_t Bytes(const Geometry& geometry) {
 		return sizeof(Geometry)+geometry.vertices.capacity()*sizeof(Rml::Vertex)+geometry.indices.capacity()*sizeof(int);
 	}
-	void Submit(const std::vector<Vertex>& vertices, const std::vector<int>& indices, std::uintptr_t texture) {
+	void Submit(const std::vector<Vertex>& vertices, const std::vector<int>& indices, std::uintptr_t texture,
+		std::uint64_t mesh = 0, std::uint64_t revision = 0) {
+		if (!stack.empty() && stack.back().pending) { stack.back().draws.push_back({vertices,indices,texture,mesh,revision}); return; }
 		++statistics.drawCalls; statistics.submittedVertices += vertices.size(); statistics.submittedIndices += indices.size();
-		host.Draw(vertices,indices,texture);
+		if (mesh) host.DrawMesh(mesh,revision,vertices,indices,texture);
+		else host.Draw(vertices,indices,texture);
 	}
 	Host& host;
 	RuntimeStatistics& statistics;
@@ -533,7 +635,8 @@ private:
 	Rml::Matrix4f transform;
 	int viewportWidth = 0, viewportHeight = 0;
 	std::uint64_t viewportGeneration = 0;
-	std::vector<std::uint32_t> layers;
+	std::vector<Layer> stack;
+	Rml::LayerHandle nextHandle = 0;
 	LayerPool* pool = nullptr;
 	bool failed = false;
 };
@@ -824,6 +927,30 @@ struct Runtime::Impl {
 	bool pointerPresent = false;
 	bool pointerNavigation = false;
 	std::map<PropertyKey,std::string> applied;
+	// ApplyMotion's last applied input for each motion value, by position, and
+	// the state revision and text ratio it was formatted under.
+	struct AppliedInput { PropertyKey key; Value value; };
+	std::vector<AppliedInput> appliedInputs;
+	std::uint64_t appliedInputRevision = 0;
+	float appliedInputTextRatio = 0;
+	// Canonical ids by one breadth-first walk from the document, in
+	// GetElementById's own order and first match, so eligibility resolves
+	// every node with one walk instead of one search each.
+	std::unordered_map<std::string_view,Rml::Element*> elementIndex;
+	void IndexElements() {
+		elementIndex.clear();
+		if (!document) return;
+		std::vector<Rml::Element*> queue{document};
+		for (size_t next = 0; next < queue.size(); ++next) {
+			auto* element = queue[next];
+			if (!element->GetId().empty()) elementIndex.emplace(element->GetId(),element);
+			for (int child = 0; child < element->GetNumChildren(); ++child) queue.push_back(element->GetChild(child));
+		}
+	}
+	Rml::Element* IndexedElement(const std::string& id) const {
+		const auto found = elementIndex.find(id);
+		return found == elementIndex.end() ? nullptr : found->second;
+	}
 	bool initialized = false;
 	std::map<std::string,bool> inputAllowed;
 	std::string modalError;
@@ -922,7 +1049,7 @@ struct Runtime::Impl {
 	void CollectInputEligibility(const Node& node, bool inherited = true) {
 		const auto display = PresentedProperty({node.id,"display"});
 		const auto events = PresentedProperty({node.id,"pointer-events"});
-		auto* element = document->GetElementById(node.id);
+		auto* element = IndexedElement(node.id);
 		const bool maskArea = !node.mask || (element && static_cast<VectorElement*>(element)->HasMaskArea());
 		const bool allowed = inherited && maskArea && (!display || display->text != "none") && (!events || events->text != "none");
 		inputAllowed[node.id] = allowed;
@@ -1133,7 +1260,7 @@ struct Runtime::Impl {
             if(!owner->alive || owner->retiring || owner->identity!=stamp)return false;
         }
 		SyncModals();
-		inputAllowed.clear(); CollectInputEligibility(canonical->Model().root);
+		inputAllowed.clear(); IndexElements(); CollectInputEligibility(canonical->Model().root); elementIndex.clear();
         // Publish scrollbar metrics and projected bounds as one eligibility update.
         // Restored focus must never be tested against this instance's old bounds.
         std::string scrollError;scrollLayoutDirty|=scrollView.Sync(interaction,viewport.DpRatio(),freshLayout,scrollError,true);
@@ -1172,11 +1299,24 @@ struct Runtime::Impl {
 		if (applied[{"","font-size"}]!=defaultCss) {
 			document->SetProperty("font-size",defaultCss); applied[{"","font-size"}]=defaultCss;
 		}
+		// Motion holds every authored property, nearly all static. An input
+		// already applied under this state revision and text ratio formats to
+		// the CSS already applied, so only a changed one is formatted again.
+		// Text is translated every time and a backdrop pairs two values.
+		if (appliedInputRevision != state.Revision() || appliedInputTextRatio != viewport.TextRatio()) {
+			appliedInputs.clear(); appliedInputRevision = state.Revision(); appliedInputTextRatio = viewport.TextRatio();
+		}
+		if (appliedInputs.size() < motion.Values().size()) appliedInputs.resize(motion.Values().size());
+		size_t inputIndex = 0;
 		for (const auto& [key,animated] : motion.Values()) {
+			auto& input = appliedInputs[inputIndex++];
+			const bool backdrop = key.second == "backdrop-blur" || key.second == "backdrop-saturate";
+			if (!backdrop && animated.type != ValueType::Text && input.key == key && input.value.type == animated.type &&
+				std::memcmp(input.value.data.data(),animated.data.data(),sizeof(animated.data)) == 0 &&
+				input.value.unit == animated.unit && input.value.text == animated.text) continue;
 			const auto bound = state.Properties().find(key);
 			const auto& value = bound == state.Properties().end() ? animated : bound->second;
 			const bool opacity = key.second == "opacity";
-			const bool backdrop = key.second == "backdrop-blur" || key.second == "backdrop-saturate";
 			std::string string;
 			if (value.type==ValueType::Length && (value.unit=="dp" || value.unit=="px") &&
 				(key.second=="font-size" || key.second=="line-height" || key.second=="letter-spacing")) {
@@ -1195,9 +1335,11 @@ struct Runtime::Impl {
 				value.type == ValueType::Text ? host.Translate(value.text) : value.Css();
 			if(!current())return false;
 			auto previous = applied.find(key);
-			if (previous != applied.end() && previous->second == string) continue;
+			if (previous != applied.end() && previous->second == string) { input = {key,animated}; continue; }
 			// Fit and alignment are authored once and folded into the decorator.
-			if (key.second == "image-fit" || key.second == "image-align-x" || key.second == "image-align-y" || key.second == "image-blend") { applied[key] = string; continue; }
+			if (key.second == "image-fit" || key.second == "image-align-x" || key.second == "image-align-y" || key.second == "image-blend") {
+				applied[key] = string; input = {key,animated}; continue;
+			}
 			auto* element = document->GetElementById(key.first);
 			if (!element) continue;
 			if (value.type == ValueType::Text) element->SetInnerRML(Rml::StringUtilities::EncodeRml(string));
@@ -1207,7 +1349,7 @@ struct Runtime::Impl {
 			}
 			else if (!element->SetProperty(opacity ? "filter" : backdrop ? "backdrop-filter" : key.second,string)) host.Log(true,"Canonical property rejected: "+key.first+"."+key.second);
 			if(!current())return false;
-			applied[key] = string;
+			applied[key] = string; input = {key,animated};
 		}
         return current();
 	}
@@ -1363,7 +1505,7 @@ void Runtime::Shutdown() {
 	}
 	impl->context = nullptr;
 	impl->document = nullptr;
-	impl->canonical.reset(); impl->applied.clear(); impl->motion.Reset({});
+	impl->canonical.reset(); impl->applied.clear(); impl->appliedInputs.clear(); impl->motion.Reset({});
 	impl->state = {}; impl->appliedStateRevision = 0; impl->stateError.clear();
 	impl->interaction.Reset({}); impl->controls.clear(); impl->pointerPresent = impl->pointerNavigation = false;
 	impl->initialized = false;
@@ -1381,7 +1523,7 @@ void Runtime::CloseDocument() {
 	impl->scrollView.Reset();impl->scrollLayoutDirty=impl->preserveRestoredScroll=false;
 	impl->focusLayoutId.clear();impl->focusLayout.clear();impl->focusLayoutVisible=false;
 	impl->numberView.Reset();
-	impl->canonical.reset(); impl->applied.clear(); impl->motion.Reset({});
+	impl->canonical.reset(); impl->applied.clear(); impl->appliedInputs.clear(); impl->motion.Reset({});
 	impl->state = {}; impl->appliedStateRevision = 0; impl->stateError.clear();
 	impl->interaction.Reset({}); impl->controls.clear(); impl->pointerPresent = impl->pointerNavigation = false;
 	if (!impl->document) return;
@@ -1750,7 +1892,7 @@ bool Runtime::RestoreSnapshot(const std::string& snapshot, std::string& error, d
 		// Publish its checked adoption before any state or presentation changes.
 		if (!impl->interaction.Adopt(std::move(interaction),error)) return false;
 		impl->state = std::move(state); impl->motion = std::move(motion);
-		impl->time = now; impl->pointerPresent = impl->pointerNavigation = false; impl->applied.clear();
+		impl->time = now; impl->pointerPresent = impl->pointerNavigation = false; impl->applied.clear(); impl->appliedInputs.clear();
         impl->preserveRestoredScroll=widgets.version==3;
 		impl->appliedStateRevision = impl->state.Revision(); impl->stateError.clear();
 		return true;

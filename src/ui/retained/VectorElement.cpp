@@ -11,6 +11,18 @@
 #include <cmath>
 
 namespace openq4::ui {
+namespace {
+// Single-precision transform composition jitters a still element's sub-pixel
+// phase by about 1e-4 px between frames, e.g. under a rotation its child turns
+// back (the emblem glint's rim). Coverage moves no further than the phase, so
+// a phase change under 1/1024 px (a quarter of one 8-bit coverage step) keeps
+// the compiled mesh. Every other term must match exactly.
+bool SameCompilation(const std::array<double,12>& current, const std::array<double,12>& compiled) {
+	for (size_t i = 0; i < current.size(); ++i)
+		if (i == 6 || i == 7 ? !(std::abs(current[i]-compiled[i]) < 1.0/1024) : current[i] != compiled[i]) return false;
+	return true;
+}
+}
 void VectorGeometry::Configure(const std::vector<VectorPath>& source, Host& owner, RuntimeStatistics& measurements) {
 	paths = source; host = &owner; statistics = &measurements;
 	compiled.clear(); compiledBlends.clear(); geometry.clear(); geometryBlends.clear(); valid = false; previousOpacity = -1;
@@ -127,7 +139,7 @@ void VectorGeometry::Render(Rml::Element& element, bool inheritOpacity) {
 	const std::array<double,12> signature{options.widthDp,options.heightDp,options.transform.a,options.transform.b,
 		options.transform.c,options.transform.d,options.transform.tx,options.transform.ty,
 		static_cast<double>(cachedBounds.left),static_cast<double>(cachedBounds.top),static_cast<double>(cachedBounds.right),static_cast<double>(cachedBounds.bottom)};
-	const bool rebuild = !valid || signature != previous;
+	const bool rebuild = !valid || !SameCompilation(signature,previous);
 	if (rebuild) {
 		compiled.clear(); compiledBlends.clear(); previous = signature; valid = true;
 		for (const auto& path : paths) {

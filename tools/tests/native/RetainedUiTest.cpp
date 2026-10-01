@@ -1,5 +1,6 @@
 // Copyright (C) 2026 DarkMatter Productions. GPL-3.0-or-later.
 #include "src/ui/retained/Runtime.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -194,6 +195,16 @@ struct TestHost final : Host {
 		}
 	}
 	void EndLayer(std::uint32_t restore) override { activeLayer = restore; }
+	// Retained submission: each drawn mesh's identity and revision, and the
+	// identities retired with their geometry.
+	std::vector<std::pair<std::uint64_t,std::uint64_t>> meshes;
+	std::vector<std::uint64_t> releasedMeshes;
+	void DrawMesh(std::uint64_t mesh, std::uint64_t revision, const std::vector<Vertex>& vertices,
+		const std::vector<int>& indices, std::uintptr_t material) override {
+		Check(mesh != 0 && revision != 0,"retained meshes carry an identity and revision");
+		meshes.emplace_back(mesh,revision); Draw(vertices,indices,material);
+	}
+	void ReleaseMesh(std::uint64_t mesh) override { releasedMeshes.push_back(mesh); }
 	struct Softened { std::uint32_t destination; float sigma, saturation; Bounds region; };
 	std::vector<Softened> softened;
 	bool softFocus = true;
@@ -334,6 +345,43 @@ static void CheckCompletionPrograms(TestHost& host) {
 	Check(host.errors == 0,"completion programs log no errors");
 }
 
+// A static frame resubmits each mesh with its identity and revision unchanged,
+// so a host may reuse what it derived from it; a whole-pixel move changes the
+// revision, and every identity is released with its geometry. A subtree
+// composited at zero opacity takes no layer and draws nothing, while partial
+// opacity still composites in isolation.
+static void CheckRetainedMeshes(TestHost& host) {
+	Runtime runtime(host);
+	std::vector<Diagnostic> diagnostics;
+	const char* document = R"json({"format":"openq4-ui","version":1,"id":"mesh-test",
+	 "root":{"id":"root","type":"group","properties":{"position":{"type":"keyword","value":"absolute"},"left":{"type":"length","value":0,"unit":"dp"},"top":{"type":"length","value":0,"unit":"dp"},"width":{"type":"length","value":400,"unit":"dp"},"height":{"type":"length","value":200,"unit":"dp"}},
+	  "children":[{"id":"faded","type":"vector","properties":{"position":{"type":"keyword","value":"absolute"},"left":{"type":"length","value":10,"unit":"dp"},"top":{"type":"length","value":10,"unit":"dp"},"width":{"type":"length","value":50,"unit":"dp"},"height":{"type":"length","value":50,"unit":"dp"},"opacity":{"type":"number","value":0.5},"transform":{"type":"transform","unit":"px","value":[0,0,1,1,0]}},"paths":[{"id":"rectangle","fill":{"type":"solid","color":{"type":"color","value":[0.8,0.4,0.2,0.8]}},"commands":[{"id":"p0","op":"move","points":[[0,0]]},{"id":"p1","op":"line","points":[[{"fraction":1},0]]},{"id":"p2","op":"line","points":[[{"fraction":1},{"fraction":1}]]},{"id":"p3","op":"line","points":[[0,{"fraction":1}]]},{"id":"close","op":"close"}]}]},
+	   {"id":"hidden","type":"vector","properties":{"position":{"type":"keyword","value":"absolute"},"left":{"type":"length","value":100,"unit":"dp"},"top":{"type":"length","value":10,"unit":"dp"},"width":{"type":"length","value":50,"unit":"dp"},"height":{"type":"length","value":50,"unit":"dp"},"opacity":{"type":"number","value":0},"transform":{"type":"transform","unit":"px","value":[0,0,1,1,0]}},"paths":[{"id":"rectangle","fill":{"type":"solid","color":{"type":"color","value":[0.8,0.4,0.2,0.8]}},"commands":[{"id":"p0","op":"move","points":[[0,0]]},{"id":"p1","op":"line","points":[[{"fraction":1},0]]},{"id":"p2","op":"line","points":[[{"fraction":1},{"fraction":1}]]},{"id":"p3","op":"line","points":[[0,{"fraction":1}]]},{"id":"close","op":"close"}]}]}]},
+	 "timelines":[{"id":"move","durationMs":1000,"tracks":[{"node":"faded","property":"transform","keys":[{"atMs":0,"value":{"type":"transform","unit":"px","value":[0,0,1,1,0]}},{"atMs":1000,"value":{"type":"transform","unit":"px","value":[10,0,1,1,0]}}]}]}]})json";
+	Check(runtime.LoadDocument(document,"meshes.q4ui",diagnostics),"load the retained mesh fixture");
+	Viewport viewport;
+	runtime.Frame(viewport,1);
+	host.meshes.clear(); host.ClearSamples(); runtime.Frame(viewport,2);
+	const auto first = host.meshes;
+	host.meshes.clear(); host.ClearSamples(); runtime.Frame(viewport,3);
+	Check(!first.empty() && host.meshes == first,"a static frame resubmits every mesh with its identity and revision");
+	const auto statistics = runtime.Statistics();
+	Check(statistics.layerElisions == 1 && statistics.layerPushes == 1 && statistics.layerComposites == 1,
+		"zero opacity takes no layer while partial opacity still composites");
+	bool hiddenDrawn = false;
+	for (const auto& v : host.drawn) hiddenDrawn |= v.x >= 100;
+	Check(!host.drawn.empty() && !hiddenDrawn,"a zero-opacity subtree draws nothing");
+	Check(runtime.PlayTimeline("move",3),"move the faded rectangle");
+	host.meshes.clear(); host.ClearSamples(); runtime.Frame(viewport,3.5);
+	bool revised = false;
+	for (const auto& [mesh,revision] : host.meshes)
+		for (const auto& [before,old] : first) revised |= mesh == before && revision > old;
+	Check(revised,"a moved mesh keeps its identity with a new revision");
+	runtime.Shutdown();
+	for (const auto& [mesh,revision] : first)
+		Check(std::find(host.releasedMeshes.begin(),host.releasedMeshes.end(),mesh) != host.releasedMeshes.end(),
+			"every mesh identity is released with its geometry");
+}
 int main(int argc, char** argv) {
 	CheckTypedActionDescriptors();
 	Viewport viewport;
@@ -1129,5 +1177,6 @@ int main(int argc, char** argv) {
 	Check(host.errors==0,"no library warnings or errors");
 	CheckCompletionPrograms(host);
 	CheckSoftFocus(host);
-	std::puts("Retained UI: density, layout, input, clipping, motion, bindings, independent contexts, bounded backend reuse, transactional instance snapshots, restart, completion programs and soft focus passed");
+	CheckRetainedMeshes(host);
+	std::puts("Retained UI: density, layout, input, clipping, motion, bindings, independent contexts, bounded backend reuse, transactional instance snapshots, restart, completion programs, soft focus and retained meshes passed");
 }

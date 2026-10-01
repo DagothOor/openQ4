@@ -108,11 +108,13 @@ int main(){
 
 
 DRAW_SUPPORT = r'''
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <unordered_map>
 #include <vector>
 typedef unsigned char byte;
 typedef int glIndex_t;
@@ -122,13 +124,20 @@ struct idVec2 {float x=0,y=0; void Set(float a,float b){x=a;y=b;}};
 struct idDrawVert {idVec3 xyz; idVec2 st; idVec3 normal; idVec3 tangents[2]; byte color[4]={}; byte color2[4]={}; void Clear(){*this=idDrawVert{};}};
 template<class T> struct idList {std::vector<T> items; void SetNum(int n){items.resize(n);} T& operator[](int i){return items[i];} T* Ptr(){return items.data();}};
 template<class T> T Min(T a,T b){return a<b?a:b;}
+template<class T> T Max(T a,T b){return a>b?a:b;}
 struct idStr {static int Icmpn(const char* a,const char* b,int n){return std::strncmp(a,b,n);} static int Icmp(const char* a,const char* b){return std::strcmp(a,b);}};
 struct idMath {static float ClampFloat(float low,float high,float value){return value<low?low:value>high?high:value;}};
 struct idMaterial {std::string name; const char* GetName() const {return name.c_str();}};
 struct Renderer {
-    std::vector<idDrawVert> drawn; const idMaterial* material=nullptr;
+    std::vector<idDrawVert> drawn; std::vector<glIndex_t> indices; const idMaterial* material=nullptr;
+    int calls=0,largestVertices=0; size_t largestIndices=0,totalIndices=0;
     void SetColor4(float,float,float,float){}
-    void DrawStretchPic(const idDrawVert* vertices,const glIndex_t*,int count,int,const idMaterial* used,bool){drawn.assign(vertices,vertices+count);material=used;}
+    void DrawStretchPic(const idDrawVert* vertices,const glIndex_t* used,int count,int indexCount,const idMaterial* surface,bool clip){
+        assert(!clip && count>0 && indexCount%3==0);
+        for (int i=0;i<indexCount;++i) assert(used[i]>=0 && used[i]<count);
+        drawn.assign(vertices,vertices+count); indices.assign(used,used+indexCount); material=surface;
+        ++calls; largestVertices=std::max(largestVertices,count); largestIndices=std::max(largestIndices,size_t(indexCount)); totalIndices+=indexCount;
+    }
 } renderer;
 Renderer* renderSystem=&renderer;
 struct Declarations {idMaterial solid{"_retainedSolid"}; const idMaterial* FindMaterial(const char*){return &solid;}} declarations;
@@ -148,12 +157,44 @@ int main(){
     // Additive light keeps its premultiplied tint and carries no coverage, so
     // it never writes a composition layer's alpha (an opaque box on composite).
     host.Draw(quad,indices,reinterpret_cast<std::uintptr_t>(&additive));
-    assert(renderer.material==&additive && renderer.drawn.size()==6);
+    // Each vertex converts once: the quad's four corners, still indexed.
+    assert(renderer.material==&additive && renderer.drawn.size()==4 && renderer.indices==std::vector<glIndex_t>({0,1,2,0,2,3}));
     for (const auto& vertex : renderer.drawn) assert(vertex.color[0]==128 && vertex.color[3]==0);
     // A straight image is unpremultiplied and keeps its coverage.
     host.Draw(quad,indices,reinterpret_cast<std::uintptr_t>(&picture));
     for (const auto& vertex : renderer.drawn) assert(vertex.color[0]==255 && vertex.color[3]==128);
-    std::puts("retained host draw: additive pictures write no coverage, straight images keep theirs");
+    // A retained mesh converts once per revision, and its release frees it.
+    const auto pictureHandle=reinterpret_cast<std::uintptr_t>(&picture);
+    host.DrawMesh(7,1,quad,indices,pictureHandle);
+    for (auto& vertex : quad) vertex.r=.25f;
+    quad[1].x=100;
+    host.DrawMesh(7,1,quad,indices,pictureHandle);
+    for (const auto& vertex : renderer.drawn) assert(vertex.color[0]==255);
+    host.DrawMesh(7,2,quad,indices,pictureHandle);
+    for (const auto& vertex : renderer.drawn) assert(vertex.color[0]==128);
+    assert(renderer.drawn[1].xyz.x==50);
+    host.viewportWidth=640;
+    host.DrawMesh(7,2,quad,indices,pictureHandle);
+    assert(renderer.drawn[1].xyz.x==100); // A new view size converts again.
+    host.viewportWidth=1280;
+    host.ReleaseMesh(7);
+    assert(host.meshes.empty());
+    // Large meshes split into whole-triangle chunks under the engine's surface
+    // limits, each passing the contiguous vertex range it uses.
+    std::vector<openq4::ui::Vertex> strip(4*7000);
+    std::vector<int> cells;
+    for (int cell=0;cell<7000;++cell) { const int base=4*cell; cells.insert(cells.end(),{base,base+1,base+2,base,base+2,base+3}); }
+    renderer.calls=renderer.largestVertices=0; renderer.largestIndices=renderer.totalIndices=0;
+    host.Draw(strip,cells,0);
+    assert(renderer.calls==3 && renderer.largestVertices==12000 && renderer.largestIndices<=36000 && renderer.totalIndices==cells.size());
+    assert(renderer.material==&declarations.solid);
+    // A triangle spanning more than a chunk draws from its own copy.
+    std::vector<openq4::ui::Vertex> far(13001);
+    far[13000].x=7;
+    renderer.calls=0;
+    host.Draw(far,{0,13000,1},0);
+    assert(renderer.calls==1 && renderer.drawn.size()==3 && renderer.drawn[1].xyz.x==7*.5f);
+    std::puts("retained host draw: additive pictures write no coverage, straight images keep theirs, meshes convert once per revision and chunk within surface limits");
 }
 '''
 
@@ -320,7 +361,10 @@ def main():
         subprocess.run([compiler,'-std=c++17',str(source),'-o',str(binary)],check=True)
         subprocess.run([str(binary)],check=True)
         draw=Path(temp)/'draw.cpp';drawBinary=Path(temp)/'draw.exe'
-        draw.write_text(DRAW_SUPPORT+function_body(source_text,'void Draw(').replace(' override','')+DRAW_MAIN,encoding='utf-8')
+        draw_bodies=[function_body(source_text,'struct HostMesh {')+';','HostMesh scratchMesh;','std::unordered_map<std::uint64_t,HostMesh> meshes;']+[
+            function_body(source_text,signature).replace(' override','') for signature in (
+                'void Draw(','void DrawMesh(','void ReleaseMesh(','const idMaterial* Material(','void Convert(','void Submit(const HostMesh&')]
+        draw.write_text(DRAW_SUPPORT+'\n'.join(draw_bodies)+DRAW_MAIN,encoding='utf-8')
         subprocess.run([compiler,'-std=c++17',str(draw),'-o',str(drawBinary)],check=True)
         subprocess.run([str(drawBinary)],check=True)
         soft=Path(temp)/'soft.cpp';softBinary=Path(temp)/'soft.exe'

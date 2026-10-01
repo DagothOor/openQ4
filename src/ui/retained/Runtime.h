@@ -81,7 +81,11 @@ struct RuntimeStatistics {
 	std::uint64_t geometryCompiles = 0, drawCalls = 0, submittedVertices = 0, submittedIndices = 0;
 	std::uint64_t residentGeometryCount = 0, residentGeometryBytes = 0;
 	std::uint64_t visibleVectorCacheBytes = 0;
+	// Pushed layers that received a host target, their composites, and the
+	// deepest stack pushed; layers composited at zero opacity or clipped away
+	// are dropped before any target is drawn.
 	std::uint64_t layerPushes = 0, layerComposites = 0, peakLayerDepth = 0;
+	std::uint64_t layerElisions = 0;
 	std::uint64_t maskSnapshots = 0, maskApplications = 0, peakLayerTargets = 0;
 	std::uint64_t multiplyFallbacks = 0; // Multiply paths drawn as luminance darkening.
 	// Soft-focus backdrops drawn by the host, and those it could not draw.
@@ -106,6 +110,13 @@ public:
 	virtual void Log(bool error, const std::string& message) = 0;
 	virtual std::uintptr_t LoadMaterial(const std::string& name, int& width, int& height) = 0;
 	virtual void Draw(const std::vector<Vertex>& vertices, const std::vector<int>& indices, std::uintptr_t material) = 0;
+	// Optional retained submission: while `revision` is unchanged, `mesh` names
+	// the same vertices, indices and material as its previous draw, so a host
+	// may reuse what it derived from them. Identities are never reused, and
+	// ReleaseMesh retires one. The defaults draw immediately and keep nothing.
+	virtual void DrawMesh(std::uint64_t mesh, std::uint64_t revision, const std::vector<Vertex>& vertices,
+		const std::vector<int>& indices, std::uintptr_t material) { Draw(vertices,indices,material); }
+	virtual void ReleaseMesh(std::uint64_t mesh) {}
 	// Identifies the host's current submission frame, shared by ALL contexts.
 	// A target used in this frame cannot be resized until the token changes.
 	// Constant tokens are safe but prevent recycling differently sized targets.
