@@ -28,6 +28,7 @@ DefaultGroupName=openQ4
 DisableProgramGroupPage=yes
 UsePreviousAppDir=yes
 LicenseFile=@@LICENSE_FILE@@
+InfoBeforeFile=@@LICENSING_FILE@@
 OutputDir=@@OUTPUT_DIR@@
 OutputBaseFilename=@@OUTPUT_BASENAME@@
 SetupIconFile=@@SETUP_ICON_FILE@@

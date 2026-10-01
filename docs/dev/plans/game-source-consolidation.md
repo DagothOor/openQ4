@@ -77,10 +77,11 @@ alignment rerun also passes. Source stability guards pass on the rerun after
 implementation edits stop. The campaign scope harness compiles and exercises
 the production class substitution code in both SP and MP configurations.
 
-The full debug native suite has 107 passes and five layout timeouts. An
-optimized build with assertions enabled is qualifying those five separately;
-its final result is recorded below when complete. These checks do not qualify
-runtime behavior on Linux, macOS or Android.
+The full debug native suite has 107 passes and five layout timeouts. All five
+pass separately in an optimized build with assertions enabled, covering
+scroll geometry, popup placement and SYSTEM display, dimensions and text
+scaling. Together these qualify all 112 native cases. These checks do not
+qualify runtime behavior on Linux, macOS or Android.
 
 Python compilation, workflow YAML parsing, embedded Bash syntax and changed
 PowerShell script parsing pass. Windows packaging and installer-script
