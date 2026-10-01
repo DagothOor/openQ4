@@ -1,6 +1,6 @@
 # openQ4 UI Visual Design
 
-Specification version 1.12, 1 October 2026 (1.10 and 1.11 the same day, 1.7 to
+Specification version 1.13, 1 October 2026 (1.10 to 1.12 the same day, 1.7 to
 1.9 on 29 September, 1.6 on 28 September, 1.4 and 1.5 on 27 September, 1.1 to
 1.3 on 26 September, 1.0 on 8 September 2026). Status:
 implementation target; the replacement has not shipped. Applies to every
@@ -35,7 +35,10 @@ HUD sections, lifts the multiplayer chat clear of the status bar and takes the
 waveform out of the weapon wheel. Version 1.12 adds the 9:16 portrait view, a
 multiplayer weapon wheel, the Competitive HUD's match bar and a spectator follow
 camera, outlines the modal title and widens its glow, and gives the initializing
-screen Remastered accents.
+screen Remastered accents. Version 1.13 refines the vehicle displays: HUD
+prompts replace the bracketed exit and boost lines, the transmission display
+keeps the right-hand screen's corner on every HUD, and the MCC side gun's
+readout is confirmed as the ship's hull.
 [Appendix C](#appendix-c-change-record) lists every change and the
 requirement-register rows it affects.
 
@@ -1529,7 +1532,8 @@ trailing end, the primary action sits beside it, and contextual actions lead.
 The bar updates in the same frame as focus, hides actions that cannot run and
 shows at most five; further actions move behind a More action. Glyphs follow
 the active device: controller buttons, keycaps for the keyboard, clickable
-plates for the mouse, and 48 dp tappable plates for touch.
+plates for the mouse, and 48 dp tappable plates for touch. In play the HUD
+names controls in the same construction (section 14.8).
 
 **Detail area.** Every setting, list row and action can explain itself: a
 description, current and default values, consequences such as a required
@@ -2036,11 +2040,11 @@ centered status bar.
 | Bottom center | The status bar: the ammunition, health and armor gauges with their stock gaps; the pickup lines above them; the weapon strip above those; a spectator's follow card in their place |
 | Top center | Boss bar, timed notices, multiplayer notices and warm-up text, and in Classic the stock spectator lines; the Competitive match bar |
 | Top leading | New-objective notice; the multiplayer standing, team panels and timer, or in Competitive the vote |
-| Top trailing | Radio chatter, with the objective-complete notice below it; the kill feed |
+| Top trailing | Radio chatter on every HUD, vehicles included, with the objective-complete notice or a vehicle's panel below it; the kill feed |
 | Leading edge | Objectives display, vote; Competitive team status |
 | Trailing edge | Statistics; a Competitive spectator's second team list |
 | Bottom leading | Chat and chat input |
-| Bottom trailing | Powerups and the carried flag |
+| Bottom trailing | Powerups and the carried flag; HUD prompts |
 
 **Status bar.** The three gauges, with the stock 52 u and 11 u gaps, form one
 438 u group centered on the bottom edge: ammunition at 101 u, health at 278 u
@@ -2223,8 +2227,14 @@ its wheel is the Marine wheel with these changes:
 - **Objectives.** The objective notices and the objectives display are
   section 14.11.
 - **Radio chatter.** "Incoming" and "transmission" in Marine 0.20 on a rounded
-  bar, their baselines at 19 and 26 u, anchored to the top-trailing corner, so
-  on a wide view it sits in the trailing screen.
+  bar, their baselines at 19 and 26 u. Remastered anchors it to the top-trailing
+  corner on every HUD: on foot, on the Strogg HUD and in every vehicle, turret
+  and ride. It therefore always sits at the right-hand edge, in the trailing
+  screen on a wide view and in the top band in portrait. A vehicle panel that
+  shares the corner, such as the space cannon's ship panel or the MCC readout,
+  stacks below it. Where a vehicle's own HUD has none (the air-defence cannon,
+  the MCC side gun), Remastered adds it, so no line goes unseen. Classic keeps
+  each GUI's stock corner of the 4:3 canvas.
   - **Timing.** It appears and disappears in one frame and stays up for the
     voice line plus 150 ms, or 5 s.
   - **Waveform.** Its motion is the additive #FF8000 carrier waveform, the
@@ -2252,6 +2262,19 @@ its wheel is the Marine wheel with these changes:
   while fading from 0.50, for 5000 ms; "Game Saved..." for 2000 ms, fading over
   1000 ms (the stock drew two copies on foot; openQ4 draws one). The HUD's
   "Mission Failed" sequence has no stock sender (section 14.11).
+- **HUD prompts.** Where the HUD names a control, it uses the menus' prompt
+  construction (section 13.4) instead of a bracketed line such as
+  "[ Press JUMP to exit ]", which names an action rather than its control. Each
+  item shows the active device's glyph, then the action in Lowpixel 16 dp: a
+  keycap plate with the 45-degree cut naming the bound key, the controller's
+  button from the active glyph family, or on touch the symbol of the overlay
+  control that performs it. Several actions share one sheared HUD plate at black
+  0.50, never wider than its content, contextual actions leading and Exit
+  trailing, as Back trails the prompt bar. An action that cannot run shows its
+  state instead: a lock and Vehicle locked in #FF8000. The prompt follows the
+  device in the frame it changes and sits at the bottom-trailing corner. Classic
+  sets the same prompt at the stock line's place, with the stock drop shadow and
+  no plate.
 - **Interactive brackets.** Open #AFDE90 brackets around the focused world GUI,
   labelled "Interactive"; the terminal highlight of section 13.5 uses them.
 - **Subtitles.** The stock has none. openQ4 subtitles use Lowpixel 17 dp in
@@ -2559,18 +2582,25 @@ silhouette at 80% and the other at 40%, a rocket count in Chain, and an
 INITIALIZED..." style lines wipe open in Marine 0.22 #FF8000 inside moving
 #FF8000 brackets, turn white and fade over 5.5 s. Hits flash an additive
 #550000 edge vignette out over 500 ms; electrical damage shows red curved
-brackets and a lightning bolt pulsing once a second for 2.5 s. "[ Press JUMP to
-exit ]", or "[ Vehicle Locked ]" in orange, sits trailing-aligned at the bottom.
+brackets and a lightning bolt pulsing once a second for 2.5 s. The HUD carries
+its own copy of the transmission display (section 14.8). The stock's
+"[ Press JUMP to exit ]", or "[ Vehicle Locked ]" in orange, sat
+trailing-aligned at the bottom; openQ4 shows the HUD prompt instead (section
+14.8): the jump control's glyph and Exit, or a lock and Vehicle locked in
+#FF8000 while a script locks the vehicle. The weapon panel draws the traced
+shell, twin-cartridge and rocket glyphs.
 
 **Other rides.** The flatbed and the tram replace the three gauges with a
 vehicle-silhouette gauge. The air-defence cannon draws a static amber scope
-overlay with two load bars and its own reticle. The Stroggification table and
-the MCC body table run scripted Strogg interface sequences of hexagon flashes,
-readouts and static. openQ4 keeps each source's construction and timing and
-lays them out with the HUD anchor rules; vehicle labels and messages come from
-the language tables. On foot and in a vehicle alike, the gauges and weapon panel are the status bar:
-Remastered centers them on the bottom edge and keeps the exit prompt on the
-trailing edge.
+overlay with two load bars and its own reticle, and centers its exit line; its
+HUD has no transmission display. The Stroggification table and the MCC body
+table run scripted Strogg interface sequences of hexagon flashes, readouts and
+static. openQ4 keeps each source's construction and timing and lays them out
+with the HUD anchor rules; vehicle labels and messages come from the language
+tables. On foot and in a vehicle alike, the gauges and weapon panel are the
+status bar. Remastered centers them on the bottom edge, keeps the HUD prompt at
+the bottom-trailing corner and the transmission display at the top-trailing
+corner, and adds the display to a vehicle HUD that has none.
 
 **The Awakening.** The expansion adds four vehicle displays and a state for the
 walker's cockpit monitor. Each keeps its measured construction, takes the HUD
@@ -2591,7 +2621,8 @@ whatever its first frame happened to show.
   where the gun looks relative to the ship's nose; the stock bound it to the
   absolute view yaw, which nothing wrote. On foot the same panel takes the
   markers, damage and warnings the script also sends to the player HUD, which
-  the expansion's HUD cannot show.
+  the expansion's HUD cannot show. The turret HUD never shows how to leave the
+  gun; Remastered's HUD prompt adds Exit.
 - **Cockpit screens.** Three on-model screens report the weapons. The selector
   lights the active weapon's row and shows ACTIVE in #D6E98C or JAMMED in
   #FF0000 above the kill count. The rocket rack frames the lock in gray, in
@@ -2600,32 +2631,47 @@ whatever its first frame happened to show.
   every 0.5 s. The gun heat bar grows from 40 to 337 u and warms from #8B8B48 to
   #FF0000.
 - **MCC cannon.** The MCC's side gun keeps the space cannon's reticule and
-  screens. Its HUD is a hull readout top-trailing: the gauge plate scaled to
-  136x70 u under U.S.S. Hannibal in Marine 0.25, and the hull in Marine 0.50
-  #F1F0C9, the MCC's health divided by 10, 2000 when whole. Remastered fills the
-  track in proportion; the stock track is static.
+  screens, and like that gun it cannot be damaged: it inherits `noDamage`,
+  `health` 0 and god mode for its gunner, so there is no turret health to
+  report. Its HUD reports what the player defends, the MCC's hull: the gauge
+  plate scaled to 136x70 u under U.S.S. Hannibal in Marine 0.25, and the hull in
+  Marine 0.50 #F1F0C9, the MCC's health divided by 10, 2000 when whole.
+  Remastered stacks the readout under the transmission display, which the side
+  gun's HUD lacks, fills the track in proportion (the stock track is static)
+  and, at or below 25%, turns it #FF3300 at 0.60 with a 2 Hz pulse, as the
+  vehicle gauges warn. Exit shows in the HUD prompt.
 - **Speeder bike.** The m07 race keeps the stock vehicle HUD and centers a
   progress bar at the top: a 45% black plate whose raised tab carries the race
   timer, gold Marine 0.65 seconds and Marine 0.55 hundredths, and ten
   forward-leaning pips, #4E5B1C dark and #798D2A lit, in two groups of five, lit
-  one per checkpoint. Remastered pads the hundredths and turns the seconds
-  #FF3333 over 100 ms in the last 10 s, a state the content never sends. While
-  boosting, a red hazard icon at 70% and Boosting... in Marine 0.25 #FF0000 show
-  trailing, which the content's own timers kept hidden, and Remastered streaks
-  the view's edges along the bike's path with the expansion's square-frame speed
-  blur, never under reduced motion. "[ Press CROUCH to boost ]" shows trailing
-  while a boost is ready. The bike's speedometer reads its speed in Marine 3.2
-  over kph and scrolls the road through its bezel; openQ4 narrows a third digit
-  to fit.
+  one per checkpoint. Remastered sets the bar 18 u lower, clear of the
+  transmission display at 4:3, pads the hundredths and turns the seconds #FF3333
+  over 100 ms in the last 10 s, a state the content never sends. The status bar
+  is the stock vehicle one: Remastered restores the hull and shield warnings the
+  expansion removed and shows the machinegun's glyph for the machinegun (the
+  bike lists the machinegun first, so the expansion's HUD showed the cannon's
+  panel for it). While boosting, a red hazard icon at 70% and Boosting... in
+  Marine 0.25 #FF0000 show trailing, which the content's own timers kept hidden;
+  Remastered sets them in the HUD prompt and streaks the view's edges along the
+  bike's path with the expansion's square-frame speed blur, never under reduced
+  motion. The expansion's "[ Press CROUCH to boost ]" line took the exit line's
+  window, so its HUD never says how to get off. The HUD prompt carries Boost
+  while a boost is ready and Exit at its trailing end; Classic keeps the boost
+  line and Boosting... at the expansion's places and Exit at the stock exit
+  line's. The bike's speedometer reads its speed in Marine 3.2 over kph and
+  scrolls the road through its bezel; openQ4 narrows a third digit to fit.
 - **GEV.** Its HUD names ten materials that neither game ships, so openQ4 draws
-  them in the stock vehicle construction, bottom-leading: plates at black 0.60
+  them in the stock vehicle construction, bottom-leading in Classic and centered
+  on the bottom edge in Remastered, as every status bar is: plates at black 0.60
   sheared 0,-.32; a vertical #FF9E1A health bar that drains from the top (the
   stock divides an already normalized value by 1000 and reads empty); the hull
   from above in #B0C891, turning with the view relative to it under a fixed
   turret; three shield stages as arcs, #D1AF47 from 80%, #C6C251 from 40% and
   #A2B85C to empty, the inner arcs pulsing #FF591A to #80591A every 500 ms once
   the shields fail; and the weapon glyph turned 60 degrees with an infinity mark
-  or the rocket count over the #FF9E1A charge bar. No map places the GEV.
+  or the rocket count over the #FF9E1A charge bar. Remastered keeps its
+  transmission display at the top-trailing corner and adds Exit to the HUD
+  prompt. No map places the GEV.
 - **Walker monitor.** In m04 the walker's cockpit monitor can show SYSTEM
   OFFLINE: a red wash pulsing between 25% and 50% every 750 ms under two lines
   of Marine 2.0 #FF0000 with a shadow.
@@ -3515,3 +3561,19 @@ in the center column) and FLOW-049 (the status line replaced at once) with
 INP-014, LAY-020, ART-036, FLOW-056 and FLOW-057, and appends LAY-021 (the
 portrait view), WID-034 (the multiplayer wheel), FLOW-058 (the Competitive HUD)
 and FLOW-059 (the spectator follow camera).
+
+### Version 1.13
+
+Version 1.13 follows the product owner's review of the vehicle displays.
+
+| Area | 1.12 | 1.13 | Basis |
+| --- | --- | --- | --- |
+| Exit, lock and boost lines | The stock's bracketed lines, such as "[ Press JUMP to exit ]", which name an action rather than its control | HUD prompts in the menus' construction: the active device's glyph, then the action, on a HUD plate at the bottom-trailing corner; Vehicle locked under a lock in #FF8000; Classic at the stock lines' places without the plate | The product owner's review |
+| Transmission display | Anchored top-trailing on foot; the vehicle displays drew it at the stock corner of the 4:3 canvas | The top-trailing corner of the right-hand screen on every HUD, vehicle panels stacked below it, and added where a vehicle's HUD has none (the air-defence cannon, the MCC side gun) | The product owner's review |
+| MCC side gun | A hull readout, top-trailing | Confirmed without turret health: the gun cannot be damaged (`noDamage`, `health` 0, god mode for its gunner), so the readout is the MCC's hull, under the transmission display, with a 25% warning | The expansion's vehicle definitions |
+| Speeder bike | The stock vehicle HUD and the race display | Remastered restores the gauges' warnings, fixes the swapped weapon glyphs, lowers the progress bar 18 u and restores Exit | The expansion's HUD survey |
+| GEV | Bottom-leading | Bottom-leading in Classic; centered on the bottom edge in Remastered, as every status bar is | Section 14.4 |
+
+Register schema 12 supersedes FLOW-037, which kept the stock exit and lock
+lines, with FLOW-060, and appends WID-035 (HUD prompts) and FLOW-061 (The
+Awakening's vehicle display refinements).
