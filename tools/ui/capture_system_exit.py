@@ -491,7 +491,7 @@ def launch_command(args, output):
         in_mouse='0',in_joystick='0',in_joystickRumble='0',g_autoScreenshot='0',g_autoSkipCinematics='1',
         g_autoExecAfterMapLoad='system-exit.cfg',g_autoExecAfterMapLoadDelayMs='3000',com_skipLoadingContinue='1',
         com_loadingContinueAutoAdvance='1',com_maxfps='60',ui_autoJoin='1' if args.mode=='mp' else '0',
-        ui_retainedScale='1',ui_retainedDensity=str(args.density),ui_retainedTrace='1',ui_retainedSystem='1',ui_retainedReducedMotion='0')
+        ui_retainedScale='1',ui_retainedDensity=str(args.density),ui_retainedTrace='1',ui_retained='0',ui_retainedSystem='1',ui_retainedReducedMotion='0')
     executable=args.runtime.resolve()/('openQ4-client_x64.exe' if os.name=='nt' else 'openQ4-client_x64')
     command=[str(executable)]
     for key,value in values.items(): command+=['+set',key,value]

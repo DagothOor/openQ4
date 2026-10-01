@@ -51,11 +51,14 @@ idCVar	idSessionLocal::gui_configServerRate( "gui_configServerRate", "0", CVAR_G
 idCVar gui_set_sys_scroll( "gui_set_sys_scroll", "0", CVAR_GUI | CVAR_INTEGER, "display menu scroll step", 0, 28 );
 idCVar gui_set_audio_scroll( "gui_set_audio_scroll", "0", CVAR_GUI | CVAR_INTEGER, "audio menu scroll step", 0.0f, 0.0f );
 idCVar gui_set_game_scroll( "gui_set_game_scroll", "0", CVAR_GUI | CVAR_INTEGER, "game menu scroll step", 0, 48 );
-idCVar ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL, "opt in to only the in-development retained SYSTEM page; ui_retained includes it" );
-// The single gate for the in-development retained (RmlUi) interface. While it
-// is 0 no session route creates a retained view: the stock GUIs present every
-// screen. Not archived, so a restart always returns to the stock interface.
-idCVar ui_retained( "ui_retained", "0", CVAR_GUI | CVAR_BOOL, "opt in to the in-development retained interface: title, pause, loading and SYSTEM screens" );
+idCVar ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL, "use the in-development retained SYSTEM page, which ui_retained includes only once it offers every stock setting" );
+// The single gate for the retained (RmlUi) interface, on by default. Each
+// screen presents its stock GUI instead when its retained document is missing
+// or cannot load, or when the legacy menu it covers lacks a page it hands off
+// to (see idSessionLocal::FindRetainedGui). While it is 0 no session route
+// creates a retained view and the stock GUIs present every screen. Archived,
+// so a player who prefers the stock screens keeps them.
+idCVar ui_retained( "ui_retained", "1", CVAR_GUI | CVAR_BOOL | CVAR_ARCHIVE, "use the retained interface for the title, pause and loading screens; 0 presents the stock screens" );
 
 static bool Session_RetainedScreensEnabled( void ) {
 #ifdef ID_DEDICATED
@@ -65,8 +68,19 @@ static bool Session_RetainedScreensEnabled( void ) {
 #endif
 }
 
+// The retained SYSTEM page, reached from the legacy menu's SYSTEM button.
+static const char *const RETAINED_SYSTEM_GUI = "guis/menu/settings/system.q4ui";
+// Settings the stock SYSTEM page offers that the retained page has no control
+// for yet (r_mode is the display mode list). While any remain, the gate leaves
+// the stock SYSTEM page in place and only ui_retainedSystem opts into the
+// retained one. ui_retained_gate.py keeps this list equal to what the two
+// pages offer, so the page joins the gate once it is complete.
+static const char *const RETAINED_SYSTEM_MISSING_SETTINGS[] = {
+	"r_mode", "r_screen", "r_multiScreen", "r_displayRefresh", "r_renderer", "r_lightGridPreload", NULL
+};
+
 static bool Session_RetainedSystemEnabled( void ) {
-	return Session_RetainedScreensEnabled() || ui_retainedSystem.GetBool();
+	return ui_retainedSystem.GetBool() || ( Session_RetainedScreensEnabled() && RETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL );
 }
 
 static const int MENU_CONTROLLER_AXIS_THRESHOLD = 50;
@@ -1718,6 +1732,13 @@ void idSessionLocal::ExitMenu( void ) {
 	}
 }
 
+// The SYSTEM button opens the retained page while it is enabled (by its own
+// opt-in, or by the gate once complete) and has not fallen back to the stock
+// page this session.
+bool idSessionLocal::RetainedSystemAvailable() const {
+	return Session_RetainedSystemEnabled() && retainedStock.FindIndex( RETAINED_SYSTEM_GUI ) < 0;
+}
+
 bool idSessionLocal::OpenSystemSettings() {
 #ifdef ID_DEDICATED
 	return false;
@@ -1725,11 +1746,14 @@ bool idSessionLocal::OpenSystemSettings() {
 	if ( !Session_RetainedSystemEnabled() || systemGuiTransition || guiTest != NULL || RetainedUI_IsOpen() ) return false;
 	if ( guiSystem != NULL ) return guiActive == guiSystem;
 	if ( guiMainMenu == NULL || guiActive != guiMainMenu || guiMsgRestore != NULL ) return false;
-	// The canonical source may not exist while this opt-in route is developed.
-	// Load and validate its application contract before deactivating the parent.
-	idUserInterface *child = uiManager->FindGui( "guis/menu/settings/system.q4ui", true, true, false );
+	// Load and validate its application contract before deactivating the
+	// parent. A page that is missing or invalid leaves the stock SYSTEM page
+	// in use for the rest of the session.
+	idUserInterface *child = FindRetainedGui( RETAINED_SYSTEM_GUI, false, false );
 	if ( child == NULL ) return false;
 	if ( !UI_RetainedSettingsDocument( child ) ) {
+		common->Warning( "retained UI: '%s' is not a SYSTEM settings page; the stock page stays in use", child->Name() );
+		retainedStock.Append( RETAINED_SYSTEM_GUI );
 		uiManager->DeAlloc( child );
 		return false;
 	}
@@ -2350,7 +2374,7 @@ idSessionLocal::SetMainMenuGuiVars
 ===============
 */
 void idSessionLocal::SetMainMenuGuiVars( bool refreshCatalogs ) {
-	guiMainMenu->SetStateBool( "retainedSystem", Session_RetainedSystemEnabled() );
+	guiMainMenu->SetStateBool( "retainedSystem", RetainedSystemAvailable() );
 
 	guiMainMenu->SetStateString( "serverlist_sel_0", "-1" );
 	guiMainMenu->SetStateString( "serverlist_selid_0", "-1" ); 
@@ -2717,7 +2741,16 @@ void idSessionLocal::HandleMainMenuCommands( const char *menuCommand ) {
 		}
 
 		if ( !idStr::Icmp( cmd, "openRetainedSystem" ) ) {
-			OpenSystemSettings();
+			if ( !OpenSystemSettings() && !RetainedSystemAvailable() ) {
+				// The retained page fell back: this click opens the stock
+				// SYSTEM page, and the button opens it directly from now on.
+				guiMainMenu->SetStateBool( "retainedSystem", false );
+				guiMainMenu->StateChanged( common->GetPresentationTime() );
+				idStr command;
+				if ( UI_RunLegacyWindowAction( guiMainMenu, "set_b_system", false, command ) && command.Length() > 0 ) {
+					DispatchCommand( guiMainMenu, command.c_str() );
+				}
+			}
 			return;
 		}
 
@@ -4659,6 +4692,8 @@ void idSessionLocal::HandleNoteCommands( const char *menuCommand ) {
 static const char *const RETAINED_TITLE_GUI = "guis/menu/title.q4ui";
 static const char *const RETAINED_PAUSE_GUI = "guis/menu/pause.q4ui";
 static const char *const RETAINED_LOADING_GUI = "guis/loading/loading.q4ui";
+static const char *const RETAINED_SINGLEPLAYER_GUI = "guis/menu/singleplayer.q4ui";
+static const char *const RETAINED_CAMPAIGNS_GUI = "guis/menu/campaigns.q4ui";
 // The stock choreography shows a page 550 ms after its activation and a
 // home-state pop-up at once (specification section 8); the retained screen
 // covers the legacy departure for that long before the page takes over.
@@ -4695,17 +4730,17 @@ static bool Session_RetainedHomePopup( idUserInterface *gui ) {
 	return false;
 }
 
-static idUserInterface *Session_FindRetainedGui( const char *path, bool shared, bool &failed ) {
-	if ( failed ) {
-		return NULL;
+// The retained title and pause screens cover the legacy main menu and hand
+// its pages off to it, so they present only over a menu with every page they
+// offer. Returns the first page this menu lacks: a mod's own main menu
+// without them presents as the mod made it.
+static const char *Session_RetainedHomeMissingPage( idUserInterface *menu ) {
+	for ( int i = 0; i < static_cast<int>( sizeof( RETAINED_HANDOFFS ) / sizeof( RETAINED_HANDOFFS[0] ) ); ++i ) {
+		if ( !UI_LegacyWindowExists( menu, RETAINED_HANDOFFS[i].window ) ) {
+			return RETAINED_HANDOFFS[i].window;
+		}
 	}
-	idUserInterface *gui = uiManager->FindGui( path, true, !shared, shared );
-	if ( gui == NULL ) {
-		// Reported once; the stock interface keeps presenting that screen.
-		failed = true;
-		common->Warning( "retained UI: '%s' could not be loaded; the stock interface stays in use", path );
-	}
-	return gui;
+	return NULL;
 }
 
 // The title screen's CONTINUE resumes the newest save and describes it.
@@ -4721,8 +4756,20 @@ static void Session_PublishRetainedTitleState( idUserInterface *gui, idSessionLo
 		const bool described = Session_MenuReadSaveDescription( slot, description );
 		title = described && description.description.Length() > 0 ? description.description : slot;
 		detail = Sys_TimeStampToStr( fileTimes[0].timeStamp );
-		if ( described && UI_RetainedImageSource( description.screenshot.c_str() ) ) {
-			shot = description.screenshot;
+		if ( described && description.screenshot.Length() > 0 ) {
+			// An autosave names its level's loadscreen.
+			if ( UI_RetainedImageSource( description.screenshot.c_str() ) ) {
+				shot = description.screenshot;
+			}
+		} else {
+			// Other saves keep their own screenshot beside the save, as the
+			// stock Load Game page shows it. Without one, no picture shows.
+			const idStr preview = va( "savegames/%s.tga", slot.c_str() );
+			if ( UI_RetainedImageSource( preview.c_str() ) && fileSystem->ReadFile( preview.c_str(), NULL, NULL ) > 0 ) {
+				shot = preview;
+				// A newer save may have replaced the picture since it last showed.
+				UI_RetainedReloadImage( shot.c_str() );
+			}
 		}
 	}
 	gui->SetStateBool( "menu_continue", hasSave );
@@ -4731,18 +4778,50 @@ static void Session_PublishRetainedTitleState( idUserInterface *gui, idSessionLo
 	gui->SetStateString( "menu_continue_shot", shot.c_str() );
 	gui->StateChanged( common->GetPresentationTime() );
 }
+
+/*
+===============
+idSessionLocal::FindRetainedGui
+
+A screen's retained document, or NULL while its stock GUI presents instead.
+A document that no search path provides falls back quietly, and so does a
+home screen over a legacy main menu that lacks a page it hands off to. A
+document that is installed but cannot load is reported. A fallback holds
+for the rest of the session, and ui_retainedStatus lists it.
+===============
+*/
+idUserInterface *idSessionLocal::FindRetainedGui( const char *path, bool shared, bool home ) {
+	if ( retainedStock.FindIndex( path ) >= 0 ) {
+		return NULL;
+	}
+	idUserInterface *gui = NULL;
+	const char *missingPage = home ? Session_RetainedHomeMissingPage( guiMainMenu ) : NULL;
+	if ( missingPage != NULL ) {
+		common->DPrintf( "retained UI: the main menu has no '%s' page, so it presents its own screen instead of '%s'\n", missingPage, path );
+	} else if ( fileSystem->ReadFile( path, NULL, NULL ) <= 0 ) {
+		common->DPrintf( "retained UI: '%s' is not installed; the stock screen presents instead\n", path );
+	} else if ( ( gui = uiManager->FindGui( path, true, !shared, shared ) ) == NULL ) {
+		common->Warning( "retained UI: '%s' could not be loaded; the stock screen stays in use", path );
+	}
+	if ( gui == NULL ) {
+		retainedStock.Append( path );
+	}
+	return gui;
+}
 #endif
 
 
 void idSessionLocal::OpenCampaignSelector( bool campaigns ) {
 #ifndef ID_DEDICATED
-    if ( !Session_RetainedScreensEnabled() && !campaigns ) {
+    // The stock selectors stand in when the retained one is off, missing or
+    // cannot load.
+    idUserInterface *gui = Session_RetainedScreensEnabled() ?
+        FindRetainedGui( campaigns ? RETAINED_CAMPAIGNS_GUI : RETAINED_SINGLEPLAYER_GUI, true, false ) : NULL;
+    if ( gui == NULL && !campaigns ) {
         arenaCampaign.OpenSelector();
         return;
     }
-    idUserInterface *gui = Session_RetainedScreensEnabled() ?
-        uiManager->FindGui( campaigns ? "guis/menu/campaigns.q4ui" : "guis/menu/singleplayer.q4ui", true, false, true ) :
-        uiManager->FindGui( "guis/campaign_menu.gui", true, false, true );
+    if ( gui == NULL ) gui = uiManager->FindGui( "guis/campaign_menu.gui", true, false, true );
     if ( gui == NULL ) return;
     if ( campaigns ) {
         const idCampaignContentInfo info = fileSystem->GetAwakeningContentInfo();
@@ -4824,17 +4903,19 @@ void idSessionLocal::UpdateRetainedHome() {
 		fromPopup = returning && Session_RetainedHomePopup( guiMainMenu );
 		const bool handoff = guiRetainedHome != NULL && now < retainedHandoffUntil;
 		if ( atHome || returning || handoff ) {
-			if ( mapSpawned ) {
-				if ( guiRetainedPause == NULL ) {
-					guiRetainedPause = Session_FindRetainedGui( RETAINED_PAUSE_GUI, false, retainedPauseFailed );
-				}
-				want = guiRetainedPause;
-			} else {
-				if ( guiRetainedTitle == NULL ) {
-					guiRetainedTitle = Session_FindRetainedGui( RETAINED_TITLE_GUI, false, retainedTitleFailed );
-				}
-				want = guiRetainedTitle;
+			// The paused game's screen or the title; each loads on first use.
+			const char *path = mapSpawned ? RETAINED_PAUSE_GUI : RETAINED_TITLE_GUI;
+			idUserInterface *&home = mapSpawned ? guiRetainedPause : guiRetainedTitle;
+			if ( home == NULL ) {
+				home = FindRetainedGui( path, false, true );
+			} else if ( UI_RetainedViewFailed( home ) ) {
+				// A view that failed to come back after a renderer or language
+				// change draws nothing; the stock home screen takes over.
+				common->Warning( "retained UI: '%s' stopped drawing; the stock screen presents instead", path );
+				retainedStock.AddUnique( path );
+				home = NULL;
 			}
+			want = home;
 		}
 	}
 	if ( want == guiRetainedHome ) {
@@ -4915,7 +4996,7 @@ void idSessionLocal::DrawRetainedHome( int presentationTime ) {
 void idSessionLocal::HandleRetainedSessionRequest( idUserInterface *gui, const char *request ) {
 #ifndef ID_DEDICATED
     if ( gui && request && gui == guiActive &&
-         ( !idStr::Icmp( gui->Name(), "guis/menu/singleplayer.q4ui" ) || !idStr::Icmp( gui->Name(), "guis/menu/campaigns.q4ui" ) ) ) {
+         ( !idStr::Icmp( gui->Name(), RETAINED_SINGLEPLAYER_GUI ) || !idStr::Icmp( gui->Name(), RETAINED_CAMPAIGNS_GUI ) ) ) {
         if ( !idStr::Icmp( request, "campaigns" ) ) OpenCampaignSelector( true );
         else if ( !idStr::Icmp( request, "campaignQuake4" ) ) SelectCampaign( "quake4" );
         else if ( !idStr::Icmp( request, "campaignAwakening" ) ) SelectCampaign( "awakening" );
@@ -5002,7 +5083,7 @@ idUserInterface *idSessionLocal::SelectRetainedLoadingGui( idUserInterface *lega
 	if ( !stock ) {
 		return legacy;
 	}
-	idUserInterface *retained = Session_FindRetainedGui( RETAINED_LOADING_GUI, true, retainedLoadingFailed );
+	idUserInterface *retained = FindRetainedGui( RETAINED_LOADING_GUI, true, false );
 	if ( retained == NULL ) {
 		return legacy;
 	}
@@ -5021,10 +5102,10 @@ void idSessionLocal::PreloadRetainedScreens() {
 		return;
 	}
 	if ( guiRetainedTitle == NULL ) {
-		guiRetainedTitle = Session_FindRetainedGui( RETAINED_TITLE_GUI, false, retainedTitleFailed );
+		guiRetainedTitle = FindRetainedGui( RETAINED_TITLE_GUI, false, true );
 	}
 	if ( guiRetainedPause == NULL ) {
-		guiRetainedPause = Session_FindRetainedGui( RETAINED_PAUSE_GUI, false, retainedPauseFailed );
+		guiRetainedPause = FindRetainedGui( RETAINED_PAUSE_GUI, false, true );
 	}
 #endif
 }
@@ -5037,16 +5118,23 @@ void idSessionLocal::PrepareRetainedLevel( const char *mapPath, bool multiplayer
 		return;
 	}
 	if ( guiRetainedPause == NULL ) {
-		guiRetainedPause = Session_FindRetainedGui( RETAINED_PAUSE_GUI, false, retainedPauseFailed );
+		guiRetainedPause = FindRetainedGui( RETAINED_PAUSE_GUI, false, true );
 	}
 	UI_RetainedPrecacheImage( RetainedPauseShot( mapPath ).c_str() );
 #endif
 }
 
 void idSessionLocal::ReportRetainedScreens() {
-	common->Printf( "OPENQ4_RETAINED enabled=%d system=%d home=%s title=%d pause=%d handoff=%d views=%d\n",
+	// stock= lists the retained documents that fell back to their stock
+	// screens this session.
+	idStr stock;
+	for ( int i = 0; i < retainedStock.Num(); ++i ) {
+		stock += i > 0 ? "," : "";
+		stock += retainedStock[i];
+	}
+	common->Printf( "OPENQ4_RETAINED enabled=%d system=%d home=%s title=%d pause=%d handoff=%d views=%d stock=%s\n",
 		Session_RetainedScreensEnabled() ? 1 : 0, Session_RetainedSystemEnabled() ? 1 : 0,
 		guiRetainedHome != NULL ? guiRetainedHome->Name() : "-",
 		guiRetainedTitle != NULL ? 1 : 0, guiRetainedPause != NULL ? 1 : 0,
-		RetainedHomeInputBlocked() ? 1 : 0, RetainedUI_ViewCount() );
+		RetainedHomeInputBlocked() ? 1 : 0, RetainedUI_ViewCount(), stock.Length() > 0 ? stock.c_str() : "-" );
 }

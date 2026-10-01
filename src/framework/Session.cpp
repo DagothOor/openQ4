@@ -3795,7 +3795,8 @@ void idSessionLocal::Clear() {
 	guiSystemParentHandle = NULL;
 	systemGuiTransition = systemGuiBackEvent = false;
 	guiRetainedHome = guiRetainedTitle = guiRetainedPause = NULL;
-	retainedHomeReturning = retainedTitleFailed = retainedPauseFailed = retainedLoadingFailed = false;
+	retainedHomeReturning = false;
+	retainedStock.Clear();
 	retainedHandoffUntil = 0;
 	retainedPointerX = retainedPointerY = 0.0f;
 	retainedLoadingActive = false;
@@ -4404,7 +4405,7 @@ static void Session_SystemSettings_f( const idCmdArgs &args ) {
 			return;
 		}
 	}
-	common->Printf( "usage: openq4_system open | report | back (requires ui_retained 1 or ui_retainedSystem 1 and the normal main menu)\n" );
+	common->Printf( "usage: openq4_system open | report | back (requires ui_retainedSystem 1, or ui_retained 1 once the retained page offers every stock setting, and the normal main menu)\n" );
 }
 
 // Reports the ui_retained gate, the retained screen presenting now and the

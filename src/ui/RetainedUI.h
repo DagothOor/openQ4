@@ -75,6 +75,11 @@ int RetainedUI_ViewCount();
 // startup or inside a level load, so opening a screen neither reads the file
 // mid-frame nor warns about a non-precached declaration.
 void RetainedUI_PrecacheImage(const std::string& source, bool additive);
+// Reread a picture's retained material if its file changed on disk.
+void RetainedUI_ReloadImage(const std::string& source, bool additive);
+// A view whose document failed to come back after a renderer or language
+// change: it draws nothing until its document is loaded again.
+bool RetainedUI_ViewFailed(retainedUIView_t* view);
 void RetainedUI_FrameInput();
 bool RetainedUI_ProcessEvent(const sysEvent_s* event);
 void RetainedUI_QueueInput(const retainedUIInput_t& input, int time);

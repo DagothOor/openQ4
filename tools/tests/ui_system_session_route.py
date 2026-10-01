@@ -54,10 +54,16 @@ struct Common {
         char text[2048];va_list args;va_start(args,fmt);std::vsnprintf(text,sizeof(text),fmt,args);va_end(args);output+=text;
     }
     void DPrintf(const char*,...) {}
+    std::vector<std::string> warnings;
+    void Warning(const char* fmt,...) {
+        char text[2048];va_list args;va_start(args,fmt);std::vsnprintf(text,sizeof(text),fmt,args);va_end(args);warnings.push_back(text);
+    }
 } commonObject,*common=&commonObject;
+struct StrList : std::vector<std::string> {
+    void Append(const char* value){push_back(value);}
+    int FindIndex(const char* value) const{auto found=std::find(begin(),end(),value);return found==end()?-1:static_cast<int>(found-begin());}
+};
 struct CVar {bool value=false;bool GetBool() const{return value;}} ui_retainedSystem,ui_retained;
-// The master ui_retained gate includes the SYSTEM page; ui_retainedSystem alone opts into only it.
-static bool Session_RetainedSystemEnabled(){return ui_retained.GetBool() || ui_retainedSystem.GetBool();}
 enum {SE_NONE=0,INHIBIT_SESSION=1};
 struct sysEvent_t {int evType=SE_NONE;};
 using HandleGuiCommand_t=bool (*)(const char*);
@@ -125,6 +131,13 @@ struct idSessionLocal {
     void SetGUI(idUserInterface*,HandleGuiCommand_t);void ExitMenu();void GuiFrameEvents();
     void SetPlayingSoundWorld();void SetPlayingSoundWorld(Sound* sound){requestedSoundWorld=sound;}
     bool IsMultiplayer(){return multiplayer;}
+    // The session's stock fallback (qualified by ui_retained_gate.py): a page that
+    // could not load is listed and never loaded again this session.
+    StrList retainedStock;
+    idUserInterface* FindRetainedGui(const char* path,bool shared,bool home) {
+        CHECK(!shared && !home);if(retainedStock.FindIndex(path)>=0)return nullptr;
+        auto* gui=uiManager->FindGui(path,true,true,false);if(!gui)retainedStock.Append(path);return gui;
+    }
     // Retained home screens are outside this route: they never present in these scenarios.
     idUserInterface* guiRetainedHome=nullptr;int retainedHomeUpdates=0;
     void UpdateRetainedHome(){++retainedHomeUpdates;}void RetainedHomeFrameEvent(){CHECK(guiRetainedHome==nullptr);}
@@ -147,7 +160,7 @@ struct Scenario {
     Manager manager;Sound gameSound,menuSound;
     idSessionLocal& session=sessLocal;
     idUserInterface* parent;
-    Scenario(){sessLocal=idSessionLocal{};uiManager=&manager;preview=false;ui_retainedSystem.value=true;ui_retained.value=false;common->output.clear();events.clear();userCommands.inhibited=false;
+    Scenario(){sessLocal=idSessionLocal{};uiManager=&manager;preview=false;ui_retainedSystem.value=true;ui_retained.value=false;common->output.clear();common->warnings.clear();events.clear();userCommands.inhibited=false;
         parent=manager.Make("guis/mainmenu.gui");parent->active=true;
         session.guiActive=session.guiMainMenu=parent;session.guiHandle=ParentHandler;
         session.guiMsg=manager.Make("guis/msg.gui");session.sw=&gameSound;session.menuSoundWorld=&menuSound;session.requestedSoundWorld=&menuSound;
@@ -160,14 +173,22 @@ MAIN = r'''
 int main(){
     {
         Scenario s;ui_retainedSystem.value=false;CHECK(!s.session.OpenSystemSettings());CHECK(s.manager.loads==0 && s.parent->deactivates==0);
-        ui_retained.value=true;CHECK(s.session.OpenSystemSettings() && s.manager.loads==1);CHECK(s.session.ReturnSystemSettings());ui_retained.value=false;
+        // The gate includes the SYSTEM page only once it offers every stock setting.
+        ui_retained.value=true;CHECK(RETAINED_SYSTEM_MISSING_SETTINGS[0]!=NULL && !s.session.OpenSystemSettings() && s.manager.loads==0);
+        ui_retainedSystem.value=true;CHECK(s.session.OpenSystemSettings() && s.manager.loads==1);CHECK(s.session.ReturnSystemSettings());ui_retained.value=false;
         s.manager.loads=0;s.manager.frees=0;s.parent->deactivates=0;
         ui_retainedSystem.value=true;s.session.guiTest=s.parent;CHECK(!s.session.OpenSystemSettings());s.session.guiTest=nullptr;
         preview=true;CHECK(!s.session.OpenSystemSettings());preview=false;
         s.session.guiActive=nullptr;CHECK(!s.session.OpenSystemSettings());s.session.guiActive=s.parent;
         s.session.guiMsgRestore=s.parent;CHECK(!s.session.OpenSystemSettings());s.session.guiMsgRestore=nullptr;
         s.manager.missing=true;CHECK(!s.session.OpenSystemSettings());CHECK(s.session.guiActive==s.parent && s.parent->deactivates==0);
-        s.manager.missing=false;s.manager.valid=false;CHECK(!s.session.OpenSystemSettings());CHECK(s.manager.frees==1 && s.parent->deactivates==0 && s.session.guiSystem==nullptr);
+        // A missing page falls back to the stock one for the session: no reload is attempted.
+        s.manager.missing=false;CHECK(s.session.retainedStock.FindIndex(RETAINED_SYSTEM_GUI)==0);
+        const int loads=s.manager.loads;CHECK(!s.session.OpenSystemSettings() && s.manager.loads==loads);
+        s.session.retainedStock.clear();s.manager.valid=false;CHECK(!s.session.OpenSystemSettings());CHECK(s.manager.frees==1 && s.parent->deactivates==0 && s.session.guiSystem==nullptr);
+        // So does a page that is not a SYSTEM settings document, and it is reported.
+        CHECK(s.session.retainedStock.FindIndex(RETAINED_SYSTEM_GUI)==0 && common->warnings.size()==1);
+        CHECK(!s.session.OpenSystemSettings() && s.manager.frees==1);
     }
     {
         Scenario s;CHECK(s.session.OpenSystemSettings());auto* child=s.session.guiSystem;
@@ -234,7 +255,10 @@ def main():
     menu = menu_path.read_text(encoding='utf-8')
     session = session_path.read_text(encoding='utf-8')
     header = header_path.read_text(encoding='utf-8')
-    bodies = [function_body(menu, signature) for signature in (
+    # The production gate functions, the SYSTEM page path and its missing-settings list.
+    gate_start = menu.index('static bool Session_RetainedScreensEnabled( void ) {')
+    bodies = [menu[gate_start:menu.index('static const int MENU_CONTROLLER_AXIS_THRESHOLD', gate_start)]]
+    bodies += [function_body(menu, signature) for signature in (
         'bool idSessionLocal::OpenSystemSettings(', 'bool idSessionLocal::ReturnSystemSettings(',
         'void idSessionLocal::CloseSystemSettings(', 'void idSessionLocal::ReportSystemSettings(',
         'void idSessionLocal::SetGUI(', 'void idSessionLocal::ExitMenu(', 'void idSessionLocal::GuiFrameEvents(')]
@@ -247,10 +271,10 @@ def main():
     end = dispatch.index('\n\tif ( gui == guiMainMenu )', start)
     bodies.append('void idSessionLocal::DispatchCommand(idUserInterface* gui,const char* menuCommand) {\n' + dispatch[start:end] + '\n}')
     main_menu = function_body(menu, 'void idSessionLocal::HandleMainMenuCommands(')
-    assert 'if ( !idStr::Icmp( cmd, "openRetainedSystem" ) ) {\n\t\t\tOpenSystemSettings();\n\t\t\treturn;' in main_menu
+    assert 'if ( !idStr::Icmp( cmd, "openRetainedSystem" ) ) {\n\t\t\tif ( !OpenSystemSettings() && !RetainedSystemAvailable() ) {' in main_menu
     assert 'ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL' in menu
-    assert 'ui_retained( "ui_retained", "0", CVAR_GUI | CVAR_BOOL,' in menu
-    assert 'return Session_RetainedScreensEnabled() || ui_retainedSystem.GetBool();' in menu
+    assert 'ui_retained( "ui_retained", "1", CVAR_GUI | CVAR_BOOL | CVAR_ARCHIVE,' in menu
+    assert 'return ui_retainedSystem.GetBool() || ( Session_RetainedScreensEnabled() && RETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL );' in menu
     assert 'ReturnSystemSettings();' in function_body(menu, 'void idSessionLocal::StartMenu(')
     unload = function_body(session, 'void idSessionLocal::UnloadMap(')
     assert unload.index('CloseSystemSettings();') < unload.index('game->MapShutdown();')

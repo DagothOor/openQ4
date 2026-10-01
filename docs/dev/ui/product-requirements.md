@@ -197,6 +197,8 @@ On engine `c5119c4193b19ab7524e1b2b08b6d44bdd19876b` the retained title screen's
 
 On engine `cc7122143400555b15bcbba427235e3d01c116cd` the SYSTEM page's Apply/Keep/Revert confirmation and unapplied-changes dialogs soften the screen beneath them where the renderer can, keeping their 0.6 backing otherwise. `REN-016` gains partial evidence without a status change; native tests only. Evidence: `.tmp/ui/system-dialog-softfocus/validation-evidence.json`, SHA-256 `4e33e60981080475ab3a66f6098b885008ebb2dd657a7211c570cc8de342a6c5`.
 
+On engine `31028407323741ded6b1a737f7f227d741aebba3` the retained screens are on by default (`ui_retained` 1, archived), and each one falls back to its stock GUI when it cannot stand in for it: a document that is not installed (quietly) or cannot load (reported once), a legacy main menu without a page the title and pause screens hand off to (a mod's own menu), or a view that fails after a renderer or language change. The SYSTEM page joins the default only once it offers every stock setting; it still lacks the display mode list, display device, multi-monitor, refresh rate, video quality and light-grid preload. The SYSTEM page and the campaign selectors fall back from the click that asked for them, CONTINUE shows a save's own picture only when its file exists, and `ui_retainedStatus` lists the fallbacks. Engine captures on OpenGL and Vulkan, in which a private mod hides or replaces content, show each stock screen taking over. `RUN-004` moves from pending to partial, with acceptance evidence still empty; a changed document's reload, stale hash checks, a manifest-driven mapping for every stock GUI and a mod's own stock-named loading GUIs remain. Evidence: `.tmp/ui/retained-default/validation-evidence.json`, SHA-256 `4aae5c75825a2036a9569bc19496bca79d567c3cf7ce682ca28dd576c19cf7f7`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial
@@ -481,7 +483,7 @@ The [full renderer shutdown increment](image-recovery-ownership.md), based on en
 
 The [editor file publication increment](editor-file-safety.md), based on engine `a11a00181b5997993bb9e225bad63a6422386311`, adds actual native creation of complete new files without replacing an existing or racing document. Windows Clang and MSVC each pass 340 checks, GCC with sanitizers passes 344, and all three reject seven compiled mutations. The full engine build and 78 UI suites pass. Windows symlink and DrvFS FIFO limitations are recorded. This file-only increment has no new game captures. Save As/autosave UI, live document association, overwrite/conflict handling and crash/relaunch recovery remain required. No requirement status, migration acceptance or final gate changes. Evidence: `.tmp/ui/editor-new-file/validation-evidence.json`, SHA-256 `846413e35eb34ed965a57005aa6eb724b5c8d3dbc2fb46f65ba30711a509cc63`.
 
-There are **82 partial, 257 pending and one verified requirement**, counting the
+There are **83 partial, 256 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock

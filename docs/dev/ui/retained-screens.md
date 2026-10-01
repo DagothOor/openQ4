@@ -11,21 +11,63 @@ remaining screen migrations and the final gates stay open.
 
 ## One gate
 
-`ui_retained` (default 0, not archived) is the only switch for these screens.
-While it is 0 no menu, pause or loading route creates a retained view, and the
-stock GUIs present every screen exactly as before. `ui_retainedSystem` still opts
-into only the SYSTEM page; `ui_retained` includes it. A document that fails to
-load is reported once and the stock screen stays in use for the rest of the
-session. Developer commands that name a document explicitly (`testGUI`,
-`ui_retainedPreview`) remain the runtime's test and preview tools and load it
-regardless of the gate.
+`ui_retained` is the only switch for these screens. It is on by default and
+archived, so a player who sets it to 0 keeps the stock screens. While it is 0
+no menu, pause or loading route creates a retained view, and the stock GUIs
+present every screen exactly as before. Developer commands that name a
+document explicitly (`testGUI`, `ui_retainedPreview`) remain the runtime's
+test and preview tools and load it regardless of the gate.
+
+`ui_retainedSystem` opts into the SYSTEM page, which `ui_retained` includes
+only once the page offers every setting of the stock SYSTEM page, so the
+default never hides one. The session lists what it still lacks in
+`RETAINED_SYSTEM_MISSING_SETTINGS`, and the gate test keeps that list equal to
+what the two pages offer: today the display mode list, display device,
+multi-monitor, refresh rate, video quality and light-grid preload rows.
 
 `tools/tests/ui_retained_gate.py` holds the gate: it checks the CVar defaults,
 that every retained document path in the session is reached only behind the
 gate, that the documents are current with their generator and request only
 allowlisted session verbs, that no game or legacy content names a retained
 document, and it compiles the production session code against counted doubles
-to show that nothing retained loads while the gate is 0.
+to show that nothing retained loads while the gate is 0 and that every
+fallback below presents the stock screen.
+
+## Falling back to the stock screens
+
+A retained screen stands in for a stock GUI only while it can. Otherwise that
+screen presents its stock GUI, for the rest of the session, and every other
+screen keeps its retained form:
+
+- **Not installed.** No search path provides the document. This is quiet: a
+  developer message only.
+- **Cannot load.** The document is installed but fails to parse, validate or
+  load. It is reported once as a warning.
+- **The main menu lacks a page.** The title and pause screens cover the legacy
+  main menu and hand its pages off to it, so they present only over a menu
+  that defines every window they hand off to (`main_b_newgame`,
+  `main_b_loadgame`, `main_b_savegame`, `main_b_multiplayer`,
+  `main_b_settings`, `main_b_credits`, `main_b_demos`, `main_b_difficulty`,
+  `main_b_mods` and `main_b_updates`). A mod's own main menu without them
+  presents itself, as the mod made it. The loading screens hand nothing off and
+  still present. Under The Awakening the menus come from openQ4's own content,
+  so the retained screens present there too.
+- **The view stops drawing.** A view that fails to come back after a renderer
+  or language change can no longer draw; the stock home screen takes over, with
+  one warning.
+
+The SYSTEM page and the campaign selectors follow the same rules. When the
+opted-in SYSTEM page cannot load, the click that asked for it opens the stock
+SYSTEM page, and the SYSTEM button opens the stock page directly from then on.
+When the Single Player or campaign selector cannot load, the stock selector
+opens.
+
+Pictures fall back as well. CONTINUE shows the newest save's picture only when
+its file exists: an autosave names its level's loadscreen, and any other save
+keeps its own screenshot beside it (`savegames/<slot>.tga`), as the stock Load
+Game page shows it. That screenshot is reread when the title opens, so a newer
+save's picture replaces an older one. The level block and the loading screen
+keep the generic levelshot when a map has none.
 
 ## Screens
 
@@ -210,9 +252,12 @@ loads on demand and reports it once.
 
 `ui_retainedStatus` prints one `OPENQ4_RETAINED` line: the gate, the SYSTEM
 opt-in, the presented home screen, which home documents are loaded, whether a
-hand-off is in progress and the number of live retained views (0 while the gate
-is off). `ui_retainedTrace 1` also logs each session request with whether the
-adapter accepted it, and each loading phase as `RETAINED_LOADING_PHASE`.
+hand-off is in progress, the number of live retained views (0 while the gate
+is off) and, after `stock=`, the documents that fell back to their stock
+screens this session (`-` when none). `ui_retainedTrace 1` also logs each
+session request with whether the adapter accepted it, and each loading phase as
+`RETAINED_LOADING_PHASE`. With `developer 1` the log also names the reason for
+each quiet fallback.
 
 ## Loading phase line
 
@@ -256,7 +301,13 @@ controller or the mouse switches the prompt.
   `openq4_retainedGui` operations, never OS input. With `--gate 0` the title
   and pause scenarios, including the pause scenario's real map load, check
   that nothing retained loads; the loading scenario drives its document through
-  `testGUI` and is not a gate check.
+  `testGUI` and is not a gate check. Its default, `--gate default`, leaves
+  `ui_retained` unset, as a player has it. The `fallback-*` scenarios run as
+  a private mod in the savepath, whose files take precedence over openQ4's
+  packs as any mod's do (loose files in the savepath alone cannot, because
+  the savepath is searched last): a title, SYSTEM or Single Player document
+  that cannot load, and a main menu without its Demos page. `system-default`
+  and `system-optin` press the SYSTEM button with the page off and opted into.
 
 ## Evidence
 
@@ -370,6 +421,25 @@ these dialogs yet. Evidence:
 `.tmp/ui/system-dialog-softfocus/validation-evidence.json`, SHA-256
 `4e33e60981080475ab3a66f6098b885008ebb2dd657a7211c570cc8de342a6c5`.
 
+The default and the fallbacks were captured on OpenGL at 1280x720 and
+1024x768 and on Vulkan at 1280x720, from a candidate runtime of this build,
+with `ui_retained` unset. The title, pause and loading screens presented in
+their retained form. Run as a private mod:
+
+- a title document that cannot load left the stock title, with one warning,
+  while the pause screen stayed retained;
+- a main menu without its Demos page presented itself, with no warning, and
+  nothing retained loaded;
+- an opted-in SYSTEM page that cannot load opened the stock SYSTEM page from
+  the same click;
+- a Single Player selector that cannot load opened the stock selector.
+
+By default the SYSTEM button opened the stock SYSTEM page, and the retained
+page when it was opted into. With `ui_retained 0` the title, a real map load
+and the SYSTEM button loaded nothing retained. All 18 runs exited cleanly with
+no errors. Evidence: `.tmp/ui/retained-default/validation-evidence.json`,
+SHA-256 `4aae5c75825a2036a9569bc19496bca79d567c3cf7ce682ca28dd576c19cf7f7`.
+
 ## Known limitations
 
 - The pause menu has no OBJECTIVES action yet, so the navigation holds six of
@@ -389,6 +459,13 @@ these dialogs yet. Evidence:
   surface is read. Only the confirmation width exists.
 - The multiplayer Escape and Welcome menus (section 14.18) keep the stock
   menus: the retained home screen is never presented in a multiplayer game.
+- The SYSTEM page stays opt-in until it offers every stock setting: it still
+  lacks the display mode list, display device, multi-monitor, refresh rate,
+  video quality and light-grid preload.
+- A mod's own loading GUI that keeps a stock name (`generic`, `splevel`,
+  `mplevel` or `intro`) is still replaced by the retained loading screen.
+- The pause screen's level block shows the generic art for a map without a
+  levelshot of its own name, airdefense1 among them.
 - The loading screen has no tips and no touch prompt (touch counts as desktop
   input). The multiplayer server card lacks the players by team and the
   server's message, the arsenal does not fill in (the game publishes no item

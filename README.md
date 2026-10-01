@@ -125,10 +125,12 @@ tracks the complete scope and required acceptance evidence.
 [OpenGL UI-only frames retain their native detail](docs/dev/ui/native-output.md)
 with ordinary resolution scaling. Legacy crop mode and remaining renderer
 effect/parity work retain their documented limits.
-Setting `ui_retained 1` opts into the in-development
-[retained title, pause and loading screens](docs/dev/ui/retained-screens.md),
-built from the visual specification; with the default `0` the stock screens
-present everything.
+The [retained title, pause and loading screens](docs/dev/ui/retained-screens.md)
+are on by default, built from the visual specification; the other pages are
+still the stock ones. A screen whose retained content is missing or cannot
+load, or a mod's own main menu, presents its stock GUI instead, and
+`ui_retained 0` restores the stock screens throughout. The SYSTEM page joins
+them once it offers every setting of the stock page.
 
 The [text-entry foundation](docs/dev/ui/text-entry-foundation.md) provides
 validated Unicode editing, exact numeric parsing and checked clipboard services
@@ -153,6 +155,7 @@ The [0.13.1 patch notes](docs/dev/releases/v0.13.1.md) cover the release save fi
 - **Smoother motion at high refresh rates.** The camera, weapons, movers, and everything riding them are drawn on an interpolated presentation clock between the game's 60 Hz ticks, so a 144 Hz or 240 Hz display shows motion at its own rate. Simulation, networking, collision, demos, and saves keep their original timing.
 - **Real liquids** with wading, swimming, drowning, and damaging slime and lava, plus underwater visuals and audio. Retail Quake 4 has none of this, so liquids are something you author - see the [Liquids guide](docs/user/liquids.md).
 - **Reliable OpenAL audio** with compatibility-first voice handling; macOS packages bundle OpenAL Soft so large stock levels are not constrained by Apple's legacy buffer pool.
+- **A modern interface, still growing.** The title screen, pause menu and loading screens are rebuilt as sharp, scalable screens; the other menus keep the classic look for now. If a modern screen can't be shown, for example because a mod brings its own main menu, the classic one appears instead. Prefer the classic screens throughout? See [Modern and classic screens](docs/user/client-settings.md#modern-and-classic-screens).
 - **Improved input and quality-of-life features** including controller support, better console UX, and modern settings behavior.
 - **German menus and gameplay text**, including objectives, in-world terminals, Arena Campaign and multiplayer controls. Choose **Deutsch** in Settings > Game Options > Language; campaign dialogue uses your installed retail language assets.
 - **Single-player and multiplayer in one install** with active compatibility work aimed at the stock game.

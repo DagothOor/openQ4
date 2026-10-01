@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""The ui_retained gate: no retained (RmlUi) screen is reachable while it is 0.
+"""The ui_retained gate and the stock fallback of every retained screen.
 
 Compiles the production retained-screen session code (title and pause home
-screens, hand-offs, session verbs, loading selection and the status report)
-against counted engine/UI doubles, and checks the source contracts that keep
-the gate complete:
+screens, hand-offs, session verbs, loading selection, the campaign selectors
+and the status report) against counted engine/UI doubles, and checks the
+source contracts that keep the gate complete:
 
-* ui_retained defaults to 0 and is not archived; ui_retainedSystem alone
-  opts into only the SYSTEM page, and ui_retained includes it;
+* ui_retained defaults to 1 and is archived; while it is 0 no retained
+  screen is reachable. ui_retainedSystem opts into the SYSTEM page, which
+  ui_retained includes only once it offers every setting of the stock SYSTEM
+  page; the list of settings it still lacks matches the two pages;
+* each screen presents its stock GUI instead when its retained document is
+  not installed (quietly) or cannot load (reported once), when the legacy
+  main menu lacks a page the home screens hand off to, or when its view
+  fails; the fallback holds for the session and ui_retainedStatus lists it;
 * every retained document path in the session is reached only behind the gate;
 * the retained documents request only session verbs the adapter allowlists
   and the session handles, and they are up to date with their generator;
@@ -40,6 +46,7 @@ SUPPORT = r'''
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 static int checks = 0;
@@ -56,21 +63,36 @@ struct idStr : std::string {
         return std::tolower(*a) - std::tolower(*b);
     }
 };
-template<typename T> struct idList : std::vector<T> { int Num() const { return static_cast<int>(this->size()); } void Append(const T& v) { this->push_back(v); } };
+template<typename T> struct idList : std::vector<T> {
+    int Num() const { return static_cast<int>(this->size()); }
+    void Append(const T& v) { this->push_back(v); }
+    int FindIndex(const T& v) const { for (size_t i = 0; i < this->size(); ++i) if ((*this)[i] == v) return static_cast<int>(i); return -1; }
+    int AddUnique(const T& v) { const int i = FindIndex(v); if (i >= 0) return i; Append(v); return Num() - 1; }
+    void Clear() { this->clear(); }
+};
 using idStrList = idList<idStr>;
 struct fileTIME_T { int index; ID_TIME_T timeStamp; };
 struct Common {
-    std::string output; std::vector<std::string> warnings; int time = 1000, quits = 0;
+    std::string output; std::vector<std::string> warnings, developer; int time = 1000, quits = 0;
     int GetPresentationTime() const { return time; }
     void Printf(const char* fmt, ...) { char text[2048]; va_list args; va_start(args, fmt); std::vsnprintf(text, sizeof(text), fmt, args); va_end(args); output += text; }
+    void DPrintf(const char* fmt, ...) { char text[2048]; va_list args; va_start(args, fmt); std::vsnprintf(text, sizeof(text), fmt, args); va_end(args); developer.push_back(text); }
     void Warning(const char* fmt, ...) { char text[2048]; va_list args; va_start(args, fmt); std::vsnprintf(text, sizeof(text), fmt, args); va_end(args); warnings.push_back(text); }
     void Quit() { ++quits; }
 } commonObject, *common = &commonObject;
+// The installed files the session can find, and the Awakening content probe.
+struct idCampaignContentInfo { bool ready = true, present = true; idStr missing; };
+struct FileSystem {
+    std::set<std::string> files;
+    int ReadFile(const char* path, void**, ID_TIME_T*) { return files.count(path) ? 64 : -1; }
+    idCampaignContentInfo GetAwakeningContentInfo() { return {}; }
+} fileSystemObject, *fileSystem = &fileSystemObject;
+struct ArenaCampaign { int selectors = 0; void OpenSelector() { ++selectors; } } arenaCampaign;
 struct CVar { bool value = false; bool GetBool() const { return value; } } ui_retained, ui_retainedSystem;
 enum { SE_NONE = 0, CMD_EXEC_APPEND = 1 };
 struct sysEvent_t { int evType = SE_NONE; };
 struct idUserInterface {
-    std::string source; bool active = false; int activations = 0, deactivations = 0;
+    std::string source; bool active = false, failed = false; int activations = 0, deactivations = 0;
     std::vector<std::string> named; std::map<std::string, std::string> state;
     explicit idUserInterface(const char* name) : source(name) {}
     const char* Name() const { return source.c_str(); }
@@ -116,23 +138,28 @@ static bool UI_RunLegacyWindowAction(idUserInterface*, const char* window, bool 
     CHECK(!back); legacyActions.push_back(window); command = "play main_menu_selection"; return legacyActionAvailable;
 }
 static bool UI_RetainedImageSource(const char* source) { return source && !std::strstr(source, ".."); }
-static std::vector<std::string> precached;
+static std::vector<std::string> precached, reloaded;
 static void UI_RetainedPrecacheImage(const char* source) { precached.push_back(source); }
+static void UI_RetainedReloadImage(const char* source) { reloaded.push_back(source); }
+// Windows a mod's own main menu lacks, and a retained view that stopped drawing.
+static std::set<std::string> legacyMissing;
+static bool UI_LegacyWindowExists(idUserInterface*, const char* window) { return !legacyMissing.count(window); }
+static bool UI_RetainedViewFailed(idUserInterface* gui) { return gui->failed; }
 static const char* Sys_TimeStampToStr(ID_TIME_T) { return "29 Sep 2026 12:40"; }
 struct sessionMenuSaveDescription_t { idStr saveName, description, screenshot; bool noOverwrite = false; };
+static std::string describedShot; // an autosave names its loadscreen; other saves name none
 static bool Session_MenuReadSaveDescription(const idStr& slot, sessionMenuSaveDescription_t& out) {
-    out.saveName = slot; out.description = "Air Defense Bunker"; out.screenshot = "savegames/quick.tga"; return true;
+    out.saveName = slot; out.description = "Air Defense Bunker"; out.screenshot = describedShot; return true;
 }
 static const char* va(const char* fmt, ...) {
     static char text[1024]; va_list args; va_start(args, fmt); std::vsnprintf(text, sizeof(text), fmt, args); va_end(args); return text;
 }
-static bool Session_RetainedScreensEnabled() { return ui_retained.GetBool(); }
-static bool Session_RetainedSystemEnabled() { return Session_RetainedScreensEnabled() || ui_retainedSystem.GetBool(); }
 class idSessionLocal {
 public:
     idUserInterface *guiActive = nullptr, *guiMainMenu = nullptr, *guiTest = nullptr;
     idUserInterface *guiRetainedHome = nullptr, *guiRetainedTitle = nullptr, *guiRetainedPause = nullptr;
-    bool retainedHomeReturning = false, retainedTitleFailed = false, retainedPauseFailed = false, retainedLoadingFailed = false;
+    bool retainedHomeReturning = false;
+    idStrList retainedStock;
     int retainedHandoffUntil = 0;
     float retainedPointerX = 0, retainedPointerY = 0;
     bool mapSpawned = false, multiplayer = false;
@@ -152,19 +179,30 @@ public:
     idStr RetainedPauseShot(const char*) const { return "gfx/guis/loadscreens/generic"; }
     void UpdateRetainedHome(); bool RetainedHomeInputBlocked() const; void RetainedHomeFrameEvent();
     void HandleRetainedSessionRequest(idUserInterface*, const char*);
-    void OpenCampaignSelector(bool) {}
+    void OpenCampaignSelector(bool);
     void SelectCampaign(const char*) {}
     void StartMenu() {}
+    void SetGUI(idUserInterface* gui, void*) { guiActive = gui; }
     idUserInterface* SelectRetainedLoadingGui(idUserInterface*, bool);
+    idUserInterface* FindRetainedGui(const char*, bool, bool);
+    bool RetainedSystemAvailable() const;
     void PreloadRetainedScreens(); void PrepareRetainedLevel(const char*, bool);
     void ReportRetainedScreens();
 };
 '''
 
 MAIN = r'''
+static const char* const DOCUMENTS[] = {"guis/menu/title.q4ui", "guis/menu/pause.q4ui", "guis/loading/loading.q4ui",
+    "guis/menu/singleplayer.q4ui", "guis/menu/campaigns.q4ui", "guis/menu/settings/system.q4ui"};
+// The documents that fell back to their stock screens, in order.
+static std::vector<std::string> Stock(const idSessionLocal& session) {
+    return std::vector<std::string>(session.retainedStock.begin(), session.retainedStock.end());
+}
 static idSessionLocal Session(bool gate, bool inGame = false) {
     managerObject = Manager{}; commonObject = Common{}; commands = CommandSystem{}; legacy.clear(); legacyActions.clear(); precached.clear(); stickX = stickY = 0;
     legacyActionAvailable = true; preview = false; ui_retained.value = gate; ui_retainedSystem.value = false;
+    fileSystemObject.files = std::set<std::string>(std::begin(DOCUMENTS), std::end(DOCUMENTS)); arenaCampaign = ArenaCampaign{};
+    legacyMissing.clear(); reloaded.clear(); describedShot = "savegames/quick.tga";
     static idUserInterface menu("guis/mainmenu.gui"); menu = idUserInterface("guis/mainmenu.gui");
     idSessionLocal session; session.guiActive = session.guiMainMenu = &menu; session.mapSpawned = inGame;
     legacy["desktop::curr"] = 0; legacy["desktop::active"] = 0; legacy["desktop::dest"] = 0;
@@ -182,9 +220,14 @@ int main() {
         s.HandleRetainedSessionRequest(s.guiMainMenu, "quit");
         CHECK(commonObject.quits == 0 && legacyActions.empty());
         s.ReportRetainedScreens();
-        CHECK(commonObject.output.find("OPENQ4_RETAINED enabled=0 system=0 home=- title=0 pause=0 handoff=0 views=0") != std::string::npos);
+        CHECK(commonObject.output.find("OPENQ4_RETAINED enabled=0 system=0 home=- title=0 pause=0 handoff=0 views=0 stock=-") != std::string::npos);
+        // Off, the campaign selectors are the stock ones and nothing retained loads.
+        s.OpenCampaignSelector(false); CHECK(arenaCampaign.selectors == 1 && managerObject.loads.empty());
+        s.OpenCampaignSelector(true); CHECK((managerObject.loads == std::vector<std::string>{"guis/campaign_menu.gui"}));
+        CHECK(!s.RetainedSystemAvailable());
+        managerObject.loads.clear(); s.guiActive = s.guiMainMenu;
         ui_retainedSystem.value = true;
-        CHECK(Session_RetainedSystemEnabled() && !Session_RetainedScreensEnabled());
+        CHECK(Session_RetainedSystemEnabled() && !Session_RetainedScreensEnabled() && s.RetainedSystemAvailable());
         s.UpdateRetainedHome(); CHECK(s.guiRetainedHome == nullptr && managerObject.loads.empty());
     }
     {   // Title: presents over the legacy home state, describes the newest save.
@@ -277,10 +320,129 @@ int main() {
         CHECK(managerObject.loads.size() == 1 && commonObject.warnings.size() == 1);
         auto title = Session(true); managerObject.fail = true; title.UpdateRetainedHome(); title.UpdateRetainedHome();
         CHECK(title.guiRetainedHome == nullptr && managerObject.loads.size() == 1 && commonObject.warnings.size() == 1);
+        CHECK((Stock(title) == std::vector<std::string>{"guis/menu/title.q4ui"}));
+    }
+    {   // A document that is not installed falls back quietly, screen by screen.
+        auto s = Session(true); fileSystemObject.files.erase("guis/menu/title.q4ui");
+        s.UpdateRetainedHome(); s.UpdateRetainedHome();
+        CHECK(s.guiRetainedHome == nullptr && managerObject.loads.empty() && commonObject.warnings.empty());
+        CHECK(commonObject.developer.size() == 1 && commonObject.developer[0].find("not installed") != std::string::npos);
+        s.ReportRetainedScreens(); CHECK(commonObject.output.find("views=0 stock=guis/menu/title.q4ui\n") != std::string::npos);
+        s.mapSpawned = true; s.UpdateRetainedHome(); // the pause screen is installed and still presents
+        CHECK(s.guiRetainedHome && std::string(s.guiRetainedHome->Name()) == "guis/menu/pause.q4ui");
+        idUserInterface generic("guis/loading/generic.gui"); fileSystemObject.files.erase("guis/loading/loading.q4ui");
+        CHECK(s.SelectRetainedLoadingGui(&generic, false) == &generic && commonObject.warnings.empty());
+        CHECK(s.retainedStock.Num() == 2 && managerObject.loads.size() == 1);
+    }
+    {   // A main menu without every page the home screens hand off to keeps its own
+        // home screen, as a mod's own menu would; the loading screens still present.
+        auto s = Session(true); legacyMissing = {"main_b_demos"};
+        s.PreloadRetainedScreens(); s.UpdateRetainedHome(); s.mapSpawned = true; s.UpdateRetainedHome();
+        CHECK(s.guiRetainedHome == nullptr && managerObject.loads.empty() && commonObject.warnings.empty());
+        CHECK((Stock(s) == std::vector<std::string>{"guis/menu/title.q4ui", "guis/menu/pause.q4ui"}));
+        CHECK(commonObject.developer.size() == 2 && commonObject.developer[0].find("'main_b_demos'") != std::string::npos);
+        idUserInterface generic("guis/loading/generic.gui");
+        CHECK(s.SelectRetainedLoadingGui(&generic, false) != &generic);
+    }
+    {   // A view that failed to come back after a renderer restart hands the screen back for good.
+        auto s = Session(true); s.UpdateRetainedHome(); auto* title = s.guiRetainedHome; CHECK(title && title->active);
+        title->failed = true; s.UpdateRetainedHome();
+        CHECK(s.guiRetainedHome == nullptr && !title->active && s.guiRetainedTitle == nullptr);
+        CHECK(commonObject.warnings.size() == 1 && commonObject.warnings[0].find("stopped drawing") != std::string::npos);
+        s.UpdateRetainedHome(); s.PreloadRetainedScreens();
+        CHECK(s.guiRetainedHome == nullptr && managerObject.loads.size() == 2 && commonObject.warnings.size() == 1); // title, then pause
+    }
+    {   // The campaign selectors: the retained ones while installed, the stock ones otherwise.
+        auto s = Session(true); s.OpenCampaignSelector(false);
+        CHECK(s.guiActive && std::string(s.guiActive->Name()) == "guis/menu/singleplayer.q4ui" && arenaCampaign.selectors == 0);
+        s.OpenCampaignSelector(true);
+        CHECK(std::string(s.guiActive->Name()) == "guis/menu/campaigns.q4ui" && s.guiActive->state["awakening_ready"] == "1");
+        CHECK(!managerObject.flags[0].unique && managerObject.flags[0].shared);
+        auto missing = Session(true);
+        fileSystemObject.files.erase("guis/menu/singleplayer.q4ui"); fileSystemObject.files.erase("guis/menu/campaigns.q4ui");
+        missing.OpenCampaignSelector(false); CHECK(arenaCampaign.selectors == 1 && managerObject.loads.empty());
+        missing.OpenCampaignSelector(true); CHECK(std::string(missing.guiActive->Name()) == "guis/campaign_menu.gui");
+        missing.OpenCampaignSelector(false); CHECK(arenaCampaign.selectors == 2 && commonObject.warnings.empty());
+        auto broken = Session(true); managerObject.fail = true; broken.OpenCampaignSelector(false);
+        CHECK(arenaCampaign.selectors == 1 && commonObject.warnings.size() == 1);
+    }
+    {   // The gate alone keeps the stock SYSTEM page while the retained one lacks stock settings;
+        // ui_retainedSystem opts into it until it falls back.
+        auto s = Session(true); CHECK(RETAINED_SYSTEM_MISSING_SETTINGS[0] != NULL && !s.RetainedSystemAvailable());
+        ui_retainedSystem.value = true; CHECK(s.RetainedSystemAvailable());
+        s.retainedStock.Append("guis/menu/settings/system.q4ui"); CHECK(!s.RetainedSystemAvailable());
+    }
+    {   // CONTINUE shows a save's own screenshot, freshly read, only when it exists.
+        auto s = Session(true); s.saves = {"quick"}; describedShot = ""; fileSystemObject.files.insert("savegames/quick.tga");
+        s.UpdateRetainedHome();
+        CHECK(s.guiRetainedHome->state["menu_continue_shot"] == "savegames/quick.tga");
+        CHECK((reloaded == std::vector<std::string>{"savegames/quick.tga"}));
+        auto bare = Session(true); bare.saves = {"quick"}; describedShot = ""; bare.UpdateRetainedHome();
+        CHECK(bare.guiRetainedHome->state["menu_continue"] == "1" && bare.guiRetainedHome->state["menu_continue_shot"].empty() && reloaded.empty());
+        auto autosave = Session(true); autosave.saves = {"autosave"}; describedShot = "gfx/guis/loadscreens/airdefense";
+        autosave.UpdateRetainedHome(); CHECK(autosave.guiRetainedHome->state["menu_continue_shot"] == "gfx/guis/loadscreens/airdefense");
     }
     std::printf("ui_retained gate: %d checks passed\n", checks);
 }
 '''
+
+
+# Stock SYSTEM rows that drive a setting through the session or a GUI
+# variable rather than a cvar binding.
+STOCK_SYSTEM_SESSION_ROWS = {'set_sys_screensize': 'r_mode', 'set_sys_specular': 'r_skipSpecular', 'set_sys_bump': 'r_skipBump',
+                             'set_sys_sky': 'r_skipSky', 'set_sys_ambient': 'r_forceAmbient'}
+# Stock SYSTEM controls that navigate the page instead of changing a setting.
+STOCK_SYSTEM_PAGE_CONTROLS = {'set_sys_section_choice'}
+
+
+def stock_system_settings() -> set[str]:
+    """Every setting the stock SYSTEM page offers a control for."""
+    gui = (ROOT / 'content/baseoq4/pak0/guis/menu/settings/system.gui').read_text(encoding='utf-8', errors='replace')
+    gui = re.sub(r'/\*.*?\*/', '', re.sub(r'//[^\n]*', '', gui), flags=re.S)
+    settings = set()
+    definitions = list(re.finditer(r'\b(?:windowDef|choiceDef|sliderDef|editDef|listDef|bindDef)\s+(\w+)', gui))
+    for index, definition in enumerate(definitions):
+        if not re.match(r'(?:choiceDef|sliderDef|editDef)', definition.group(0)) or definition.group(1) in STOCK_SYSTEM_PAGE_CONTROLS:
+            continue
+        span = gui[definition.end():definitions[index + 1].start() if index + 1 < len(definitions) else len(gui)]
+        cvar = re.search(r'\bcvar\s+"?(\w+)"?', span)
+        row = re.match(r'(set_sys_\w+?)_val', definition.group(1))
+        if cvar:
+            if cvar.group(1) != 'gui_set_sys_scroll':
+                settings.add(cvar.group(1))
+        elif row and row.group(1) in STOCK_SYSTEM_SESSION_ROWS:
+            settings.add(STOCK_SYSTEM_SESSION_ROWS[row.group(1)])
+        else:
+            raise AssertionError(f'stock SYSTEM control {definition.group(1)} binds no cvar; map it in STOCK_SYSTEM_SESSION_ROWS')
+    return settings
+
+
+def retained_system_controls() -> set[str]:
+    """Every setting the retained SYSTEM page has a control for: the drafts control values read."""
+    text = (ROOT / 'content/baseoq4/pak0/guis/menu/settings/system.q4ui').read_text(encoding='utf-8')
+    document = json.loads(re.sub(r'^\s*//.*$', '', text, flags=re.M))
+    found = set()
+
+    def expressions(value):
+        if isinstance(value, dict):
+            state = value.get('state')
+            if isinstance(state, str) and state.startswith('settings.draft.'):
+                found.add(state[len('settings.draft.'):])
+            for item in value.values():
+                expressions(item)
+        elif isinstance(value, list):
+            for item in value:
+                expressions(item)
+
+    def walk(node):
+        control = node.get('control')
+        if isinstance(control, dict) and 'value' in control:
+            expressions(control['value'])
+        for child in node.get('children', []):
+            walk(child)
+
+    walk(document['root'])
+    return found
 
 
 def cpp_allowlist(text: str) -> set[str]:
@@ -293,12 +455,21 @@ def main() -> int:
     session = (ROOT / 'src/framework/Session.cpp').read_text(encoding='utf-8')
     adapter = (ROOT / 'src/ui/UserInterfaceRetained.cpp').read_text(encoding='utf-8')
 
-    # The gate itself.
-    assert 'idCVar ui_retained( "ui_retained", "0", CVAR_GUI | CVAR_BOOL, ' in menu, 'ui_retained must default to 0 and stay unarchived'
+    # The gate itself: on by default and archived, so a player's choice of the
+    # stock screens persists.
+    assert 'idCVar ui_retained( "ui_retained", "1", CVAR_GUI | CVAR_BOOL | CVAR_ARCHIVE, ' in menu, 'ui_retained must default to 1 and be archived'
     assert 'ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL' in menu
-    assert 'return Session_RetainedScreensEnabled() || ui_retainedSystem.GetBool();' in menu
+    assert 'return ui_retainedSystem.GetBool() || ( Session_RetainedScreensEnabled() && RETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL );' in menu
+    # The SYSTEM page joins the gate once it has a control for every setting of
+    # the stock page; the list of what it lacks must say exactly that.
+    missing = re.search(r'RETAINED_SYSTEM_MISSING_SETTINGS\[\] = \{([^}]*)\};', menu).group(1)
+    listed = {name.lower() for name in re.findall(r'"([A-Za-z_0-9]+)"', missing)}
+    assert missing.strip().endswith('NULL'), 'the missing-settings list must stay NULL-terminated'
+    # CVar names are case-insensitive (the stock page binds r_multisamples).
+    actual = {name.lower() for name in stock_system_settings()} - {name.lower() for name in retained_system_controls()}
+    assert listed == actual, f'RETAINED_SYSTEM_MISSING_SETTINGS lists {sorted(listed)}; the retained SYSTEM page lacks {sorted(actual)}'
     assert 'if ( !Session_RetainedSystemEnabled() || systemGuiTransition' in function_body(menu, 'bool idSessionLocal::OpenSystemSettings(')
-    assert 'guiMainMenu->SetStateBool( "retainedSystem", Session_RetainedSystemEnabled() );' in menu
+    assert 'guiMainMenu->SetStateBool( "retainedSystem", RetainedSystemAvailable() );' in menu
     # Every retained document path in the session is behind the gate.
     for source, name in ((menu, 'Session_menu.cpp'), (session, 'Session.cpp')):
         for match in re.finditer(r'"([^"]+\.q4ui)"', source):
@@ -306,9 +477,23 @@ def main() -> int:
             allowed = {'guis/menu/settings/system.q4ui', 'guis/menu/title.q4ui', 'guis/menu/pause.q4ui', 'guis/loading/loading.q4ui',
                        'guis/menu/singleplayer.q4ui', 'guis/menu/campaigns.q4ui'}
             assert path in allowed, f'{name} names an ungated retained document {path}'
-    assert menu.count('FindGui( "guis/menu/settings/system.q4ui"') == 1
+    # Every retained document loads through FindRetainedGui, which falls back to
+    # the stock screen; the SYSTEM page and the campaign selectors fall back too.
+    assert not re.search(r'uiManager->FindGui\(\s*(?:RETAINED_|"[^"]+\.q4ui")', menu + session), 'retained documents load only through FindRetainedGui'
+    find_retained = function_body(menu, 'idUserInterface *idSessionLocal::FindRetainedGui(')
+    assert 'uiManager->FindGui( path, true, !shared, shared )' in find_retained and 'retainedStock.Append( path );' in find_retained
+    system_open = function_body(menu, 'bool idSessionLocal::OpenSystemSettings(')
+    assert 'FindRetainedGui( RETAINED_SYSTEM_GUI, false, false )' in system_open and 'retainedStock.Append( RETAINED_SYSTEM_GUI );' in system_open
+    main_menu = function_body(menu, 'void idSessionLocal::HandleMainMenuCommands(')
+    system_click = main_menu[main_menu.index('if ( !idStr::Icmp( cmd, "openRetainedSystem" ) ) {'):]
+    system_click = system_click[:system_click.index('return;')]
+    assert 'if ( !OpenSystemSettings() && !RetainedSystemAvailable() ) {' in system_click
+    assert 'UI_RunLegacyWindowAction( guiMainMenu, "set_b_system", false, command )' in system_click, 'a failed SYSTEM page must open the stock one'
+    update_home = function_body(menu, 'void idSessionLocal::UpdateRetainedHome(')
+    assert 'UI_RetainedViewFailed( home )' in update_home and 'retainedStock.AddUnique( path );' in update_home
+    assert 'retainedStock.Clear();' in function_body(session, 'void idSessionLocal::Clear(')
     campaign_selector = function_body(menu, 'void idSessionLocal::OpenCampaignSelector(')
-    assert 'Session_RetainedScreensEnabled() ?' in campaign_selector
+    assert 'Session_RetainedScreensEnabled() ?' in campaign_selector and 'arenaCampaign.OpenSelector();' in campaign_selector
     assert 'FindGui( "guis/campaign_menu.gui"' in campaign_selector
     assert menu.count('RETAINED_TITLE_GUI') == 3 and menu.count('RETAINED_PAUSE_GUI') == 4 and menu.count('RETAINED_LOADING_GUI') == 2
     for signature in ('void idSessionLocal::PreloadRetainedScreens(', 'void idSessionLocal::PrepareRetainedLevel('):
@@ -357,9 +542,14 @@ def main() -> int:
     # Behaviour: the production session code against counted doubles.
     start = menu.index('static const char *const RETAINED_TITLE_GUI')
     tables = menu[start:menu.index('// Legacy pop-ups drawn over the home state', start)]
-    bodies = [tables] + [function_body(menu, signature) for signature in (
-        'static bool Session_RetainedHomePopup(', 'static idUserInterface *Session_FindRetainedGui(',
-        'static void Session_PublishRetainedTitleState(', 'bool idSessionLocal::RetainedHomeInputBlocked(',
+    gate_start = menu.index('static bool Session_RetainedScreensEnabled( void ) {')
+    gate_functions = menu[gate_start:menu.index('static const int MENU_CONTROLLER_AXIS_THRESHOLD', gate_start)]
+    assert 'RETAINED_SYSTEM_GUI' in gate_functions
+    bodies = [gate_functions, tables] + [function_body(menu, signature) for signature in (
+        'static bool Session_RetainedHomePopup(', 'static const char *Session_RetainedHomeMissingPage(',
+        'static void Session_PublishRetainedTitleState(', 'idUserInterface *idSessionLocal::FindRetainedGui(',
+        'bool idSessionLocal::RetainedSystemAvailable(', 'void idSessionLocal::OpenCampaignSelector(',
+        'bool idSessionLocal::RetainedHomeInputBlocked(',
         'void idSessionLocal::UpdateRetainedHome(', 'void idSessionLocal::RetainedHomeFrameEvent(',
         'void idSessionLocal::HandleRetainedSessionRequest(', 'idUserInterface *idSessionLocal::SelectRetainedLoadingGui(',
         'void idSessionLocal::PreloadRetainedScreens(', 'void idSessionLocal::PrepareRetainedLevel(',

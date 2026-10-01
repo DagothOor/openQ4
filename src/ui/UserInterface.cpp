@@ -709,6 +709,15 @@ bool UI_RunLegacyWindowAction( idUserInterface *gui, const char *windowName, boo
 	return legacy->RunWindowAction( windowName, back, command );
 }
 
+bool idUserInterfaceLocal::HasWindow( const char *windowName ) const {
+	return desktop != NULL && windowName != NULL && windowName[ 0 ] != '\0' && desktop->FindChildByName( windowName ) != NULL;
+}
+
+bool UI_LegacyWindowExists( idUserInterface *gui, const char *windowName ) {
+	const idUserInterfaceLocal *legacy = dynamic_cast<idUserInterfaceLocal *>( gui );
+	return legacy != NULL && legacy->HasWindow( windowName );
+}
+
 bool idUserInterfaceLocal::GetTextInputState( idRectangle &area, float &cursorOffset ) const {
 	if ( desktop == NULL ) {
 		return false;

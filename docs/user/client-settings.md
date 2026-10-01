@@ -38,4 +38,11 @@ Most player-facing options are available directly in the in-game menus:
 - `Settings -> Game Options`
 - `Difficulty` (single-player) - restart the current level at another difficulty; see [Gameplay Settings](gameplay-settings.md#difficulty)
 
+## Modern and Classic Screens
+
+The title screen, the single-player pause menu and the loading screens use openQ4's modern interface. The other menus, including `Settings -> System`, keep the classic Quake 4 look for now.
+
+- To use the classic screens throughout, open the console and enter `ui_retained 0`. The choice is saved; `ui_retained 1` brings the modern screens back.
+- If a modern screen can't be shown, openQ4 shows the classic one instead, with nothing to fix on your side. This happens when a mod brings its own main menu, or when a modern screen's files are missing or damaged.
+
 If you want deeper technical details or console-level configuration, see [TECHNICAL.md](../../TECHNICAL.md).

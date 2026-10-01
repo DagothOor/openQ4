@@ -591,7 +591,7 @@ def capture(args) -> int:
         'ui_autoJoin':'1' if args.mode=='mp' else '0', 'ui_retainedScale':'1', 'ui_retainedDensity':str(density),
         'ui_retainedTextScale':str(args.text_scale),
         'sys_lang':args.language,
-        'ui_retainedTrace':'1', 'ui_retainedSystem':'1', 'ui_retainedReducedMotion':'0'}
+        'ui_retainedTrace':'1', 'ui_retained':'0', 'ui_retainedSystem':'1', 'ui_retainedReducedMotion':'0'}
     command = [str(executable)]
     for key,value in overrides.items(): command += ['+set',key,value]
     original, index = profile['args'], 0

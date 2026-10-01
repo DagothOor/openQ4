@@ -9,6 +9,9 @@
 bool UI_RetainedDiagnostic(idUserInterface* gui, const idCmdArgs& args);
 bool UI_RetainedSettingsDocument(idUserInterface* gui);
 bool UI_RetainedSettingsCanReturn(idUserInterface* gui);
+// A retained GUI that can no longer draw (its view failed to come back
+// after a renderer or language change); callers present the stock screen.
+bool UI_RetainedViewFailed(idUserInterface* gui);
 
 // Engine adapter for explicit .q4ui resources. The public game ABI remains
 // idUserInterface; RmlUi, canonical nodes and device ownership stay private.
@@ -16,6 +19,7 @@ class idUserInterfaceRetained final : public idUserInterfaceManaged {
 	friend bool UI_RetainedDiagnostic(idUserInterface*, const idCmdArgs&);
 	friend bool UI_RetainedSettingsDocument(idUserInterface*);
 	friend bool UI_RetainedSettingsCanReturn(idUserInterface*);
+	friend bool UI_RetainedViewFailed(idUserInterface*);
 public:
 	explicit idUserInterfaceRetained(bool managed = true);
 	~idUserInterfaceRetained() override;

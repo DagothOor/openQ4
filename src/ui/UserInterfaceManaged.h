@@ -110,12 +110,16 @@ bool UI_RetainedImageSource( const char *source );
 // Resolves a bound picture ahead of its first draw; call it at startup or
 // inside a level load (see RetainedUI_PrecacheImage).
 void UI_RetainedPrecacheImage( const char *source );
+// Rereads a picture whose file a newer save may have replaced.
+void UI_RetainedReloadImage( const char *source );
 // Advance a live GUI's timelines and time events without drawing it.
 void UI_RunTimeEvents( idUserInterface *gui, int time );
 // Engine-scripted validation for classic GUIs: runs a window's onAction script,
 // or its onBackAction when back is set, as a click on the window would, and
 // returns the command it issued. No device input is read or synthesized.
 bool UI_RunLegacyWindowAction( idUserInterface *gui, const char *windowName, bool back, idStr &command );
+// Whether a classic GUI defines the named window, visible or not.
+bool UI_LegacyWindowExists( idUserInterface *gui, const char *windowName );
 typedef void (*UI_ApplicationCommandCallback)( idUserInterface *gui, const char *command, void *context );
 // Pump only private typed requests. A null owner snapshots all pending managed
 // allocations; a specific owner drains a lifecycle queue before its release.

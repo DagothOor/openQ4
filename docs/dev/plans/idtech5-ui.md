@@ -2,8 +2,11 @@
 
 Started 8 September 2026. Status: active; inventory qualification and runtime integration underway. This is a
 development feature integrated into `main` at the user's request on 25 September 2026.
-The modern SYSTEM page remains opt-in; integration does not close the runtime,
-editor, screen migration or platform qualification gates. The [retained runtime checkpoint](../ui/runtime-spike.md)
+Since 1 October 2026 the retained title, pause and loading screens and the
+campaign selectors are on by default, and each presents its stock GUI whenever
+its retained content is missing or cannot load. The SYSTEM page stays opt-in
+until it offers every setting of the stock page. This does not close the
+runtime, editor, screen migration or platform qualification gates. The [retained runtime checkpoint](../ui/runtime-spike.md)
 records the stage 2 integration candidate and its remaining limitations.
 
 The [product completion review and plan](ui-product-completion.md) audits the
@@ -104,7 +107,8 @@ native input, complete effects and the editor remain required. No gate closes.
 The [retained screen increment](../ui/retained-screens.md) builds the title
 screen, the single-player pause menu and the stock loading screens from
 visual specification 1.7 and the design atlas, behind one `ui_retained` gate
-(default off; `ui_retainedSystem` still opts into only SYSTEM). It adds image
+(on by default since 1 October; `ui_retainedSystem` opts into the SYSTEM page,
+which joins the gate once it offers every stock setting). It adds image
 nodes, additive and multiply path blends, a view-height canvas, typed session
 menu requests and exact overflow clipping under translation and scale. The
 loading screen shows the Remastered progress: the loader's phase with its
@@ -603,3 +607,21 @@ localized text. The compatibility selector remains available with `ui_retained=0
 Campaign setup, Chapters and Arena retain their existing presentation pending
 the wider retained-screen migration. This completes campaign selection only;
 it does not claim the complete UI/editor/migration programme is finished.
+
+## Retained screens on by default (1 October 2026)
+
+`ui_retained` now defaults to 1 and is archived. The SYSTEM page joins it only
+once it has a control for every setting of the stock page; it still lacks the
+display mode list, display device, multi-monitor, refresh rate, video quality
+and light-grid preload, and `ui_retainedSystem 1` opts into it meanwhile. Each
+retained screen presents its stock GUI instead when its document is not
+installed (quietly) or cannot load (reported once), when the legacy main menu
+lacks a page the title and pause screens hand off to (a mod's own menu), or when
+its view fails after a renderer or language change. The SYSTEM page and the
+campaign selectors fall back the same way, from the click that asked for them,
+and CONTINUE shows a save's picture only when its file exists.
+`ui_retainedStatus` lists the fallbacks after `stock=`. See [falling back to the
+stock screens](../ui/retained-screens.md#falling-back-to-the-stock-screens). The
+remaining stock pages, the editor and every migration and final gate stay open;
+`SHIP-001` and `GATE-007` still require every stock route to have a qualified
+retained replacement.

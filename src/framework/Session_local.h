@@ -229,6 +229,10 @@ public:
 	idStr				RetainedPauseShot( const char *mapPath ) const;
 	void				ReportRetainedScreens();
 	idUserInterface *	SelectRetainedLoadingGui( idUserInterface *legacy, bool multiplayer );
+	// A screen's retained document, or NULL while its stock GUI presents
+	// instead; a home screen also needs every legacy page it hands off to.
+	idUserInterface *	FindRetainedGui( const char *path, bool shared, bool home );
+	bool				RetainedSystemAvailable() const;
 	// Resolve the screens and their pictures where the stock menus resolve
 	// theirs: at startup, and inside each single-player level load.
 	void				PreloadRetainedScreens();
@@ -416,9 +420,8 @@ public:
 	idUserInterface *	guiRetainedTitle;
 	idUserInterface *	guiRetainedPause;
 	bool				retainedHomeReturning;
-	bool				retainedTitleFailed;
-	bool				retainedPauseFailed;
-	bool				retainedLoadingFailed;
+	// Retained documents that fell back to their stock screens this session.
+	idStrList			retainedStock;
 	int					retainedHandoffUntil;
 	// The retained loading screen's phase line and prompt device, published
 	// only while that screen presents the load (-1: not published yet).

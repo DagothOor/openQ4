@@ -104,7 +104,7 @@ def main() -> None:
         "g_autoExecAfterMapLoad": "german_smoke.cfg", "g_autoExecAfterMapLoadDelayMs": "1000",
         "g_autoSkipCinematics": "1", "com_skipLoadingContinue": "1",
         "com_loadingContinueAutoAdvance": "1", "com_allowConsole": "1", "sv_cheats": "1",
-        "ui_autoJoin": "1", "net_serverDedicated": "0", "si_pure": "0",
+        "ui_autoJoin": "1", "ui_retained": "0", "net_serverDedicated": "0", "si_pure": "0",
         "si_map": "mp/q4dm1", "net_port": "28231", "ui_name": "GermanTest",
     }
     for key, value in settings.items():

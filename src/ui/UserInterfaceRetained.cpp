@@ -1352,7 +1352,17 @@ void UI_RetainedPrecacheImage( const char *source ) {
 	if ( source != NULL ) RetainedUI_PrecacheImage( source, false );
 }
 
+void UI_RetainedReloadImage( const char *source ) {
+	if ( source != NULL ) RetainedUI_ReloadImage( source, false );
+}
+
+bool UI_RetainedViewFailed(idUserInterface* gui) {
+	const auto found = std::find(diagnosticViews.begin(),diagnosticViews.end(),gui);
+	return found == diagnosticViews.end() || RetainedUI_ViewFailed((*found)->impl->view);
+}
+
 #else
 bool UI_RetainedImageSource( const char * ) { return false; }
 void UI_RetainedPrecacheImage( const char * ) {}
+void UI_RetainedReloadImage( const char * ) {}
 #endif

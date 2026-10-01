@@ -479,13 +479,18 @@
 
 ## Unreleased — `idtech5-ui` development
 
-- The experimental modern interface can now present the title screen, the
-  single-player pause menu and the loading screens. Set `ui_retained 1` to try
-  them, together with the modern SYSTEM page; with the default `0` the stock
-  screens present everything as before, and `ui_retainedSystem 1` still enables
-  only the SYSTEM page. The new screens follow the visual specification's
-  framing bands, lighting and motion, hand off to the stock pages for anything
-  they do not replace yet, and fall back to the stock screen if one cannot load.
+- The modern interface is now on by default for the title screen, the
+  single-player pause menu and the loading screens; the other menus keep the
+  classic look for now. Prefer the classic screens throughout? Enter
+  `ui_retained 0` in the console; the choice is saved. The modern SYSTEM page
+  stays opt-in (`ui_retainedSystem 1`) until it offers every setting of the
+  classic one, so no setting goes missing from the menu. When a modern
+  screen's content is missing or can't load, or a mod brings its own main
+  menu, that screen shows the classic one instead, so a click never leads to
+  a blank or unresponsive screen. The new screens follow the visual
+  specification's framing bands, lighting and motion, and hand off to the
+  stock pages for anything they do not replace yet. Continue now shows the
+  picture of your latest quick or manual save as well as autosaves.
   Choosing a page carries its name up into the page title as the frame docks,
   and the title screen's backdrop leans slightly away from the pointer or the
   right stick (off with reduced motion). Exiting or quitting asks in a dialog

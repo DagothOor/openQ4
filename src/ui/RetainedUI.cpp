@@ -1178,6 +1178,12 @@ void RetainedUI_PrecacheImage(const std::string& source, bool additive) {
 	if (source.empty() || !openq4::ui::ValidImageSource(source)) return;
 	declManager->FindMaterial(((additive ? "_retainedAdd/" : "_retained/") + source).c_str());
 }
+void RetainedUI_ReloadImage(const std::string& source, bool additive) {
+	if (source.empty() || !openq4::ui::ValidImageSource(source)) return;
+	if (const idMaterial* material = declManager->FindMaterial(((additive ? "_retainedAdd/" : "_retained/") + source).c_str()))
+		material->ReloadImages(false);
+}
+bool RetainedUI_ViewFailed(retainedUIView_t* view) { return !RegisteredView(view) || view->failed; }
 void RetainedUI_LanguageChanged() { ++languageRevision;TouchEditResources(); }
 unsigned RetainedUI_InputGeneration() { return inputGeneration; }
 void RetainedUI_Close() { Close(); }
@@ -1297,6 +1303,8 @@ void RetainedUI_LanguageChanged() {}
 bool RetainedUI_IsOpen() { return false; }
 int RetainedUI_ViewCount() { return 0; }
 void RetainedUI_PrecacheImage(const std::string&, bool) {}
+void RetainedUI_ReloadImage(const std::string&, bool) {}
+bool RetainedUI_ViewFailed(retainedUIView_t*) { return true; }
 unsigned RetainedUI_InputGeneration() { return 0; }
 void RetainedUI_FrameInput() {}
 bool RetainedUI_ProcessEvent(const sysEvent_s*) { return false; }
