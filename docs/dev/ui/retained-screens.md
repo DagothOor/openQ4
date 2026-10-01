@@ -74,6 +74,18 @@ after editing the script; `--check` fails when an output is stale.
   finished multiplayer load reads JOINING, since multiplayer never waits for
   a click. The name strip darkens the message line so it reads over any
   levelshot.
+- **Confirmations** (section 6, the 480 dp confirmation width). EXIT and both
+  pause quits ask in the stock confirmation dialog: over the scrim, the stock
+  glow column spans the dialog's 320 u rectangle, and the stock art's black
+  0.70 silhouette sits inside it. The silhouette starts 6.5625 dp in from
+  each side, as `popup_top`, `popup_mid` and `popup_btm` do, so a 6 dp lit
+  margin and the lit slot outline it. The title starts at the foot of the
+  slot's leading flank. Its capitals hang from the raised sections' top line
+  into the lit slot, as the stock title's do, with a black outline at 0.85
+  extruded 1 dp around the strokes behind the fill. The outline is eight
+  opaque copies composited once as a group, so their overlaps never darken it
+  past 0.85. The body and the actions sit where the stock ones do: the body's
+  first baseline is 87.5 dp down, and the actions start 96 u down.
 
 Band motion follows the stock choreography (section 8): opening reveals the
 content, choosing a page sends the bands to the page dock (`depart`), a
@@ -120,6 +132,16 @@ than the presented home screen.
   scale; a rotated or rounded clip is limited to its bounds and counted in
   `clipMaskFallbacks`. Before this, such content was never clipped (the loading
   bar lit its whole length at any progress).
+- **Layer row order on Vulkan.** Opacity below 1 and masks composite through
+  engine render textures, which keep GL row order on every backend. Since
+  2026-09-25 the Vulkan executor has recorded render textures lower-origin and
+  marked 2D writes canonical, but the host still sampled Vulkan layers
+  top-origin. Every composite therefore read mirrored, empty rows: on these
+  screens the navigation and action plates, the markers and the modal
+  title's outline vanished on Vulkan, and the SYSTEM page's faded and masked
+  parts share the same path. No release shipped it. Composites now sample GL
+  row order everywhere. `ui_retained_layer_pool.py` checks the composite
+  coordinates and pins the executor's side of the contract.
 
 ## Pictures and precaching
 
@@ -159,8 +181,12 @@ controller or the mouse switches the prompt.
   the transformed clip, the emblem glint and its reduced-motion rule, the
   levelshot drift, the phase line, the percentage and the controller prompt,
   the multiplayer server card and JOINING, the title carry on both menus, the
-  depth lean and its reduced-motion hold, and that every action is an
-  allowlisted session verb.
+  depth lean and its reduced-motion hold, the exit confirmation's lit margin,
+  title placement, body placement and single 0.85 outline composite, and that
+  every action is an allowlisted session verb.
+- `tools/tests/ui_retained_layer_pool.py` runs the host's layer allocation
+  and its opacity and mask composites against a counted renderer, and pins
+  the Vulkan executor's render-texture row order that the composites sample.
 - `tools/tests/ui_retained_gate.py` qualifies the gate as described above,
   including the startup preload, the level-load precache, the loading phase
   line and the published pointer, and pins the frame pump order that lets
@@ -217,6 +243,17 @@ and backdrop lean while the wordmark and navigation stay in place. Evidence:
 `.tmp/ui/retained-title-depth/validation-evidence.json`, SHA-256
 `938294a3434fcd14513e9c5b54fa3efa7c53913a7544700e62a0f4d4d9f835ce`.
 
+The confirmations were captured on OpenGL and Vulkan at 1280x720 and on
+OpenGL at 1024x768, beside an engine capture of the stock exit dialog. These
+match the stock to within a pixel at 1280x720: the silhouette edges, the
+raised top line, the slot floor, the bottom edge, the title's cap line, the
+body's baseline and the action row. The retained faces' side bearings start
+the title's ink 3 px before the stock's. With the layer fix, the Vulkan
+dialogs match OpenGL. Before it, their outline, plates and markers were
+missing there, as were the title menu's navigation plates. Evidence:
+`.tmp/ui/retained-modal/validation-evidence.json`, SHA-256
+`32b9bbf8b67cf36b59dca317274579f637bb2eda2bc7c3000b7122160b9f8945`.
+
 ## Known limitations
 
 - The pause menu has no OBJECTIVES action yet, so the navigation holds six of
@@ -228,7 +265,11 @@ and backdrop lean while the wordmark and navigation stay in place. Evidence:
 - The scene behind the pause screen is darkened, not softened, and the HUD's
   crosshair shows through the scrim.
 - The renderer has no soft focus yet (REN-016), so modals use the fallback of
-  visual specification 1.9: the scrim with the stock glow column.
+  visual specification 1.9: the scrim with the stock glow column. The
+  soft-focus glow of specification 1.12, graded across the dialog and fading
+  out past its sides, waits for it. Modals open and close at once, without
+  the `modal.enter` and `modal.leave` motion. Only the confirmation width
+  exists.
 - The multiplayer Escape and Welcome menus (section 14.18) keep the stock
   menus: the retained home screen is never presented in a multiplayer game.
 - The loading screen has no tips and no touch prompt (touch counts as desktop
