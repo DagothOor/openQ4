@@ -2068,13 +2068,12 @@ def validate_shadow_filtering_contract() -> None:
     point = read("src/renderer/Vulkan/shaders/interaction_shadow_point.frag")
     point_compare = braced_body(
         point,
-        "float SamplePointShadowCompare(",
+        "float PointShadowCompareDepth(",
         "point runtime depth comparison",
     )
     require_order(
         point_compare,
         (
-            "float compareDepth = depth - ShadowReceiverBias();",
             "if (shadow.samplingParams.x > 0.5)",
             "texture(shadowCompareMap, vec4(direction, compareDepth))",
             "texture(shadowRawMap, direction).r",

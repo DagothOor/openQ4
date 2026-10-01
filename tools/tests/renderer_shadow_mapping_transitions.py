@@ -7,6 +7,7 @@ entities, isolated settings, and the registered engine screenshot command.
 import re
 
 from renderer_shadow_mapping_movers import MOVER_SCENARIOS, mover_commands, validate_mover_reports
+from renderer_shadow_mapping_outdoor import OUTDOOR_SCENARIO, outdoor_commands, validate_outdoor_reports
 
 SCENARIO_MAPS = {
     "flashlight-cycle": "airdefense2",
@@ -18,9 +19,12 @@ SCENARIO_MAPS = {
     "emitter-lift": "storage2",
 }
 SCENARIO_MAPS.update({scenario: "airdefense2" for scenario in MOVER_SCENARIOS})
+SCENARIO_MAPS[OUTDOOR_SCENARIO] = "airdefense1"
 
 
 def transition_commands(scenario: str) -> tuple[list[str], tuple[str, ...]]:
+    if scenario == OUTDOOR_SCENARIO:
+        return outdoor_commands()
     if scenario in MOVER_SCENARIOS:
         return mover_commands(scenario)
     # These GameLib fast-post controls exist only in the SP module.
@@ -141,6 +145,8 @@ def transition_commands(scenario: str) -> tuple[list[str], tuple[str, ...]]:
 
 def validate_transition_reports(scenario: str | None, text: str) -> list[str]:
     """Require real fixture admission, not just a successful process/capture."""
+    if scenario == OUTDOOR_SCENARIO:
+        return validate_outdoor_reports(text)
     if scenario in MOVER_SCENARIOS:
         return validate_mover_reports(scenario, text)
     if scenario not in ("caster-cycle", "caster-cycle-cutout"):

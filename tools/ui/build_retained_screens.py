@@ -509,11 +509,35 @@ def action_plate(doc: Document, ident: str, key: str, left: float, top: float, *
     return group(ident, absolute(left=left, top=top, width=width, height=45), [plate, focus, marker_rest, marker_hot, text_node], control=control)
 
 
+def outlined_label(ident: str, key: str, box: dict, style: dict, fill: list[float],
+                   outline: list[float], extrude: float = 1.0) -> list:
+    """Text with a thin outline drawn behind its fill (section 6, the modal
+    title): eight opaque copies extruded `extrude` dp around the strokes,
+    composited as one group at the outline's alpha, so the copies' overlaps
+    never darken it past that. The group's own box encloses every copy,
+    because its composite is clipped to that box. Returns the outline group,
+    then the fill."""
+    diagonal = round(extrude * math.sqrt(0.5), 4)
+    offsets = [(-extrude, 0), (extrude, 0), (0, -extrude), (0, extrude),
+               (-diagonal, -diagonal), (diagonal, -diagonal), (-diagonal, diagonal), (diagonal, diagonal)]
+    pad = extrude + 2
+    left, top = box["left"]["value"], box["top"]["value"]
+    enclosing = absolute(left=left - pad, top=top - pad, width=box["width"]["value"] + 2 * pad, height=box["height"]["value"] + 2 * pad)
+    copies = [label(f"{ident}-outline-{index}", key, {**box, "left": length(pad + dx), "top": length(pad + dy),
+                                                      **style, "color": colour([*outline[:3], 1])})
+              for index, (dx, dy) in enumerate(offsets, start=1)]
+    return [group(f"{ident}-outline", {**enclosing, "opacity": number(outline[3]), "pointer-events": keyword("none")}, copies),
+            label(ident, key, {**box, **style, "color": colour(fill)})]
+
+
 def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_action: str) -> dict:
-    """A stock confirmation modal (section 6): the marine.scrim, an additive
-    glow column exactly as wide as the dialog, and a 480 dp black 0.70
-    silhouette with a leading tooth, a recessed title slot, a raised trailing
-    section and a 38 dp lower-leading chamfer; YES leads, NO trails."""
+    """A stock confirmation modal (section 6) over the marine.scrim: an
+    additive glow column exactly as wide as the 480 dp dialog, and inside it
+    the stock popup art's black 0.70 silhouette, inset so a 6 dp lit margin
+    shows beside it, with a leading tooth, a recessed title slot, a raised
+    trailing section and a 38 dp lower-leading chamfer. The title hangs from
+    the raised top line into the lit slot with a 1 dp black outline at 0.85;
+    YES leads, NO trails."""
     visible = f"{ident}.visible"
     doc.state[visible] = {"type": "boolean", "initial": False}
     hide = f"{ident}Hide"
@@ -522,9 +546,18 @@ def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_a
     width, height = 480.0, 204.0          # 320x136 u
     left = (CANVAS_W - width) / 2
     top = U * 155                           # 17 u above centre
-    slot_open, slot_depth, tooth, chamfer = 0.73 * width, 17.0, 6.0, 38.0
-    silhouette = path("frame", [(0, 0), (tooth, 0), (tooth + slot_depth, slot_depth), (slot_open - slot_depth, slot_depth),
-                                (slot_open, 0), (width, 0), (width, height), (chamfer, height), (0, height - chamfer)],
+    # popup_top/mid/btm stretch 512 texels across the rect: the art starts at
+    # texel 7 and ends after 504 (6.5625 dp in from each side), its raised
+    # sections start 4 of popup_top's 32 rows down (3.5625 dp) and its bottom
+    # edge leaves 6 of popup_btm's 64 rows (5.34 dp). The tooth's top ends at
+    # texel 14 and the slot opens to texel 388, about 73% of the width.
+    inset, raised, bottom = width * 7 / 512, 3.5625, height - 5.34375
+    slot_lead, slot_trail = width * 14 / 512, width * 388 / 512
+    slot_depth, chamfer = 17.0, 38.0
+    right = width - inset
+    silhouette = path("frame", [(inset, raised), (slot_lead, raised), (slot_lead + slot_depth, raised + slot_depth),
+                                (slot_trail - slot_depth, raised + slot_depth), (slot_trail, raised), (right, raised),
+                                (right, bottom), (inset + chamfer, bottom), (inset, bottom - chamfer)],
                       fill=solid([0, 0, 0, 0.7]))
     glow_top, glow_bottom = -U * 87, height + U * 108
     glow = vector(f"{ident}-glow", absolute(left=0, top=glow_top, width=width, height=glow_bottom - glow_top), [
@@ -533,13 +566,21 @@ def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_a
                                                         (0.58, rgb(GLOW_MODAL, 0.9)), (0.72, rgb(GLOW_MODAL, 0.5)), (1, rgb(GLOW_MODAL, 0))]),
              blend="additive")])
     frame = vector(f"{ident}-frame", absolute(left=0, top=0, width=width, height=height), [silhouette])
-    title = label(f"{ident}-title", title_key, {**absolute(left=tooth + slot_depth + 4, top=-6, width=slot_open - 2 * slot_depth - 12, height=24),
-        **typeface("marine", 20, 24, [1, 1, 1, 0.9]), "letter-spacing": length(-0.075, "em"), "white-space": keyword("nowrap")})
-    body = label(f"{ident}-body", body_key, {**absolute(left=33, top=40, width=width - 66, height=90),
+    # The title starts at the foot of the slot's leading flank; its capitals
+    # hang from the raised top line into the lit slot, as the stock title's
+    # do, its baseline 14.5 dp down where the stock one sits.
+    foot = slot_lead + slot_depth
+    title = outlined_label(f"{ident}-title", title_key,
+                           absolute(left=round(foot, 4), top=-4, width=round(slot_trail - slot_depth - foot, 4), height=24),
+                           {**typeface("marine", 20, 24, [1, 1, 1, 0.9]), "letter-spacing": length(-0.075, "em"),
+                            "white-space": keyword("nowrap")}, [1, 1, 1, 0.9], [0, 0, 0, 0.85])
+    # The stock body box starts 45 u down (first baseline 87.5 dp) and runs
+    # to the actions at 96 u.
+    body = label(f"{ident}-body", body_key, {**absolute(left=33, top=71, width=width - 66, height=73),
         **typeface("lowpixel", 17, 22, [1, 1, 1, 0.8])})
-    yes = action_plate(doc, f"{ident}_yes", "#str_200157", 30, height - 16 - 45, action=yes_action)
-    no = action_plate(doc, f"{ident}_no", "#str_200158", width - 33 - 180, height - 16 - 45, event=hide)
-    dialog = group(f"{ident}-dialog", absolute(left=left, top=top, width=width, height=height), [glow, frame, title, body, yes, no])
+    yes = action_plate(doc, f"{ident}_yes", "#str_200157", 30, U * 96, action=yes_action)
+    no = action_plate(doc, f"{ident}_no", "#str_200158", width - 33 - 180, U * 96, event=hide)
+    dialog = group(f"{ident}-dialog", absolute(left=left, top=top, width=width, height=height), [glow, frame, *title, body, yes, no])
     stage = group(f"{ident}-stage", {**absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"),
                                      "margin-left": length(-CANVAS_W / 2)}, [dialog])
     node = group(ident, {**FULL, "display": keyword("none"), "background-color": colour([0, 0, 0, 0.94])}, [stage],

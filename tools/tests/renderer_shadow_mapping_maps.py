@@ -18,6 +18,8 @@ import subprocess
 
 from renderer_shadow_mapping_transitions import SCENARIO_MAPS, transition_commands, validate_transition_reports
 from renderer_shadow_mapping_movers import MOVER_SCENARIOS, validate_mover_images
+from renderer_shadow_mapping_terrain import TERRAIN_REGIONS, validate_terrain_images
+from renderer_shadow_mapping_outdoor import OUTDOOR_SCENARIO, validate_outdoor_images
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,6 +27,7 @@ MAPS = ("airdefense1", "airdefense2", "storage1", "storage2", "medlabs",
         "mcc_landing", "q4dm1", "q4dm9")
 CAPTURES = ("mapped", "stencil", "unshadowed")
 MP_VIEWS = {"q4dm1": (-4768, 6624, 324.25, 315),
+            "q4dm2": (2384, 304, 560.25, 100),
             "q4dm9": (1528, -384, 452.25, 180)}
 SP_VIEWS = {"airdefense1": (10200, -6800, 40, 0, 170, 0)}
 
@@ -129,6 +132,9 @@ def inspect_run(save: Path, code: int | str, map_name: str,
     if scenario in MOVER_SCENARIOS:
         image_failures, image_metrics = validate_mover_images(save)
         failures.extend(image_failures)
+    elif scenario == OUTDOOR_SCENARIO:
+        image_failures, image_metrics = validate_outdoor_images(save)
+        failures.extend(image_failures)
     return {
         "case": save.name, "exit": code, "failures": failures,
         "viewpos": [line for line in lines if ("origin:" in line and "angles:" in line)
@@ -144,7 +150,7 @@ def inspect_run(save: Path, code: int | str, map_name: str,
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     selection = parser.add_mutually_exclusive_group()
-    selection.add_argument("--maps", nargs="+", help="Stock map names from the SP launch catalog, or q4dm1/q4dm9")
+    selection.add_argument("--maps", nargs="+", help="Stock map names from the SP launch catalog, or q4dm1/q4dm2/q4dm9")
     selection.add_argument("--random-maps", type=int, metavar="COUNT",
                            help="Sample stock SP maps from the launch catalog without replacement")
     parser.add_argument("--seed", type=int, default=20260905,
@@ -154,6 +160,9 @@ def main() -> int:
     parser.add_argument("--output", type=Path,
                         default=ROOT / ".tmp" / ("shadow-maps-" + datetime.now().strftime("%Y%m%d-%H%M%S")))
     parser.add_argument("--binary", type=Path, default=ROOT / ".install/openQ4-client_x64.exe")
+    parser.add_argument("--basepath", type=Path, help="Installed Quake 4 assets; overrides the launch profile's fs_basepath")
+    parser.add_argument("--hidden", action="store_true", help="Use an engine-owned hidden window for unattended captures")
+    parser.add_argument("--terrain-check", action="store_true", help="Check q4dm2/Air Defense 1 terrain against stencil and shadows-off controls")
     parser.add_argument("--extra-cfg", type=Path, help="Additional engine commands before the three captures")
     parser.add_argument("--dry-run", action="store_true", help="Write launch/config files without starting the game")
     parser.add_argument("--timeout", type=int, default=180, help="Maximum seconds for each game process (default: 180)")
@@ -173,7 +182,10 @@ def main() -> int:
             parser.error(f"The random map count must be between 1 and {len(stock_sp_maps)}")
         opts.maps = random.Random(opts.seed).sample(stock_sp_maps, opts.random_maps)
     if opts.maps is None:
-        opts.maps = [SCENARIO_MAPS[opts.scenario]] if opts.scenario else list(MAPS)
+        opts.maps = (list(TERRAIN_REGIONS) if opts.terrain_check else
+                     [SCENARIO_MAPS[opts.scenario]] if opts.scenario else list(MAPS))
+    if opts.terrain_check and (opts.scenario or set(opts.maps) - set(TERRAIN_REGIONS)):
+        parser.error("Terrain checks require q4dm2 and/or airdefense1 without a transition scenario")
     unknown = set(opts.maps) - set(stock_sp_maps) - set(MP_VIEWS)
     if unknown:
         parser.error("Maps have no supported launch profile: " + ", ".join(sorted(unknown)))
@@ -229,6 +241,10 @@ def main() -> int:
                 "r_multiSamples": 0, "sv_cheats": 1,
             }.items():
                 setting(args, key, new_value)
+            if opts.basepath:
+                setting(args, "fs_basepath", opts.basepath.resolve())
+            if opts.hidden:
+                setting(args, "r_hiddenWindow", 1)
             if multiplayer:
                 setting(args, "ui_autoJoin", 1)
                 setting(args, "si_pure", 0)
@@ -253,8 +269,12 @@ def main() -> int:
                     process.wait()
                     code = "timeout"
             result = inspect_run(save, code, map_name, captures,
-                                 fail_on_missing_casters=bool(opts.scenario),
+                                 fail_on_missing_casters=bool(opts.scenario) and opts.scenario != OUTDOOR_SCENARIO,
                                  scenario=opts.scenario)
+            if opts.terrain_check:
+                image_failures, image_metrics = validate_terrain_images(save, map_name)
+                result["failures"].extend(image_failures)
+                result["image_metrics"] = image_metrics
             results.append(result)
             (output / "results.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
             print(json.dumps({key: result[key] for key in ("case", "exit", "failures", "summary")}), flush=True)

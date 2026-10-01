@@ -73,17 +73,19 @@ static bool R_ShouldCreateInteractionShadow( idRenderEntityLocal *entityDef ) {
 		return true;
 	}
 
+	// Renderer modules own this clock. The host's idLib::frameNumber is not
+	// advanced in their separate copy of idLib.
 	if ( entityDef->parms.suppressLOD == 1
-		|| entityDef->LODModificationFrame > idLib::frameNumber
+		|| entityDef->LODModificationFrame > tr.frameCount
 		|| viewEntity->screenCoverage >= r_lod_shadows_percent.GetFloat()
 		|| viewEntity->distanceToCamera < entityDef->parms.shadowLODDistance ) {
-		if ( entityDef->LODModificationFrame < idLib::frameNumber ) {
+		if ( entityDef->LODModificationFrame < tr.frameCount ) {
 			// Deterministic stand-in for the retail rand(): identical demo
 			// playback must drop/hold entity shadows on identical frames, and
 			// the per-entity hash still staggers crowds across the hold window.
-			const unsigned int hash = ( static_cast<unsigned int>( entityDef->index ) * 2654435761u ) ^ ( static_cast<unsigned int>( idLib::frameNumber ) * 40503u );
+			const unsigned int hash = ( static_cast<unsigned int>( entityDef->index ) * 2654435761u ) ^ ( static_cast<unsigned int>( tr.frameCount ) * 40503u );
 			const int retailRand = static_cast<int>( ( hash >> 8 ) & SHADOW_LOD_RETAIL_RAND_MASK );
-			entityDef->LODModificationFrame = idLib::frameNumber + static_cast<int>( static_cast<double>( retailRand ) * SHADOW_LOD_RANDOM_UNIT * SHADOW_LOD_MAX_FRAME_DELAY );
+			entityDef->LODModificationFrame = tr.frameCount + static_cast<int>( static_cast<double>( retailRand ) * SHADOW_LOD_RANDOM_UNIT * SHADOW_LOD_MAX_FRAME_DELAY );
 		}
 		return true;
 	}
@@ -95,14 +97,13 @@ static bool R_CachedInteractionShadowLODAdmitted( surfaceInteraction_t *sint, id
 	if ( sint == NULL ) {
 		return R_ShouldCreateInteractionShadow( entityDef );
 	}
-	// Re-evaluate once per frame: a creation-time-only decision freezes the
-	// first verdict for the surface's lifetime, permanently dropping shadows
-	// for static entities first seen at distance (and never shedding them for
-	// entities first seen close). The check is a handful of compares.
-	if ( !sint->shadowLODDecisionValid || sint->shadowLODDecisionFrame != idLib::frameNumber ) {
+	// Coverage and distance belong to the current view, including subviews in
+	// the same frame. A lifetime verdict drops static casters first seen far
+	// away even after the camera approaches them.
+	if ( !sint->shadowLODDecisionValid || sint->shadowLODDecisionView != tr.viewCount ) {
 		sint->shadowLODAdmitted = R_ShouldCreateInteractionShadow( entityDef );
 		sint->shadowLODDecisionValid = true;
-		sint->shadowLODDecisionFrame = idLib::frameNumber;
+		sint->shadowLODDecisionView = tr.viewCount;
 	}
 	return sint->shadowLODAdmitted;
 }
@@ -116,13 +117,13 @@ static bool R_TranslucentShadowMapMomentsSupportedForLight( const idRenderLightL
 	// re-resolve the by-name lookup at most once per frame instead of per call.
 	static int cachedApiFrame = -1;
 	static bool cachedVulkanApi = false;
-	if ( cachedApiFrame != idLib::frameNumber ) {
+	if ( cachedApiFrame != tr.frameCount ) {
 		const char *activeRenderApi =
 			cvarSystem != NULL
 				? cvarSystem->GetCVarString( "r_actualRenderApi" )
 				: "";
 		cachedVulkanApi = idStr::Icmp( activeRenderApi, "vulkan" ) == 0;
-		cachedApiFrame = idLib::frameNumber;
+		cachedApiFrame = tr.frameCount;
 	}
 	if ( cachedVulkanApi ) {
 		return false;
@@ -392,6 +393,46 @@ bool R_ShadowMapLODAdmissionSelfTest( void ) {
 			vLight.shadowMapLODRejectedCount,
 			vLight.shadowMapLODAlphaRejectedCount,
 			vLight.shadowMapLODTranslucentRejectedCount );
+		return false;
+	}
+
+	// A caster rejected at distance must return in a closer view without
+	// recreating its interaction or relying on the host's idLib frame clock.
+	const int savedFrame = tr.frameCount;
+	const int savedView = tr.viewCount;
+	const bool savedLOD = r_lod_shadows.GetBool();
+	const float savedPercent = r_lod_shadows_percent.GetFloat();
+	r_lod_shadows.SetBool( true );
+	r_lod_shadows_percent.SetFloat( 0.01f );
+	tr.frameCount = 100;
+	tr.viewCount = 100;
+	idRenderEntityLocal entity;
+	viewEntity_t viewEntity;
+	memset( &viewEntity, 0, sizeof( viewEntity ) );
+	surfaceInteraction_t surface;
+	memset( &surface, 0, sizeof( surface ) );
+	entity.index = 123;
+	entity.parms.shadowLODDistance = 4096.0f;
+	entity.viewEntity = &viewEntity;
+	viewEntity.distanceToCamera = 1000000.0f;
+	const bool farRejected = !R_CachedInteractionShadowLODAdmitted( &surface, &entity );
+	tr.viewCount++;
+	viewEntity.distanceToCamera = 100.0f;
+	const bool nearAdmitted = R_CachedInteractionShadowLODAdmitted( &surface, &entity );
+	tr.frameCount++;
+	tr.viewCount++;
+	viewEntity.distanceToCamera = 1000000.0f;
+	const bool holdAdmitted = R_CachedInteractionShadowLODAdmitted( &surface, &entity );
+	tr.frameCount = entity.LODModificationFrame + 1;
+	tr.viewCount++;
+	const bool expiredRejected = !R_CachedInteractionShadowLODAdmitted( &surface, &entity );
+	tr.frameCount = savedFrame;
+	tr.viewCount = savedView;
+	r_lod_shadows.SetBool( savedLOD );
+	r_lod_shadows_percent.SetFloat( savedPercent );
+	if ( !farRejected || !nearAdmitted || !holdAdmitted || !expiredRejected ) {
+		common->Printf( "ShadowMap LOD admission self-test failed: far=%d near=%d hold=%d expired=%d\n",
+			farRejected, nearAdmitted, holdAdmitted, expiredRejected );
 		return false;
 	}
 

@@ -253,6 +253,11 @@ static float R_ShadowMapProjectedFarPlaneWidth( const viewLight_t *vLight ) {
 		return 0.0f;
 	}
 	const renderLight_t &parms = vLight->lightDef->parms;
+	idPlane distantPlanes[4];
+	float distantWidth = 0.0f;
+	if ( R_ShadowMapBuildDistantPointClipPlanes( vLight, distantPlanes, &distantWidth ) ) {
+		return distantWidth;
+	}
 	if ( parms.parallel ) {
 		return 2.0f * Max( Max( idMath::Fabs( parms.lightRadius[0] ), idMath::Fabs( parms.lightRadius[1] ) ), idMath::Fabs( parms.lightRadius[2] ) );
 	}
@@ -340,8 +345,62 @@ bool R_ShadowMapBuildParallelClipPlanes( const viewLight_t *vLight, idPlane clip
 	return true;
 }
 
-// Single authority for a light's base shadow projection: parallel lights get
-// the synthesized orthographic planes, everything else the padded authored
+bool R_ShadowMapBuildDistantPointClipPlanes( const viewLight_t *vLight, idPlane clipPlanes[4], float *farWidth ) {
+	if ( vLight == NULL || vLight->lightDef == NULL
+		|| !R_ShadowMapUsesDistantPointProjection( vLight->lightDef->parms ) ) {
+		return false;
+	}
+	const renderLight_t &parms = vLight->lightDef->parms;
+	const idVec3 origin = vLight->globalLightOrigin;
+	idVec3 forward = parms.origin - origin;
+	if ( forward.Normalize() <= idMath::FLOAT_EPSILON ) {
+		return false;
+	}
+	idVec3 right, up;
+	forward.NormalVectors( right, up );
+	float minS = idMath::INFINITY, maxS = -idMath::INFINITY;
+	float minT = idMath::INFINITY, maxT = -idMath::INFINITY;
+	float farDepth = 1.0f;
+	for ( int corner = 0; corner < 8; ++corner ) {
+		const idVec3 local(
+			( corner & 1 ) ? parms.lightRadius.x : -parms.lightRadius.x,
+			( corner & 2 ) ? parms.lightRadius.y : -parms.lightRadius.y,
+			( corner & 4 ) ? parms.lightRadius.z : -parms.lightRadius.z );
+		const idVec3 delta = parms.origin + local * parms.axis - origin;
+		const float depth = delta * forward;
+		if ( depth <= 0.0f ) {
+			return false;
+		}
+		const float s = ( delta * right ) / depth;
+		const float t = ( delta * up ) / depth;
+		minS = Min( minS, s ); maxS = Max( maxS, s );
+		minT = Min( minT, t ); maxT = Max( maxT, t );
+		farDepth = Max( farDepth, depth );
+	}
+	const float pad = 1.0f + 2.0f * R_ShadowMapProjectionPad();
+	const float halfS = Max( ( maxS - minS ) * 0.5f * pad, 0.001f );
+	const float halfT = Max( ( maxT - minT ) * 0.5f * pad, 0.001f );
+	// XY divides by forward depth, preserving the point source's rays. The
+	// projected depth contract stores Z without dividing by W, so use a linear
+	// depth from the source, including blockers before the radius box.
+	const idVec3 rows[4] = {
+		( right - forward * ( ( minS + maxS ) * 0.5f ) ) / halfS,
+		( up - forward * ( ( minT + maxT ) * 0.5f ) ) / halfT,
+		forward / farDepth,
+		forward
+	};
+	for ( int row = 0; row < 4; ++row ) {
+		clipPlanes[row].SetNormal( rows[row] );
+		clipPlanes[row][3] = -( origin * rows[row] );
+	}
+	if ( farWidth != NULL ) {
+		*farWidth = 2.0f * Max( halfS, halfT ) * farDepth;
+	}
+	return true;
+}
+
+// Single authority for a light's base shadow projection: parallel and distant
+// point sources get synthesized planes; other lights keep the padded authored
 // projection. Both the state builder and the parity validators must call
 // this so planner and ARB2 can never disagree about the contract.
 void R_ShadowMapBuildBaseClipPlanesForLight( const viewLight_t *vLight, idPlane clipPlanes[4] ) {
@@ -351,7 +410,8 @@ void R_ShadowMapBuildBaseClipPlanesForLight( const viewLight_t *vLight, idPlane 
 		}
 		return;
 	}
-	if ( !R_ShadowMapBuildParallelClipPlanes( vLight, clipPlanes ) ) {
+	if ( !R_ShadowMapBuildParallelClipPlanes( vLight, clipPlanes )
+		&& !R_ShadowMapBuildDistantPointClipPlanes( vLight, clipPlanes ) ) {
 		R_ShadowMapBuildClipPlanes( vLight->lightProject, clipPlanes );
 	}
 }
@@ -714,6 +774,60 @@ bool R_ShadowMapCascadeStabilitySelfTest( void ) {
 	}
 
 	common->Printf( "ShadowMap cascade stability self-test passed\n" );
+	return true;
+}
+
+bool R_ShadowMapDistantPointProjectionSelfTest( void ) {
+	idRenderLightLocal lightDef;
+	memset( &lightDef.parms, 0, sizeof( lightDef.parms ) );
+	renderLight_t &parms = lightDef.parms;
+	parms.pointLight = true;
+	parms.lightRadius.Set( 512.0f, 320.0f, 192.0f );
+	parms.axis.Identity();
+	if ( R_ShadowMapUsesDistantPointProjection( parms ) ) {
+		return false; // ordinary, enclosing point lights must keep their cube
+	}
+	parms.lightCenter.Set( 520.0f, 300.0f, 180.0f );
+	if ( R_ShadowMapUsesDistantPointProjection( parms ) ) {
+		return false; // outside one box face, but still crosses the source plane
+	}
+	viewLight_t light;
+	memset( &light, 0, sizeof( light ) );
+	light.lightDef = &lightDef;
+	light.pointLight = true;
+	for ( int transform = 0; transform < 4; ++transform ) {
+		parms.origin.Set( 10000.0f * transform, -7000.0f * transform, 128.0f );
+		parms.axis = idAngles( 13.0f * transform, 37.0f * transform, 7.0f ).ToMat3();
+		parms.lightCenter.Set( 2000.0f, -1200.0f, 1800.0f );
+		light.globalLightOrigin = parms.origin + parms.lightCenter * parms.axis;
+		idPlane planes[4];
+		float farWidth = 0.0f;
+		if ( !R_ShadowMapUsesDistantPointProjection( parms )
+			|| !R_ShadowMapBuildDistantPointClipPlanes( &light, planes, &farWidth ) || farWidth <= 0.0f ) {
+			return false;
+		}
+		for ( int corner = 0; corner < 8; ++corner ) {
+			const idVec3 local( ( corner & 1 ) ? 512.0f : -512.0f,
+				( corner & 2 ) ? 320.0f : -320.0f, ( corner & 4 ) ? 192.0f : -192.0f );
+			const idVec3 receiver = parms.origin + local * parms.axis;
+			const idVec3 blocker = light.globalLightOrigin + ( receiver - light.globalLightOrigin ) * 0.5f;
+			idVec4 r, b;
+			R_ShadowMapTransformPointToClip( receiver, planes, r );
+			R_ShadowMapTransformPointToClip( blocker, planes, b );
+			if ( r.w <= 0.0f || b.w <= 0.0f || r.z <= 0.0f || r.z > 1.00001f
+				|| idMath::Fabs( r.x / r.w ) > 1.00001f || idMath::Fabs( r.y / r.w ) > 1.00001f
+				|| b.z <= 0.0f || b.z >= r.z
+				|| idMath::Fabs( r.x / r.w - b.x / b.w ) > 0.0001f
+				|| idMath::Fabs( r.y / r.w - b.y / b.w ) > 0.0001f ) {
+				return false;
+			}
+		}
+	}
+	parms.parallel = true;
+	if ( R_ShadowMapUsesDistantPointProjection( parms ) ) {
+		return false;
+	}
+	common->Printf( "Distant point projection self-test passed: 32 receiver/blocker rays, rotation and translation\n" );
 	return true;
 }
 

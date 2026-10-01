@@ -40,6 +40,7 @@ Notes:
 openQ4 currently supports:
 - Projected-light shadow maps for regular projected lights.
 - Point-light cubemap shadow maps for omni/point lights (the dominant Quake 4 light class), on by default.
+- Fitted perspective shadow maps for off-centre point sources whose entire light volume lies in front of the source. Distant outdoor lights, including Air Defense 1's opening light, can use the projected cascade machinery without changing their authored illumination.
 - Optional projected-light cascaded shadow maps (CSM).
 - Alpha-tested transparency shadows for cutout materials such as fences, grates, and foliage cards.
 - Optional experimental translucent-shadow accumulation for some blended materials.
@@ -144,7 +145,7 @@ vid_restart
 | `r_shadowMapFilterRadius` | `0.75` | `0..8` | Projected-light PCF radius in texels. Increase resolution for more detail; increasing this value deliberately softens and widens the edge. |
 | `r_shadowMapFilterTaps` | `9` | `1..13` | Projected-light PCF tap budget. Values up to `1`, `5`, `9`, and `13` select progressively denser sample sets without changing the requested radius. |
 | `r_shadowMapFilterMode` | `0` | `0..2` | Projected-light filter mode: fixed PCF, stable rotated Poisson, or experimental PCSS-lite with raw depth sampling. |
-| `r_shadowMapDistantFilterScale` | `0.35` | `0..1` | Scales projected PCF and PCSS radii for parallel/global distant sources such as sky or sun lights. Their texels cover much more world space than local projectors, so a tighter kernel preserves caster silhouettes instead of over-blurring them. Set `1` to use the ordinary projected-light radii unchanged. |
+| `r_shadowMapDistantFilterScale` | `0.35` | `0..1` | Scales projected PCF and PCSS radii for parallel/global sources and fitted distant point sources such as outdoor sky lights. Their texels cover much more world space than local projectors, so a tighter kernel preserves caster silhouettes instead of over-blurring them. Set `1` to use the ordinary projected-light radii unchanged. |
 | `r_shadowMapPCSSLightRadius` | `4.0` | `0..16` | Projected PCSS-lite blocker search radius in shadow texels. |
 | `r_shadowMapPCSSMaxRadius` | `8.0` | `0..16` | Maximum projected PCSS-lite filter radius in shadow texels. |
 | `r_shadowMapPointFilterRadius` | `1.0` | `0..8` | Point-light PCF radius in cubemap texels. Large-radius lights can cover substantial world distance per texel, so wide values can visibly erase contact detail. |
@@ -270,6 +271,18 @@ Suggested use:
 - Turn the feature back off if you want the most predictable performance and compatibility.
 
 ## Bias and Artifact Tuning
+
+Point-light filtering compares each under-resolved sample against the receiver
+triangle at the sampled cubemap texel. This removes repeating self-shadow lines
+on terrain without increasing the world-space bias cap or disabling soft edges.
+The ordinary lookup remains in use where the existing bias covers the texel's
+depth variation. Both OpenGL and Vulkan use this correction.
+
+Keep `r_shadowMapCSM 1` for distant outdoor sources. Off-centre point lights that
+fit in one forward projection use `r_shadowMapSize` and the projected cascade
+settings; ordinary surrounding point lights still use `r_shadowMapPointSize`.
+`r_shadowMapPointLights 0` returns both kinds of point source to stencil shadows.
+See the [outdoor regression report](../dev/shadowmapping-outdoor-terrain.md).
 
 Shadow artifacts are usually one of two classes:
 - Shadow acne or speckling: bias is too low.
@@ -402,6 +415,12 @@ retains precedence when a material explicitly requests it. This prevents lit
 slime and other decals from becoming solid shadow blockers.
 
 For repeatable stock-map comparisons, see the [individual map test report](../dev/shadowmapping-map-tests-2026-09-05.md) and `tools/tests/renderer_shadow_mapping_maps.py`. It captures mapped, stencil, and disabled shadows in isolated windowed SP/MP runs; images still require visual inspection.
+
+Use `--scenario airdefense1-outdoor` for nine outdoor viewpoints, an early
+entrance approach and return visits. It compares terrain and caster shadows
+against stencil/shadows-off captures and checks cached shadows against fresh
+renders. See the [outdoor regression report](../dev/shadowmapping-outdoor-terrain.md)
+for coverage and the railing-shadow regression.
 
 The runner also accepts `--scenario flashlight-cycle`, `caster-cycle`,
 `caster-cycle-point`, `caster-cycle-cutout`, `emitter-lift`, `resource-cycle`, or `cascade-motion` to exercise changes

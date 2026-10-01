@@ -52,8 +52,11 @@ struct ScreenHost final : Host {
 		draws.push_back({vertices,material});
 	}
 	std::uint64_t RenderFrame() const override { return frame; }
+	std::vector<float> compositeOpacities;
 	bool BeginLayer(std::uint32_t id, int, int) override { activeLayer = id; return true; }
-	void CompositeLayer(std::uint32_t, std::uint32_t destination, float, const Bounds&) override { activeLayer = destination; }
+	void CompositeLayer(std::uint32_t, std::uint32_t destination, float opacity, const Bounds&) override {
+		compositeOpacities.push_back(opacity); activeLayer = destination;
+	}
 	void MaskLayer(std::uint32_t, std::uint32_t destination, const Bounds&) override { activeLayer = destination; }
 	void EndLayer(std::uint32_t restore) override { activeLayer = restore; }
 	FontMetrics GetFontMetrics(const std::string&, int size) override { return {size*.8f,size*.2f,size*1.2f,size*.5f}; }
@@ -215,6 +218,42 @@ int main(int argc, char** argv) {
 		runtime.Frame(viewport,5.5);
 		Check(runtime.GetBounds("nav_settings-focus",focus),"focus rail laid out");
 		Check(runtime.HasEvent("exitModalShow") && runtime.HasEvent("onBack"),"Back asks before leaving the game");
+		// The exit confirmation (section 6) at 1080p, 1.5 px a dp: the stock
+		// art's silhouette sits 6.5625 dp inside the glow column, the title
+		// starts at the slot's foot, and its outline is eight copies extruded
+		// 1 dp and composited once at 0.85, behind the fill.
+		{
+			Runtime::EventEffects shown;
+			Check(runtime.RunEvent("exitModalShow",5.6,shown,error),"the exit confirmation opens");
+			host.draws.clear(); host.compositeOpacities.clear();
+			runtime.Frame(viewport,5.7);
+			Bounds dialog, title, outline, left, below, body;
+			Check(runtime.GetBounds("exitModal-dialog",dialog) && runtime.GetBounds("exitModal-title",title) &&
+				runtime.GetBounds("exitModal-title-outline",outline) && runtime.GetBounds("exitModal-title-outline-1",left) &&
+				runtime.GetBounds("exitModal-title-outline-4",below) && runtime.GetBounds("exitModal-body",body),"the confirmation is laid out");
+			Check(Near(dialog.x,240+240*1.5f) && Near(dialog.width,480*1.5f),"the dialog is the stock 320 u rect");
+			Check(Near(title.x-dialog.x,30.125f*1.5f) && Near(title.y-dialog.y,-4*1.5f),"the title hangs from the slot's foot");
+			Check(Near(left.x-title.x,-1.5f,.01f) && Near(left.y-title.y,0,.01f) && Near(below.y-title.y,1.5f,.01f),
+				"the outline copies extrude 1 dp");
+			Check(outline.x <= left.x && outline.y <= title.y-1.5f && outline.x+outline.width >= title.x+title.width+1.5f,
+				"the outline group encloses its copies, since its composite is clipped to it");
+			Check(Near(body.y-dialog.y,71*1.5f) && Near(body.x-dialog.x,33*1.5f),"the body sits where the stock body does");
+			Check(std::any_of(host.compositeOpacities.begin(),host.compositeOpacities.end(),[](float value) { return Near(value,.85f,.001f); }),
+				"the outline composites once at 0.85");
+			// Vector fills arrive as pixel coverage spans: the first fully covered
+			// column and row start at the next pixel boundary past each edge.
+			float silhouetteLeft = 1e9f, silhouetteTop = 1e9f;
+			for (const auto& draw : host.draws) for (const auto& vertex : draw.vertices)
+				if (!draw.material && vertex.r == 0 && vertex.g == 0 && vertex.b == 0 && Near(vertex.a,.7f,.005f) &&
+					vertex.x >= dialog.x-1 && vertex.x <= dialog.x+dialog.width+1 && vertex.y >= dialog.y-1 && vertex.y <= dialog.y+dialog.height+1) {
+					silhouetteLeft = std::min(silhouetteLeft,vertex.x); silhouetteTop = std::min(silhouetteTop,vertex.y);
+				}
+			Check(Near(silhouetteLeft,std::ceil(dialog.x+480*7/512.f*1.5f),.01f) && Near(silhouetteTop,std::ceil(dialog.y+3.5625f*1.5f),.01f),
+				"the silhouette leaves the 6 dp lit margin and its raised top line");
+			Runtime::EventEffects hidden;
+			Check(runtime.RunEvent("exitModalHide",5.8,hidden,error),"the exit confirmation closes");
+			runtime.Frame(viewport,5.9);
+		}
 		// The emblem's glint turns once every 9 s under its wedge mask while
 		// the rim inside turns back; reduced motion keeps only the rim.
 		Runtime::EventEffects init;

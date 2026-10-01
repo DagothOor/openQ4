@@ -69,6 +69,7 @@ float R_ShadowMapProjectionPad();
 float R_ShadowMapProjectionScale( float projectionPad );
 void R_ShadowMapBuildClipPlanes( const idPlane lightProject[4], idPlane clipPlanes[4] );
 bool R_ShadowMapBuildParallelClipPlanes( const viewLight_t *vLight, idPlane clipPlanes[4] );
+bool R_ShadowMapBuildDistantPointClipPlanes( const viewLight_t *vLight, idPlane clipPlanes[4], float *farWidth = NULL );
 void R_ShadowMapBuildBaseClipPlanesForLight( const viewLight_t *vLight, idPlane clipPlanes[4] );
 void R_ShadowMapClipPlanesToGLMatrix( const idPlane clipPlanes[4], float matrix[16] );
 idVec4 R_ShadowMapBuildAtlasRect( int cascadeIndex, int atlasDiv );
@@ -78,6 +79,7 @@ float R_ShadowMapSnapCascadeCenter( float rawCenter, float quantizedExtent, int 
 int R_ShadowMapProjectedStateHash( int hash, const shadowMapProjectedLightState_t &state );
 // pins the stabilization guarantees (shadow plan invariant I5)
 bool R_ShadowMapCascadeStabilitySelfTest( void );
+bool R_ShadowMapDistantPointProjectionSelfTest( void );
 void R_BuildShadowMapProjectedLightState( const viewLight_t *vLight, const viewDef_t *viewDef, int tileSize, shadowMapProjectedLightState_t &state );
 
 #endif /* !__SHADOWMAP_PROJECTED_H__ */

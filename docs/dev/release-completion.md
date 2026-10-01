@@ -2,6 +2,19 @@
 
 ## 0.13.2 release candidate
 
+- [x] Correct outdoor shadow-map terrain sampling on OpenGL and Vulkan.
+  Point filters compare against the receiver plane at each sampled texel, while
+  distant off-centre point sources use fitted perspective maps and cascades.
+  Stock `mp/q4dm2` and `game/airdefense1` comparisons check both lit terrain and
+  retained shadow contrast against stencil/shadows-off controls. See the
+  [outdoor regression report](shadowmapping-outdoor-terrain.md).
+  Expanded Air Defense 1 coverage also fixes static casters whose initial
+  distant LOD rejection survived after approaching them: admission refreshes
+  per renderer view and the staggered hold uses the renderer's frame clock.
+  Eleven outdoor stops on both backends pass terrain/occlusion and full-frame
+  cache comparisons, including entrance railings on the first approach and
+  return. Sandstorm terrain and the Air Defense 2 indoor controls also pass.
+
 - [x] Validate the local Windows `idtech5-ui` integration with the current renderer
   and game code. Preserve Vulkan startup recovery, PBR image handling, generated
   font atlases, language reloads and single-player cvar ownership. The modern
@@ -468,7 +481,8 @@
   they do not replace yet, and fall back to the stock screen if one cannot load.
   Choosing a page carries its name up into the page title as the frame docks,
   and the title screen's backdrop leans slightly away from the pointer or the
-  right stick (off with reduced motion).
+  right stick (off with reduced motion). Exiting or quitting asks in a dialog
+  built like the stock one, lit around its edges, with a crisp outlined title.
   While a level loads, its picture drifts slowly closer, the bar shows what is
   loading and how far along it is, the finished load reports how long it took,
   and the continue prompt shows your controller's button once you use one.

@@ -5,6 +5,7 @@
 #define __SHADOWMAP_CLASSIFICATION_H__
 
 typedef struct viewLight_s viewLight_t;
+typedef struct renderLight_s renderLight_t;
 
 static const int SHADOWMAP_CLASSIFICATION_MAX_CASCADES = 4;
 
@@ -19,6 +20,7 @@ typedef struct shadowMapLightClassification_s {
 	shadowMapLightClass_t	lightClass;
 	bool					projectedLight;
 	bool					pointLight;
+	bool					distantPointLight;
 	bool					ordinaryProjectedLight;
 	bool					parallelLight;
 	bool					globalLight;
@@ -30,9 +32,13 @@ typedef struct shadowMapLightClassification_s {
 	int						tileCount;
 } shadowMapLightClassification_t;
 
+// An off-centre point source whose complete radius box lies in front of it
+// can use a fitted perspective map instead of spending six faces on empty sky.
+bool R_ShadowMapUsesDistantPointProjection( const renderLight_t &parms );
+
 // Receiver filtering is expressed in shadow texels, but a texel from a
-// parallel/global (sky) projection covers substantially more world space than
-// one from a local projector.  Keep the source-aware policy in one place so
+// distant-source projection covers substantially more world space than one
+// from a local projector. Keep the source-aware policy in one place so
 // the cascade fitter, legacy receiver, and modern descriptor agree.
 typedef struct shadowMapProjectedFilterSettings_s {
 	bool					distantSource;

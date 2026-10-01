@@ -287,14 +287,108 @@ float DecodePointShadowDepth( vec4 encodedDepth ) {
 	return UnpackDepth16( encodedDepth.rg );
 }
 
-float SamplePointShadowCompare( vec3 direction, float depth ) {
-	float bias = ShadowReceiverBias();
+float PointShadowCompareDepth(vec3 direction, float compareDepth) {
 #ifdef OPENQ4_POINT_SHADOW_COMPARE
-	return texture( uPointShadowMap, vec4( direction, depth - bias ) );
+    return texture(uPointShadowMap, vec4(direction, compareDepth));
 #else
-	float storedDepth = DecodePointShadowDepth( textureCube( uPointShadowMap, direction ) );
-	return ( depth - bias <= storedDepth ) ? 1.0 : 0.0;
+    float storedDepth = DecodePointShadowDepth(textureCube(uPointShadowMap, direction));
+    return compareDepth <= storedDepth ? 1.0 : 0.0;
 #endif
+}
+
+// The plane is evaluated before divergent control flow. Smooth vertex normals
+// describe lighting, not the triangle rasterized into the shadow cube.
+vec4 gPointReceiverPlane = vec4(0.0);
+
+void PointShadowCubeAxes(vec3 direction, out vec3 face, out vec3 axisS, out vec3 axisT) {
+    vec3 a = abs(direction);
+    if (a.x >= a.y && a.x >= a.z) {
+        float side = direction.x >= 0.0 ? 1.0 : -1.0;
+        face = vec3(side, 0.0, 0.0);
+        axisS = vec3(0.0, 0.0, -side);
+        axisT = vec3(0.0, -1.0, 0.0);
+    } else if (a.y >= a.z) {
+        float side = direction.y >= 0.0 ? 1.0 : -1.0;
+        face = vec3(0.0, side, 0.0);
+        axisS = vec3(1.0, 0.0, 0.0);
+        axisT = vec3(0.0, 0.0, side);
+    } else {
+        float side = direction.z >= 0.0 ? 1.0 : -1.0;
+        face = vec3(0.0, 0.0, side);
+        axisS = vec3(side, 0.0, 0.0);
+        axisT = vec3(0.0, -1.0, 0.0);
+    }
+}
+
+vec3 PointShadowTexelDirection(vec3 direction, float texelScale) {
+    vec3 face, axisS, axisT;
+    PointShadowCubeAxes(direction, face, axisS, axisT);
+    vec2 st = vec2(dot(direction, axisS), dot(direction, axisT)) / dot(direction, face);
+    // Re-select the face for taps across a cube seam, then snap to its actual
+    // texel center. A hardware comparison there is a single depth comparison.
+    st = (floor((st + 1.0) / texelScale) + 0.5) * texelScale - 1.0;
+    return normalize(face + axisS * st.x + axisT * st.y);
+}
+
+float PointShadowPlaneDepth(vec3 direction, float depth) {
+    float denominator = dot(gPointReceiverPlane.xyz, direction);
+    float distance = gPointReceiverPlane.w / (abs(denominator) > 1.0e-5 ? denominator : 1.0);
+    // Near the plane horizon a neighbouring ray may not reach the receiver.
+    // Keep the ordinary comparison for that ill-conditioned extrapolation.
+    return abs(denominator) > 1.0e-5 && distance > 0.0 && distance < 1.0
+        ? distance : depth;
+}
+
+float PointShadowPlaneCompare(vec3 direction, float depth, float bias, float texelScale) {
+    vec3 sampleDirection = PointShadowTexelDirection(direction, texelScale);
+    float sampleDepth = PointShadowPlaneDepth(sampleDirection, depth);
+    return PointShadowCompareDepth(sampleDirection, sampleDepth - bias);
+}
+
+float PointShadowFilteredCompare(vec3 direction, float depth, float bias, float texelScale, bool hardwareCompare) {
+    if (texelScale <= 0.0 || dot(gPointReceiverPlane.xyz, gPointReceiverPlane.xyz) < 0.5
+        || ShadowDebugModeIs(kShadowDebugBiasOff)
+        || ShadowDebugModeIs(kShadowDebugReceiverPlaneBiasOff)) {
+        return PointShadowCompareDepth(direction, depth - bias);
+    }
+    // Keep the inexpensive native lookup when the existing bias already
+    // covers this tap's plane displacement and entire texel footprint. The
+    // extra comparisons are needed only for under-resolved sloped receivers.
+    float planeCos = abs(dot(gPointReceiverPlane.xyz, direction));
+    float planeSlope = sqrt(max(1.0 - planeCos * planeCos, 0.0)) / max(planeCos, 1.0e-5);
+    float planeDepth = PointShadowPlaneDepth(direction, depth);
+    float footprint = 2.0 * planeDepth * texelScale * (planeSlope + texelScale);
+    if (abs(planeDepth - depth) + footprint < bias * 0.5) {
+        return PointShadowCompareDepth(direction, depth - bias);
+    }
+    if (!hardwareCompare) {
+        return PointShadowPlaneCompare(direction, depth, bias, texelScale);
+    }
+    vec3 face, axisS, axisT;
+    PointShadowCubeAxes(direction, face, axisS, axisT);
+    vec2 st = vec2(dot(direction, axisS), dot(direction, axisT)) / dot(direction, face);
+    vec2 grid = (st + 1.0) / texelScale - 0.5;
+    vec2 weight = fract(grid);
+    vec2 lower = (floor(grid) + 0.5) * texelScale - 1.0;
+    vec3 corner = face + axisS * lower.x + axisT * lower.y;
+    // Hardware PCF compares all four depths with one radial reference. On a
+    // distant sloped receiver those depths can differ by many world units,
+    // exceeding the contact-preserving bias cap. Compare each texel against
+    // the ray/receiver-plane intersection and retain the bilinear weights.
+    float a = PointShadowPlaneCompare(corner, depth, bias, texelScale);
+    float b = PointShadowPlaneCompare(corner + axisS * texelScale, depth, bias, texelScale);
+    float c = PointShadowPlaneCompare(corner + axisT * texelScale, depth, bias, texelScale);
+    float d = PointShadowPlaneCompare(corner + (axisS + axisT) * texelScale, depth, bias, texelScale);
+    return mix(mix(a, b, weight.x), mix(c, d, weight.x), weight.y);
+}
+
+float SamplePointShadowCompare( vec3 direction, float depth ) {
+#ifdef OPENQ4_POINT_SHADOW_COMPARE
+    bool hardwareCompare = true;
+#else
+    bool hardwareCompare = false;
+#endif
+    return PointShadowFilteredCompare(direction, depth, ShadowReceiverBias(), uPointShadowTexelScale, hardwareCompare);
 }
 
 float RawPointShadowDepth( vec3 direction ) {
@@ -445,6 +539,9 @@ vec3 SamplePointTranslucentShadow() {
 }
 
 void main() {
+    vec3 receiverNormal = cross(dFdx(vPointShadowVector), dFdy(vPointShadowVector));
+    receiverNormal *= inversesqrt(max(dot(receiverNormal, receiverNormal), 1.0e-20));
+    gPointReceiverPlane = vec4(receiverNormal, dot(receiverNormal, vPointShadowVector) / max(uPointShadowFar, 1.0));
 	vec4 bumpSample = texture2D( uBumpMap, vBumpTexCoord );
 	vec3 localNormal = DecodeLocalNormal( bumpSample );
 

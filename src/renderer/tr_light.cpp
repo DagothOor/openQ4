@@ -30,6 +30,7 @@ If you have questions concerning this license or the applicable additional terms
 
 
 #include "tr_local.h"
+#include "ShadowMapClassification.h"
 #include "../sound/sound.h"
 #ifdef OPENQ4_RENDERER_VK_MODULE
 #include "Vulkan/vk_MaterialPrograms.h"
@@ -1576,9 +1577,13 @@ bool R_ShadowMapLightWillUseShadowMaps( const idRenderLightLocal *lightDef ) {
 	if ( glConfig.maxTextureUnits < 6 || glConfig.maxTextureImageUnits < 6 ) {
 		return false;
 	}
-	// parallel lights carry pointLight=true but render through the projected
-	// path with a synthesized orthographic projection (see shadow classification)
-	const bool pointLightPath = lightDef->parms.pointLight && !lightDef->parms.parallel;
+	// Parallel and distant off-centre sources carry pointLight=true but render
+	// through synthesized projections (see shadow classification).
+	const bool pointLightPath = lightDef->parms.pointLight && !lightDef->parms.parallel
+		&& !R_ShadowMapUsesDistantPointProjection( lightDef->parms );
+	if ( lightDef->parms.pointLight && !lightDef->parms.parallel && !r_shadowMapPointLights.GetBool() ) {
+		return false;
+	}
 	if ( pointLightPath ) {
 		if ( !r_shadowMapPointLights.GetBool() || !glConfig.cubeMapAvailable ) {
 			return false;

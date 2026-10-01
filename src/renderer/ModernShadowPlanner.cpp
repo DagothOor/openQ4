@@ -2410,6 +2410,10 @@ const idMaterial *R_ModernShadowPlanner_SelfTestLightShader( const char *materia
 }
 
 bool RendererShadowPlanner_RunSelfTest( void ) {
+	// Admission is shared by both backends and does not need scene packets.
+	if ( !R_ShadowMapLODAdmissionSelfTest() ) {
+		return false;
+	}
 	if ( !rg_modernShadowPlannerInitialized || !rg_modernShadowPlannerFeatures.scenePackets ) {
 		common->Printf( "RendererShadowPlanner self-test passed (planner unavailable)\n" );
 		return true;
@@ -2481,9 +2485,6 @@ bool RendererShadowPlanner_RunSelfTest( void ) {
 	r_shadowMapPointCacheSize.SetInteger( 4 );
 	r_rendererBenchmarkPreset.SetString( "baseline" );
 	if ( !R_ShadowMapCasterAdmissionSelfTest() ) {
-		return false;
-	}
-	if ( !R_ShadowMapLODAdmissionSelfTest() ) {
 		return false;
 	}
 	if ( !RB_ShadowMapArb2ReceiverFallbackSelfTest() ) {
@@ -3104,6 +3105,10 @@ static bool R_ShadowMapPointFaceBoundsSelfTest( void ) {
 }
 
 bool RendererShadowProjectedDiagnostic_RunSelfTest( void ) {
+	if ( !R_ShadowMapDistantPointProjectionSelfTest() ) {
+		common->Printf( "RendererShadowProjectedDiagnostic self-test failed (distant point projection)\n" );
+		return false;
+	}
 	if ( !R_ShadowMapPointFaceBoundsSelfTest() ) {
 		return false;
 	}

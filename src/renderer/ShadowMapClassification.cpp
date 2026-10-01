@@ -63,6 +63,20 @@ static bool R_ShadowMapProjectedLightNeedsAuthoredSingleProjection( const viewLi
 		|| R_ShadowMapProjectedLightUsesStockFlashlightShader( vLight );
 }
 
+bool R_ShadowMapUsesDistantPointProjection( const renderLight_t &parms ) {
+	if ( !parms.pointLight || parms.parallel ) {
+		return false;
+	}
+	idVec3 direction = parms.lightCenter;
+	const float distance = direction.Normalize();
+	const float extent = idMath::Fabs( direction.x * parms.lightRadius.x )
+		+ idMath::Fabs( direction.y * parms.lightRadius.y )
+		+ idMath::Fabs( direction.z * parms.lightRadius.z );
+	return std::isfinite( static_cast<double>( distance ) )
+		&& std::isfinite( static_cast<double>( extent ) )
+		&& distance > extent + Max( 1.0f, distance * 0.01f );
+}
+
 shadowMapLightClassification_t R_ClassifyShadowMapLight( const viewLight_t *vLight ) {
 	shadowMapLightClassification_t classification;
 	memset( &classification, 0, sizeof( classification ) );
@@ -72,7 +86,11 @@ shadowMapLightClassification_t R_ClassifyShadowMapLight( const viewLight_t *vLig
 	// radial cube-map depth saturates for them, so they route through the
 	// projected machinery with a synthesized orthographic projection instead
 	// (R_ShadowMapBuildParallelClipPlanes).
-	classification.pointLight = vLight != NULL && vLight->pointLight && !vLight->parallel;
+	classification.distantPointLight = vLight != NULL && vLight->lightDef != NULL
+		&& r_shadowMapPointLights.GetBool()
+		&& R_ShadowMapUsesDistantPointProjection( vLight->lightDef->parms );
+	classification.pointLight = vLight != NULL && vLight->pointLight && !vLight->parallel
+		&& !classification.distantPointLight;
 	classification.projectedLight = !classification.pointLight;
 	classification.ordinaryProjectedLight = classification.lightClass == SHADOWMAP_LIGHT_PROJECTED;
 	classification.parallelLight = classification.lightClass == SHADOWMAP_LIGHT_PARALLEL;
@@ -111,10 +129,10 @@ shadowMapProjectedFilterSettings_t R_ShadowMapProjectedFilterSettings( const vie
 
 	const shadowMapLightClassification_t classification = R_ClassifyShadowMapLight( vLight );
 	// A global point light still uses the independently tuned point-light cube
-	// policy.  This specialization is only for large projected sources: parallel
-	// sunlight (including global+parallel sky lights) and global projectors.
+	// policy. This specialization covers parallel sunlight, global projectors,
+	// and distant point sources fitted into the projected path.
 	settings.distantSource = classification.projectedLight && vLight != NULL
-		&& ( vLight->parallel || classification.globalLight );
+		&& ( vLight->parallel || classification.globalLight || classification.distantPointLight );
 	settings.filterScale = settings.distantSource
 		? idMath::ClampFloat( 0.0f, 1.0f, r_shadowMapDistantFilterScale.GetFloat() )
 		: 1.0f;

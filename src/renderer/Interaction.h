@@ -67,10 +67,10 @@ typedef struct {
 	// openQ4's shadow-map paths draw ambient triangles instead of stencil volumes,
 	// but they must still honor Quake 4's entity-level shadow LOD. Keep validity
 	// separate so cvar-gated shadow-map features can ask for the decision lazily;
-	// the decision is refreshed once per frame so it can never freeze stale.
+	// the decision is refreshed for each renderer view's coverage and distance.
 	bool					shadowLODDecisionValid;
 	bool					shadowLODAdmitted;
-	int						shadowLODDecisionFrame;
+	int						shadowLODDecisionView;
 	// The classic volume path admitted this surface. A static-world surface
 	// may be represented by the light's combined prelight volume instead of
 	// carrying per-interaction shadowTris.

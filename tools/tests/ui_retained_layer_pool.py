@@ -2,7 +2,9 @@
 """Run the production retained target allocator against a counted renderer.
 
 Checks mixed viewport sizes, the shared byte budget and non-destructive failed
-allocation. No graphics device, game window or host input is accessed.
+allocation, and that layer composites sample GL row order on every backend,
+which the Vulkan executor's render-texture contract (pinned below) provides.
+No graphics device, game window or host input is accessed.
 """
 from pathlib import Path
 import shutil
@@ -15,16 +17,22 @@ SUPPORT = r'''
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <cmath>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
+namespace openq4::ui {
+struct Vertex {float x=0,y=0,u=0,v=0,r=1,g=1,b=1,a=1;};
+struct Bounds {float x=0,y=0,width=0,height=0;};
+}
 struct idImageOpts {int width=0,height=0,format=0,numLevels=0;bool isPersistant=false;};
 enum {FMT_RGBA8,TF_NEAREST,DS_DEFAULTED};
 struct idImage {};
 struct idMaterial {int GetState() const {return 1;}};
 struct idRenderTexture {bool destroyed=false;};
 struct Renderer {
-    int creates=0,destroys=0,clears=0;bool failImage=false;
+    int creates=0,destroys=0,clears=0,defaultBinds=0;bool failImage=false;
     std::vector<std::unique_ptr<idImage>> images;
     std::vector<std::unique_ptr<idRenderTexture>> targets;
     idRenderTexture* bound=nullptr;
@@ -36,7 +44,8 @@ struct Renderer {
         targets.push_back(std::make_unique<idRenderTexture>());return targets.back().get();
     }
     void DestroyRenderTexture(idRenderTexture* target){assert(target && !target->destroyed);target->destroyed=true;++destroys;}
-    void BindRenderTexture(idRenderTexture* target,void*){assert(target && !target->destroyed);bound=target;}
+    // Only a composite may bind the default target (null); allocation never does.
+    void BindRenderTexture(idRenderTexture* target,void*){assert(!target || !target->destroyed);defaultBinds+=!target;bound=target;}
     void ClearRenderTarget(bool color,bool depth,int,float r,float g,float b,float a){assert(color && !depth && r==0 && g==0 && b==0 && a==0);++clears;}
 } renderer;
 Renderer* renderSystem=&renderer;
@@ -46,6 +55,11 @@ const char* va(const char* format,unsigned value){static char text[128];std::snp
 struct Host {
     struct Layer {idRenderTexture* target=nullptr;const idMaterial* material=nullptr;const idMaterial* maskMaterial=nullptr;int width=0,height=0;};
     std::vector<Layer> layers;
+    int viewportWidth=1280,viewportHeight=720;
+    std::vector<openq4::ui::Vertex> drawn;std::uintptr_t drawnMaterial=0;
+    void Draw(const std::vector<openq4::ui::Vertex>& vertices,const std::vector<int>& indices,std::uintptr_t material){
+        assert(indices.size()==6);drawn=vertices;drawnMaterial=material;
+    }
 '''
 MAIN = r'''
 };
@@ -75,14 +89,37 @@ int main(){
     Host empty;
     assert(empty.BeginLayer(48,8192,8192)); // Sparse slot ID is not a memory multiplier.
     assert(!empty.BeginLayer(1,1,1));
-    std::puts("retained layer pool: mixed viewport preservation, exact shared byte budget and failure isolation passed");
+    // Composites sample every backend's layers in GL row order: the view's
+    // top row is v=1. Sampling Vulkan layers top-origin mirrored them onto
+    // empty rows, so every faded or masked element vanished there.
+    assert(renderer.defaultBinds==0);
+    const auto near=[](float a,float b){return std::fabs(a-b)<1e-5f;};
+    host.CompositeLayer(2,0,.5f,{100,200,300,50});
+    assert(renderer.defaultBinds==1 && renderer.bound==nullptr && host.drawn.size()==4);
+    assert(host.drawnMaterial==reinterpret_cast<std::uintptr_t>(host.layers[1].material));
+    assert(near(host.drawn[0].y,200) && near(host.drawn[0].u,100.f/1280) && near(host.drawn[0].v,1-200.f/720));
+    assert(near(host.drawn[2].y,250) && near(host.drawn[2].u,400.f/1280) && near(host.drawn[2].v,1-250.f/720));
+    for (const auto& vertex : host.drawn) assert(near(vertex.r,.5f) && near(vertex.a,.5f)); // Premultiplied opacity.
+    host.MaskLayer(1,2,{0,0,1280,720});
+    assert(renderer.bound==host.layers[1].target && near(host.drawn[0].v,1) && near(host.drawn[2].v,0) && near(host.drawn[0].a,1));
+    std::puts("retained layer pool: mixed viewport preservation, exact shared byte budget, failure isolation and GL-order composites passed");
 }
 '''
 
 
 def main():
     source=(ROOT/'src/ui/RetainedUI.cpp').read_text()
-    code=SUPPORT+function_body(source,'bool BeginLayer(').replace(' override','')+MAIN
+    bodies=[function_body(source,signature).replace(' override','') for signature in (
+        'bool BeginLayer(','void CompositeLayer(','void MaskLayer(','void DrawLayer(')]
+    # The Vulkan executor's side of the row-order contract the composites rely on.
+    executor=(ROOT/'src/renderer/Vulkan/vk_GuiExecutor.cpp').read_text(encoding='utf-8')
+    assert 'vkExec.activePipelineTarget.lowerOrigin = true;' in function_body(executor,'bool VK_Exec_SetRenderTarget('),\
+        'Vulkan render textures must keep GL row order, which retained layer composites sample'
+    assert 'VK_Exec_MarkCanonicalWrites();' in function_body(executor,'void VK_GuiExecutor_Draw2DView('),\
+        '2D writes into a layer must be marked as canonical rows'
+    assert 'passPlan.textureFlipY = imageEntry->materialSampleFlipY;' in executor,\
+        'GUI stages must flip an image written in the other row order'
+    code=SUPPORT+'\n'.join(bodies)+MAIN
     compiler=next((found for name in ('clang++','g++','c++') if (found:=shutil.which(name))),None)
     if not compiler:
         raise RuntimeError('C++ compiler required')

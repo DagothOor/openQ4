@@ -7,7 +7,6 @@
 #include "UserInterfaceManaged.h"
 #include "retained/Runtime.h"
 #include "retained/Input.h"
-#include "../renderer/RendererModule.h"
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -208,11 +207,12 @@ public:
 	void DrawLayer(const idMaterial* material, std::uint32_t destination, float opacity, const openq4::ui::Bounds& clip) {
 		renderSystem->BindRenderTexture(destination ? layers[destination-1].target : nullptr,nullptr);
 		const float x0 = clip.x, y0 = clip.y, x1 = x0+clip.width, y1 = y0+clip.height;
-		// Vulkan attachments store the top row at v=0. GL/GLES render targets
-		// have the opposite origin; resolve this once at the host boundary.
-		const bool topOrigin = R_RendererModule_GetStatus().activeApi == RENDER_MODULE_API_VULKAN;
+		// Render textures keep GL row order on every backend: the Vulkan
+		// executor records them lower-origin and marks those writes canonical,
+		// and flips any image written the other way when a GUI stage samples it.
+		// Sampling a layer as top-origin there mirrors it onto empty rows.
 		auto vertex = [&](float x, float y) -> openq4::ui::Vertex {
-			return {x,y,x/viewportWidth,topOrigin ? y/viewportHeight : 1-y/viewportHeight,opacity,opacity,opacity,opacity};
+			return {x,y,x/viewportWidth,1-y/viewportHeight,opacity,opacity,opacity,opacity};
 		};
 		Draw({vertex(x0,y0),vertex(x1,y0),vertex(x1,y1),vertex(x0,y1)}, {0,1,2,0,2,3},
 			reinterpret_cast<std::uintptr_t>(material));
