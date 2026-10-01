@@ -1886,14 +1886,6 @@ if build_engine and host_system == 'linux'
   ]
 endif
 
-# The dedicated executable includes the common UI manager sources, whose
-# native-text settlement handles are defined by the portable retained runtime.
-# Keep that runtime available to both engine binaries even though the dedicated
-# server does not initialize the retained UI.
-if build_engine
-  dedicated_deps += openq4_retained_dep
-endif
-
 shared_cpp_args = ['-DUSE_OPENAL', '-DGLEW_NO_GLU']
 shared_c_args = ['-DGLEW_NO_GLU']
 shared_objcpp_args = []

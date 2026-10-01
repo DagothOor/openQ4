@@ -183,8 +183,10 @@ bool NativeTextApply(uiNativeTextRouteProbe_t,void*,const openq4::ui::NativeText
 	const openq4::ui::NativeTextOffer&,openq4::ui::NativeTextEditorReceipt&,std::string&);
 bool NativeTextComplete(uiNativeTextRouteProbe_t,void*,const openq4::ui::NativeTextEditorBarrier&,
 	const openq4::ui::NativeTextCollection&,openq4::ui::NativeTextEditorBarrier&,std::string&);
+#ifndef ID_DEDICATED
 std::unique_ptr<openq4::ui::Interaction::NativeSettlement> NativeTextPrepareSettlement(
 	uiNativeTextRouteProbe_t,void*,const openq4::ui::NativeTextEditorBarrier&,std::string&);
+#endif
 bool NativeTextPublishSettlement(uiNativeTextRouteProbe_t,void*,
 	openq4::ui::Interaction::NativeSettlement&,openq4::ui::NativeTextEditorReceipt&) noexcept;
 bool NativeTextRetireExact(openq4::ui::NativeTextIdentity,const openq4::ui::TextEditorIdentity&) noexcept;

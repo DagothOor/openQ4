@@ -28,8 +28,11 @@ bool UI_NativeTextApply(uiNativeTextRouteProbe_t,void*,const openq4::ui::NativeT
 	const openq4::ui::NativeTextOffer&,openq4::ui::NativeTextEditorReceipt&,std::string&);
 bool UI_NativeTextComplete(uiNativeTextRouteProbe_t,void*,const openq4::ui::NativeTextEditorBarrier&,
 	const openq4::ui::NativeTextCollection&,openq4::ui::NativeTextEditorBarrier&,std::string&);
+#ifndef ID_DEDICATED
+// Client-only; the dedicated server links no retained settlement owner.
 std::unique_ptr<openq4::ui::Interaction::NativeSettlement> UI_NativeTextPrepareSettlement(
 	uiNativeTextRouteProbe_t,void*,const openq4::ui::NativeTextEditorBarrier&,std::string&);
+#endif
 bool UI_NativeTextPublishSettlement(uiNativeTextRouteProbe_t,void*,
 	openq4::ui::Interaction::NativeSettlement&,openq4::ui::NativeTextEditorReceipt&) noexcept;
 // Teardown deliberately ignores current-route/input eligibility. Only the

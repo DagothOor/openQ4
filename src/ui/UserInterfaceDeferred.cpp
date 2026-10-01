@@ -239,14 +239,11 @@ bool idUserInterfaceDeferred::ApplyNativeText(const openq4::ui::NativeTextEditor
 bool idUserInterfaceDeferred::CompleteNativeText(const openq4::ui::NativeTextEditorBarrier& expected, const openq4::ui::NativeTextCollection& collection, openq4::ui::NativeTextEditorBarrier& out, std::string& error) {
 	return backend != NULL ? backend->CompleteNativeText(expected,collection,out,error) : false;
 }
+#ifndef ID_DEDICATED
 std::unique_ptr<openq4::ui::Interaction::NativeSettlement> idUserInterfaceDeferred::PrepareNativeTextSettlement(const openq4::ui::NativeTextEditorBarrier& expected, std::string& error) {
-#ifdef ID_DEDICATED
-	// Avoid even a temporary owning client-model value in debug STL builds.
-	(void)expected; (void)error; return nullptr;
-#else
 	return backend != NULL ? backend->PrepareNativeTextSettlement(expected,error) : nullptr;
-#endif
 }
+#endif
 bool idUserInterfaceDeferred::PublishNativeTextSettlement(openq4::ui::Interaction::NativeSettlement& prepared, openq4::ui::NativeTextEditorReceipt& out) noexcept {
 	return backend != NULL ? backend->PublishNativeTextSettlement(prepared,out) : false;
 }

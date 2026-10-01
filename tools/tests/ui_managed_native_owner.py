@@ -165,10 +165,10 @@ int main() {
     def run(command,name,timeout=180):
         r=subprocess.run(command,cwd=out,env=env,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=timeout)
         log=out/(name+'.log');log.write_text(r.stdout+r.stderr,encoding='utf-8');return r,log
-    def case(name,body,objects,dedicated=False,mutant=False):
+    def case(name,body,objects,dedicated=False,mutant=False,optimized=False):
         cpp=out/(name+'.cpp');cpp.write_text(body,encoding='utf-8',newline='\n');binary=out/(name+'.exe')
         macro='/D' if args.msvc else '-D'
-        command=flags+[macro+'ID_DEDICATED' if dedicated else macro+'USE_SDL3',str(cpp)]+[str(p) for p in objects]
+        command=flags+(['/O2' if args.msvc else '-O2'] if optimized else [])+[macro+'ID_DEDICATED' if dedicated else macro+'USE_SDL3',str(cpp)]+[str(p) for p in objects]
         command+=['/Fe:'+str(binary)] if args.msvc else ['-o',str(binary)]
         r,log=run(command,name+'-compile');entry={'name':name,'command':command,'source_sha256':sha(cpp),'compile_exit':r.returncode,'compile_log_sha256':sha(log)};report['cases'].append(entry)
         if r.returncode:raise RuntimeError(r.stdout+r.stderr)
@@ -225,7 +225,9 @@ int main() {
             r,log=run(command,unit.stem+'-compile')
             if r.returncode:raise RuntimeError(r.stdout+r.stderr)
             objects.append(obj);report['objects'].append({'name':obj.name,'sha256':sha(obj),'source':str(unit),'source_sha256':sha(unit),'command':command,'compile_log_sha256':sha(log)})
-        case('client-default',default,objects[:-1]);case('dedicated',default,[],True);case('managed-owner',source,objects)
+        # Optimized MSVC also emits unreferenced inline functions, so only an
+        # optimized dedicated link proves no retained-runtime symbol is named.
+        case('client-default',default,objects[:-1]);case('dedicated',default,[],True);case('dedicated-optimized',default,[],True,optimized=True);case('managed-owner',source,objects)
         if not args.no_mutations:
             for name,(old,new) in mutations.items():
                 expected=2 if name in ['native-text-reentry-allowed','dont-poison-outer-text','dont-poison-outer-clipboard','presence-on-wrong-thread','presence-in-native-callback','presence-in-text-callback'] else 1

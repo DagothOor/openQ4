@@ -203,6 +203,9 @@ with ordinary text and clipboard boundaries; exact retirement preserves the
 stable draft even after route eligibility changes. Current-owner checks, prepared
 publication and exact retirement allocate nothing. Unloaded deferred GUIs and
 dedicated builds refuse native entry without loading a retained backend.
+Dedicated builds also omit settlement preparation: a prepared settlement owns
+retained models, and optimized MSVC builds emit its destructor wherever one is
+returned by value, which the dedicated link cannot resolve.
 Session routing, the route probe implementation and native activation remain open.
 
 The Windows activation audit confirms that this SDL version owns IMM, with no

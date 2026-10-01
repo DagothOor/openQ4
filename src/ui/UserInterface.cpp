@@ -420,10 +420,8 @@ bool idUserInterfaceManagerLocal::NativeTextComplete(uiNativeTextRouteProbe_t pr
     } catch (...) {NativeOwnerDiagnostic(error,"Native GUI owner allocation or callback failed");return false;}
 }
 
+#ifndef ID_DEDICATED
 std::unique_ptr<openq4::ui::Interaction::NativeSettlement> idUserInterfaceManagerLocal::NativeTextPrepareSettlement(uiNativeTextRouteProbe_t probe,void* context, const openq4::ui::NativeTextEditorBarrier& expected, std::string& error) {
-#ifdef ID_DEDICATED
-    (void)probe;(void)context;(void)expected;(void)error;return nullptr;
-#else
     if(!NativeTextEnter()){NativeOwnerDiagnostic(error,"Reentrant native GUI owner boundary");return nullptr;}
     NativeOwnerBoundaryScope scope{nativeBoundaryActive};
     try {
@@ -434,8 +432,8 @@ std::unique_ptr<openq4::ui::Interaction::NativeSettlement> idUserInterfaceManage
         if(!accepted || nativeBoundaryFailed || !NativeTextCheck(probe,context,frozen))return nullptr;
         return candidate;
     } catch (...) {NativeOwnerDiagnostic(error,"Native GUI owner allocation or callback failed");return nullptr;}
-#endif
 }
+#endif
 
 bool UI_NativeTextCurrent(uiNativeTextRouteProbe_t probe,void* context, const openq4::ui::NativeTextEditorBarrier& expected) noexcept {
     return uiManagerLocal.NativeTextCurrent(probe,context,expected);
@@ -465,9 +463,11 @@ bool UI_NativeTextComplete(uiNativeTextRouteProbe_t probe,void* context, const o
     return uiManagerLocal.NativeTextComplete(probe,context,expected,collection,out,error);
 }
 
+#ifndef ID_DEDICATED
 std::unique_ptr<openq4::ui::Interaction::NativeSettlement> UI_NativeTextPrepareSettlement(uiNativeTextRouteProbe_t probe,void* context, const openq4::ui::NativeTextEditorBarrier& expected, std::string& error) {
     return uiManagerLocal.NativeTextPrepareSettlement(probe,context,expected,error);
 }
+#endif
 
 openq4::ui::NativeTextPresence UI_NativeTextPresence(openq4::ui::NativeTextIdentity native,
     const openq4::ui::TextEditorIdentity& owner) noexcept {

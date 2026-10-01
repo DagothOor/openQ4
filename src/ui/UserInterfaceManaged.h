@@ -64,7 +64,12 @@ public:
 	virtual bool BeginNativeText(const openq4::ui::NativeTextEditorBarrier& expected, const openq4::ui::NativeTextCollection& collection, openq4::ui::NativeTextEditorBarrier& out, std::string& error) { return false; }
 	virtual bool ApplyNativeText(const openq4::ui::NativeTextEditorBarrier& expected, const openq4::ui::NativeTextOffer& offer, openq4::ui::NativeTextEditorReceipt& out, std::string& error) { return false; }
 	virtual bool CompleteNativeText(const openq4::ui::NativeTextEditorBarrier& expected, const openq4::ui::NativeTextCollection& collection, openq4::ui::NativeTextEditorBarrier& out, std::string& error) { return false; }
+#ifndef ID_DEDICATED
+	// Client-only: a settlement owns retained models whose destructor the
+	// dedicated server does not link. Optimized MSVC emits that destructor for
+	// any by-value return, even unused, so the dedicated build omits Prepare.
 	virtual std::unique_ptr<openq4::ui::Interaction::NativeSettlement> PrepareNativeTextSettlement(const openq4::ui::NativeTextEditorBarrier& expected, std::string& error) { return nullptr; }
+#endif
 	virtual bool PublishNativeTextSettlement(openq4::ui::Interaction::NativeSettlement& prepared, openq4::ui::NativeTextEditorReceipt& out) noexcept { return false; }
 	virtual openq4::ui::NativeTextPresence QueryNativeTextPresence(openq4::ui::NativeTextIdentity,
         const openq4::ui::TextEditorIdentity&) const noexcept { return openq4::ui::NativeTextPresence::BusyOrUnknown; }
