@@ -183,6 +183,8 @@ The retained confirmation modal, based on engine `e039c0ecad7c0010c8a52966235c79
 
 Retained timeline completion programs, based on engine `9171699a34db3ebf4affb6c2880604eb3aee643b`, let a timeline name an event to run when it plays to its end: no actions, no completion cycles, and cancellation, replay or a takeover never complete it. The retained confirmations use them for the stock modal.enter and modal.leave. With the retained screens' authored band and content choreography, `MOT-012` moves from pending to partial, with acceptance evidence still empty; the links' 50 ms fade, page-side timing, band.slide, row.flash, list.unfold, light.up, destination backings and the sampled comparison with the stock timelines remain. Native tests only; no engine capture of the transitions. Evidence: `.tmp/ui/retained-modal-motion/validation-evidence.json`, SHA-256 `a23a96a22a4abd67ded93a9a00624ffa6dba93d4d4275170346aafc0c2ba5b70`.
 
+On engine `694889557900c39e7940261dc61810cdffc52627` the retained title and pause screens fade the plinth and its secondary links over 50 ms on depart, give hover feedback at once, and dim the wordmark while the title's Exit modal is open. `MOT-012` gains partial evidence without a status change. Qualified by the native screens test; no engine capture. Evidence: `.tmp/ui/retained-motion-tokens/validation-evidence.json`, SHA-256 `0d139aa4bd795cece9cf6e7ebda88883b0b52bd53c1ce8ab9544a9ca3b082218`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial

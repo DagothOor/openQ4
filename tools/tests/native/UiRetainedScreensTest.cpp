@@ -292,6 +292,9 @@ int main(int argc, char** argv) {
 			const auto appeared = runtime.PresentedValue("exitModal-contents","display");
 			Check(appeared && appeared->text == "block" && runtime.FocusedControl() == "exitModal_no",
 				"the contents appear together at 200 ms and NO takes focus");
+			const auto dimmed = runtime.PresentedValue("wordmark","image-color");
+			Check(dimmed && Near(static_cast<float>(dimmed->data[0]),.4f,.01f) && Near(static_cast<float>(dimmed->data[3]),1,.001f),
+				"the Exit modal dims the wordmark to 40% gray");
 			Bounds dialog, title, outline, left, below, body;
 			Check(runtime.GetBounds("exitModal-dialog",dialog) && runtime.GetBounds("exitModal-title",title) &&
 				runtime.GetBounds("exitModal-title-outline",outline) && runtime.GetBounds("exitModal-title-outline-1",left) &&
@@ -328,6 +331,8 @@ int main(int argc, char** argv) {
 			const auto stillOpen = runtime.PresentedValue("exitModal","display");
 			Check(frameOut && Near(static_cast<float>(frameOut->data[0]),0,.001f) && stillOpen && stillOpen->text == "block",
 				"Exit releases its frame over 200 ms while the scrim is still going");
+			const auto restoredMark = runtime.PresentedValue("wordmark","image-color");
+			Check(restoredMark && Near(static_cast<float>(restoredMark->data[0]),1,.001f),"the wordmark is restored from 50 ms over 150 ms");
 			runtime.Frame(viewport,14.61);
 			const auto closed = runtime.PresentedValue("exitModal","display");
 			Check(closed && closed->text == "none" && runtime.FocusedControl() != "exitModal_no","the modal closes when the scrim is gone");
@@ -346,6 +351,23 @@ int main(int argc, char** argv) {
 			Check(reopened && reopened->text == "block" && restored && restored->text == "block","a reopened modal stays open");
 			Check(runtime.RunEvent("exitModalHide",16,hidden,error),"close again");
 			runtime.Frame(viewport,16.4);
+		}
+		// content.out (section 8): departing home plates fade over 250 ms, but
+		// the plinth and its secondary links take 50 ms; content.in brings
+		// them back together over 150 ms after the bands return.
+		{
+			Check(runtime.PlayTimeline("depart",17),"depart toward a page");
+			runtime.Frame(viewport,17.05);
+			const auto plinth = runtime.PresentedValue("plinth","opacity");
+			const auto homeOut = runtime.PresentedValue("home","opacity");
+			Check(plinth && Near(static_cast<float>(plinth->data[0]),0,.001f) && homeOut && Near(static_cast<float>(homeOut->data[0]),.8f,.01f),
+				"the plinth is gone at 50 ms while the home plates are still fading");
+			Check(runtime.PlayTimeline("returnHome",18),"return home");
+			runtime.Frame(viewport,18.7);
+			const auto plinthBack = runtime.PresentedValue("plinth","opacity");
+			const auto homeBack = runtime.PresentedValue("home","opacity");
+			Check(plinthBack && Near(static_cast<float>(plinthBack->data[0]),1,.001f) && homeBack && Near(static_cast<float>(homeBack->data[0]),1,.001f),
+				"the plinth returns with the home content");
 		}
 	}
 	// Pause: the level block binds the mission, difficulty, objectives and shot.

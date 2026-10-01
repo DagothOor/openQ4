@@ -311,10 +311,10 @@ class Document:
 
     def states(self, control: str, tracks: dict) -> dict:
         """Button feedback timelines. `tracks` maps state -> [(node, prop, value)].
-        Hover and focus respond at once (hover.enter 0 ms, focus 80 ms); every
-        return to rest is linear over 300 ms (hover.leave); press insets 1 dp
-        over 60 ms (section 8)."""
-        durations = {"default": 300, "hover": 60, "focus": 80, "pressed": 60, "disabled": 150}
+        Hover responds at once (hover.enter 0 ms: a 1 ms step, the shortest a
+        timeline can run) and focus over 80 ms; every return to rest is linear
+        over 300 ms (hover.leave); press insets 1 dp over 60 ms (section 8)."""
+        durations = {"default": 300, "hover": 1, "focus": 80, "pressed": 60, "disabled": 150}
         ids = {}
         for state, duration in durations.items():
             ident = f"{control}.{state}"
@@ -466,7 +466,7 @@ def plinth(doc: Document, links: list) -> dict:
     row = group("plinth-links", {**absolute(left=U * (32 - left), top=U * -0.3, height=U * 17),
                                   "display": keyword("flex"), "flex-direction": keyword("row"),
                                   "align-items": keyword("flex-start")}, links)
-    return vector("plinth", absolute(left=U * left, top=U * top, width=width, height=height), [shape], [row])
+    return vector("plinth", {**absolute(left=U * left, top=U * top, width=width, height=height), "opacity": number(1)}, [shape], [row])
 
 
 def action_plate(doc: Document, ident: str, key: str, left: float, top: float, *, action: str | None = None,
@@ -535,7 +535,7 @@ def outlined_label(ident: str, key: str, box: dict, style: dict, fill: list[floa
 
 
 def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_action: str,
-                 frame_leave_ms: float = 250) -> dict:
+                 frame_leave_ms: float = 250, dim: tuple = ()) -> dict:
     """A stock confirmation modal (section 6) over the marine.scrim: an
     additive glow column exactly as wide as the 480 dp dialog, and inside it
     the stock popup art's black 0.70 silhouette, inset so a 6 dp lit margin
@@ -551,7 +551,9 @@ def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_a
     Exit). Completion programs show the contents and close the modal, so a
     Show during leave or a Hide during enter takes over the other run, which
     then never completes. Static bases are the hidden values, so the first
-    key's retarget never flashes the scrim."""
+    key's retarget never flashes the scrim. `dim` lists (node, property, lit,
+    dimmed) that dim over 200 ms on enter and return from 50 ms over 150 ms
+    on leave, as the Exit and Mods modals dim the wordmark to 40% gray."""
     visible, contents = f"{ident}.visible", f"{ident}.contents"
     doc.state[visible] = {"type": "boolean", "initial": False}
     doc.state[contents] = {"type": "boolean", "initial": False}
@@ -611,14 +613,15 @@ def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_a
         track(ident, "background-color", [(0, scrim_off), (200, scrim_on)]),
         track(f"{ident}-glow", "opacity", [(0, number(0)), (200, number(1))]),
         track(f"{ident}-frame", "opacity", [(0, number(0)), (200, number(1))]),
-    ], complete=shown)
+    ] + [track(node, prop, [(0, lit), (200, dimmed)]) for node, prop, lit, dimmed in dim], complete=shown)
     frame_end = 50 + frame_leave_ms
     doc.timelines.add(leave, 300, [
         track(ident, "background-color", [(0, scrim_on), (50, scrim_on), (300, scrim_off)]),
         track(f"{ident}-glow", "opacity", [(0, number(1)), (50, number(1)), (300, number(0))]),
         track(f"{ident}-frame", "opacity", [(0, number(1)), (50, number(1)), (frame_end, number(0))] +
               ([(300, number(0))] if frame_end < 300 else [])),
-    ], complete=hidden)
+    ] + [track(node, prop, [(0, dimmed), (50, dimmed), (200, lit), (300, lit)]) for node, prop, lit, dimmed in dim],
+        complete=hidden)
     return node
 
 
@@ -643,10 +646,11 @@ def prompt_bar(doc: Document, prompts: list) -> dict:
 
 # --------------------------------------------------------------- choreography
 
-def band_motion(doc: Document, prefix: str, content: str, extra_home: list) -> None:
+def band_motion(doc: Document, prefix: str, content: str, extra_home: list, quick: tuple = ()) -> None:
     """Section 8 stock choreography, sampled every presented frame:
     open        menu.fade from black over 250 ms, bands already home;
-    depart      content out over 250 ms; from 50 ms frame.dock and
+    depart      content out over 250 ms, the `quick` nodes (secondary links
+                and the plinth) over 50 ms; from 50 ms frame.dock and
                 screen.depart, both accel(250, 250) over 500 ms;
     departPopup content out over 150 ms, bands stay home;
     returnHome  bands from their page dock home over 500 ms accel(250, 250);
@@ -660,14 +664,16 @@ def band_motion(doc: Document, prefix: str, content: str, extra_home: list) -> N
         track(content, "transform", [(0, transform()), (250, transform())]),
         track(top, "transform", [(0, home), (250, home)]),
         track(bottom, "transform", [(0, home), (250, home)]),
-    ] + [track(node, prop, [(0, lit), (250, lit)]) for node, prop, lit, dark in lights])
+    ] + [track(node, prop, [(0, lit), (250, lit)]) for node, prop, lit, dark in lights]
+      + [track(node, "opacity", [(0, number(1)), (250, number(1))]) for node in quick])
     doc.timelines.add("depart", 550, [
         track(content, "opacity", [(0, number(1)), (250, number(0)), (550, number(0))]),
         track(content, "transform", [(0, transform()), (50, transform(), ACCEL), (550, transform(640 * U, 0))]),
         track(top, "transform", [(0, home), (50, home, ACCEL), (550, page_top)]),
         track(bottom, "transform", [(0, home), (50, home, ACCEL), (550, page_bottom)]),
         track("fade", "background-color", [(0, colour([0, 0, 0, 0])), (550, colour([0, 0, 0, 0]))]),
-    ] + [track(node, prop, [(0, lit), (250, dark), (550, dark)]) for node, prop, lit, dark in lights])
+    ] + [track(node, prop, [(0, lit), (250, dark), (550, dark)]) for node, prop, lit, dark in lights]
+      + [track(node, "opacity", [(0, number(1)), (50, number(0)), (550, number(0))]) for node in quick])
     doc.timelines.add("departPopup", 200, [
         track(content, "opacity", [(0, number(1)), (150, number(0)), (200, number(0))]),
     ])
@@ -677,7 +683,8 @@ def band_motion(doc: Document, prefix: str, content: str, extra_home: list) -> N
         track(content, "transform", [(0, transform()), (650, transform())]),
         track(content, "opacity", [(0, number(0)), (500, number(0)), (650, number(1))]),
         track("fade", "background-color", [(0, colour([0, 0, 0, 0])), (650, colour([0, 0, 0, 0]))]),
-    ] + [track(node, prop, [(0, dark), (500, dark), (650, lit)]) for node, prop, lit, dark in lights])
+    ] + [track(node, prop, [(0, dark), (500, dark), (650, lit)]) for node, prop, lit, dark in lights]
+      + [track(node, "opacity", [(0, number(0)), (500, number(0)), (650, number(1))]) for node in quick])
 
 
 # ------------------------------------------------------------------- depth
@@ -895,7 +902,8 @@ def title_document() -> dict:
     doc.session("updates", "updates")
     doc.session("credits", "credits")
     doc.session("quit", "quit")
-    exit_modal = confirmation(doc, "exitModal", "#str_200169", "#str_200170", "quit", frame_leave_ms=200)
+    exit_modal = confirmation(doc, "exitModal", "#str_200169", "#str_200170", "quit", frame_leave_ms=200,
+                              dim=(("wordmark", "image-color", colour([1, 1, 1, 1]), colour([0.4, 0.4, 0.4, 1])),))
     doc.events["onBack"] = [{"op": "call", "event": "exitModalShow"}]
 
     # The message line at 44,364 u explains the focused item (section 13.7):
@@ -960,7 +968,7 @@ def title_document() -> dict:
         group("fade", {**FULL, "background-color": colour([0, 0, 0, 0]), "pointer-events": keyword("none")}),
     ])
     band_motion(doc, "band", "home", [("wordmark", "image-color", colour([1, 1, 1, 1]), colour([1, 1, 1, 0])),
-                                      ("home-stage", "opacity", number(1), number(0))])
+                                      ("home-stage", "opacity", number(1), number(0))], quick=("plinth",))
     hide_carry_at_home(doc)
     return doc.build(root)
 
@@ -1066,7 +1074,7 @@ def pause_document() -> dict:
         exit_modal,
         group("fade", {**FULL, "background-color": colour([0, 0, 0, 0]), "pointer-events": keyword("none")}),
     ])
-    band_motion(doc, "band", "home", [])
+    band_motion(doc, "band", "home", [], quick=("plinth",))
     hide_carry_at_home(doc)
     return doc.build(root)
 

@@ -93,6 +93,8 @@ after editing the script; `--check` fails when an output is stale.
   - Closing hides the contents at once. After 50 ms the scrim and glow release
     over 250 ms, and the frame over 200 ms for Exit or 250 ms for the pause
     quit; then the modal closes.
+  - The title's Exit modal also dims the wordmark to 40% gray over 200 ms,
+    and restores it from 50 ms over 150 ms as it closes.
   - Timeline [completion programs](event-programs.md#completion-programs)
     show the contents and close the modal. A reopen during the leave takes it
     over, so the leave never completes and the modal stays open.
@@ -100,7 +102,11 @@ after editing the script; `--check` fails when an output is stale.
 Band motion follows the stock choreography (section 8): opening reveals the
 content, choosing a page sends the bands to the page dock (`depart`), a
 pop-up only dims the content (`departPopup`), and returning from a page
-brings the bands back (`returnHome`). As the bands dock, the chosen
+brings the bands back (`returnHome`). On depart the home plates fade over
+250 ms, but the plinth and its secondary links go in 50 ms (`content.out`);
+they return together with `content.in`. Control feedback follows the same
+section: hover responds at once, focus over 80 ms, a press over 60 ms, and
+every return to rest is linear over 300 ms. As the bands dock, the chosen
 navigation label travels from its row into the page's title slot at 39,19 u
 and settles at the 18 dp screen-title size (`title.carry`, section 13.8),
 where the stock page then shows its own title; the session plays it only for
@@ -280,6 +286,13 @@ screens test fails. There are no engine captures of the transitions: the
 only client path with firewall rules, `.install`, was in use by another
 session. Evidence: `.tmp/ui/retained-modal-motion/validation-evidence.json`,
 SHA-256 `a23a96a22a4abd67ded93a9a00624ffa6dba93d4d4275170346aafc0c2ba5b70`.
+
+The retained title and pause screens' section 8 tokens were qualified by the
+native screens test. On depart, the plinth and its links are gone at 50 ms
+while the home plates are at 0.8. The wordmark sits at 40% while the Exit
+modal is open and is restored 200 ms into its leave. Evidence:
+`.tmp/ui/retained-motion-tokens/validation-evidence.json`, SHA-256
+`0d139aa4bd795cece9cf6e7ebda88883b0b52bd53c1ce8ab9544a9ca3b082218`.
 
 ## Known limitations
 
