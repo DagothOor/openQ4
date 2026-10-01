@@ -4,7 +4,7 @@
 
 - [x] Suppress startup splash windows for hidden-window, renderer-disabled and dedicated launches across Windows, Linux and macOS.
 
-- [ ] Consolidate SDK game sources and Awakening SP into the engine checkout;
+- [x] Consolidate SDK game sources and Awakening SP into the engine checkout;
   qualify campaign discovery, content/save isolation, stock/expansion save
   compatibility, multiplayer and Arena before archiving the historical repositories.
   See [implementation/evidence](plans/game-source-consolidation.md).

@@ -1,7 +1,7 @@
 # Game source consolidation and campaign selection
 
-Status: implementation and campaign validation complete; publication and
-historical repository retirement pending, 1 October 2026.
+Status: complete and published; both historical repositories archived,
+1 October 2026.
 
 The game libraries and Awakening single-player additions move into openQ4.
 `openQ4-game` and `openQ4-game-awakening` become historical, read-only
@@ -66,6 +66,9 @@ rights-holder permission or legal compatibility opinion is asserted here.
 - History-preserving import merge: `53a9bf2823e3123b8e1c2e19e7ff2dfbda3379bb`.
 - Base retirement notice: `51c8d76927a6e9942865b048df0a28a34e1c55d5`.
 - Awakening retirement notice: `d970ddfa908925e4d3878e2045065cbefb4c766f`.
+- Published integration, including concurrent UI work: `14fb954e15cdf16546323fc0b6ccbe7265ca4c54`.
+- GitHub confirms both companion default branches contain their retirement
+  notices and both repositories have `archived: true`.
 
 ### Build and source checks
 
@@ -129,3 +132,15 @@ This is map initialization, gameplay, switching and save compatibility
 evidence, not a full campaign playthrough. The unfinished expansion still emits
 known missing-effect, authored-script and spawn warnings. Stock MP precache/AAS
 warnings and broader UI/platform qualification remain separate work.
+
+### Publication reconciliation
+
+The engine default branch advanced during validation. Its visual specification
+1.14, modal motion, additive compositing and soft-focus changes were merged,
+including the later pause-screen update. The affected production adapter,
+resource lifetime and layer/soft-focus checks pass, as do the retained UI,
+document and authored screen native checks. Retained campaign menus pass again
+on OpenGL and Vulkan, and Awakening-to-stock gameplay passes again after the
+merge. The requirement register keeps the earlier confirmation evidence and
+passes its structural/source-binding audit without accepting new product gates.
+Reports are retained alongside the original qualification evidence.
