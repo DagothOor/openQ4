@@ -4,7 +4,7 @@
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "be3852badf08503e2a20aa59a8f42a522aeee7f1",
+    "engine_revision": "98e453662704a79df722bc2f4696ddba8c42de03",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -24,7 +24,7 @@
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "f3424d57708801c8a0393a0759b643bc364167722c44358128f7139dc33359aa"
+      "sha256": "c9ffe961815c0f52681714d8338e667b6e86138977017ff7fa5174a804e258d0"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -634,37 +634,43 @@
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Opt-in retained title, single-player pause and stock loading screens behind the single ui_retained gate, with image nodes, additive and multiply path blends, a view-height canvas, typed session menu requests and exact overflow clipping under translation and scale. Windowed OpenGL/Vulkan 16:9, OpenGL 4:3 and gate-off engine captures only; the Objectives action, the Strogg variant, soft focus, Remastered loading details, multiplayer menus, GLES and complete product acceptance stay open.",
-      "sha256": "fd792433d7a5e35cd06e5c36e2b1cbd8e9a969328e0db85beabd529f73ee55e7"
+      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
     },
     "retained-loading-progress": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained loading screen's Remastered progress behind ui_retained: the levelshot drift, the difficulty line, LOADING over a 240 u bar with the loader's phase and its place or asset count, the percentage, the load time and a continue prompt that follows the last input family. Real single-player loads traced the phases in order on OpenGL and Vulkan; the rendered line was captured through testGUI. Tips, touch and device-family glyphs, the Remastered multiplayer screen and complete product acceptance stay open.",
-      "sha256": "fd792433d7a5e35cd06e5c36e2b1cbd8e9a969328e0db85beabd529f73ee55e7"
+      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
     },
     "retained-loading-multiplayer": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained loading screen's Remastered multiplayer composition behind ui_retained: the bottom band kept low, a section 6 server card on the leading side with the server name, address, mode and limits, JOINING when a multiplayer load ends, and the name strip darkening the message line. Captured through testGUI on OpenGL and Vulkan; players by team, the server message, the arsenal, the Welcome hand-off and complete product acceptance stay open.",
-      "sha256": "fd792433d7a5e35cd06e5c36e2b1cbd8e9a969328e0db85beabd529f73ee55e7"
+      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
     },
     "retained-title-carry": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Section 13.8 refinements on the retained title and single-player pause menus behind ui_retained: the soft additive focus glow beside the focus rail, the emblem's rim light and glint, and the title carry, in which a page hand-off carries the chosen navigation label into the page title slot as the bands dock. Captured on OpenGL and Vulkan; the depth shift, the high-contrast rail, symbols, tags, HDR rules and complete product acceptance stay open.",
-      "sha256": "fd792433d7a5e35cd06e5c36e2b1cbd8e9a969328e0db85beabd529f73ee55e7"
+      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
     },
     "retained-title-depth": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "Section 13.8 depth on the retained title behind ui_retained: the backdrop, the light and grid, and the framing bands lean up to 6 dp away from the pointer the session publishes, deeper layers further, while content stays fixed; reduced motion holds them still. Captured on OpenGL and Vulkan; the right stick, device tilt, the Phone default and complete product acceptance stay open.",
-      "sha256": "fd792433d7a5e35cd06e5c36e2b1cbd8e9a969328e0db85beabd529f73ee55e7"
+      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
     },
     "retained-title-depth-stick": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The retained title's depth lean follows a held look stick while it leads and the pointer otherwise. Qualified by ui_retained_gate.py compiling the production session frame code against counted doubles, not by an engine capture, since no input is injected. Device tilt, the Phone default and complete product acceptance stay open.",
-      "sha256": "fd792433d7a5e35cd06e5c36e2b1cbd8e9a969328e0db85beabd529f73ee55e7"
+      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
+    },
+    "retained-modal-confirmation": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/retained-screens.md",
+      "scope": "The retained confirmation modal at the 480 dp confirmation width behind ui_retained, in its opaque-backing form: the stock glow column across the dialog's 320 u rectangle with the stock art's black 0.70 silhouette inset 6.5625 dp from each side so the lit margin and slot outline it, the leading tooth, title slot, raised trailing section, 38 dp lower-leading chamfer and square trailing corners without rails, the title at the foot of the slot's leading flank with its capitals hanging from the raised top line and a 1 dp black outline at 0.85 composited once behind the fill, and the body and actions at the stock positions. Captured on OpenGL and Vulkan at 16:9 and OpenGL at 4:3 beside an engine capture of the stock exit dialog. Soft focus, the other four widths, modal motion and complete product acceptance stay open.",
+      "sha256": "f03611f1e59aa452753a8a66e1b480b474eb2437edc788b8766e4c594c2163ea"
     }
   },
   "groups": {
@@ -12668,10 +12674,12 @@
       "acceptance_evidence_needed": [
         "Measured geometry and overlays against the stock at 4:3 and across widths and DPI for every construction; a generic beveled rectangle is insufficient. Include each modal width over the soft focus and over the opaque-backing scrim. Show the title outline and the glow's side fade over a bright softened scene."
       ],
-      "status": "pending",
-      "current_evidence": [],
+      "status": "partial",
+      "current_evidence": [
+        "retained-modal-confirmation"
+      ],
       "acceptance_evidence": [],
-      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "remaining": "Behind ui_retained, the title's exit and the single-player pause menu's quit confirmations are the 480 dp modal in its opaque-backing form: the stock glow column across the dialog with the stock art's 0.70 silhouette inset so a 6 dp lit margin and the lit slot outline it, the leading tooth, title slot, raised trailing section, 38 dp chamfer and square trailing corners without rails, the title hanging from the raised top line at the slot's foot with its 1 dp black outline at 0.85 behind the fill, and the actions 30 dp and 33 dp from the edges. Cards and their cuts, the soft-focus glow graded across the dialog and its margin, the system message, ban list and advanced settings widths, the chat box, tab strip and header band, qualification of the framing and loading bands and corner brackets against their measured constructions, and complete acceptance remain.",
       "constraints": {
         "card": {
           "major_cut_dp": 12,
