@@ -32,6 +32,7 @@ This file describes project goals, rules, and upstream credits for anyone workin
 - Keep repo-authored runtime overrides under `content/baseoq4/`; treat `.install/baseoq4/` as staged output rather than an editing target.
 - Prefer changes that match Quake 4 SDK expectations and shipped content behavior.
 - Document significant changes in the documentation and keep `README.md` accurate.
+- `README.md` is the players' front door. Add to it only a short, benefit-first feature bullet or player-guide link once players can use the feature. Keep implementation progress, developer contracts, validation evidence, investigation notes and per-release detail in `docs/dev/`, `docs/user/` and the release notes, never as README prose.
 - Treat release changelog maintenance as part of feature completion. User-facing curated release notes belong in `docs/dev/releases/vX.Y.Z.md`, and the manual release workflow will publish that file when it exists.
 - Write release notes for end users first: lead with the visible benefit, call out any action or compatibility note the reader needs, and avoid dumping internal implementation trivia unless it materially helps the audience.
 - Use `builddir/` as the standard Meson build output directory for local builds, VS Code tasks, and launch configurations.

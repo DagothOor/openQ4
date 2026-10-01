@@ -25,7 +25,7 @@
   <img src="https://img.shields.io/badge/Join%20the-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the openQ4 Discord server">
 </a>
 
-[Get Started](docs/user/getting-started.md) | [Features](#why-players-use-openq4) | [Player Docs](#player-guides) | [Build from Source](BUILDING.md) | [Technical Reference](TECHNICAL.md)
+[Get Started](#getting-started) | [Features](#features) | [Player Guides](#player-guides) | [Build from Source](BUILDING.md) | [Technical Reference](TECHNICAL.md)
 
 </div>
 
@@ -37,137 +37,56 @@
 
 ## What is openQ4?
 
-**openQ4** replaces the Quake 4 engine and game binaries with a GPL-covered engine and SDK-licensed, source-available game modules, built to keep the original game playable on modern PCs while improving presentation, audio, controls, packaging, and day-to-day usability.
+**openQ4** replaces the Quake 4 engine and game binaries with a GPL-covered engine and SDK-licensed, source-available game modules. It keeps the original game playable on modern PCs while improving visuals, audio, controls and everyday usability.
 
-It is designed for players who want the original Quake 4 experience with a cleaner path to running it on today's hardware.
+It is for players who want the original Quake 4 experience on today's hardware.
 
 > [!NOTE]
 > openQ4 does **not** include Quake 4 assets. You still need a legitimate Quake 4 copy from Steam or GOG.
-
-> [!IMPORTANT]
-> openQ4 uses its own game modules. The Awakening single-player additions are integrated into them; **Single Player → Campaign** detects user-supplied Awakening content. The original leaked DLLs are not used. Awakening is unfinished alpha content, and its multiplayer changes are outside this integration.
 
 > [!IMPORTANT]
 > Another point to make, as sadly luddites have become more common rather than less in 2026 and certainly more vocal than ever. Yes, this software is mostly vibe coded and with the extensive work that has gone into it it wouldn't be humanly possible to achieve without a small studio. That does not mean it isn't thoroughly checked and tested by multiple people, it also doesn't mean it is unsafe for use, nor does it mean we don't understand the codebase. It does have a few remaining issues to iron out - remaining macOS support being the main one - but as feedback will show it is otherwise stable. Whether you choose to follow unsubstantiated claims by luddites is entirely up to you, but I would first take a moment to examine their track records before presuming their expertise and credibility on the matter.
 
 ---
 
-## Why players use openQ4
+## Features
 
-The experimental `idtech5-ui` integration on `main` is building a complete scalable vector
-interface and visual editor. This work is not yet available as a finished
-feature; see the [visual specification](docs/dev/ui-visual-design.md) and
-[implementation progress](docs/dev/plans/idtech5-ui.md). The current runtime
-includes [isolated group fades](docs/dev/ui/composition.md),
-[editable vector masks](docs/dev/ui/masks.md) and
-[button navigation and state feedback](docs/dev/ui/interaction.md), plus
-[menu input ownership](docs/dev/ui/input-routing.md) and
-[live state/expression bindings](docs/dev/ui/bindings.md). A
-[native GUI importer](docs/dev/ui/legacy-import.md) now preserves the current
-GUI set's structure, expressions and dependency references. A
-[presentation boundary](docs/dev/ui/presentation-bridge.md) separates game and
-menu consumers from legacy window objects, and the runtime now supports
-[independent document instances](docs/dev/ui/instances.md) with
-[durable instance state and manager ownership](docs/dev/ui/instance-persistence.md).
-[Normal GUI loading and typed settings operations](docs/dev/ui/managed-application.md)
-connect explicit retained documents to session callers.
-[Presentation aliases](docs/dev/ui/presentation-aliases.md) provide writable menu
-metadata and visual properties with persistent expression ownership.
-[SYSTEM settings transactions](docs/dev/ui/system-settings-contract.md) now keep
-edits in an owned draft, validate the fixed settings catalog, and apply immediate
-changes with checked readback and conflict handling. A
-[private display service](docs/dev/ui/display-device-contract.md) supplies actual
-device results and strict restoration. Eligible retained confirmation views use
-[Apply/Keep/Revert and durable recovery](docs/dev/ui/display-confirmation.md),
-including a countdown after the owning view presents and recovery after restart.
-The opt-in [SYSTEM page](docs/dev/ui/system-exit.md) has precise brightness
-fields, [performance preset and Auto-Detect draft controls](docs/dev/ui/performance-presets.md),
-[an authored vector scrollbar](docs/dev/ui/scrollbars.md), and guarded
-discard/apply-and-return flows with authored modal focus ownership.
-[Its dropdowns](docs/dev/ui/choice-scrollbars.md) use cut-corner vector frames
-and fit readable option lists inside the settings panel at larger UI scales.
-[Independent text size](docs/dev/ui/text-scale.md) supports 100–200% typography
-with flowing fields and scrollable dialog text. SYSTEM now has transactional
-[UI/text size controls and reset](docs/dev/ui/interface-size-preferences.md),
-with saved preferences and a window-fit limit that keeps actions reachable.
-[Output-size glyph rasterization](docs/dev/ui/output-size-fonts.md) now uses
-bounded shared atlases. Font styles, shaping, animated transform density and
-complete screen/editor qualification remain open.
-[Paired SYSTEM sliders and numeric fields](docs/dev/ui/paired-field-focus.md)
-now grow together with text, keeping their values visible when focused.
-[SYSTEM display controls](docs/dev/ui/display-controls.md) add fullscreen,
-borderless, fullscreen policy and MSAA to the existing draft and confirmation
-flow. Vulkan MSAA changes remain unavailable through this strict display path;
-complete display catalogs and screen qualification remain open.
-[Window and custom fullscreen dimensions](docs/dev/ui/dimension-controls.md)
-now have precise whole-pixel fields. Apply checks the complete display request,
-and window resizing uses the same Keep/Revert flow.
-The shared [effect coordinator](docs/dev/ui/settings-effect-execution.md) adds
-automatic completion and a checked in-place audio foundation. Mixed effect
-execution, portable recovery and the complete settings page remain in development.
-[Owned image preparation](docs/dev/ui/image-recovery-ownership.md) retains both
-supported texture directions before a quality change, while the
-[native input driver](docs/dev/ui/native-input-driver.md) connects checked event
-disposal to the engine sinks. Full preset Apply and native text activation remain
-unfinished.
-[Editor file publication](docs/dev/ui/editor-file-safety.md) can create complete
-new files without replacing a competing document. The full authoring and
-save/recovery workflows remain in development.
-[Prepared canvas edits](docs/dev/ui/document-editing.md) publish validated source,
-the live document and undo history together after successful layout preparation.
-[Ordered event programs](docs/dev/ui/event-programs.md) connect data, transitions
-and typed actions to normal GUI lifecycle and session delivery. Complete GUI migration,
-the full application/control contract and the visual editor remain in development.
-The [product completion plan](docs/dev/plans/ui-product-completion.md) records
-the implementation audit and the gates for complete gameplay, artwork, editor
-and platform delivery. The [requirement register](docs/dev/ui/product-requirements.md)
-tracks the complete scope and required acceptance evidence.
-[OpenGL UI-only frames retain their native detail](docs/dev/ui/native-output.md)
-with ordinary resolution scaling. Legacy crop mode and remaining renderer
-effect/parity work retain their documented limits.
-The [retained title, pause and loading screens](docs/dev/ui/retained-screens.md)
-are on by default, built from the visual specification; the other pages are
-still the stock ones. A screen whose retained content is missing or cannot
-load, or a mod's own main menu, presents its stock GUI instead, and
-`ui_retained 0` restores the stock screens throughout. The SYSTEM page joins
-them once it offers every setting of the stock page.
-
-The [text-entry foundation](docs/dev/ui/text-entry-foundation.md) provides
-validated Unicode editing, exact numeric parsing and checked clipboard services
-for upcoming retained fields. [Numeric field integration](docs/dev/ui/numeric-fields.md)
-adds shared caret geometry, explicit precise proposals and restorable drafts with
-undo/redo and conflict recovery. The opt-in SYSTEM page pairs brightness sliders
-with precise fields and protects unfinished edits during Apply and exit. Numeric
-fields support editing and checked clipboard commands with localized errors.
-Exact values survive rollback and recovery records, and shared
-[focus reveal](docs/dev/ui/focus-reveal.md) keeps focused borders clear of scroll
-edges at high density within the authored layout limits.
-[Native text delivery](docs/dev/ui/text-input-routing.md) has checked editor
-ownership, owned event collections, a composition reconciler and a Windows SDK
-text store with managed-owner and collection-hook adapters. Native activation
-and complete IME integration remain in development.
-
-The [0.13.1 patch notes](docs/dev/releases/v0.13.1.md) cover the release save fix, download verification, and map-compilation corrections. Replace the complete package when upgrading.
-
-- **Modern display support** for widescreen, ultrawide, multi-monitor, borderless, and fullscreen setups.
-- **Optional visual upgrades** such as bloom, HDR, anti-aliasing, baked light grids, and enhanced shadow options, plus soft particles that fade effects into the world instead of cutting a hard edge against it.
-- **Cleaner outdoor shadow maps** remove repeating terrain lines, preserve distant-light detail, and restore object shadows as you approach in scenes such as Sandstorm and Air Defense 1. See the [shadow settings guide](docs/user/shadow-mapping.md).
-- **Smoother motion at high refresh rates.** The camera, weapons, movers, and everything riding them are drawn on an interpolated presentation clock between the game's 60 Hz ticks, so a 144 Hz or 240 Hz display shows motion at its own rate. Simulation, networking, collision, demos, and saves keep their original timing.
-- **Real liquids** with wading, swimming, drowning, and damaging slime and lava, plus underwater visuals and audio. Retail Quake 4 has none of this, so liquids are something you author - see the [Liquids guide](docs/user/liquids.md).
-- **Reliable OpenAL audio** with compatibility-first voice handling; macOS packages bundle OpenAL Soft so large stock levels are not constrained by Apple's legacy buffer pool.
+- **Built for modern displays.** Widescreen, ultrawide, multi-monitor, borderless and fullscreen setups all work. On 144 Hz and 240 Hz screens the camera, weapons and moving objects are drawn smoothly between the game's 60 Hz ticks, while gameplay, networking, demos and saves keep their original timing.
+- **Optional visual upgrades.** Bloom, HDR, anti-aliasing, soft particles, baked light grids, cel shading, a CRT filter and cleaner [shadow maps](docs/user/shadow-mapping.md), each one switchable.
 - **A modern interface, still growing.** The title screen, pause menu and loading screens are rebuilt as sharp, scalable screens; the other menus keep the classic look for now. If a modern screen can't be shown, for example because a mod brings its own main menu, the classic one appears instead. Prefer the classic screens throughout? See [Modern and classic screens](docs/user/client-settings.md#modern-and-classic-screens).
-- **Improved input and quality-of-life features** including controller support, better console UX, and modern settings behavior.
-- **German menus and gameplay text**, including objectives, in-world terminals, Arena Campaign and multiplayer controls. Choose **Deutsch** in Settings > Game Options > Language; campaign dialogue uses your installed retail language assets.
-- **Single-player and multiplayer in one install** with active compatibility work aimed at the stock game.
-- **Readable multiplayer chat** with adjustable layout, retained conversation history, channel switching and sent-message recall.
-- **A usable multiplayer server browser** with sorting, filters and saved favorites, plus managed Duel queues and contextual Match Control feedback. Match Control retains the last result into warmup and offers Previous, Next and Free Camera controls for spectators, alongside follow commands governed by server permissions. Automated gameplay checks cover these controls and results on OpenGL and Vulkan; multiplayer remains experimental.
-- **Smarter repeat level loads** with exact-match learned source preparation and validated local model, world, collision, and animation caches that fall back safely to the installed assets.
-- **A stock-map Arena Campaign** (experimental) with five escalating bot tiers, varied combat game types, boss matches, and persistent ladder progress beside the original story.
-- **Multiplayer bots** with runtime navigation, team objectives and character personalities. Bots retain useful routes when a new goal is blocked, abandon stalled goals and avoid unnecessary pickup and visibility probes.
-- **A unified demo library and player** with pause, speed, stepping, rewind/fast-forward controls, honest legacy-format status, and full-world free-fly/player-follow playback for server-side multi-view recordings.
-- **Cross-platform support** with Windows x64 packages plus experimental Windows ARM64 builds, directly executable Linux AppImages and archives for x86_64 plus preview aarch64, Steam Deck support on Linux, and preview Apple Silicon/arm64 macOS OpenGL/Metal bridge packages, which are currently unsigned.
-- **Opt-in renderer modernization**, each piece default-off and independently reversible: [temporal AA/upscaling with GPU-time dynamic resolution](docs/user/temporal-presentation.md), [bounded volumetrics, screen-space reflections, and indirect light](docs/user/advanced-screen-space-lighting.md), GPU skeletal animation, and [guarded PBR materials with filtered environment lighting](docs/user/pbr-materials.md). These are previews rather than finished features, and a single setting rolls the whole set back.
-- **Open development** with releases, issue tracking, and community feedback all happening in public.
+- **Real liquids.** Wade, swim and drown in water, take damage in slime and lava, with underwater visuals and audio. Retail Quake 4 has no liquids, so they appear in maps built for them; see the [Liquids guide](docs/user/liquids.md).
+- **Reliable audio** through OpenAL. macOS packages bundle their own, so there is nothing extra to install.
+- **Controller support and quality-of-life fixes**, including a better console and modern settings behaviour.
+- **German menus and gameplay text.** Choose **Deutsch** in Settings > Game Options > Language. Campaign dialogue uses your installed retail language.
+- **More single-player.** Alongside the original campaign there is an experimental [Arena Campaign](docs/user/arena-campaign.md): bot matches across five tiers of the stock maps, with boss matches and saved progress. **The Awakening** campaign is available too if you supply its content.
+- **Better multiplayer** (experimental): a server browser with sorting, filters and favourites, bots with team objectives and personalities, readable chat with history, Duel queues and spectator match controls.
+- **A demo library and player** with pause, speed, stepping, rewind and fast-forward, plus free-fly playback of full-match recordings.
+- **Single-player and multiplayer in one install** on Windows, Linux, Steam Deck and macOS.
+- **Renderer previews**, all off by default: an experimental Vulkan renderer, [temporal anti-aliasing and dynamic resolution](docs/user/temporal-presentation.md), [volumetrics, reflections and indirect light](docs/user/advanced-screen-space-lighting.md), and [PBR materials](docs/user/pbr-materials.md).
+
+See the [Releases page](https://github.com/themuffinator/openQ4/releases) for what changed in each version.
+
+---
+
+## Screenshots
+
+<p align="center">
+  <img src="assets/docs/img/readme-bloom-hdr.png" alt="openQ4 bloom and HDR side-by-side comparison on mp q4dm2" width="92%">
+</p>
+<p align="center"><sub>Bloom and HDR on mp/q4dm2: normal rendering on the left, enhanced post-processing on the right.</sub></p>
+
+<p align="center">
+  <img src="assets/docs/img/readme-lightgrid.png" alt="openQ4 light-grid indirect diffuse off and on comparison" width="92%">
+</p>
+<p align="center"><sub>Baked light-grid lighting on mp/q4dm2, off and on.</sub></p>
+
+<p align="center">
+  <img src="assets/docs/img/readme-crt.png" alt="openQ4 CRT post-process off and on comparison on mp q4dm8" width="92%">
+</p>
+<p align="center"><sub>The CRT filter on mp/q4dm8, off and on.</sub></p>
+
+> [!TIP]
+> **OpenGL is the default and recommended renderer on every platform.** Vulkan is experimental: set `r_renderApi vulkan` and restart to try it. If Vulkan can't start, openQ4 switches back to OpenGL automatically. On macOS, Vulkan runs through the bundled MoltenVK translation layer. See [Display Settings → Renderer Backend](docs/user/display-settings.md#renderer-backend-opengl-default-vulkan-is-experimental).
 
 ---
 
@@ -180,104 +99,24 @@ You need a legitimate Quake 4 install plus the openQ4 package that matches your 
 | **Minimum** | 64-bit CPU, 4 GB RAM, a working OpenGL compatibility driver with ARB2-era vertex/fragment program support, and about 12 GB free for the openQ4 package plus retail Quake 4 assets. Use the `minimum` or `lowpower` performance preset on constrained systems. |
 | **Recommended** | Modern quad-core CPU, 8 GB RAM, OpenGL 4.1+ compatibility-class GPU with 2 GB+ VRAM, current graphics drivers, and 15 GB+ free. For high resolutions, `quality`, or `ultra`, 16 GB RAM and 6 GB+ VRAM gives much better headroom. |
 
-Packaged support currently focuses on Windows x64, Linux x64, and Steam Deck/SteamOS, with preview Linux ARM64, preview Apple Silicon/arm64 macOS, and experimental Windows ARM64 packages. Linux ARM64 requires a desktop OpenGL compatibility driver and remains preview until real-hardware Wayland gameplay, audio, and input signoff is accepted. The macOS packages are unsigned, and players have run them only on current macOS. The Windows ARM64 packages are built but have not yet been confirmed to run on real hardware. See the [Getting Started guide](docs/user/getting-started.md#system-requirements) for the platform-specific requirements and caveats.
+Packages are available for Windows x64, Linux x64 and Steam Deck/SteamOS, with preview Linux ARM64, preview Apple Silicon/arm64 macOS and experimental Windows ARM64 builds:
+
+- **Linux** ships as directly executable AppImages and archives for `x86_64` and `aarch64`. Linux ARM64 needs a desktop OpenGL compatibility driver.
+- **macOS** downloads are unsigned OpenGL/Metal bridge packages, and players have run them only on current macOS.
+- **Windows ARM64** packages are built but have not yet been confirmed to run on real hardware.
+
+See [Getting Started](docs/user/getting-started.md#system-requirements) for platform details.
 
 ---
 
-## Renderer showcase
-
-<p align="center">
-  <img src="assets/docs/img/readme-bloom-hdr.png" alt="openQ4 bloom and HDR side-by-side comparison on mp q4dm2" width="92%">
-</p>
-<p align="center"><sub>Bloom and HDR on mp/q4dm2 from the same loadscreen camera: normal rendering on the left, enhanced post-processing on the right.</sub></p>
-
-<p align="center">
-  <img src="assets/docs/img/readme-lightgrid.png" alt="openQ4 light-grid indirect diffuse off and on comparison" width="92%">
-</p>
-<p align="center"><sub>Baked light-grid indirect diffuse on mp/q4dm2, shown off and on from the same loadscreen camera.</sub></p>
-
-<p align="center">
-  <img src="assets/docs/img/readme-crt.png" alt="openQ4 CRT post-process off and on comparison on mp q4dm8" width="92%">
-</p>
-<p align="center"><sub>CRT post-processing on mp/q4dm8, shown off and on with a clean no-HUD camera.</sub></p>
-
-<p align="center">
-  <img src="assets/docs/img/readme-crt-q4dm6.png" alt="openQ4 CRT post-process off and on comparison on mp q4dm6" width="92%">
-</p>
-<p align="center"><sub>A second CRT comparison on mp/q4dm6 shows the same post-process across a brighter indoor arena.</sub></p>
-
-> **Renderer backends:** OpenGL remains the default and recommended release renderer on every platform. The **Vulkan** backend is **experimental and opt-in** (`r_renderApi vulkan`, applied on engine restart), but now renders the stock Quake 4 material-program families, including environment and heat-haze effects, displacement and depth/blur post effects, and guide-driven parallax, custom-lighting, water, and refractive-glass stages. Vulkan also supports 4x MSAA with SMAA and exact eligible rigid-object motion in experimental temporal AA. On Windows and Linux it drives a Vulkan driver directly. Apple ships no Vulkan driver, so on macOS the same module runs on top of **MoltenVK**, a Vulkan-on-Metal translation layer bundled inside both existing macOS packages — a runtime option rather than a third download, and not a Metal renderer. It also draws brightness and gamma, baked light grids, soft particles, MSAA alpha-to-coverage, the classic SSAO/bloom/HDR/motion-blur/CRT chain, cel shading, the underwater view, multiplayer player outlines, and the `r_show*` debug views; opt-in floating-point HDR scenes and automatic exposure now pass local stock-map and restart checks, while custom (non-stock) material programs, complete PBR/probe and HDR visual parity, and broader GPU qualification remain incomplete. If loading Vulkan or creating its device, window, surface, swapchain or mandatory startup resources fails, openQ4 continues with OpenGL in the same launch and records the reason. A device failure during a later full `vid_restart` still selects OpenGL for the next launch. See [Display Settings → Renderer Backend](docs/user/display-settings.md#renderer-backend-opengl-default-vulkan-is-experimental).
-
-Automatic Vulkan GPU selection now skips adapters that lack required rendering
-or presentation capabilities before trying the next one. Explicit GPU choices
-are also preserved by the preliminary startup probe, which handles changing
-device lists without accepting incomplete results. See
-[device admission and validation](docs/dev/vulkan-device-selection.md).
-
-Eligible Vulkan HDR scenes now support baked PBR area lighting while retaining reflections, with recovery checks for image reloads and video restarts. [Baked-lighting scope and remaining comparisons](docs/dev/vulkan-pbr-baked.md) describe the current limits; complete PBR visual parity remains in progress.
-
-Vulkan PBR cutouts now use their own albedo texture for depth coverage, preventing missing coverage when textures are strongly minified. They also preserve constant alpha, preventing unintended holes at an inclusive 1.0 cutoff. Offscreen rendering uses consistent framebuffer coordinates across geometry, depth copies and presentation, reducing cutout edge differences. See [cutout validation](docs/dev/vulkan-pbr-cutout.md) and [image orientation and remaining qualification](docs/dev/vulkan-image-origin.md).
-
-Experimental Vulkan now renders an initial [custom GLSL material subset](docs/dev/vulkan-material-programs.md), including textures, material parameters, vertex movement, per-light effects and supported overrides of stock shader names. Both backends support live material shader reload and recovery after source repair. Broader shader compatibility and complete shadow, material and platform qualification remain in development.
-
-Vulkan point-light shadow edges now use consistent scene coordinates and radial
-depth calculations. The default filtered comparison passes locally against
-OpenGL; stencil and alternate sampling differences remain under investigation.
-See [point-shadow validation](docs/dev/vulkan-point-shadow-parity.md).
-
-Experimental Vulkan PBR also supports [authored ambient lighting](docs/dev/vulkan-pbr-ambient.md), including metallic response and transparent materials. Eligible scenes now have [linear HDR composition with bloom, automatic exposure and linear screenshots](docs/dev/vulkan-hdr.md), including fog and transparency at 0x/4x MSAA. Controlled HDR scenes also match OpenGL at reduced and increased scene resolutions; broader material and post-effect combinations remain in progress.
-
-For renderer debugging, both backends support [raw render-image captures](docs/dev/renderer-image-capture.md) through `screenshot image`, alongside the existing linear HDR screenshots.
-
-Vulkan timing traces also separate frame-completion and image-acquisition waits
-from presentation work. The [frame-pacing investigation](docs/dev/vulkan-frame-pacing.md)
-records the remaining stock-scene stalls and performance qualification limits.
-Storage1 benchmarking now distinguishes the scripted drop-pod entry from a
-separate, checked gameplay view after the second-entry lift settles. Results
-from these two scenes must be compared separately.
-
-Eligible Vulkan PBR previews also preserve bright colors through multisample
-antialiasing when HDR tone mapping is off, avoiding dark edges around emissive
-materials. Classic materials retain their existing color limits. Eligible
-OpenGL previews now apply authored fog and blend lights once, before transparent
-materials, matching Vulkan without an experimental lighting-parity override.
-Vulkan PBR previews explicitly average their stored samples before display
-clamping, preventing darkened supersampled edges from native resolve precision.
-A remaining 125%/8x edge comparison is tracked in the
-[viewport and coverage investigation](docs/dev/vulkan-hdr.md#125-percent-msaa-edge-investigation).
-
-Vulkan's SMAA anti-aliasing now preserves scene orientation through its render
-textures, fixing upside-down gameplay while keeping the HUD upright. Explicit
-averaging of RGBA8 multisample targets also prevents resolve rounding from
-creating visibly different color edges when MSAA and SMAA are combined. The
-[renderer validation guide](docs/dev/renderer-validation-matrix.md) describes
-the controlled scene and resource-recovery checks.
-
-Classic Vulkan material colors now follow the same limits as OpenGL, avoiding
-over-bright surfaces and incorrectly opaque cutouts while preserving intended
-HDR vertex-color brightness and PBR emission. Imported ASE vertex colors also
-have a defined opaque alpha value on both renderers. Bulk texture reloads keep
-enough Vulkan descriptor storage to avoid skipping subsequent draws.
-
-On GPUs supporting programmable sample locations, Vulkan MSAA aligns its
-coverage pattern with the classic OpenGL convention, including HDR targets.
-The [HDR renderer notes](docs/dev/vulkan-hdr.md#multisample-locations) describe
-capability checks and the native fallback.
-
-Supersampled OpenGL PBR scenes now retain the requested MSAA, including at
-125–200% resolution. Repeated resolution changes recycle unused render targets
-so the experimental PBR path can stay active instead of exhausting its cache.
-
----
-
-## Quick start
+## Getting started
 
 1. Install **Quake 4** from [Steam](https://store.steampowered.com/app/2210/Quake_4/) or [GOG](https://www.gog.com/en/game/quake_4).
 2. Download the latest openQ4 build from the [Releases page](https://github.com/themuffinator/openQ4/releases).
 3. On Linux, make the matching `x86_64` or `aarch64` AppImage executable and launch it; for an extracted archive, launch `openQ4-client_<arch>` (or `openQ4-steamdeck` on Steam Deck).
 4. If openQ4 does not find your Quake 4 install automatically, follow the path setup notes in the [Getting Started guide](docs/user/getting-started.md).
 
-**Need the step-by-step version?** Start with [docs/user/getting-started.md](docs/user/getting-started.md).
+When upgrading, replace the whole openQ4 package rather than individual files.
 
 ---
 
@@ -286,63 +125,58 @@ so the experimental PBR path can stay active instead of exhausting its cache.
 ### Start here
 
 - [Getting Started](docs/user/getting-started.md) - system requirements, installation, first launch, and common setup questions
+- [Campaigns](docs/user/campaigns.md) - choosing Quake 4 or The Awakening, installing expansion content, and separate saves
 - [Client Settings Guide](docs/user/client-settings.md) - where to find the most useful in-game settings
-- [Server Setup Guide](docs/user/server-setup.md) - basic dedicated server setup and common server variables
-- [Server and Remote-Console Security](docs/user/server-security.md) - the authenticated `rcon2` protocol and password handling
+- [Server Setup Guide](docs/user/server-setup.md) - dedicated server setup and common server variables
+- [Server and Remote-Console Security](docs/user/server-security.md) - secure remote console and password handling
 
 ### Play and tune
 
-- [Display Settings](docs/user/display-settings.md) - fullscreen, windowed mode, resolution scale, and multi-monitor behavior
-- [Input Settings](docs/user/input-settings.md) - keyboard, mouse, controller, weapon-wheel sensitivity, and binding help
-- [Gameplay Settings](docs/user/gameplay-settings.md) - gameplay and audio toggles for everyday play
-- [Arena Campaign](docs/user/arena-campaign.md) (experimental) - single-player arena tiers, unlock rules, maps, game types, and bot rosters
-- [Steam Deck](docs/user/steam-deck.md) - launcher, controls, and Linux handheld notes
-- [Multiplayer Networking](docs/user/multiplayer-networking.md) (experimental) - multiplayer tuning and lag-comp behavior
-- [Multiplayer Chat](docs/user/multiplayer-chat.md) - chat controls, scrollback, message recall and saved layout settings
-- [Competitive Matches](docs/user/competitive-matches.md) (experimental) - match rules, human voting, optional readiness, round flow, stock-map One Flag support, and match endings
-- [Demo Library and Multi-View Demos](docs/user/multiview-demos.md) - browse formats, use playback controls, and record or replay complete multiplayer matches
-- [Liquids](docs/user/liquids.md) - water, slime, and lava behaviour, and how to author them
-- [Classic Dynamic Lights](docs/user/classic-dynamic-lights.md) - Quake II/III style dynamic lights on muzzle flashes, bright projectiles, and explosions
-- [Shadow Mapping](docs/user/shadow-mapping.md) - optional shadow-map settings, flashlight, door and cutout shadows, stabilized cascades, cache budgets, and fallback diagnostics
-- [Light Grids](docs/user/light-grids.md) - advanced lighting guide for players and testers
-- [Advanced Screen-Space Lighting](docs/user/advanced-screen-space-lighting.md) (experimental) - bounded froxel volumetrics, SSR, SSGI, performance controls, and one-setting rollback
-- [Temporal AA and Dynamic Resolution](docs/user/temporal-presentation.md) (experimental) - temporal anti-aliasing/upscaling and GPU-time resolution scaling
-- [Cel Shading](docs/user/cel-shading.md) - banded lighting and outline settings for the cel-shaded look
-- [DDS Texture Replacements](docs/user/texture-replacements.md) - install and diagnose DXT/BC7 texture packs
-- [Level-Load Cache](docs/user/level-load-cache.md) - learned preload and generated model, world, collision, and animation cache behavior, controls, rollback, and cleanup
+- [Display Settings](docs/user/display-settings.md) - fullscreen, windowed mode, resolution scale, multi-monitor, and renderer choice
+- [Input Settings](docs/user/input-settings.md) - keyboard, mouse, controller, and bindings
+- [Gameplay Settings](docs/user/gameplay-settings.md) - gameplay and audio options
+- [Arena Campaign](docs/user/arena-campaign.md) (experimental) - tiers, unlocks, maps, game types, and bots
+- [Steam Deck](docs/user/steam-deck.md) - launcher, controls, and handheld notes
+- [Multiplayer Networking](docs/user/multiplayer-networking.md) (experimental) - connection tuning and lag compensation
+- [Multiplayer Chat](docs/user/multiplayer-chat.md) - chat controls, history, and layout
+- [Competitive Matches](docs/user/competitive-matches.md) (experimental) - match rules, voting, readiness, rounds, and One Flag
+- [Demo Library and Multi-View Demos](docs/user/multiview-demos.md) - browsing, playback controls, and recording full matches
+- [Shadow Mapping](docs/user/shadow-mapping.md) - shadow-map options, flashlight shadows, and troubleshooting
+- [Light Grids](docs/user/light-grids.md) - baked indirect lighting
+- [Classic Dynamic Lights](docs/user/classic-dynamic-lights.md) - Quake II/III style lights on muzzle flashes, projectiles, and explosions
+- [Cel Shading](docs/user/cel-shading.md) - the cel-shaded look
+- [Temporal AA and Dynamic Resolution](docs/user/temporal-presentation.md) (experimental) - temporal anti-aliasing, upscaling, and automatic resolution scaling
+- [Advanced Screen-Space Lighting](docs/user/advanced-screen-space-lighting.md) (experimental) - volumetrics, reflections, and indirect light
+- [PBR Materials](docs/user/pbr-materials.md) (experimental) - physically based materials and environment lighting
+- [DDS Texture Replacements](docs/user/texture-replacements.md) - installing texture packs
+- [Level-Load Cache](docs/user/level-load-cache.md) (experimental) - optional local load caches, and how to clear them
 
-### Build and technical docs
+### Mapping and modding
 
-- [BUILDING.md](BUILDING.md) - compile openQ4 from source
-- [Android, GLES and SigmaTouch](docs/dev/android-build.md) - experimental native Android builds, optional touch-host integration, and desktop GLES testing
-- [TECHNICAL.md](TECHNICAL.md) - advanced configuration, file layout, compatibility notes, and mod details
-- [The Awakening support plan](docs/dev/plans/q4x-awakening.md) - integrated single-player campaign support and remaining alpha limitations
-- [Map Entity Strings](docs/user/map-entity-strings.md) - replace or extend a map's runtime entities without editing the original map
-- [Experimental Level Editor](docs/user/level-editor.md) - separate `editorExperimental` workspace with source preview, entity inspector, undo, protected saves and recovery; legacy Radiant retained
+- [Liquids](docs/user/liquids.md) - water, slime, and lava behaviour, and how to add them to maps
+- [Map Entity Strings](docs/user/map-entity-strings.md) - replace or extend a map's entities without editing the map
+- [Experimental Level Editor](docs/user/level-editor.md) - the new editor workspace alongside the classic Radiant
 
 ---
 
-## Compatibility at a glance
+## Compatibility
 
-- openQ4 targets the **official Quake 4 retail assets**.
-- It ships its **own engine and game modules**.
-- It is **not** a drop-in runtime for the original proprietary Quake 4 DLL mods.
-- **Quake 4: The Awakening single player** is available through **Single Player → Campaign** when its content is installed. Both campaigns use the same `baseoq4` SP module, with separate content mounts and save directories. Expansion content is not included. See the [campaign installation guide](docs/user/campaigns.md) and [support plan](docs/dev/plans/q4x-awakening.md).
-- The project is still in **beta development**, so compatibility work is ongoing.
+- openQ4 targets the **official Quake 4 retail assets** and ships its **own engine and game modules**.
+- It is **not** a drop-in runtime for mods built on the original proprietary Quake 4 game DLLs.
+- **Quake 4: The Awakening** single-player is available from **Single Player → Campaign** once you supply its content, which is not included. It is unfinished alpha content, and its multiplayer changes are not supported. See the [campaign guide](docs/user/campaigns.md).
+- The project is in **beta development**, so compatibility work is ongoing.
 
-Developers and testers should use the [engine capability matrix](docs/dev/engine-capability-matrix.md) for authoritative implemented/experimental/missing status, the [idTech 5-level modernization roadmap](docs/dev/idtech5-modernization-roadmap.md) for the compatibility-safe implementation order, the [shared interaction-lighting contract](docs/dev/classic-interaction-domain-modernization.md), [shared fog/blend contract](docs/dev/classic-fog-blend-domain-modernization.md), and [shared material-deform contract](docs/dev/classic-deform-domain-modernization.md) for the default-off ownership and rollback boundaries, the [loading/cache contract](docs/dev/loading-cache-modernization.md) for the source-authoritative preload and generated-cache boundary plus pending evidence, and the [stock-asset baseline](docs/dev/stock-asset-baseline.md) for reproducible PK4, SP/MP, save/load, demo, log, and engine-screenshot evidence.
+## Reporting problems
 
-The [shadow-mapping audit](docs/dev/shadowmapping-final-audit-2026-09-05.md) records shadow correctness and cache repairs, repeatable stock-map comparisons, and the remaining compatibility and validation limits.
-
-The [memory-file robustness notes](docs/dev/memory-file-robustness.md) document buffer-growth measurements and native regression coverage for in-memory file generation.
-
-If you run into problems, please use the [issue tracker](https://github.com/themuffinator/openQ4/issues) and include crash logs or setup details when possible. For macOS crashes, use the [macOS support-data guide](docs/user/macos-support-data.md) before filing or updating an issue. Windows ARM64 and Linux ARM64 have their own issue templates; a report that everything simply worked is as useful there as a bug.
+Please use the [issue tracker](https://github.com/themuffinator/openQ4/issues) and include crash logs or setup details when you can. For macOS crashes, follow the [macOS support-data guide](docs/user/macos-support-data.md) first. Windows ARM64 and Linux ARM64 have their own issue templates; a report that everything simply worked is as useful there as a bug.
 
 ---
 
 ## Contributing
 
-Bug reports, compatibility reports, testing feedback, and code contributions are all welcome. If you want to help build the project itself, start with [BUILDING.md](BUILDING.md). For details on how to report issues, submit changes, and follow project conventions, see [CONTRIBUTING.md](.github/CONTRIBUTING.md).
+Bug reports, compatibility reports, testing feedback, and code contributions are all welcome. To build openQ4 yourself, start with [BUILDING.md](BUILDING.md); for project conventions, see [CONTRIBUTING.md](.github/CONTRIBUTING.md).
+
+Developers can also find advanced configuration and file layout in [TECHNICAL.md](TECHNICAL.md), experimental Android builds in [Android, GLES and SigmaTouch](docs/dev/android-build.md), and the current implemented/experimental/missing status of every subsystem in the [engine capability matrix](docs/dev/engine-capability-matrix.md).
 
 ---
 
@@ -351,17 +185,17 @@ Bug reports, compatibility reports, testing feedback, and code contributions are
 - **themuffinator** - openQ4 development and maintenance
 - **[Emile Belanger (emileb)](https://github.com/emileb)** - contributor and original author of the Android port, SigmaTouch integration, OpenGL ES 3.0 renderer, GLES shader variants, ETC2/EAC compression, and associated mobile memory/loading work. This integration builds on his [Android branch](https://github.com/emileb/openQ4/tree/android) and [GLES shader-variants branch](https://github.com/emileb/openQ4/tree/gles-shader-variants); see the [contribution and adaptation record](docs/dev/android-gles-integration.md).
 - **DarkMatter Productions** - project stewardship and website
-- **[The RmlUi Team, CodePoint, Shift Technology and contributors](https://github.com/mikke89/RmlUi/tree/6.3)** - MIT-licensed retained layout library used by the `idtech5-ui` runtime integration, with openQ4 extensions for [geometry synchronization](https://github.com/themuffinator/openQ4/blob/e3e65887480368191df154a9b52cce69d8e72140/subprojects/packagefiles/rmlui/projection-geometry.patch), [positioned overflow](https://github.com/themuffinator/openQ4/blob/e3e65887480368191df154a9b52cce69d8e72140/subprojects/packagefiles/rmlui/positioned-overflow.patch), and [exact focus geometry and masked targeting](subprojects/packagefiles/rmlui/README.openq4.md); [retained licence notice](docs/licenses/RmlUi.txt).
-- **[Baptiste Lepilleur and the JsonCpp authors](https://github.com/open-source-parsers/jsoncpp/tree/1.9.6)** - JSON document parser used under its MIT option for editable retained UI sources with an [openQ4 subnormal-number patch](subprojects/packagefiles/jsoncpp/subnormal-numbers.patch); [retained licence notice](docs/licenses/JsonCpp.txt).
-- **[Mikko Mononen, Eric Veach and the libtess2 contributors](https://github.com/memononen/libtess2/tree/8dbd6483e920311a58c9af10a10beb278efebc36)** - SGI-B-2.0 polygon tessellator used by native retained vector paths with an [openQ4 precision patch](subprojects/packagefiles/libtess2/double-precision.patch); [retained licence notice](docs/licenses/libtess2.txt).
-- **[Q2REX Project Team](https://github.com/themuffinator/Q2REX)** - design reference for the native [multiplayer chat panel, scaling and history](docs/user/multiplayer-chat.md)
-- **[MuffMode](https://github.com/themuffinator/MuffMode)** and **[Q4MAX](https://www.moddb.com/mods/q4max)** - multiplayer workflow and usability references; see the [competitive reference audit](docs/dev/competitive-match-reference-audit.md)
+- **[The RmlUi Team, CodePoint, Shift Technology and contributors](https://github.com/mikke89/RmlUi/tree/6.3)** - MIT-licensed layout library behind the new interface, with [openQ4 patches](subprojects/packagefiles/rmlui/README.openq4.md); [licence notice](docs/licenses/RmlUi.txt)
+- **[Baptiste Lepilleur and the JsonCpp authors](https://github.com/open-source-parsers/jsoncpp/tree/1.9.6)** - JSON parser for the new interface's source files, used under its MIT option with an [openQ4 patch](subprojects/packagefiles/jsoncpp/subnormal-numbers.patch); [licence notice](docs/licenses/JsonCpp.txt)
+- **[Mikko Mononen, Eric Veach and the libtess2 contributors](https://github.com/memononen/libtess2/tree/8dbd6483e920311a58c9af10a10beb278efebc36)** - SGI-B-2.0 polygon tessellator for the new interface's vector shapes, with an [openQ4 precision patch](subprojects/packagefiles/libtess2/double-precision.patch); [licence notice](docs/licenses/libtess2.txt)
+- **[Q2REX Project Team](https://github.com/themuffinator/Q2REX)** - design reference for the [multiplayer chat panel](docs/user/multiplayer-chat.md)
+- **[MuffMode](https://github.com/themuffinator/MuffMode)** and **[Q4MAX](https://www.moddb.com/mods/q4max)** - multiplayer workflow and usability references
 - **Justin Marshall** - Quake4Doom and early BSE reverse engineering reference work
 - **Robert Beckebans** - renderer modernization reference work, including RBDOOM-3-BFG inspiration
-- **id Software's official Doom 3 and Doom 3 BFG source releases** - retained idTech 4 source lineage; see the [audited provenance inventory](docs/dev/source-provenance.md)
+- **id Software's official Doom 3 and Doom 3 BFG source releases** - retained idTech 4 source lineage; see the [source provenance inventory](docs/dev/source-provenance.md)
 - **id Software** and **Raven Software** - Quake 4 and the underlying technology
-- **Chris Robinson and the [OpenAL Soft](https://openal-soft.org/) contributors** - maintained cross-platform OpenAL runtime bundled by macOS packages
-- **The Khronos Group and [glslang contributors](https://github.com/KhronosGroup/glslang/tree/15.1.0)** - GLSL parsing and SPIR-V compilation for the Vulkan authored-material support; the pinned source retains its notices, and staging includes the complete license under `licenses/`.
+- **Chris Robinson and the [OpenAL Soft](https://openal-soft.org/) contributors** - cross-platform OpenAL runtime bundled in macOS packages
+- **The Khronos Group and [glslang contributors](https://github.com/KhronosGroup/glslang/tree/15.1.0)** - GLSL-to-SPIR-V compiler used by the Vulkan renderer; its complete licence ships under `licenses/`
 - **[The Khronos Group](https://github.com/KhronosGroup/OpenGL-Registry)** - MIT-licensed OpenGL ES API headers, with their original notices retained
 - **akacross** (Discord user) - Thorough playtesting on Linux and Windows, a huge help moving the project forward!
 
