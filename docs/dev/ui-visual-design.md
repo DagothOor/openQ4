@@ -1,8 +1,8 @@
 # openQ4 UI Visual Design
 
-Specification version 1.10, 1 October 2026 (1.7 to 1.9 on 29 September, 1.6 on
-28 September, 1.4 and 1.5 on 27 September, 1.1 to 1.3 on 26 September, 1.0 on
-8 September 2026). Status:
+Specification version 1.11, 1 October 2026 (1.10 the same day, 1.7 to 1.9 on
+29 September, 1.6 on 28 September, 1.4 and 1.5 on 27 September, 1.1 to 1.3 on
+26 September, 1.0 on 8 September 2026). Status:
 implementation target; the replacement has not shipped. Applies to every
 player-facing GUI and to the visual editor's Quake 4 preview. Implementation and
 evidence are tracked in [the replacement plan](plans/idtech5-ui.md).
@@ -28,7 +28,11 @@ emblem to the title screen, sets the single-player pause menu apart from it and
 adds a Strogg pause menu. Version 1.8 rebuilds the initializing screen from
 separate layers and turns its rings slowly. Version 1.9 replaces the modal
 scrim with a soft focus of the screen beneath. Version 1.10 adds a sub-page
-level beneath the menu pages, with its own band step and path crumb.
+level beneath the menu pages, with its own band step and path crumb. Version
+1.11 rebuilds the scopes from their stock layers, catalogues the squad patches,
+brings The Awakening's weapons, icons, crosshairs and vehicle displays into the
+HUD sections, lifts the multiplayer chat clear of the status bar and takes the
+waveform out of the weapon wheel.
 [Appendix C](#appendix-c-change-record) lists every change and the
 requirement-register rows it affects.
 
@@ -1885,6 +1889,11 @@ plates: its stock construction is rounded plates, sheared gauges and bevelled
 fills. This section records the stock HUD and defines how openQ4 lays it out,
 extends it and keeps it legible.
 
+openQ4 also runs The Awakening, the unreleased expansion (`q4xbase`). Its
+content adds three weapons, powerups, crosshairs and vehicle displays, and the
+paragraphs marked *The Awakening* cover them, with openQ4 designs where the
+expansion ships placeholders or no art at all.
+
 ### 14.1 Composition and order
 
 The game draws the weapon's scope display first, then the crosshair, then the
@@ -2011,9 +2020,9 @@ and goes. A vehicle's gauges and weapon panel take the status bar's place
 - **Wide views.** By default the side screens stop growing at 21:9: edge
   groups stop at the 21:9 edges and the rest of the view stays clear. The HUD
   width setting (16:9, 21:9 or Full) sets that limit.
-- **No overlap.** Groups never overlap. Where the leading screen is too
-  narrow for the chat box beside the status bar (below 16:9), the chat box
-  rises above the status bar (section 14.9).
+- **No overlap.** Groups never overlap. The chat box always clears the status
+  bar vertically (section 14.9); below 16:9, where the leading screen is too
+  narrow for it beside the status bar, it also rises clear of the weapon strip.
 - **Side-screen groups.** They extend into the center screen only as far as
   their content needs, and never with a backing wider than their content.
   Notices, the kill feed and chat carry their backing inside their own
@@ -2044,6 +2053,13 @@ and never the single-player orange. The strip appears in the frame of the change
 without motion. Remastered moves the name above the slots and the strip above
 the pickup lines (section 14.8); the wheel adds a second way to choose.
 
+*The Awakening* gives the player thirteen weapons. The Core Cannon, the napalm
+launcher and the Freeze Gun take its slots 10 to 12, after the stock ten, and
+its HUD adds two strip plates for the last two. openQ4's strip lists them in
+slot order like the rest, on the Strogg HUD too, where the expansion's copy
+has no plates for them. The multiplayer ammunition gauge, accuracy and summary
+rows cover all thirteen weapons; the expansion's own screens stop at ten.
+
 ### 14.6 Weapon wheel
 
 The wheel is an openQ4 addition for controller and touch play (section 13.5).
@@ -2054,7 +2070,7 @@ weapon color code, and the Marine gauge and scope constructions.
 | Measure | Value at 100% HUD scale |
 | --- | --- |
 | Ring | Inner radius 104 dp, outer radius 232 dp, centered on the projection center |
-| Slots | Every weapon of the game mode in strip order, clockwise from the top. Unlike the compacted strip, positions never move: an unowned weapon keeps its segment as an outline at 0.15 and cannot be selected |
+| Slots | Every weapon of the game mode in strip order, clockwise from the top. Unlike the compacted strip, positions never move: an unowned weapon keeps its segment as an outline at 0.15 and cannot be selected. Quake 4 has eleven positions and *The Awakening* thirteen; the segments narrow to keep one ring |
 | Segment | Black at 0.50 with 2 dp corner radii and 6 dp gaps of constant width |
 | Contents | The weapon glyph of section 14.16 at the family's icon color and 60%, the weapon number in Lowpixel 12 dp at the inner edge, and the reserve in Chain 17 dp |
 | Ammunition band | A curved gauge along the outer edge, 14 dp deep, in the weapon's color code with the Marine fill construction: track at 0.20, fill at 0.35 with its bevel at 0.45, eight cells between soft dividers at 0.32, filled in proportion to the reserve |
@@ -2063,7 +2079,7 @@ weapon color code, and the Marine gauge and scope constructions.
 | Previous weapon | A notch on the inner edge marks the weapon a tap returns to |
 | No ammunition | The dim icon under the red prohibition sign. Releasing on it keeps the current weapon and gives the refusal feedback of section 13.5 |
 | Hub | A black 0.55 disc of 86 dp inside the machinegun scope's double ring (86 and 80 dp, #B3D06E at 0.35) and its 16 compass dots at 93 dp, turned so the bright dot faces the selection. The disc is a signal screen: the briefing's torn video bands at their 0.06 rest level and additive scanlines at 0.11 roll down it |
-| Center | The weapon name in Marine 12 dp and #B0C891, on two lines when it would not fit on one; ammunition as `clip / reserve` in Chain 21 dp; and below them the radio chatter's carrier waveform, #FF8000 additive in the radio's slanted mask. A pointer on the inner ring faces the selection |
+| Center | The weapon name in Marine 12 dp and #B0C891, on two lines when it would not fit on one, and the ammunition as `clip / reserve` in Chain 21 dp, over the signal screen. Nothing else: the radio's waveform belongs to the transmission display, not to a weapon selector. A pointer on the inner ring faces the selection |
 | Backing | A black radial wash at 0.35 out to 280 dp; no blur |
 
 **Selection.** A stick selects the segment under its angle beyond 35%
@@ -2083,7 +2099,7 @@ input: the wheel selects from its first frame, plates and icons are readable
 | Transition | Marine: transmission (the MCC briefing) | Strogg: translation (the credits) |
 | --- | --- | --- |
 | Open, `wheel.open` | The hub powers on from a slit (55% by 6%) to full size over 150 ms. Its double ring flashes white and settles over 50 ms. Segments deploy clockwise from the top, 8 ms apart, each fading in and growing from 90% over 90 ms. A static burst rises to 0.40 at 150 ms and decays over 500 ms. The name tunes in from a 2 dp line over 200 ms, arriving white and settling to #B0C891 100 ms later over 100 ms. The hub jolts to 90% and back at 250–350 ms | The plates boot in scrambled order, one every 12 ms, each under an additive #FFD06F flash that fades over 150 ms, after the stroggification monitor's cascade. The rings spin up over 300 ms, the circuit paths trace out from the core over 150 ms, and the grain settles from 0.60 to 0.20. Every label appears in runes, then translates: the ring's readouts clockwise from the top, 18 ms apart, as list rows, and the name as a heading |
-| Select, `wheel.select` | A cut: a static burst of 0.40 decaying over 300 ms, the name re-tuning from a 2 dp line over 120 ms and settling from white, the waveform swelling, and the selection ring flashing from white to #B2CC80 over 150 ms | The new name shows in runes and translates with the heading recipe: after 40 ms both copies pop 6% larger and settle over 300 ms while the runes cross-fade into R_Strogg, and the scan bar slides in behind the name over 90 ms `accel(36, 54)`, resting with its head about 12 dp past it and dimming over 300 ms. The ammunition translates as a name, 15 ms later over 150 ms, reaching white and settling to #FCFFC8 |
+| Select, `wheel.select` | A cut: a static burst of 0.40 decaying over 300 ms, the name re-tuning from a 2 dp line over 120 ms and settling from white, and the selection ring flashing from white to #B2CC80 over 150 ms | The new name shows in runes and translates with the heading recipe: after 40 ms both copies pop 6% larger and settle over 300 ms while the runes cross-fade into R_Strogg, and the scan bar slides in behind the name over 90 ms `accel(36, 54)`, resting with its head about 12 dp past it and dimming over 300 ms. The ammunition translates as a name, 15 ms later over 150 ms, reaching white and settling to #FCFFC8 |
 | Close, `wheel.close` | Sign-off: the segments drop out over 60 ms while the hub collapses to the slit over 150 ms under a static burst falling from 0.80 | The plates flash and drop out in scrambled order, 8 ms apart over 60 ms each, then the core, rings and grain fade over 120 ms |
 | Reduced motion | An 80 ms opacity change; the name changes at once | The same; no runes, flashes or bar |
 
@@ -2173,10 +2189,12 @@ a recolored Marine ring.
     the core stays and the spikes scale from nearly flat between words to
     2.35 times. The canned table returns when the sound system reports no
     level.
-  - **Rhino emblem.** When the line addresses the player, the Rhino emblem
-    (#FFFF00, traced from `radio_rhino`) and its black 0.40 plate shrink into
-    place beside the bar over 500 ms, the emblem from 42x39 u to 22x22 u.
-    Every new line restarts the shrink.
+  - **Squad emblem.** When the line addresses the player, the player's squad
+    stencil (#FFFF00) and its black 0.40 plate shrink into place beside the
+    bar over 500 ms, the stencil from 42x39 u to 22x22 u. Every new line
+    restarts the shrink. Quake 4's is Rhino's, traced from `radio_rhino`;
+    *The Awakening*'s player squad is Falcon, whose stencil is built the same
+    way from its patch (section 14.16).
   - **Strogg HUD.** It uses R_Strogg 0.16 labels and a #FFCC00 waveform in a
     backslanted mask.
 - **Timed notices.** EXIT under a chevron that rises 11 u with `accel(500, 500)`
@@ -2272,15 +2290,18 @@ the timer, the other side.
 
 **Chat (Remastered).** The chat box and its input live on the leading side.
 
-- **Placement.** The box anchors to the bottom-leading corner, beside the
-  status bar, whenever the space between the leading edge and the status bar is
-  at least 180 u: from 16:9 at 100% HUD scale. Where it is not, the box is
-  200 u (300 dp) wide and rises until its bottom is 150 u above the bottom
-  edge, clear of the weapon strip. The voice bars sit directly above the box.
-- **Width.** Beside the status bar the box is as wide as that space, up to
-  300 u (450 dp): about 190 u (285 dp) at 16:9, covering the leading screen and
-  the first 93 u of the center screen, and 300 u at 21:9, within the leading
-  screen.
+- **Placement.** The box sits on the leading edge and always clears the
+  status bar vertically: its bottom is 8 u above the status bar's top edge,
+  the gauges' top, 51 u above the bottom edge. Opening the input pushes the
+  lines up; the box never lowers. Where the space between the leading edge and
+  the status bar is at least 180 u (from 16:9 at 100% HUD scale), the box
+  spans it. Where it is not, the box is 200 u (300 dp) wide and rises until its
+  bottom is 150 u above the bottom edge, clear of the weapon strip too. The
+  voice bars sit directly above the box.
+- **Width.** Spanning the leading space, the box is as wide as the space
+  beside the status bar, up to 300 u (450 dp): about 190 u (285 dp) at 16:9,
+  covering the leading screen and the first 93 u of the center screen, and
+  300 u at 21:9, within the leading screen.
 - **Lines.** Four messages at rest, newest at the bottom, in Lowpixel 16 dp on
   a 20 dp pitch, with the stock timing. A long message wraps inside the box and
   keeps all its lines together, up to eight lines in all; the stock let one
@@ -2403,6 +2424,9 @@ the trailing edge.
 title in white below it, centered at 200–280 u, appears at once and stays while
 the view fades to black over 12 s; the restart menu follows. The HUD's "Mission
 Failed" sequence has no sender in the stock and is not reproduced.
+*The Awakening*'s HUD adds a failed-objective group with the objective's title,
+a 3 s death fade and a commented-out compass. None of them has a sender, and
+openQ4 reproduces none: the notice above already names the failed objective.
 
 ### 14.12 Boss and vehicle displays
 
@@ -2440,6 +2464,64 @@ the language tables. On foot and in a vehicle alike, the gauges and weapon panel
 Remastered centers them on the bottom edge and keeps the exit prompt on the
 trailing edge.
 
+**The Awakening.** The expansion adds four vehicle displays and a state for the
+walker's cockpit monitor. Each keeps its measured construction, takes the HUD
+anchor rules and the language tables, and starts in its real state rather than
+whatever its first frame happened to show.
+
+- **Space cannon.** The m03 dropship guns keep the on-foot HUD's radio, boss bar
+  and notices and hide its gauges, strip and powerups. Their display is the
+  ship-status panel, top-trailing below the transmission display (the stock
+  corner at 512,32 u touched it): an olive disc 58.75 u in radius, #1F2A13 with
+  a #4D682F to #64883D rim, opaque in Classic and at 0.85 in Remastered, holding
+  the dropship from above in #475736. Its five sections turn #A13C2B at 80, 60,
+  40, 20 and 10% of the ship's health, left wing first and mid body last, and
+  clear again on repair, which the stock never sends. Gold objective markers,
+  broken rings 16 u across, spin at 0.35 turn a second over the place that needs
+  the player. Eight red darts on the rim point in from attackers, pulsing at
+  2 Hz while they fade over 3 s. An additive olive cone 52 degrees wide shows
+  where the gun looks relative to the ship's nose; the stock bound it to the
+  absolute view yaw, which nothing wrote. On foot the same panel takes the
+  markers, damage and warnings the script also sends to the player HUD, which
+  the expansion's HUD cannot show.
+- **Cockpit screens.** Three on-model screens report the weapons. The selector
+  lights the active weapon's row and shows ACTIVE in #D6E98C or JAMMED in
+  #FF0000 above the kill count. The rocket rack frames the lock in gray, in
+  #F7C211 while acquiring and in red once locked, with LOCKED in Marine 1.0
+  #FFFFB6 between arrows pulsing at 4 Hz, above five rockets that reload one
+  every 0.5 s. The gun heat bar grows from 40 to 337 u and warms from #8B8B48 to
+  #FF0000.
+- **MCC cannon.** The MCC's side gun keeps the space cannon's reticule and
+  screens. Its HUD is a hull readout top-trailing: the gauge plate scaled to
+  136x70 u under U.S.S. Hannibal in Marine 0.25, and the hull in Marine 0.50
+  #F1F0C9, the MCC's health divided by 10, 2000 when whole. Remastered fills the
+  track in proportion; the stock track is static.
+- **Speeder bike.** The m07 race keeps the stock vehicle HUD and centers a
+  progress bar at the top: a 45% black plate whose raised tab carries the race
+  timer, gold Marine 0.65 seconds and Marine 0.55 hundredths, and ten
+  forward-leaning pips, #4E5B1C dark and #798D2A lit, in two groups of five, lit
+  one per checkpoint. Remastered pads the hundredths and turns the seconds
+  #FF3333 over 100 ms in the last 10 s, a state the content never sends. While
+  boosting, a red hazard icon at 70% and Boosting... in Marine 0.25 #FF0000 show
+  trailing, which the content's own timers kept hidden, and Remastered streaks
+  the view's edges along the bike's path with the expansion's square-frame speed
+  blur, never under reduced motion. "[ Press CROUCH to boost ]" shows trailing
+  while a boost is ready. The bike's speedometer reads its speed in Marine 3.2
+  over kph and scrolls the road through its bezel; openQ4 narrows a third digit
+  to fit.
+- **GEV.** Its HUD names ten materials that neither game ships, so openQ4 draws
+  them in the stock vehicle construction, bottom-leading: plates at black 0.60
+  sheared 0,-.32; a vertical #FF9E1A health bar that drains from the top (the
+  stock divides an already normalized value by 1000 and reads empty); the hull
+  from above in #B0C891, turning with the view relative to it under a fixed
+  turret; three shield stages as arcs, #D1AF47 from 80%, #C6C251 from 40% and
+  #A2B85C to empty, the inner arcs pulsing #FF591A to #80591A every 500 ms once
+  the shields fail; and the weapon glyph turned 60 degrees with an infinity mark
+  or the rocket count over the #FF9E1A charge bar. No map places the GEV.
+- **Walker monitor.** In m04 the walker's cockpit monitor can show SYSTEM
+  OFFLINE: a red wash pulsing between 25% and 50% every 750 ms under two lines
+  of Marine 2.0 #FF0000 with a shadow.
+
 ### 14.13 Scopes and weapon displays
 
 Scopes appear and vanish with the zoom, without fades, above everything else in
@@ -2447,9 +2529,18 @@ the HUD, and the field of view changes over 100 ms.
 
 | Scope | Aperture | Marks and motion |
 | --- | --- | --- |
-| Machinegun (and the hover tank's cannon) | A circle of radius 182 u with a 40% gray veil outside and an optical smear beyond | A black double ring, four broken posts, fine ticks near the center, and a ring of 16 dots that turns with the view's yaw like a compass |
-| Railgun | A diamond, \|dx\| + \|dy\| < 362 u, black at about 86% outside, with a gray bevel | Hairlines with 108 u and 126 u gaps, #00FFFF bars at 50% beside the horizontal hair, a ring turning 40 degrees a second, three sheared #99FFFF clip cells, and a faint diamond pulse every 2 s |
-| Nailgun (seeker modification only) | An amber circle of radius 255 u with four inward hooks | A ring turning with the yaw, a lock arrow pointing at the target, and R_Strogg "// LOCKED //", range and countdown readouts once locked |
+| Machinegun (and the hover tank's cannon) | A lens of radius 182 u. Beyond r 184 u the view is pulled outward and smeared toward the center, averaged with 20% gray, under a #363636 veil at 40% | In black: a double ring (r 177.7 u, 2.9 u wide, and r 183.1 u, 2.2 u wide), four posts from r 163 u broken at r 98 u, fine ticks from r 20 to 40 u, and the lens darkening from r 60 u to 32% at the ring. An additive #1B270E glow rises from r 84 u to the rim. Sixteen 9.2 u dots at 34% on r 174 u turn with the view's yaw like a compass |
+| Railgun | A diamond, \|dx\| + \|dy\| < 362 u, inside a black edge line at 87%. Within the edge, a 26% black band follows the aperture's rounded ends, shoulders and the ring's bite; beyond it, a gray haze thickens from 25% to 51% toward the corners. The stock's 86% is the edge line alone | An additive #082828 glow along the inside of the edge; hairlines with 108 u and 126 u gaps; #00FFFF bars at 50% beside the horizontal hair; a split ring turning 40 degrees a second; one sheared #99FFFF cell per round, the top cell first; and a rounded diamond sweeping outward every 2 s |
+| Nailgun (seeker modification only) | An amber lens of radius 255 u inside a surround of three bands (black 50%, a black line at r 272 u, black 71%) and a gray haze beyond, with four hooks reaching in to r 160 u | An additive #241700 glow rising toward the rim (#533200 when locked), a notched ring turning with the yaw, an additive #3C2500 hairline at r 218 u, a lock arrow that lights #623A00 toward the target, lines that spread on a lock, and R_Strogg "// LOCKED //", range and countdown readouts once locked |
+
+**Refinements.** At any aspect each scope keeps its aperture's shape around
+the aim point, and its outermost layer reaches the screen edges: the
+machinegun's veil and smear, the railgun's haze or the nailgun's surround.
+Nothing stretches, and the marks are vector geometry at every resolution.
+Remastered renders the machinegun's smear as a continuous radial blur instead
+of the stock's six stepped samples, and adds the railgun's diamond sweep at 8%
+instead of the stock's 2%, which no screen shows. *The Awakening*'s Core
+Cannon takes the machinegun scope through its scope modification.
 
 Weapon displays are the gun-mounted screens of the view models.
 
@@ -2460,7 +2551,9 @@ Weapon displays are the gun-mounted screens of the view models.
 | Nailgun | No digits: an #E8AB1F level in six slanted cells; empty turns #E63300 pulsing 100–40% at 2 Hz |
 | Rocket launcher | Three #44D29D cells that go dark (#422300) as rounds are spent, 80–100% at 3 Hz |
 | Railgun | Teal #009F9F charge arcs that turn orange-red for 2 s after the last shot, turning rings and scan pulses |
-| Napalm launcher | Animated fire art without a readout |
+| Napalm launcher | Animated fire art without a readout; *The Awakening*'s copy draws one static additive fire layer |
+| Core Cannon (*The Awakening*) | None of its own; its scope modification adds the machinegun's display and sight |
+| Freeze Gun (*The Awakening*) | The hyperblaster's display |
 
 The blaster, grenade launcher, lightning gun, dark matter gun and gauntlet have
 no display. The machinegun and shotgun overlays' 9 Hz flicker is capped at
@@ -2582,6 +2675,34 @@ use, talk and locked cursors are certain to appear.
 The machinegun's view-model sight and the air-defense cannon reuse these
 designs at their own sizes and colors (sections 14.12 and 14.13).
 
+**The Awakening.** The space cannon (section 14.12) aims with its own lock-on
+reticule, 128-texel art in four designs that change with the lock.
+
+- **Free.** Translucent corner brackets with bright edges, hollow side bars
+  and a center dot, in white.
+- **Acquiring and locked.** Two inward triangles join them, #FFFF00 while the
+  rockets acquire and #40FF40 once locked.
+- **Friendly.** An X over a faint ellipse, in #FF1A1A.
+- **Out of range.** The brackets and dot alone, in white.
+- **Guides.** Additive effects in the world turn 0.3 turn a second around
+  targets: the stock nailgun lock ring in #F8C001 while the rockets acquire,
+  the lock guide in #E60000 once locked (that ring with a thin inner ring and
+  two inward triangles), and the stock ring in gray around the nearest enemy.
+  Gray brackets frame a target out of range; their stock material adds
+  nothing, so only Remastered shows them.
+
+The reticule stays at the crosshair size, and only the guides scale with
+distance. openQ4 applies each state's color at once; the stock cursor changes
+color only on a weapon change or a hit. Its pulse cannon shows only the free,
+out-of-range and friendly states. The
+busy-talk cursor is a red X over a faint red ring (`npc_talkstate` 5) and
+keeps its color. The new weapons borrow stock designs: the Core Cannon the
+grenade launcher's, the napalm launcher the rocket launcher's, the Freeze Gun
+the blaster's, and the grapple the rocket launcher's in yellow. The speeder's
+cannon and the stock walker's cannon name a `vehicle_cannon` crosshair that
+neither game ships, so openQ4 draws a heavy-shell reticle: four arcs of a
+ring with ticks in their gaps, a center dot and two drop chevrons below it.
+
 ### 14.16 Item icons
 
 Every stock item icon is redrawn as vector paths, including the weapon renders
@@ -2621,6 +2742,7 @@ weapon and ammunition icons.
 | Kill feed marks (`kill_self`, `kill_telefrag`) | A white skull and crossbones; a teal mark of inward chevrons, arcs and an X | Filled silhouettes | Kill feed, #00FFA6 for the telefrag |
 | Vehicle weapons (`veh_*`) | Shaded silhouettes | Side views as the weapon renders | The vehicle weapon panel |
 | World sprites (`simpleicons`) | The HUD art recolored per variant, additive | The HUD geometry, white, recolored by the variant's color | Simple items in the world |
+| *The Awakening* | The Core Cannon's three barbed spikes and the Freeze Gun's snowflake as 32-texel glyphs; weapon renders that copy the napalm launcher's; ammunition pickups showing the rocket and grenade icons; a purple Adrenaline injector; the quad icon for the team powerups and the flag carrier's armor regeneration; a red Dead Zone token | The glyphs in the glyph construction; side views of each weapon's own world model in the render construction; ammunition in the stock frame; Adrenaline in the powerup construction; for the rest, openQ4 emblems in a squad hexagon (three rounds, a cross, three claw strokes) and a flag on a shield over a returning arrow; Dead Zone's cog in red | As their stock families, in the color codes of Appendix B.4 |
 
 **Glow.** The powerup emblems and the chat bubble carry one separate soft
 layer instead of the stock's baked halo, capped at the family's light peak
@@ -2634,6 +2756,24 @@ layer instead of the stock's baked halo, capped at the family's light peak
   strokes, uses 0.32.
 - **Exceptions.** The Dead Zone token has no halo, and the Quad kill mark's is
   a normal-blend layer.
+
+**Squad patches.** The marines' shoulder decals (`decal_<squad>`, 256 texels on
+a flat gray ground) are drawn as flat-color layers in one construction: a light
+gray rim, a black border, a two-tone ground and the squad's animal or emblem.
+The nine stock patches are traced from their textures: Rhino, Badger, Cobra,
+Eagle, Kodiak, Raven, Viper, Warthog and Wolf. *The Awakening* names five
+squads that ship no patch, and openQ4 draws them in the same construction.
+
+| Squad | Patch |
+| --- | --- |
+| Falcon, the player's squad; its marines wear the Viper patch in the content | A peregrine's head in profile, dark hood and malar stripe over a cream face, on a heater shield split by a stooping diagonal |
+| Fox | A fox's head from the front, ears up and eyes narrowed, on a chamfered shield in two greens |
+| Atlas, which drives the walkers | The titan holding the world overhead against a bronze sunburst, on an octagon |
+| Hades | A skull with ember eyes over rising fire, on a downward banner |
+| Razor | A shark's head in profile with its jaws wide, on a slanted plate |
+
+The HUD shows only the player's squad stencil (section 14.8), and the
+character skins keep their content's decals.
 
 **Stock details kept and dropped.**
 
@@ -2965,11 +3105,14 @@ edge, band-local: (0, 123.5), (165, 123.5), (207.5, 81), (640, 81), which is
 | Nailgun | 0.6, 0.8, 0.8 | Gauntlet | 0, 0.85, 1 |
 | Health shard / small / large / mega | 0.5, 1, 0.5 / 1, 1, 0.2 / 1, 0.5, 0 / 0, 0.5, 1 | Armor shard / small / large | 0, 0.5, 1 / 1, 1, 0 / 1, 0, 0 |
 | Napalm launcher | 1, 0.75, 0.25 | | |
+| Core Cannon (*The Awakening*) | 1, 0.35, 0.78 | Freeze Gun (*The Awakening*) | 0.62, 0.92, 1 |
 
 Values come from `hud.mtr`. The multiplayer ammo gauge uses its own tints for
 the shotgun (1, 0.55, 0), rocket launcher (1, 0.25, 0), lightning gun
 (1, 1, 0.6) and dark matter gun (0.77, 0.2, 1), and adds the napalm launcher
-(1, 0.75, 0.25).
+(1, 0.75, 0.25). *The Awakening* tints all three of its weapons' pickups yellow
+(1, 1, 0); openQ4 gives the Core Cannon and the Freeze Gun their own codes,
+which no stock weapon uses, and the napalm launcher its stock one.
 
 ### B.5 HUD textures
 
@@ -3200,3 +3343,23 @@ Version 1.10 adds a sub-page level beneath the menu pages.
 
 Register schema 9 supersedes MOT-013, whose band motion rules allowed exactly
 two dock states, with MOT-016, and appends FLOW-050 (menu levels).
+
+### Version 1.11
+
+Version 1.11 follows the product owner's review of the weapon wheel, the
+multiplayer chat, the scopes and the squad patches, and brings The Awakening
+into the HUD sections.
+
+| Area | 1.10 | 1.11 | Basis |
+| --- | --- | --- | --- |
+| Weapon wheel hub | The name, the ammunition and the radio's carrier waveform, swelling on each selection | The name and the ammunition alone; the waveform belongs to the transmission display | The product owner's review |
+| Multiplayer chat | Beside the status bar from 16:9, its bottom near the bottom edge | Always clear of the status bar vertically, its bottom 8 u above the gauges' top; below 16:9 also clear of the weapon strip | The product owner's review |
+| Scopes | Apertures and marks; the railgun "black at about 86% outside" | Every stock layer measured and rebuilt: the machinegun's smear, glow and darkening lens; the railgun's band, edge line, haze and glow; the nailgun's three-band surround, hooks, glow, rings and lock arrow. Round at every aspect, with the railgun's sweep at 8% in Remastered | The stock scope GUIs, textures, materials and the `SniperStretch2` shader |
+| Squad patches | Only the Rhino stencil, on the radio | Nine stock patches traced and five Awakening squads designed; the radio shows the player's squad stencil, Falcon's under The Awakening | The stock decals; the expansion's squad names |
+| The Awakening | Not covered | Its thirteen weapons in the strip and wheel, icons, crosshairs and lock-on reticule, squad patches, scopes and displays, and vehicle displays: the space cannon's ship panel and cockpit screens, the MCC readout, the speeder's race HUD and the GEV HUD, with openQ4 art where the expansion ships none | The expansion's content survey |
+
+Register schema 10 supersedes WID-032 (the wheel's waveform), FLOW-040 (the
+Rhino emblem alone) and FLOW-045 (the chat beside the status bar) with
+WID-033, FLOW-052 and FLOW-051, and appends FLOW-053 (scope layers), ART-034
+(squad patches), ART-035 (The Awakening's icons and crosshairs) and FLOW-054
+and FLOW-055 (The Awakening's HUD and vehicle displays).
