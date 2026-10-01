@@ -1,10 +1,10 @@
 {
-  "schema_version": 9,
+  "schema_version": 10,
   "id_namespace": "openq4.ui.product",
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "229fdad546ef5223a88ed07a254cf59fc19dceea",
+    "engine_revision": "5ab6a91dd85b9d1445f2e2f3996461cff5123430",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -14,17 +14,17 @@
     "visual": {
       "path": "docs/dev/ui-visual-design.md",
       "authority": "normative visual, interaction and editor contract",
-      "sha256": "13d640398350b33f71684d2fd71cfe05a93421e2b012e5b609b8e414800884de"
+      "sha256": "16a2e6d63bb38e5cc8c9ee82b042eaeda4d92ae63b27eda3d38eb0d855780abd"
     },
     "product": {
       "path": "docs/dev/plans/ui-product-completion.md",
       "authority": "normative completion scope, milestones and final audit",
-      "sha256": "3c57e272178c8350ad0620e4514d1f8e7763fad4bf3e618adcfdfed9c6c48fd7"
+      "sha256": "88e43f7fa4c9ace5986aafa5d238384d1bb593f7865edaf83f634519bf6c1767"
     },
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "56b627416223ba2154c2c218ce8c82454950a48c731c5338ce2c6d52ceb70a7e"
+      "sha256": "3f7b275d5de8b277496efcdf058ea8a1e63ec5c6998a3d52d3ad9f389fa627a3"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -102,7 +102,7 @@
       "kind": "source_audit",
       "path": "docs/dev/plans/ui-product-completion.md",
       "scope": "Published audit at 80bb3939; source limitations corroborated by current Document/Runtime inspection. Historical tests and captures are not a fresh product qualification.",
-      "sha256": "3c57e272178c8350ad0620e4514d1f8e7763fad4bf3e618adcfdfed9c6c48fd7"
+      "sha256": "88e43f7fa4c9ace5986aafa5d238384d1bb593f7865edaf83f634519bf6c1767"
     },
     "document-foundation": {
       "kind": "implementation_checkpoint",
@@ -1311,6 +1311,39 @@
       "source_refs": [
         "visual:8",
         "visual:9"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "WID-032",
+      "successors": [
+        "WID-033"
+      ],
+      "normative_change": "Visual 1.11 takes the radio's carrier waveform out of the wheel's hub, which keeps only the name and the ammunition over its signal screen, and gives The Awakening thirteen positions; every other wheel rule is carried unchanged.",
+      "source_refs": [
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "FLOW-040",
+      "successors": [
+        "FLOW-052"
+      ],
+      "normative_change": "Visual 1.11 marks a squad line with the player's squad stencil, Rhino's in Quake 4 and Falcon's under The Awakening, instead of the Rhino emblem alone; every other message, pickup and radio rule is carried unchanged.",
+      "source_refs": [
+        "visual:14"
+      ],
+      "carried_evidence": []
+    },
+    {
+      "superseded": "FLOW-045",
+      "successors": [
+        "FLOW-051"
+      ],
+      "normative_change": "Visual 1.11 keeps the chat box clear of the status bar vertically at every aspect, its bottom 8 u above the gauges' top with the input pushing the lines up, instead of beside the status bar at the bottom edge; every other chat rule is carried unchanged.",
+      "source_refs": [
+        "visual:14"
       ],
       "carried_evidence": []
     }
@@ -11936,6 +11969,507 @@
         ],
         "classic_sub_page_appears_ms": 500,
         "reduced_motion_fade_max_ms": 80
+      }
+    },
+    {
+      "id": "WID-033",
+      "title": "Weapon wheel, quick chat and their transitions",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI components and application bindings",
+      "source_refs": [
+        "visual:7",
+        "product:2 UI-03",
+        "product:3 Text, controls and accessibility",
+        "product:4 M3",
+        "visual:14",
+        "visual:9"
+      ],
+      "requirement": "A held-button wheel in the active HUD family gives every weapon of the game mode a fixed segment in strip order (eleven in Quake 4, thirteen under The Awakening, the segments narrowing to keep one ring): Marine segments are 0.50 HUD plates between 104 and 232 dp with the weapon glyph, number, reserve and a curved ammunition gauge in the weapon color code, a tick-ramp bezel, and a hub built from the machinegun scope's rings and compass dots over a signal screen, naming the weapon on up to two lines above the ammunition and nothing else, since the radio's waveform belongs to the transmission display; the Strogg wheel keeps its claw plates, cells, grain, octagonal core, rings and circuit paths with every label drawn in runes and R_Strogg. Selection, refusal, the previous-weapon tap and quick chat follow section 14.6. The Marine wheel opens, selects and closes as a transmission (slit power-on, static bursts, tune-in, jolt, sign-off) and the Strogg wheel as a translation (boot cascade, rune-to-R_Strogg cross-fades with the scale pop and the scan bar, scrambled drop-out); neither delays input, plates and icons read by 150 ms, and reduced motion keeps only 80 ms opacity changes.",
+      "dependencies": [
+        "INP-011",
+        "INP-013",
+        "ART-026",
+        "FLOW-032",
+        "MOT-015",
+        "ART-028"
+      ],
+      "acceptance_evidence_needed": [
+        "Gameplay traces for weapon and chat wheels on controller, touch and mouse in both families with correct equip, refusal and send results, sampled transition timelines and no simulation pause. Include the thirteen-position Awakening ring."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "inner_radius_dp": 104,
+        "outer_radius_dp": 232,
+        "gap_dp": 6,
+        "readable_by_ms": 150,
+        "segment_stagger_ms": 8,
+        "slit_power_on_ms": 150,
+        "strogg_cascade_ms": 12,
+        "translate_heading_ms": 300,
+        "reduced_motion_ms": 80,
+        "positions": {
+          "quake4": 11,
+          "awakening": 13
+        },
+        "hub_waveform": false
+      }
+    },
+    {
+      "id": "FLOW-051",
+      "title": "Remastered chat box and chat input",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Place the multiplayer chat box on the leading edge, always clear of the status bar vertically: its bottom 8 u above the status bar's top edge (the gauges' top, 51 u above the bottom edge), opening the input pushing the lines up rather than lowering the box; as wide as the space beside the status bar (180-300 u) where that space is at least 180 u, otherwise 200 u wide and raised with its bottom 150 u above the bottom edge, clear of the weapon strip too; four whole messages at rest and up to eight while typing, each line on its own 0.35 plate, team messages tagged TEAM in the team's text color, server lines with the information symbol and your lines marked. The input sits below the lines on the stock chat plate with an ALL or TEAM channel tag switchable while typing, Lowpixel entry that scrolls sideways with a caret, a remaining-character count from 80% of the 128-character limit, and Send, Channel and Cancel prompts with the active device's glyphs; controller and touch use the platform or on-screen keyboard. Classic keeps the stock lines and input.",
+      "dependencies": [
+        "FLOW-009",
+        "INP-012",
+        "LAY-019",
+        "TXT-004"
+      ],
+      "acceptance_evidence_needed": [
+        "MP chat traces with all and team messages, wrapping, server lines, a full-length entry and channel switching on keyboard, controller and touch at 4:3, 16:9 and 21:9. Show the box clear of the status bar at every aspect, with the input open."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "width_u": [
+          180,
+          300
+        ],
+        "raised_bottom_u": 150,
+        "lines_at_rest": 4,
+        "lines_typing": 8,
+        "line_plate_alpha": 0.35,
+        "max_chars": 128,
+        "count_from_fraction": 0.8,
+        "clearance_above_status_bar_u": 8,
+        "status_bar_top_above_bottom_u": 51,
+        "narrow_width_u": 200
+      }
+    },
+    {
+      "id": "FLOW-052",
+      "title": "HUD messages, pickups and radio chatter",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Show pickups as the stock line in Classic and, in Remastered, as up to two lines centered over the status bar, newest nearest the gauges, merging repeats with a count, with the weapon strip above them and its name above its slots; radio chatter anchored top-trailing, appearing and disappearing at once for the voice line plus 150 ms or 5 s, with its masked additive carrier scrolling 24.6 u/s and stepping height every 79 ms, and the player's squad stencil shrinking with its black 0.40 plate over 500 ms, from 42x39 u to 22x22 u, when the line addresses the player: Rhino's, traced from radio_rhino, in Quake 4 and Falcon's under The Awakening; EXIT under a chevron rising 11 u with accel(500, 500) for 5000 ms, a single \"Game Saved...\" for 2000 ms plus a 1000 ms fade, the Interactive brackets, and openQ4 subtitles in Lowpixel 17 dp on a 0.60 backing, at most two lines, never over the crosshair.",
+      "dependencies": [
+        "FLOW-030",
+        "FLOW-016",
+        "TXT-011",
+        "LAY-019",
+        "ART-034"
+      ],
+      "acceptance_evidence_needed": [
+        "SP gameplay traces of pickups, weapon changes during pickups, radio chatter, exit, saves, world-GUI focus and subtitled cinematics in both HUD families and both layouts. Include squad lines under Quake 4 and The Awakening."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "pickup_hold_ms": 3000,
+        "pickup_stack": 2,
+        "radio_extra_ms": 150,
+        "radio_default_ms": 5000,
+        "radio_scroll_u_per_s": 24.6,
+        "radio_step_ms": 79,
+        "emblem_shrink_ms": 500,
+        "exit_hold_ms": 5000,
+        "save_hold_ms": 2000,
+        "save_fade_ms": 1000,
+        "subtitle_lines": 2,
+        "subtitle_backing_alpha": 0.6,
+        "squad_stencil": {
+          "quake4": "rhino",
+          "awakening": "falcon"
+        }
+      }
+    },
+    {
+      "id": "FLOW-053",
+      "title": "Scope layers",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Build each scope from its measured stock layers in stock order. Machinegun: a lens of r 182 u; beyond r 184 u the view pulled outward and smeared toward the center, averaged with 20% gray, under a #363636 veil at 40%; an additive #1B270E glow rising from r 84 u to the rim; in black, the double ring (r 177.7 u, 2.9 u wide; r 183.1 u, 2.2 u wide), four posts broken at r 98 u, fine ticks from r 20 to 40 u, the lens darkening from r 60 u to 32% at the ring, and sixteen 9.2 u dots at 34% on r 174 u turning with the yaw. Railgun: the diamond |dx| + |dy| < 362 u inside a black edge line at 87%, a 26% black band within it following the aperture's rounded ends, shoulders and the ring's bite, a gray haze beyond thickening from 25% to 51% toward the corners, an additive #082828 glow along the edge, the hairlines and #00FFFF bars, the split ring turning 40 degrees a second, one sheared #99FFFF cell per round and the rounded diamond sweeping outward every 2 s (2% in Classic, 8% additive in Remastered). Nailgun: a lens of r 255 u inside a three-band surround (black 50%, a black line at r 272 u, black 71%) and a gray haze, four hooks reaching in to r 160 u, an additive #241700 glow (#533200 locked), the notched ring on the yaw, the additive #3C2500 hairline at r 218 u, the lock arrow lighting #623A00 toward the target, the lines spreading and the R_Strogg readouts. At every aspect the aperture keeps its shape around the aim point and the outermost layer reaches the screen edges; the marks are vector geometry at every resolution, and Remastered renders the machinegun's smear as a continuous radial blur.",
+      "dependencies": [
+        "FLOW-038",
+        "SUR-005",
+        "ART-013",
+        "REN-015"
+      ],
+      "acceptance_evidence_needed": [
+        "Zoomed captures of each scope at 4:3, 16:9 and 21:9 on GL and Vulkan compared layer by layer with the stock composites, with traces of the yaw compass, the railgun's cells, ring and sweep and the nailgun's lock sequence."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "machinegun": {
+          "lens_u": 182,
+          "smear_from_u": 184,
+          "smear_gray": 0.2,
+          "veil": "#363636",
+          "veil_alpha": 0.4,
+          "glow": "#1B270E",
+          "glow_from_u": 84,
+          "rings_u": [
+            [
+              177.7,
+              2.9
+            ],
+            [
+              183.1,
+              2.2
+            ]
+          ],
+          "post_break_u": 98,
+          "ticks_u": [
+            20,
+            40
+          ],
+          "lens_dark_from_u": 60,
+          "lens_dark_alpha": 0.32,
+          "dots": 16,
+          "dot_u": 9.2,
+          "dot_ring_u": 174,
+          "dot_alpha": 0.34
+        },
+        "railgun": {
+          "diamond_u": 362,
+          "edge_alpha": 0.87,
+          "band_alpha": 0.26,
+          "haze_alpha": [
+            0.25,
+            0.51
+          ],
+          "glow": "#082828",
+          "ring_deg_per_s": 40,
+          "sweep_period_ms": 2000,
+          "sweep_alpha": {
+            "classic": 0.02,
+            "remastered": 0.08
+          }
+        },
+        "nailgun": {
+          "lens_u": 255,
+          "bands": [
+            [
+              255.5,
+              270.5,
+              0.5
+            ],
+            [
+              272,
+              272,
+              0.99
+            ],
+            [
+              273.5,
+              291.5,
+              0.71
+            ]
+          ],
+          "hook_tip_u": 160,
+          "glow": "#241700",
+          "glow_locked": "#533200",
+          "hairline": "#3C2500",
+          "hairline_u": 218,
+          "arrow_locked": "#623A00"
+        }
+      }
+    },
+    {
+      "id": "ART-034",
+      "title": "Squad patches",
+      "milestone_owner": "M4",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Draw the squad patches as flat-color vector layers in the stock decal construction: a light gray rim, a black border, a two-tone ground and the squad's animal or emblem. Trace the nine stock patches from decal_<squad> (Rhino, Badger, Cobra, Eagle, Kodiak, Raven, Viper, Warthog and Wolf), and draw openQ4 patches in the same construction for The Awakening's five squads without art: Falcon (a peregrine's head on a heater shield), Fox (a fox's head on a chamfered shield), Atlas (the titan holding the world on an octagon), Hades (a skull over fire on a downward banner) and Razor (a shark's head on a slanted plate). Build each squad's HUD stencil as radio_rhino is built: the figure cut from a 64-unit plate, keeping the eye and defining edges. Character skins keep their content's decals.",
+      "dependencies": [
+        "ART-001",
+        "ART-028"
+      ],
+      "acceptance_evidence_needed": [
+        "Each traced patch rendered over its stock texture with the difference measured, and the five designed patches and the Falcon stencil reviewed at 22, 64 and 256 u."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "stock": [
+          "rhino",
+          "badger",
+          "cobra",
+          "eagle",
+          "kodiak",
+          "raven",
+          "viper",
+          "warthog",
+          "wolf"
+        ],
+        "awakening": [
+          "falcon",
+          "fox",
+          "atlas",
+          "hades",
+          "razor"
+        ],
+        "texture_texels": 256,
+        "stencil_box_u": 64
+      }
+    },
+    {
+      "id": "ART-035",
+      "title": "The Awakening's icons and crosshairs",
+      "milestone_owner": "M4",
+      "implementation_owner": "UI art and design review",
+      "source_refs": [
+        "visual:2",
+        "visual:4",
+        "visual:6",
+        "visual:12",
+        "product:3 Visual quality and motion",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Draw The Awakening's icons and crosshairs in the stock families: the Core Cannon's three barbed spikes and the Freeze Gun's snowflake as glyphs; side views of each new weapon's own world model as renders, since the content's renders copy the napalm launcher's; framed ammunition for both; Adrenaline in the powerup construction; openQ4 emblems with the powerup glow for the team ammunition, health and damage powerups (a squad hexagon around three rounds, a cross and three claw strokes) and the flag carrier's armor regeneration (a flag on a shield over a returning arrow); Dead Zone's cog in the content's red; the space cannon's lock-on reticule in its five states (white free, #FFFF00 acquiring, #40FF40 locked, #FF1A1A friendly, white out of range without its side bars), held at the crosshair size and recolored at once, with its additive guides turning 0.3 turn a second (the stock lock ring in #F8C001 while acquiring, the lock guide in #E60000 once locked, the stock ring in gray on the nearest enemy, and the out-of-range brackets, which only Remastered shows); the red busy-talk cursor; and a heavy-shell vehicle_cannon reticle, which neither game ships. The Core Cannon's color code is 1, 0.35, 0.78 and the Freeze Gun's 0.62, 0.92, 1.",
+      "dependencies": [
+        "ART-027",
+        "ART-028",
+        "ART-001"
+      ],
+      "acceptance_evidence_needed": [
+        "The catalogue against each expansion texture, at 16, 24 and 27 dp in every HUD tint, with the reticule states and guides captured in a space cannon encounter."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "color_codes": {
+          "corecannon": [
+            1,
+            0.35,
+            0.78
+          ],
+          "freezegun": [
+            0.62,
+            0.92,
+            1
+          ]
+        },
+        "reticule_states": {
+          "free": "#FFFFFF",
+          "acquiring": "#FFFF00",
+          "locked": "#40FF40",
+          "friendly": "#FF1A1A",
+          "out_of_range": "#FFFFFF"
+        },
+        "guides": {
+          "acquiring": "#F8C001",
+          "locked": "#E60000",
+          "nearest": "#808080",
+          "turns_per_s": 0.3
+        }
+      }
+    },
+    {
+      "id": "FLOW-054",
+      "title": "The Awakening's HUD",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Under The Awakening (q4xbase) run its content through the same HUD. The strip and the wheel hold thirteen weapons: its Core Cannon, the napalm launcher and its Freeze Gun in slots 10 to 12, after the stock ten, on the Strogg HUD too, where the expansion's copy has no plates for them. The new weapons keep the scopes, displays and crosshairs the content gives them: the Core Cannon's scope modification takes the machinegun scope, display and sight; the Freeze Gun the hyperblaster's display and the blaster's crosshair; the napalm launcher one static additive fire layer and the rocket launcher's crosshair. The expansion's powerups (Adrenaline, the team ammunition, health and damage powerups and the flag carrier's armor regeneration) appear in the multiplayer powerup column and pickup line by def name, with the icons of ART-035, and the multiplayer ammunition, accuracy and summary rows cover all thirteen weapons. A squad line shows Falcon's stencil (FLOW-052). Every stock HUD rule otherwise holds.",
+      "dependencies": [
+        "FLOW-032",
+        "WID-033",
+        "FLOW-038",
+        "FLOW-052",
+        "ART-035",
+        "FLOW-041"
+      ],
+      "acceptance_evidence_needed": [
+        "q4xbase gameplay traces of the strip, the wheel, the Core Cannon's scope, the new weapons' displays and crosshairs, a squad line and the expansion's powerups in a multiplayer match, on both HUD families."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "weapons": 13,
+        "awakening_slots": {
+          "10": "corecannon",
+          "11": "napalmgun",
+          "12": "freezegun"
+        }
+      }
+    },
+    {
+      "id": "FLOW-055",
+      "title": "The Awakening's vehicle displays",
+      "milestone_owner": "M5",
+      "implementation_owner": "UI migration, session and SP/MP integration",
+      "source_refs": [
+        "visual:9",
+        "visual:11",
+        "product:4 M2",
+        "product:4 M4",
+        "product:4 M5",
+        "original:Stage 5",
+        "original:Stage 6",
+        "visual:14"
+      ],
+      "requirement": "Under The Awakening draw its vehicle displays in their measured constructions with the HUD anchor rules, localized, each starting in its real state. The space cannon hides the on-foot gauges, strip and powerups and shows the ship-status panel top-trailing below the transmission display: an olive disc of r 58.75 u (#1F2A13, rim #4D682F to #64883D; opaque in Classic, 0.85 in Remastered) with the dropship in #475736, five sections turning #A13C2B at 80, 60, 40, 20 and 10% health and clearing on repair, gold objective markers spinning at 0.35 turn a second, eight red rim darts pulsing at 2 Hz while fading over 3 s, and an additive 52-degree cone for the gun's yaw relative to the ship; on foot the panel takes the events sent to the player HUD. Its cockpit screens show the selector (ACTIVE #D6E98C or JAMMED #FF0000, kills), the rocket rack (lock frame gray, #F7C211 acquiring, red locked with LOCKED in #FFFFB6 between 4 Hz arrows, five rockets reloading one per 0.5 s) and the heat bar (40 to 337 u, #8B8B48 to #FF0000). The MCC cannon shows U.S.S. Hannibal over the hull in Marine 0.50 (health / 10) on a scaled gauge plate, filled in proportion in Remastered. The speeder bike adds the progress bar (a 45% plate, the gold timer padded and #FF3333 in the last 10 s, ten pips #4E5B1C/#798D2A in two groups of five), the boost icon and Boosting... while boosting with a square-frame edge streak in Remastered (never under reduced motion), the boost prompt while a boost is ready, and its speedometer fitting three digits. The GEV gets openQ4 art for its ten missing materials: plates at 0.60 sheared 0,-.32, a #FF9E1A health bar draining from the top, the hull turning under a fixed turret, three shield arcs (#D1AF47, #C6C251, #A2B85C) pulsing #FF591A/#80591A when empty, and the weapon glyph with its charge. The walker monitor's SYSTEM OFFLINE pulses its red wash every 750 ms.",
+      "dependencies": [
+        "FLOW-037",
+        "FLOW-015",
+        "ART-012",
+        "ART-035",
+        "ART-026"
+      ],
+      "acceptance_evidence_needed": [
+        "q4xbase captures and traces of m03's dropship guns (damage, repair, markers, warnings, every lock state and screen), the m06 MCC gun, the m07 race (checkpoints, the last 10 s, a boost) and the m04 walker monitor at 4:3, 16:9 and 21:9 in Classic and Remastered, and a GEV spawned for review."
+      ],
+      "status": "pending",
+      "current_evidence": [],
+      "acceptance_evidence": [],
+      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "constraints": {
+        "ship_panel": {
+          "disc_r_u": 58.75,
+          "fill": "#1F2A13",
+          "rim": [
+            "#4D682F",
+            "#64883D"
+          ],
+          "remastered_alpha": 0.85,
+          "ship": "#475736",
+          "damage": "#A13C2B",
+          "damage_at": [
+            0.8,
+            0.6,
+            0.4,
+            0.2,
+            0.1
+          ],
+          "marker_turns_per_s": 0.35,
+          "warning_hz": 2,
+          "warning_fade_ms": 3000,
+          "cone_deg": 52
+        },
+        "screens": {
+          "active": "#D6E98C",
+          "jammed": "#FF0000",
+          "acquiring": "#F7C211",
+          "locked_text": "#FFFFB6",
+          "arrows_hz": 4,
+          "rockets": 5,
+          "reload_s": 0.5,
+          "heat_u": [
+            40,
+            337
+          ],
+          "heat": [
+            "#8B8B48",
+            "#FF0000"
+          ]
+        },
+        "mcc": {
+          "plate_u": [
+            136,
+            70
+          ],
+          "health_divisor": 10,
+          "full": 2000
+        },
+        "speeder": {
+          "plate_alpha": 0.45,
+          "pips": 10,
+          "pip_off": "#4E5B1C",
+          "pip_on": "#798D2A",
+          "timer": "#E1CC67",
+          "timer_warn": "#FF3333",
+          "timer_warn_s": 10,
+          "boost_icon_alpha": 0.7
+        },
+        "gev": {
+          "plate_alpha": 0.6,
+          "shear": -0.32,
+          "health": "#FF9E1A",
+          "glyph": "#B0C891",
+          "shields": [
+            "#D1AF47",
+            "#C6C251",
+            "#A2B85C"
+          ],
+          "shield_out": [
+            "#FF591A",
+            "#80591A"
+          ],
+          "shield_out_ms": 500
+        },
+        "walker_offline": {
+          "wash_alpha": [
+            0.25,
+            0.5
+          ],
+          "cycle_ms": 750
+        }
       }
     }
   ]

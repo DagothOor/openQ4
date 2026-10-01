@@ -65,6 +65,14 @@ declaring that choice proven for the whole product.
 
 ### Current implementation progress
 
+A second [1 October register revision](../ui/product-requirements.md) follows
+[visual specification](../ui-visual-design.md) 1.11, which takes the waveform
+out of the weapon wheel, keeps the multiplayer chat clear of the status bar,
+rebuilds the scopes from their stock layers, catalogues the squad patches and
+brings The Awakening's weapons, icons, crosshairs and vehicle displays into the
+HUD. Register schema 10 supersedes three rows and appends five. The register
+now holds 327 rows, of which 301 define acceptance.
+
 A [1 October register revision](../ui/product-requirements.md) follows
 [visual specification](../ui-visual-design.md) 1.10, which adds a sub-page level
 beneath the menu pages. Register schema 9 supersedes the band motion rules with

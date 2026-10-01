@@ -47,11 +47,15 @@ register schema 8 supersedes two rows and appends one for it. Version 1.10 adds
 a sub-page level beneath the menu pages: Single Player leads to Campaign and
 Arena, and Multiplayer to Join Game, Create Server and Demos, with a one-notch
 band step and a path crumb. Register schema 9 supersedes one row and appends one
-for it.
+for it. Version 1.11 takes the waveform out of the weapon wheel, keeps the
+multiplayer chat clear of the status bar, rebuilds the scopes from their stock
+layers, catalogues the squad patches and covers The Awakening's HUD content;
+register schema 10 supersedes three rows and appends five for it.
 
 The controller weapon wheel already in openQ4-game (`356dfe56`: 12 slots,
 centered at 77% of the width, cursor selection) differs from section 14.6
-(every weapon of the mode, centered on the aim point, stick-angle selection).
+(every weapon of the mode, thirteen under The Awakening, centered on the aim
+point, stick-angle selection).
 openQ4-game's hit marker is on by default in single player and multiplayer and
 replaces the stock pop, where section 14.7 keeps the pop and offers markers in
 multiplayer only. Reconcile both before implementing those sections.
