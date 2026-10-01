@@ -203,6 +203,9 @@ struct Filter {
 	std::uint32_t mask = 0;
 	int width = 0, height = 0;
 	std::uint64_t generation = 0;
+	// Soft focus: a backdrop blur sigma in physical pixels and a saturation.
+	float blur = 0, saturation = 1;
+	bool backdrop = false;
 };
 
 // The host's composition target IDs are process-wide. A mask may retain its
@@ -382,6 +385,16 @@ public:
 			const float opacity = value->second.Get<float>();
 			if (std::isfinite(opacity)) return reinterpret_cast<Rml::CompiledFilterHandle>(new Filter{std::clamp(opacity,0.f,1.f)});
 		}
+		// Soft focus (backdrop-filter: blur() saturate()): drawn by the host.
+		const auto sigma = parameters.find("sigma");
+		if ((name == "blur" && sigma != parameters.end()) || (name == "saturate" && value != parameters.end())) {
+			const float amount = (name == "blur" ? sigma : value)->second.Get<float>();
+			if (std::isfinite(amount)) {
+				auto* filter = new Filter; filter->backdrop = true;
+				if (name == "blur") filter->blur = std::clamp(amount,0.f,256.f); else filter->saturation = std::clamp(amount,0.f,1.f);
+				return reinterpret_cast<Rml::CompiledFilterHandle>(filter);
+			}
+		}
 		host.Log(true,"Unsupported retained filter: "+name); return 0;
 	}
 	Rml::CompiledFilterHandle SaveLayerAsMaskImage() override {
@@ -403,6 +416,22 @@ public:
 	void CompositeLayers(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode mode,
 		Rml::Span<const Rml::CompiledFilterHandle> filters) override {
 		if (failed) return;
+		// Soft focus. RmlUi reads the surface beneath an element through its
+		// backdrop filters into a pushed layer; only the base surface is read.
+		// A host that cannot leaves the layer transparent: nothing changes, and
+		// the document's scrim fallback stands in.
+		float blur = 0, saturation = 1; bool backdrop = false;
+		for (auto handle : filters) {
+			const auto* filter = reinterpret_cast<const Filter*>(handle);
+			if (filter && filter->backdrop) { backdrop = true; blur = std::max(blur,filter->blur); saturation = std::min(saturation,filter->saturation); }
+		}
+		if (backdrop) {
+			const Bounds region = ClipBounds();
+			if (!source && destination && ActiveLayer(destination) && mode == Rml::BlendMode::Blend && region.width > 0 && region.height > 0 &&
+				host.SoftenBackdrop(static_cast<std::uint32_t>(destination),blur,saturation,region)) ++statistics.backdropComposites;
+			else ++statistics.backdropFallbacks;
+			return;
+		}
 		if (!source || source == destination || !ActiveLayer(source) || !ActiveLayer(destination) || mode != Rml::BlendMode::Blend) {
 			host.Log(true,"Unsupported retained layer composition"); failed = true; return;
 		}
@@ -1147,10 +1176,21 @@ struct Runtime::Impl {
 			const auto bound = state.Properties().find(key);
 			const auto& value = bound == state.Properties().end() ? animated : bound->second;
 			const bool opacity = key.second == "opacity";
+			const bool backdrop = key.second == "backdrop-blur" || key.second == "backdrop-saturate";
 			std::string string;
 			if (value.type==ValueType::Length && (value.unit=="dp" || value.unit=="px") &&
 				(key.second=="font-size" || key.second=="line-height" || key.second=="letter-spacing")) {
 				auto scaled=value; scaled.data[0]*=viewport.TextRatio(); string=scaled.Css();
+			} else if (backdrop) {
+				// One backdrop-filter carries both: compose the node's current pair.
+				const auto present = [&](const char* property) -> std::optional<Value> {
+					const PropertyKey other{key.first,property};
+					if (const auto found = state.Properties().find(other); found != state.Properties().end()) return found->second;
+					if (const auto found = motion.Values().find(other); found != motion.Values().end()) return found->second;
+					return std::nullopt;
+				};
+				const auto blur = present("backdrop-blur"), saturate = present("backdrop-saturate");
+				string = BackdropFilterCss(blur ? &*blur : nullptr,saturate ? &*saturate : nullptr);
 			} else string = opacity ? (value.data[0] < 1 ? "opacity("+value.Css()+")" : "none") :
 				value.type == ValueType::Text ? host.Translate(value.text) : value.Css();
 			if(!current())return false;
@@ -1165,7 +1205,7 @@ struct Runtime::Impl {
 				const auto* node = canonical->Model().FindNode(key.first);
 				if (!node || !element->SetProperty("decorator",ImageDecorator(*node,value.text))) host.Log(true,"Canonical image rejected: "+key.first);
 			}
-			else if (!element->SetProperty(opacity ? "filter" : key.second,string)) host.Log(true,"Canonical property rejected: "+key.first+"."+key.second);
+			else if (!element->SetProperty(opacity ? "filter" : backdrop ? "backdrop-filter" : key.second,string)) host.Log(true,"Canonical property rejected: "+key.first+"."+key.second);
 			if(!current())return false;
 			applied[key] = string;
 		}

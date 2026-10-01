@@ -194,11 +194,61 @@ struct TestHost final : Host {
 		}
 	}
 	void EndLayer(std::uint32_t restore) override { activeLayer = restore; }
+	struct Softened { std::uint32_t destination; float sigma, saturation; Bounds region; };
+	std::vector<Softened> softened;
+	bool softFocus = true;
+	bool SoftenBackdrop(std::uint32_t destination, float sigma, float saturation, const Bounds& region) override {
+		softened.push_back({destination,sigma,saturation,region});
+		if (softFocus) activeLayer = destination;
+		return softFocus;
+	}
 	FontMetrics GetFontMetrics(const std::string&, int size) override { return {size*.8f,size*.2f,size*1.2f,size*.5f}; }
 	Glyph GetGlyph(const std::string&, int size, std::uint32_t) override {
 		return {size*.6f,0,-size*.8f,size*.6f,static_cast<float>(size),0,0,1,1,"test-font"};
 	}
 };
+
+// Soft focus: a node's backdrop-blur and backdrop-saturate become one RmlUi
+// backdrop-filter, and the renderer asks the host to soften the base surface
+// into the pushed layer: sigma in physical pixels, the saturation, and the
+// node's box extended by the blur's reach. An unsupported host is counted and
+// changes nothing. Zero blur at full saturation draws no backdrop at all.
+static void CheckSoftFocus(TestHost& host) {
+	const std::string source = R"json({"format":"openq4-ui","version":1,"id":"soft-focus",
+	 "root":{"id":"root","type":"group","properties":{"width":{"type":"length","value":100,"unit":"%"},"height":{"type":"length","value":100,"unit":"%"}},
+	  "children":[{"id":"veil","type":"group","properties":{"position":{"type":"keyword","value":"absolute"},
+	   "left":{"type":"length","value":100,"unit":"dp"},"top":{"type":"length","value":50,"unit":"dp"},
+	   "width":{"type":"length","value":200,"unit":"dp"},"height":{"type":"length","value":100,"unit":"dp"},
+	   "backdrop-blur":{"type":"length","value":0,"unit":"dp"},"backdrop-saturate":{"type":"number","value":1}}}]},
+	 "timelines":[{"id":"focus","durationMs":200,"tracks":[
+	   {"node":"veil","property":"backdrop-blur","keys":[{"atMs":0,"value":{"type":"length","value":0,"unit":"dp"}},{"atMs":200,"value":{"type":"length","value":7.5,"unit":"dp"}}]},
+	   {"node":"veil","property":"backdrop-saturate","keys":[{"atMs":0,"value":{"type":"number","value":1}},{"atMs":200,"value":{"type":"number","value":0.8}}]}]}],
+	 "events":{"soften":[{"op":"playTimeline","timeline":"focus"}]}})json";
+	Runtime runtime(host);
+	std::vector<Diagnostic> diagnostics;
+	Check(runtime.Initialize() && runtime.LoadDocument(source,"soft-focus.q4ui",diagnostics),"soft-focus document loads");
+	Viewport viewport; viewport.width = 1280; viewport.height = 720; viewport.displayScale = 2;
+	host.softened.clear();
+	runtime.Frame(viewport,1);
+	Check(host.softened.empty() && runtime.Statistics().backdropComposites == 0,"no blur at full saturation draws no backdrop");
+	Runtime::EventEffects effects; std::string error;
+	Check(runtime.RunEvent("soften",1,effects,error),"start the soft focus");
+	runtime.Frame(viewport,1.1);
+	Check(host.softened.size() == 1 && Near(host.softened[0].sigma,3.75f*2) && Near(host.softened[0].saturation,.9f) &&
+		host.softened[0].destination != 0,"half way in: sigma in physical pixels, saturation ramping, into a pushed layer");
+	host.softened.clear();
+	runtime.Frame(viewport,1.3);
+	const auto& region = host.softened.at(0).region;
+	Check(host.softened.size() == 1 && Near(host.softened[0].sigma,15) && Near(host.softened[0].saturation,.8f) &&
+		region.x <= 200 && region.y <= 100 && region.x+region.width >= 600 && region.y+region.height >= 300 &&
+		runtime.Statistics().backdropComposites == 1 && runtime.Statistics().backdropFallbacks == 0,
+		"settled: 7.5 dp at 2x is a 15 px sigma over the box and its blur reach");
+	host.softFocus = false; host.softened.clear();
+	runtime.Frame(viewport,1.4);
+	Check(host.softened.size() == 1 && runtime.Statistics().backdropComposites == 0 && runtime.Statistics().backdropFallbacks == 1 &&
+		host.errors == 0,"a host without soft focus is counted and logs nothing");
+	host.softFocus = true;
+}
 
 // Timeline completion programs: a fade hides its box when it plays to its end,
 // once. Cancellation suppresses it, replay restarts it, pause delays it, and
@@ -1078,5 +1128,6 @@ int main(int argc, char** argv) {
 	host.samplePoints.clear();
 	Check(host.errors==0,"no library warnings or errors");
 	CheckCompletionPrograms(host);
-	std::puts("Retained UI: density, layout, input, clipping, motion, bindings, independent contexts, bounded backend reuse, transactional instance snapshots, restart and completion programs passed");
+	CheckSoftFocus(host);
+	std::puts("Retained UI: density, layout, input, clipping, motion, bindings, independent contexts, bounded backend reuse, transactional instance snapshots, restart, completion programs and soft focus passed");
 }

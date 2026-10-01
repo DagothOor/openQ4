@@ -75,8 +75,15 @@ after editing the script; `--check` fails when an output is stale.
   a click. The name strip darkens the message line so it reads over any
   levelshot.
 - **Confirmations** (section 6, the 480 dp confirmation width). EXIT and both
-  pause quits ask in the stock confirmation dialog: over the scrim, the stock
-  glow column spans the dialog's 320 u rectangle, and the stock art's black
+  pause quits ask in the stock confirmation dialog. The screen beneath stays
+  in view in soft focus (`modal.softfocus`: a 5 u, 7.5 dp blur at 0.80
+  saturation, never dimmed). The glow is cut to the dialog's 320 u
+  rectangle: graded only vertically, at half strength at the rectangle's top
+  and bottom edges, gone 40 dp beyond them, and fading out over a further
+  16 dp past each side. With the opaque-backing option
+  (`ui_retainedOpaqueBacking 1`), or on a renderer that cannot soften the
+  screen, the stock 0.94 scrim covers it instead, and the glow keeps the stock
+  column, exactly the rectangle's width. The stock art's black
   0.70 silhouette sits inside it. The silhouette starts 6.5625 dp in from
   each side, as `popup_top`, `popup_mid` and `popup_btm` do, so a 6 dp lit
   margin and the lit slot outline it. The title starts at the foot of the
@@ -88,11 +95,12 @@ after editing the script; `--check` fails when an output is stale.
   first baseline is 87.5 dp down, and the actions start 96 u down. They open
   and close with the stock motion (section 8, `modal.enter` and
   `modal.leave`).
-  - Opening brings the scrim, glow and frame in over 200 ms, and the title,
-    body and actions appear together at its end, when NO takes focus.
-  - Closing hides the contents at once. After 50 ms the scrim and glow release
-    over 250 ms, and the frame over 200 ms for Exit or 250 ms for the pause
-    quit; then the modal closes.
+  - Opening brings the soft focus (or the scrim), the glow and the frame in
+    over 200 ms, and the title, body and actions appear together at its end,
+    when NO takes focus.
+  - Closing hides the contents at once. After 50 ms the soft focus (or the
+    scrim) and the glow release over 250 ms, and the frame over 200 ms for
+    Exit or 250 ms for the pause quit; then the modal closes.
   - The title's Exit modal also dims the wordmark to 40% gray over 200 ms,
     and restores it from 50 ms over 150 ms as it closes.
   - Timeline [completion programs](event-programs.md#completion-programs)
@@ -164,6 +172,22 @@ than the presented home screen.
   parts share the same path. No release shipped it. Composites now sample GL
   row order everywhere. `ui_retained_layer_pool.py` checks the composite
   coordinates and pins the executor's side of the contract.
+- **Backdrop soft focus** (REN-016). A node's `backdrop-blur` and
+  `backdrop-saturate` soften the frame beneath it (see the
+  [document format](document-format.md#typed-values-and-layout)). RmlUi reads
+  the backdrop into a pushed layer through its backdrop filters, and the
+  runtime hands that layer to `Host::SoftenBackdrop`. The engine binds the
+  base surface and copies the window into `_retainedBackdrop`, then runs the
+  `glsl/retained_blur.glsl` program twice. The first pass blurs
+  horizontally into a scratch target, over every row the second reads (3
+  sigma beyond the region). The second blurs vertically and desaturates into
+  the backdrop layer. Each pass is opaque and takes up to 49 bilinear taps,
+  spaced out for a wide sigma. OpenGL needs GLSL support; Vulkan compiles the
+  program at run time; GLES keeps the fallback. The capture and both targets
+  keep GL row order, as the layer composites do.
+  `ui_retainedSoftFocus` reports whether a frame can be softened, and the
+  documents show the scrim when it cannot. `ui_retainedProfile` counts the
+  backdrop passes and fallbacks.
 
 ## Pictures and precaching
 
@@ -309,6 +333,19 @@ additive-picture layer fault above. Fixed, the wordmark's rectangle reads
 `.tmp/ui/retained-motion-engine/validation-evidence.json`, SHA-256
 `b915a8889da4535c7b4a19fc6c9af500ad8bc1dccd5608dafe6057221189cbf9`.
 
+Soft focus was captured in the engine on OpenGL and Vulkan at 1280x720 and
+on OpenGL at 1920x1080, from a candidate runtime of this build. Over the
+title, the screen beneath the open exit dialog is blurred and desaturated
+but not dimmed: away from the dialog its luminance holds, while its
+saturation falls to about 0.8. The glow spreads past the dialog, and
+Vulkan matches OpenGL. The blur keeps the same look at both sizes, and the
+quit dialog softens the paused view. With `ui_retainedOpaqueBacking 1`
+the stock scrim and column return, and the blur program never loads.
+Native tests pin the ramp, the hold and the release, and a host harness
+pins the capture and passes. Evidence:
+`.tmp/ui/retained-softfocus/validation-evidence.json`, SHA-256
+`ae57a44a9b1ddf3d582d1caa7d8565e82582b76a3c63f09717a7f8e5efec6eaf`.
+
 ## Known limitations
 
 - The pause menu has no OBJECTIVES action yet, so the navigation holds six of
@@ -319,10 +356,10 @@ additive-picture layer fault above. Fixed, the wordmark's rectangle reads
   shoulders) is not implemented; the Marine screen is used throughout.
 - The scene behind the pause screen is darkened, not softened, and the HUD's
   crosshair shows through the scrim.
-- The renderer has no soft focus yet (REN-016), so modals use the fallback of
-  visual specification 1.9: the scrim with the stock glow column. The
-  soft-focus glow of specification 1.12, graded across the dialog and fading
-  out past its sides, waits for it. Only the confirmation width exists.
+- Soft focus covers the confirmations only, and the opaque-backing option
+  has no Settings row yet (`ui_retainedOpaqueBacking` is a CVar). A node
+  inside a composition layer gets no soft focus, because only the base
+  surface is read. Only the confirmation width exists.
 - The multiplayer Escape and Welcome menus (section 14.18) keep the stock
   menus: the retained home screen is never presented in a multiplayer game.
 - The loading screen has no tips and no touch prompt (touch counts as desktop

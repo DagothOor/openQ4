@@ -84,6 +84,8 @@ struct RuntimeStatistics {
 	std::uint64_t layerPushes = 0, layerComposites = 0, peakLayerDepth = 0;
 	std::uint64_t maskSnapshots = 0, maskApplications = 0, peakLayerTargets = 0;
 	std::uint64_t multiplyFallbacks = 0; // Multiply paths drawn as luminance darkening.
+	// Soft-focus backdrops drawn by the host, and those it could not draw.
+	std::uint64_t backdropComposites = 0, backdropFallbacks = 0;
 	// Overflow clips under a transform: exact rectangles, and shapes clipped to their bounds.
 	std::uint64_t clipMasks = 0, clipMaskFallbacks = 0;
 	// Shared service residency, sampled by Statistics(); idle backends are reused.
@@ -123,6 +125,13 @@ public:
 	// (straight RGB; white leaves it unchanged). Zero means unsupported: the
 	// runtime then darkens by the colour's luminance with ordinary composition.
 	virtual std::uintptr_t MultiplyMaterial() { return 0; }
+	// Soft focus (backdrop-filter): draw the base surface, as composed so far,
+	// Gaussian-blurred by `sigma` physical pixels and saturated by `saturation`
+	// (1 keeps colour; luma is preserved, so it never dims) into `destination`,
+	// opaque within `region`. `destination` is left bound. False means
+	// unsupported: the runtime leaves the layer transparent and counts it, and
+	// the document's scrim fallback stands in.
+	virtual bool SoftenBackdrop(std::uint32_t destination, float sigma, float saturation, const Bounds& region) { return false; }
 private:
 	// Target identities must survive a last-context close/reopen within one
 	// host submission frame, even though RmlUi services can be shut down then.

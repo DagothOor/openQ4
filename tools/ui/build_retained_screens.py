@@ -534,29 +534,42 @@ def outlined_label(ident: str, key: str, box: dict, style: dict, fill: list[floa
             label(ident, key, {**box, **style, "color": colour(fill)})]
 
 
+SOFT_FOCUS_BLUR = 5 * U   # modal.softfocus: a 5 u Gaussian (section 4)
+SOFT_FOCUS_SATURATION = 0.8
+
+
 def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_action: str,
                  frame_leave_ms: float = 250, dim: tuple = ()) -> dict:
-    """A stock confirmation modal (section 6) over the marine.scrim: an
-    additive glow column exactly as wide as the 480 dp dialog, and inside it
-    the stock popup art's black 0.70 silhouette, inset so a 6 dp lit margin
-    shows beside it, with a leading tooth, a recessed title slot, a raised
-    trailing section and a 38 dp lower-leading chamfer. The title hangs from
-    the raised top line into the lit slot with a 1 dp black outline at 0.85;
-    YES leads, NO trails.
+    """A stock confirmation modal (section 6) over the soft-focused screen: an
+    additive glow behind the 480 dp dialog, and inside it the stock popup
+    art's black 0.70 silhouette, inset so a 6 dp lit margin shows beside it,
+    with a leading tooth, a recessed title slot, a raised trailing section and
+    a 38 dp lower-leading chamfer. The title hangs from the raised top line
+    into the lit slot with a 1 dp black outline at 0.85; YES leads, NO trails.
 
-    Motion (section 8, scrim form): modal.enter brings the scrim, the glow and
-    the frame in over 200 ms and shows the title, body and actions together at
-    its end; modal.leave hides them at once and, after 50 ms, releases the
-    scrim and glow over 250 ms and the frame over `frame_leave_ms` (200 ms for
-    Exit). Completion programs show the contents and close the modal, so a
-    Show during leave or a Hide during enter takes over the other run, which
-    then never completes. Static bases are the hidden values, so the first
-    key's retarget never flashes the scrim. `dim` lists (node, property, lit,
-    dimmed) that dim over 200 ms on enter and return from 50 ms over 150 ms
-    on leave, as the Exit and Mods modals dim the wordmark to 40% gray."""
+    The screen beneath takes modal.softfocus, a 5 u blur at 0.80 saturation
+    that never dims it, and the glow is cut to the dialog: graded only
+    vertically, half strength at the rectangle's top and bottom edges and gone
+    40 dp beyond them, fading out over a further 16 dp past each side. With
+    the opaque-backing option, or where the renderer cannot soften the screen
+    (ui_retainedSoftFocus is 0), the stock 0.94 marine.scrim covers it instead
+    and the glow keeps the stock column, exactly the rectangle's width.
+
+    Motion (section 8): modal.enter brings the soft focus (or the scrim), the
+    glow and the frame in over 200 ms and shows the title, body and actions
+    together at its end; modal.leave hides them at once and, after 50 ms,
+    releases the soft focus or scrim and the glow over 250 ms and the frame
+    over `frame_leave_ms` (200 ms for Exit). Completion programs show the
+    contents and close the modal, so a Show during leave or a Hide during
+    enter takes over the other run, which then never completes. Static bases
+    are the hidden values, so the first key's retarget never flashes the
+    scrim. `dim` lists (node, property, lit, dimmed) that dim over 200 ms on
+    enter and return from 50 ms over 150 ms on leave, as the Exit and Mods
+    modals dim the wordmark to 40% gray."""
     visible, contents = f"{ident}.visible", f"{ident}.contents"
     doc.state[visible] = {"type": "boolean", "initial": False}
     doc.state[contents] = {"type": "boolean", "initial": False}
+    doc.state["soft_focus"] = {"type": "boolean", "initial": False, "cvar": "ui_retainedSoftFocus"}
     show, shown, hide, hidden = f"{ident}Show", f"{ident}Shown", f"{ident}Hide", f"{ident}Hidden"
     enter, leave = f"{ident}Enter", f"{ident}Leave"
     doc.events[show] = [{"op": "setState", "values": {visible: True, contents: False}}, {"op": "playTimeline", "timeline": enter}]
@@ -579,12 +592,31 @@ def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_a
                                 (slot_trail - slot_depth, raised + slot_depth), (slot_trail, raised), (right, raised),
                                 (right, bottom), (inset + chamfer, bottom), (inset, bottom - chamfer)],
                       fill=solid([0, 0, 0, 0.7]))
+    whole = [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})]
     glow_top, glow_bottom = -U * 87, height + U * 108
-    glow = vector(f"{ident}-glow", {**absolute(left=0, top=glow_top, width=width, height=glow_bottom - glow_top), "opacity": number(0)}, [
-        path("column", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})],
+    glow = vector(f"{ident}-glow", {**absolute(left=0, top=glow_top, width=width, height=glow_bottom - glow_top), "opacity": number(0),
+                                    "display": keyword("block")}, [
+        path("column", whole,
              fill=linear((0, 0), (0, {"fraction": 1}), [(0, rgb(GLOW_MODAL, 0)), (0.28, rgb(GLOW_MODAL, 0.5)), (0.41, rgb(GLOW_MODAL, 0.9)),
                                                         (0.58, rgb(GLOW_MODAL, 0.9)), (0.72, rgb(GLOW_MODAL, 0.5)), (1, rgb(GLOW_MODAL, 0))]),
              blend="additive")])
+    # The soft-focus glow keeps the stock column's plateau inside the rectangle
+    # and grades from half strength at its edges to nothing 40 dp beyond them.
+    # Its side fade is an alpha mask, so the two gradients multiply.
+    reach, side = 40.0, 16.0
+    plateau = [glow_top + stop * (glow_bottom - glow_top) for stop in (0.41, 0.58)]
+    soft_width, soft_height = width + 2 * side, height + 2 * reach
+    def soft_stop(y: float) -> float:
+        return round((y + reach) / soft_height, 4)
+    soft_glow = vector(f"{ident}-glow-soft", {**absolute(left=-side, top=-reach, width=soft_width, height=soft_height),
+                                              "opacity": number(0), "display": keyword("none")}, [
+        path("column", whole,
+             fill=linear((0, 0), (0, {"fraction": 1}), [(0, rgb(GLOW_MODAL, 0)), (soft_stop(0), rgb(GLOW_MODAL, 0.5)),
+                                                        (soft_stop(plateau[0]), rgb(GLOW_MODAL, 0.9)), (soft_stop(plateau[1]), rgb(GLOW_MODAL, 0.9)),
+                                                        (soft_stop(height), rgb(GLOW_MODAL, 0.5)), (1, rgb(GLOW_MODAL, 0))]),
+             blend="additive")],
+        mask={"paths": [path("sides", whole, fill=linear((0, 0), ({"fraction": 1}, 0), [
+            (0, [1, 1, 1, 0]), (round(side / soft_width, 4), [1, 1, 1, 1]), (round(1 - side / soft_width, 4), [1, 1, 1, 1]), (1, [1, 1, 1, 0])]))]})
     frame = vector(f"{ident}-frame", {**absolute(left=0, top=0, width=width, height=height), "opacity": number(0)}, [silhouette])
     # The title starts at the foot of the slot's leading flank; its capitals
     # hang from the raised top line into the lit slot, as the stock title's
@@ -601,23 +633,38 @@ def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_a
     yes = action_plate(doc, f"{ident}_yes", "#str_200157", 30, U * 96, action=yes_action)
     no = action_plate(doc, f"{ident}_no", "#str_200158", width - 33 - 180, U * 96, event=hide)
     shown_contents = group(f"{ident}-contents", {**FULL, "display": keyword("none")}, [*title, body, yes, no])
-    dialog = group(f"{ident}-dialog", absolute(left=left, top=top, width=width, height=height), [glow, frame, shown_contents])
+    dialog = group(f"{ident}-dialog", absolute(left=left, top=top, width=width, height=height),
+                   [glow, soft_glow, frame, shown_contents])
     stage = group(f"{ident}-stage", {**absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"),
                                      "margin-left": length(-CANVAS_W / 2)}, [dialog])
-    node = group(ident, {**FULL, "display": keyword("none"), "background-color": colour([0, 0, 0, 0])}, [stage],
+    # The soft focus is the first layer's backdrop filter, so it softens
+    # everything beneath the modal; hidden, it costs no pass at all.
+    softened = group(f"{ident}-softfocus", {**FULL, "display": keyword("none"), "backdrop-blur": length(0),
+                                            "backdrop-saturate": number(1)})
+    scrim = group(f"{ident}-scrim", {**FULL, "display": keyword("block"), "background-color": colour([0, 0, 0, 0])})
+    node = group(ident, {**FULL, "display": keyword("none")}, [softened, scrim, stage],
                  modal={"initialFocus": f"{ident}_no", "back": hide})
     doc.bind(f"{ident}.display", ident, "display", {"op": "select", "args": [{"state": visible}, "block", "none"]})
     doc.bind(f"{ident}.contents", f"{ident}-contents", "display", {"op": "select", "args": [{"state": contents}, "block", "none"]})
+    for part, soft in ((f"{ident}-softfocus", True), (f"{ident}-scrim", False), (f"{ident}-glow", False), (f"{ident}-glow-soft", True)):
+        doc.bind(f"{part}.display", part, "display", {"op": "select", "args": [{"state": "soft_focus"}, *(("block", "none") if soft else ("none", "block"))]})
     scrim_on, scrim_off = colour([0, 0, 0, 0.94]), colour([0, 0, 0, 0])
+    blur_on, blur_off = length(SOFT_FOCUS_BLUR), length(0)
+    tint_on, tint_off = number(SOFT_FOCUS_SATURATION), number(1)
+    glows = (f"{ident}-glow", f"{ident}-glow-soft")
     doc.timelines.add(enter, 200, [
-        track(ident, "background-color", [(0, scrim_off), (200, scrim_on)]),
-        track(f"{ident}-glow", "opacity", [(0, number(0)), (200, number(1))]),
+        track(f"{ident}-scrim", "background-color", [(0, scrim_off), (200, scrim_on)]),
+        track(f"{ident}-softfocus", "backdrop-blur", [(0, blur_off), (200, blur_on)]),
+        track(f"{ident}-softfocus", "backdrop-saturate", [(0, tint_off), (200, tint_on)]),
+        *[track(part, "opacity", [(0, number(0)), (200, number(1))]) for part in glows],
         track(f"{ident}-frame", "opacity", [(0, number(0)), (200, number(1))]),
     ] + [track(node, prop, [(0, lit), (200, dimmed)]) for node, prop, lit, dimmed in dim], complete=shown)
     frame_end = 50 + frame_leave_ms
     doc.timelines.add(leave, 300, [
-        track(ident, "background-color", [(0, scrim_on), (50, scrim_on), (300, scrim_off)]),
-        track(f"{ident}-glow", "opacity", [(0, number(1)), (50, number(1)), (300, number(0))]),
+        track(f"{ident}-scrim", "background-color", [(0, scrim_on), (50, scrim_on), (300, scrim_off)]),
+        track(f"{ident}-softfocus", "backdrop-blur", [(0, blur_on), (50, blur_on), (300, blur_off)]),
+        track(f"{ident}-softfocus", "backdrop-saturate", [(0, tint_on), (50, tint_on), (300, tint_off)]),
+        *[track(part, "opacity", [(0, number(1)), (50, number(1)), (300, number(0))]) for part in glows],
         track(f"{ident}-frame", "opacity", [(0, number(1)), (50, number(1)), (frame_end, number(0))] +
               ([(300, number(0))] if frame_end < 300 else [])),
     ] + [track(node, prop, [(0, dimmed), (50, dimmed), (200, lit), (300, lit)]) for node, prop, lit, dimmed in dim],
