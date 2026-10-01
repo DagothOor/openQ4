@@ -158,6 +158,144 @@ int main(){
 '''
 
 
+SOFT_SUPPORT = r'''
+#include <cassert>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <memory>
+#include <string>
+#include <vector>
+typedef unsigned char byte;
+typedef int glIndex_t;
+namespace openq4::ui { struct Bounds {float x=0,y=0,width=0,height=0;}; }
+struct idVec3 {float x=0,y=0,z=0; void Set(float a,float b,float c){x=a;y=b;z=c;}};
+struct idVec2 {float x=0,y=0; void Set(float a,float b){x=a;y=b;}};
+struct idDrawVert {idVec3 xyz; idVec2 st; idVec3 normal; idVec3 tangents[2]; byte color[4]={}; byte color2[4]={}; void Clear(){*this=idDrawVert{};}};
+template<class T> T Min(T a,T b){return a<b?a:b;}
+template<class T> T Max(T a,T b){return a>b?a:b;}
+struct idImageOpts {int width=0,height=0,format=0,numLevels=0;bool isPersistant=false;};
+enum {FMT_RGBA8,TF_LINEAR=3,DS_DEFAULTED=9};
+struct idImage {std::string name;int width=0,height=0,filter=0;};
+struct idMaterial {std::string name;int state=1;int GetState() const {return state;}};
+struct idRenderTexture {idImage* image=nullptr;bool destroyed=false;};
+struct Call {std::string op;const void* target=nullptr;std::string name;float parms[4]={};std::vector<idDrawVert> vertices;const idMaterial* material=nullptr;};
+struct Renderer {
+    std::vector<Call> calls;
+    std::vector<std::unique_ptr<idImage>> images;
+    std::vector<std::unique_ptr<idRenderTexture>> targets;
+    idRenderTexture* bound=reinterpret_cast<idRenderTexture*>(1);
+    idImage* CreateImage(const char* name,idImageOpts* options,int filter){
+        assert(options->format==FMT_RGBA8 && options->numLevels==1 && options->isPersistant);
+        images.push_back(std::make_unique<idImage>(idImage{name,options->width,options->height,filter}));
+        calls.push_back({"image",images.back().get(),name});return images.back().get();
+    }
+    idRenderTexture* CreateRenderTexture(idImage* image,void*){
+        targets.push_back(std::make_unique<idRenderTexture>(idRenderTexture{image}));return targets.back().get();
+    }
+    void DestroyRenderTexture(idRenderTexture* target){if(!target)return;assert(!target->destroyed);target->destroyed=true;calls.push_back({"destroy",target});}
+    void BindRenderTexture(idRenderTexture* target,void*){assert(!target || !target->destroyed);bound=target;calls.push_back({"bind",target});}
+    void CaptureRenderToImage(const char* name){assert(!bound);calls.push_back({"capture",nullptr,name});}
+    void ClearRenderTarget(bool color,bool depth,int,float r,float g,float b,float a){
+        assert(color && !depth && r==0 && g==0 && b==0 && a==0);calls.push_back({"clear",bound});
+    }
+    void SetColor4(float r,float g,float b,float a){Call call{"color"};call.parms[0]=r;call.parms[1]=g;call.parms[2]=b;call.parms[3]=a;calls.push_back(call);}
+    void DrawStretchPic(const idDrawVert* vertices,const glIndex_t* indices,int count,int indexCount,const idMaterial* material,bool clip){
+        assert(count==4 && indexCount==6 && !clip && indices[0]==0 && indices[5]==3);
+        Call call{"draw",bound};call.vertices.assign(vertices,vertices+count);call.material=material;calls.push_back(call);
+    }
+} renderer;
+Renderer* renderSystem=&renderer;
+struct Declarations {
+    idMaterial backdrop{"_retainedBlur/backdrop"},scratch{"_retainedBlur/scratch"};
+    const idMaterial* FindMaterial(const char* name){return std::string(name)==backdrop.name ? &backdrop : std::string(name)==scratch.name ? &scratch : nullptr;}
+} declarations;
+Declarations* declManager=&declarations;
+struct Host {
+    struct Layer {idRenderTexture* target=nullptr;int width=0,height=0;};
+    std::vector<Layer> layers;
+    int viewportWidth=1600,viewportHeight=900;
+    float viewportX=160,viewportY=90;
+    int captureWidth=1920,captureHeight=1080;
+    bool softFocus=true;
+    idRenderTexture* blurScratch=nullptr;
+    const idMaterial* blurBackdropMaterial=nullptr;
+    const idMaterial* blurScratchMaterial=nullptr;
+    bool backdropCreated=false;
+    int blurWidth=0,blurHeight=0;
+'''
+SOFT_MAIN = r'''
+};
+static bool Near(float a,float b){return std::fabs(a-b)<1e-5f;}
+static int Count(const char* op){int n=0;for(const auto& call:renderer.calls)n+=call.op==op;return n;}
+int main(){
+    Host host;
+    idRenderTexture destination;host.layers.resize(3);host.layers[2].target=&destination;
+    const openq4::ui::Bounds region{100,200,300,100};
+    // A host without soft focus, or an inactive destination, leaves the layer.
+    host.softFocus=false;
+    assert(!host.SoftenBackdrop(3,10,.8f,region) && renderer.calls.empty());
+    host.softFocus=true;
+    assert(!host.SoftenBackdrop(0,10,.8f,region) && !host.SoftenBackdrop(2,10,.8f,region) && !host.SoftenBackdrop(4,10,.8f,region));
+    assert(!host.SoftenBackdrop(3,NAN,.8f,region) && !host.SoftenBackdrop(3,10,1.5f,region) && renderer.calls.empty());
+    assert(!host.SoftenBackdrop(3,10,.8f,{2000,2000,10,10}) && renderer.calls.empty()); // Off the view.
+    assert(host.SoftenBackdrop(3,10,.8f,region));
+    // One linear capture image the window's size and a view-sized scratch target.
+    assert(renderer.images.size()==2 && renderer.images[0]->name=="_retainedBackdrop" && renderer.images[0]->width==1920 &&
+        renderer.images[0]->height==1080 && renderer.images[0]->filter==TF_LINEAR);
+    assert(renderer.images[1]->name=="_retainedBlurScratch" && renderer.images[1]->width==1600 && renderer.images[1]->height==900 &&
+        renderer.images[1]->filter==TF_LINEAR && renderer.targets.size()==1 && host.blurScratch==renderer.targets[0].get());
+    std::vector<Call> passes;
+    for(const auto& call:renderer.calls) if(call.op!="image") passes.push_back(call);
+    // The base is bound before the window is copied; the horizontal pass draws
+    // into the cleared scratch, the vertical one into the destination layer,
+    // which stays bound for the runtime's composite.
+    const std::vector<std::string> order{"bind","capture","bind","clear","color","draw","color","bind","color","draw","color"};
+    assert(passes.size()==order.size());
+    for(size_t i=0;i<order.size();++i) assert(passes[i].op==order[i]);
+    assert(passes[0].target==nullptr && passes[1].name=="_retainedBackdrop" && passes[2].target==host.blurScratch && passes[3].target==host.blurScratch);
+    assert(passes[7].target==&destination && renderer.bound==&destination);
+    // parm0..3: the step along the pass's axis in its source's UV, the sigma
+    // in pixels and the saturation, then white again for later geometry.
+    assert(Near(passes[4].parms[0],1.f/1920) && passes[4].parms[1]==0 && passes[4].parms[2]==10 && passes[4].parms[3]==1);
+    assert(passes[8].parms[0]==0 && Near(passes[8].parms[1],1.f/900) && passes[8].parms[2]==10 && Near(passes[8].parms[3],.8f));
+    assert(passes[6].parms[0]==1 && passes[10].parms[3]==1);
+    assert(passes[5].material==&declarations.backdrop && passes[9].material==&declarations.scratch);
+    // The horizontal pass covers the rows the vertical one reads (3 sigma),
+    // and samples the window copy where the view sits in it; both sample GL
+    // row order, the view's top row at the top of v.
+    const auto& wide=passes[5].vertices;
+    const float sx=640.f/1600,sy=480.f/900;
+    assert(Near(wide[0].xyz.x,100*sx) && Near(wide[0].xyz.y,170*sy) && Near(wide[2].xyz.x,400*sx) && Near(wide[2].xyz.y,330*sy));
+    assert(Near(wide[0].st.x,(160+100)/1920.f) && Near(wide[0].st.y,1-(90+170)/1080.f) &&
+        Near(wide[2].st.x,(160+400)/1920.f) && Near(wide[2].st.y,1-(90+330)/1080.f));
+    const auto& tall=passes[9].vertices;
+    assert(Near(tall[0].xyz.y,200*sy) && Near(tall[2].xyz.y,300*sy));
+    assert(Near(tall[0].st.x,100/1600.f) && Near(tall[0].st.y,1-200/900.f) && Near(tall[2].st.x,400/1600.f) && Near(tall[2].st.y,1-300/900.f));
+    for(const auto& vertex:tall) assert(vertex.color[0]==255 && vertex.color[3]==255);
+    // A region past the view is clamped to it, reach included.
+    renderer.calls.clear();
+    assert(host.SoftenBackdrop(3,4,.9f,{-50,-50,1700,1000}) && renderer.images.size()==2 && renderer.targets.size()==1);
+    for(const auto& call:renderer.calls) if(call.op=="draw") for(const auto& vertex:call.vertices)
+        assert(vertex.xyz.x>=-1e-4f && vertex.xyz.x<=640.0001f && vertex.xyz.y>=-1e-4f && vertex.xyz.y<=480.0001f);
+    // A new view size replaces only the scratch target.
+    host.viewportWidth=1280;host.viewportHeight=720;
+    assert(host.SoftenBackdrop(3,4,.9f,region) && renderer.images.size()==3 && renderer.images[2]->width==1280 &&
+        renderer.targets.size()==2 && renderer.targets[0]->destroyed && host.blurScratch==renderer.targets[1].get());
+    // Clearing the layers releases the blur targets; the next use rebuilds both.
+    host.ClearLayers();
+    assert(renderer.targets[1]->destroyed && !host.blurScratch && !host.backdropCreated && host.layers.empty());
+    destination.destroyed=false;host.layers.resize(3);host.layers[2].target=&destination;
+    assert(host.SoftenBackdrop(3,4,.9f,region) && renderer.images.size()==5 && renderer.images[3]->name=="_retainedBackdrop");
+    // A defaulted pass material fails openly and keeps no target.
+    host.ClearLayers();destination.destroyed=false;host.layers.resize(3);host.layers[2].target=&destination;
+    declarations.scratch.state=DS_DEFAULTED;
+    assert(!host.SoftenBackdrop(3,4,.9f,region) && !host.blurScratch && renderer.targets.back()->destroyed);
+    std::puts("retained soft focus: capture, separable passes, regions, GL row order and target lifetime passed");
+}
+'''
+
+
 def main():
     source=(ROOT/'src/ui/RetainedUI.cpp').read_text()
     source_text=source
@@ -185,6 +323,12 @@ def main():
         draw.write_text(DRAW_SUPPORT+function_body(source_text,'void Draw(').replace(' override','')+DRAW_MAIN,encoding='utf-8')
         subprocess.run([compiler,'-std=c++17',str(draw),'-o',str(drawBinary)],check=True)
         subprocess.run([str(drawBinary)],check=True)
+        soft=Path(temp)/'soft.cpp';softBinary=Path(temp)/'soft.exe'
+        soft_bodies=[function_body(source_text,signature).replace(' override','') for signature in (
+            'bool SoftenBackdrop(','bool EnsureBlurTargets(','void DrawBlurPass(','void ClearLayers(')]
+        soft.write_text(SOFT_SUPPORT+'\n'.join(soft_bodies)+SOFT_MAIN,encoding='utf-8')
+        subprocess.run([compiler,'-std=c++17',str(soft),'-o',str(softBinary)],check=True)
+        subprocess.run([str(softBinary)],check=True)
 
 
 if __name__=='__main__':

@@ -32,9 +32,20 @@ struct ScreenHost final : Host {
 	std::uint64_t frame = 1;
 	bool ReadFile(const std::string&, std::string&) override { return false; }
 	std::string Translate(const std::string& text) override { return text.starts_with("#str_") ? "Label" : text; }
+	// The engine reports soft focus through ui_retainedSoftFocus and draws it
+	// through SoftenBackdrop; without it the runtime leaves the backdrop.
+	bool softFocus = false;
+	struct Softened { float sigma = 0, saturation = 1; Bounds region; };
+	std::vector<Softened> softened;
 	bool ReadCVar(const std::string& name, size_t type, StateValue& value) override {
-		if (name != "ui_retainedReducedMotion" || type != 1) return false;
-		value = reducedMotion; return true;
+		if (type != 1) return false;
+		if (name == "ui_retainedReducedMotion") { value = reducedMotion; return true; }
+		if (name == "ui_retainedSoftFocus") { value = softFocus; return true; }
+		return false;
+	}
+	bool SoftenBackdrop(std::uint32_t destination, float sigma, float saturation, const Bounds& region) override {
+		Check(destination != 0,"the soft focus is drawn into a pushed layer");
+		softened.push_back({sigma,saturation,region}); return softFocus;
 	}
 	void Log(bool error, const std::string& message) override {
 		if (error) { ++errors; std::fprintf(stderr,"retained: %s\n",message.c_str()); }
@@ -277,15 +288,22 @@ int main(int argc, char** argv) {
 		// 1 dp and composited once at 0.85, behind the fill. modal.enter brings
 		// the scrim, glow and frame in over 200 ms and shows the contents at its
 		// end; modal.leave hides them at once and closes the modal 300 ms later.
+		// This host cannot soften the screen, so the scrim form stands in.
 		{
 			Runtime::EventEffects shown;
 			Check(runtime.RunEvent("exitModalShow",14,shown,error),"the exit confirmation opens");
 			runtime.Frame(viewport,14.1);
-			const auto scrim = runtime.PresentedValue("exitModal","background-color");
+			const auto scrim = runtime.PresentedValue("exitModal-scrim","background-color");
 			const auto frameIn = runtime.PresentedValue("exitModal-frame","opacity");
 			const auto waiting = runtime.PresentedValue("exitModal-contents","display");
 			Check(scrim && Near(static_cast<float>(scrim->data[3]),.47f,.02f) && frameIn && Near(static_cast<float>(frameIn->data[0]),.5f,.02f) &&
 				waiting && waiting->text == "none","half way in, the scrim and frame rise while the contents wait");
+			const auto fallbackFocus = runtime.PresentedValue("exitModal-softfocus","display");
+			const auto column = runtime.PresentedValue("exitModal-glow","display");
+			const auto cut = runtime.PresentedValue("exitModal-glow-soft","display");
+			Check(fallbackFocus && fallbackFocus->text == "none" && column && column->text == "block" && cut && cut->text == "none" &&
+				host.softened.empty() && runtime.Statistics().backdropFallbacks == 0,
+				"without soft focus the scrim and the stock glow column stand in, and no backdrop pass runs");
 			Check(runtime.FocusedControl().empty(),"focus waits for the contents");
 			host.draws.clear(); host.compositeOpacities.clear();
 			runtime.Frame(viewport,14.25);
@@ -321,7 +339,7 @@ int main(int argc, char** argv) {
 			Runtime::EventEffects hidden;
 			Check(runtime.RunEvent("exitModalHide",14.3,hidden,error),"the exit confirmation closes");
 			runtime.Frame(viewport,14.32);
-			const auto held = runtime.PresentedValue("exitModal","background-color");
+			const auto held = runtime.PresentedValue("exitModal-scrim","background-color");
 			const auto gone = runtime.PresentedValue("exitModal-contents","display");
 			const auto open = runtime.PresentedValue("exitModal","display");
 			Check(gone && gone->text == "none" && open && open->text == "block" && held && Near(static_cast<float>(held->data[3]),.94f,.01f),
@@ -351,6 +369,49 @@ int main(int argc, char** argv) {
 			Check(reopened && reopened->text == "block" && restored && restored->text == "block","a reopened modal stays open");
 			Check(runtime.RunEvent("exitModalHide",16,hidden,error),"close again");
 			runtime.Frame(viewport,16.4);
+		}
+		// Soft focus (REN-016): where the renderer softens the screen, the modal
+		// blurs it 5 u (7.5 dp, 11.25 px at 1080p) at 0.80 saturation without
+		// dimming it, ramping with modal.enter and released after leave's 50 ms
+		// hold; the scrim and the stock column give way to the glow cut to the
+		// dialog, whose side fade is the screen's second mask.
+		{
+			host.softFocus = true;
+			Runtime::EventEffects shown, hidden;
+			Check(runtime.RunEvent("exitModalShow",16.42,shown,error),"the exit confirmation opens over soft focus");
+			host.softened.clear();
+			runtime.Frame(viewport,16.52);
+			const auto blur = runtime.PresentedValue("exitModal-softfocus","backdrop-blur");
+			const auto saturate = runtime.PresentedValue("exitModal-softfocus","backdrop-saturate");
+			Check(blur && Near(static_cast<float>(blur->data[0]),3.75f,.05f) && saturate && Near(static_cast<float>(saturate->data[0]),.9f,.005f),
+				"half way in, the soft focus is at half strength");
+			const auto focus = runtime.PresentedValue("exitModal-softfocus","display");
+			const auto scrim = runtime.PresentedValue("exitModal-scrim","display");
+			const auto column = runtime.PresentedValue("exitModal-glow","display");
+			const auto cut = runtime.PresentedValue("exitModal-glow-soft","display");
+			Check(focus && focus->text == "block" && scrim && scrim->text == "none" && column && column->text == "none" && cut && cut->text == "block",
+				"soft focus replaces the scrim and the stock glow column");
+			Check(host.softened.size() == 1 && Near(host.softened[0].sigma,3.75f*1.5f,.05f) && Near(host.softened[0].saturation,.9f,.005f),
+				"the host softens the screen once a frame, the sigma in view pixels");
+			const auto& region = host.softened[0].region;
+			Check(region.x <= 0 && region.y <= 0 && region.x+region.width >= 1920 && region.y+region.height >= 1080,
+				"the whole view beneath the modal is softened");
+			Check(runtime.Statistics().backdropComposites == 1 && runtime.Statistics().backdropFallbacks == 0,"the backdrop pass is counted");
+			runtime.Frame(viewport,16.64);
+			Check(host.softened.size() == 2 && Near(host.softened[1].sigma,11.25f,.01f) && Near(host.softened[1].saturation,.8f,.001f),
+				"modal.enter ends at a 7.5 dp blur and 0.80 saturation");
+			Check(runtime.Statistics().maskApplications == 2,"the glow's side fade masks it, beside the emblem glint");
+			Check(runtime.RunEvent("exitModalHide",16.65,hidden,error),"the exit confirmation closes");
+			runtime.Frame(viewport,16.67);
+			Check(host.softened.size() == 3 && Near(host.softened[2].sigma,11.25f,.01f),"leave holds the soft focus for 50 ms");
+			runtime.Frame(viewport,16.825);
+			Check(host.softened.size() == 4 && Near(host.softened[3].sigma,11.25f/2,.05f) && Near(host.softened[3].saturation,.9f,.005f),
+				"and releases it over 250 ms");
+			runtime.Frame(viewport,16.96);
+			const auto closed = runtime.PresentedValue("exitModal","display");
+			Check(closed && closed->text == "none" && host.softened.size() == 4 && runtime.Statistics().backdropComposites == 0,
+				"a closed modal softens nothing");
+			host.softFocus = false;
 		}
 		// content.out (section 8): departing home plates fade over 250 ms, but
 		// the plinth and its secondary links take 50 ms; content.in brings

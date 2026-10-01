@@ -76,7 +76,22 @@ The property registry in `Document.cpp` currently supports:
   wrapping, justification, alignment and grow/shrink.
 - Font family/size, line height, letter spacing, color, text alignment and
   whitespace policy, plus localized text content.
-- Background and border colors, opacity and a composed transform.
+- Background and border colors, opacity, a composed transform and backdrop
+  soft focus.
+
+`backdrop-blur` (a non-negative `dp` or `px` length) and `backdrop-saturate`
+(a number 0–1) soften the composed frame beneath the node's border box: a
+Gaussian blur with that sigma, then that saturation, never dimming it
+(`modal.softfocus`, REN-016). Both animate. At no blur and full saturation the
+node has no backdrop pass. The runtime reads only the base surface, so a node
+inside a composition layer (an ancestor below opacity 1 or with a mask) gets
+no soft focus. The host draws it through `Host::SoftenBackdrop`. The engine
+copies the window and blurs it with a two-pass separable Gaussian program on
+OpenGL and Vulkan, then desaturates it into the backdrop layer. A host that
+cannot, such as the GLES renderer, leaves the frame unchanged and counts a
+fallback. Documents choose their fallback with the read-only
+`ui_retainedSoftFocus` CVar, which is 0 there and with the opaque-backing
+option (`ui_retainedOpaqueBacking`).
 
 `opacity` applies to the node's complete subtree using
 [isolated composition](composition.md), including when it is animated. Paint

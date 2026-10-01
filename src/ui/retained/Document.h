@@ -98,6 +98,9 @@ bool ValidStateValue(const StateValue& value);
 // Image sources are engine VFS image names: empty (no picture) or a relative
 // path of letters, digits, '_', '-', '.' and '/', without '..' or '//'.
 bool ValidImageSource(const std::string& source);
+// RmlUi backdrop-filter for a node's soft focus: `backdrop-blur` (a dp/px
+// sigma) and `backdrop-saturate` (0..1); "none" when neither applies.
+std::string BackdropFilterCss(const Value* blur, const Value* saturate);
 enum class ControlState { Default, Hover, Focus, Pressed, Disabled };
 enum class ControlRole { Button, Toggle, Slider, Choice, Number, Scrollbar };
 struct ToggleSpec {

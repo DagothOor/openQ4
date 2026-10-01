@@ -13,6 +13,7 @@
   "menu_continue_shot": {"type": "string", "initial": ""},
   "exitModal.visible": {"type": "boolean", "initial": false},
   "exitModal.contents": {"type": "boolean", "initial": false},
+  "soft_focus": {"type": "boolean", "initial": false, "cvar": "ui_retainedSoftFocus"},
   "motion_reduced": {"type": "boolean", "initial": false, "cvar": "ui_retainedReducedMotion"},
   "pointer_x": {"type": "number", "initial": 0},
   "pointer_y": {"type": "number", "initial": 0},
@@ -92,6 +93,30 @@
    "node": "exitModal-contents",
    "property": "display",
    "value": {"op": "select", "args": [{"state": "exitModal.contents"}, "block", "none"]}
+  },
+  {
+   "id": "exitModal-softfocus.display",
+   "node": "exitModal-softfocus",
+   "property": "display",
+   "value": {"op": "select", "args": [{"state": "soft_focus"}, "block", "none"]}
+  },
+  {
+   "id": "exitModal-scrim.display",
+   "node": "exitModal-scrim",
+   "property": "display",
+   "value": {"op": "select", "args": [{"state": "soft_focus"}, "none", "block"]}
+  },
+  {
+   "id": "exitModal-glow.display",
+   "node": "exitModal-glow",
+   "property": "display",
+   "value": {"op": "select", "args": [{"state": "soft_focus"}, "none", "block"]}
+  },
+  {
+   "id": "exitModal-glow-soft.display",
+   "node": "exitModal-glow-soft",
+   "property": "display",
+   "value": {"op": "select", "args": [{"state": "soft_focus"}, "block", "none"]}
   },
   {
    "id": "detail-continue-shot.image",
@@ -788,7 +813,7 @@
    "durationMs": 200,
    "tracks": [
     {
-     "node": "exitModal",
+     "node": "exitModal-scrim",
      "property": "background-color",
      "keys": [
       {"atMs": 0, "value": {"type": "color", "value": [0, 0, 0, 0]}},
@@ -796,7 +821,28 @@
      ]
     },
     {
+     "node": "exitModal-softfocus",
+     "property": "backdrop-blur",
+     "keys": [
+      {"atMs": 0, "value": {"type": "length", "value": 0, "unit": "dp"}},
+      {"atMs": 200, "value": {"type": "length", "value": 7.5, "unit": "dp"}}
+     ]
+    },
+    {
+     "node": "exitModal-softfocus",
+     "property": "backdrop-saturate",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 1}},
+      {"atMs": 200, "value": {"type": "number", "value": 0.8}}
+     ]
+    },
+    {
      "node": "exitModal-glow",
+     "property": "opacity",
+     "keys": [{"atMs": 0, "value": {"type": "number", "value": 0}}, {"atMs": 200, "value": {"type": "number", "value": 1}}]
+    },
+    {
+     "node": "exitModal-glow-soft",
      "property": "opacity",
      "keys": [{"atMs": 0, "value": {"type": "number", "value": 0}}, {"atMs": 200, "value": {"type": "number", "value": 1}}]
     },
@@ -821,7 +867,7 @@
    "durationMs": 300,
    "tracks": [
     {
-     "node": "exitModal",
+     "node": "exitModal-scrim",
      "property": "background-color",
      "keys": [
       {"atMs": 0, "value": {"type": "color", "value": [0, 0, 0, 0.94]}},
@@ -830,7 +876,34 @@
      ]
     },
     {
+     "node": "exitModal-softfocus",
+     "property": "backdrop-blur",
+     "keys": [
+      {"atMs": 0, "value": {"type": "length", "value": 7.5, "unit": "dp"}},
+      {"atMs": 50, "value": {"type": "length", "value": 7.5, "unit": "dp"}},
+      {"atMs": 300, "value": {"type": "length", "value": 0, "unit": "dp"}}
+     ]
+    },
+    {
+     "node": "exitModal-softfocus",
+     "property": "backdrop-saturate",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0.8}},
+      {"atMs": 50, "value": {"type": "number", "value": 0.8}},
+      {"atMs": 300, "value": {"type": "number", "value": 1}}
+     ]
+    },
+    {
      "node": "exitModal-glow",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 1}},
+      {"atMs": 50, "value": {"type": "number", "value": 1}},
+      {"atMs": 300, "value": {"type": "number", "value": 0}}
+     ]
+    },
+    {
+     "node": "exitModal-glow-soft",
      "property": "opacity",
      "keys": [
       {"atMs": 0, "value": {"type": "number", "value": 1}},
@@ -9538,10 +9611,36 @@
      "top": {"type": "length", "value": 0, "unit": "dp"},
      "width": {"type": "length", "value": 100, "unit": "%"},
      "height": {"type": "length", "value": 100, "unit": "%"},
-     "display": {"type": "keyword", "value": "none"},
-     "background-color": {"type": "color", "value": [0, 0, 0, 0]}
+     "display": {"type": "keyword", "value": "none"}
     },
     "children": [
+     {
+      "id": "exitModal-softfocus",
+      "type": "group",
+      "properties": {
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 0, "unit": "dp"},
+       "top": {"type": "length", "value": 0, "unit": "dp"},
+       "width": {"type": "length", "value": 100, "unit": "%"},
+       "height": {"type": "length", "value": 100, "unit": "%"},
+       "display": {"type": "keyword", "value": "none"},
+       "backdrop-blur": {"type": "length", "value": 0, "unit": "dp"},
+       "backdrop-saturate": {"type": "number", "value": 1}
+      }
+     },
+     {
+      "id": "exitModal-scrim",
+      "type": "group",
+      "properties": {
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 0, "unit": "dp"},
+       "top": {"type": "length", "value": 0, "unit": "dp"},
+       "width": {"type": "length", "value": 100, "unit": "%"},
+       "height": {"type": "length", "value": 100, "unit": "%"},
+       "display": {"type": "keyword", "value": "block"},
+       "background-color": {"type": "color", "value": [0, 0, 0, 0]}
+      }
+     },
      {
       "id": "exitModal-stage",
       "type": "group",
@@ -9574,7 +9673,8 @@
            "top": {"type": "length", "value": -130.5, "unit": "dp"},
            "width": {"type": "length", "value": 480.0, "unit": "dp"},
            "height": {"type": "length", "value": 496.5, "unit": "dp"},
-           "opacity": {"type": "number", "value": 0}
+           "opacity": {"type": "number", "value": 0},
+           "display": {"type": "keyword", "value": "block"}
           },
           "paths": [
            {
@@ -9602,6 +9702,70 @@
             "blend": "additive"
            }
           ]
+         },
+         {
+          "id": "exitModal-glow-soft",
+          "type": "vector",
+          "properties": {
+           "position": {"type": "keyword", "value": "absolute"},
+           "left": {"type": "length", "value": -16.0, "unit": "dp"},
+           "top": {"type": "length", "value": -40.0, "unit": "dp"},
+           "width": {"type": "length", "value": 512.0, "unit": "dp"},
+           "height": {"type": "length", "value": 284.0, "unit": "dp"},
+           "opacity": {"type": "number", "value": 0},
+           "display": {"type": "keyword", "value": "none"}
+          },
+          "paths": [
+           {
+            "id": "column",
+            "commands": [
+             {"id": "p0", "op": "move", "points": [[0, 0]]},
+             {"id": "p1", "op": "line", "points": [[{"fraction": 1}, 0]]},
+             {"id": "p2", "op": "line", "points": [[{"fraction": 1}, {"fraction": 1}]]},
+             {"id": "p3", "op": "line", "points": [[0, {"fraction": 1}]]},
+             {"id": "close", "op": "close"}
+            ],
+            "fill": {
+             "type": "linear",
+             "from": [0, 0],
+             "to": [0, {"fraction": 1}],
+             "stops": [
+              {"at": 0, "color": {"type": "color", "value": [0.2706, 0.3059, 0.1059, 0]}},
+              {"at": 0.1408, "color": {"type": "color", "value": [0.2706, 0.3059, 0.1059, 0.5]}},
+              {"at": 0.3981, "color": {"type": "color", "value": [0.2706, 0.3059, 0.1059, 0.9]}},
+              {"at": 0.6953, "color": {"type": "color", "value": [0.2706, 0.3059, 0.1059, 0.9]}},
+              {"at": 0.8592, "color": {"type": "color", "value": [0.2706, 0.3059, 0.1059, 0.5]}},
+              {"at": 1, "color": {"type": "color", "value": [0.2706, 0.3059, 0.1059, 0]}}
+             ]
+            },
+            "blend": "additive"
+           }
+          ],
+          "mask": {
+           "paths": [
+            {
+             "id": "sides",
+             "commands": [
+              {"id": "p0", "op": "move", "points": [[0, 0]]},
+              {"id": "p1", "op": "line", "points": [[{"fraction": 1}, 0]]},
+              {"id": "p2", "op": "line", "points": [[{"fraction": 1}, {"fraction": 1}]]},
+              {"id": "p3", "op": "line", "points": [[0, {"fraction": 1}]]},
+              {"id": "close", "op": "close"}
+             ],
+             "fill": {
+              "type": "linear",
+              "from": [0, 0],
+              "to": [{"fraction": 1}, 0],
+              "stops": [
+               {"at": 0, "color": {"type": "color", "value": [1, 1, 1, 0]}},
+               {"at": 0.0312, "color": {"type": "color", "value": [1, 1, 1, 1]}},
+               {"at": 0.9688, "color": {"type": "color", "value": [1, 1, 1, 1]}},
+               {"at": 1, "color": {"type": "color", "value": [1, 1, 1, 0]}}
+              ]
+             }
+            }
+           ]
+          }
          },
          {
           "id": "exitModal-frame",

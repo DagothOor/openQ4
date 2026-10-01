@@ -4798,6 +4798,15 @@ bool idMaterial::SetDefaultText( void ) {
 		SetText(va("material %s { sort gui twoSided { blend gl_one, gl_one_minus_src_alpha vertexColor nopicmip nearest clamp map _retainedLayerImage%s } }",GetName(),slot));
 		return true;
 	}
+	if ( idStr::Icmp(GetName(),"_retainedBlur/backdrop") == 0 || idStr::Icmp(GetName(),"_retainedBlur/scratch") == 0 ) {
+		// Retained soft focus: one separable Gaussian pass, opaque, over the
+		// window capture or the horizontal pass's scratch target. parm0..3
+		// carry the step along the pass's axis, the sigma and the saturation.
+		SetText(va("material %s { sort gui twoSided { blend gl_one, gl_zero glslProgram glsl/retained_blur.glsl "
+			"shaderParm blur parm0, parm1, parm2, parm3 shaderTexture Source linear clamp nopicmip %s } }",
+			GetName(),GetName()[14] == 'b' || GetName()[14] == 'B' ? "_retainedBackdrop" : "_retainedBlurScratch"));
+		return true;
+	}
 	if ( idStr::Icmp(GetName(),"_retainedSolid") == 0 ) {
 		// RmlUi's native winding differs from legacy GUI quads; UI planes
 		// also remain visible under mirrored document transforms.

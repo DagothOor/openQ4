@@ -7,8 +7,10 @@
 #include "UserInterfaceManaged.h"
 #include "retained/Runtime.h"
 #include "retained/Input.h"
+#include "../renderer/RendererModule.h"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <map>
 #include <atomic>
@@ -60,6 +62,11 @@ idCVar ui_retainedReducedMotion("ui_retainedReducedMotion", "0", CVAR_GUI | CVAR
 	"reduce decorative motion in the retained UI preview");
 idCVar ui_retainedTrace("ui_retainedTrace", "0", CVAR_GUI | CVAR_BOOL,
 	"trace retained event commits and typed application dispatch for semantic validation");
+idCVar ui_retainedOpaqueBacking("ui_retainedOpaqueBacking", "0", CVAR_GUI | CVAR_BOOL | CVAR_ARCHIVE,
+	"draw the opaque scrim behind retained modals instead of softening the screen beneath");
+// Documents read this to choose between soft focus and its scrim fallback.
+idCVar ui_retainedSoftFocus("ui_retainedSoftFocus", "0", CVAR_GUI | CVAR_BOOL | CVAR_ROM,
+	"whether retained modals soften the screen beneath: no opaque backing and a renderer that can blur it");
 
 class EngineHost final : public openq4::ui::Host {
 public:
@@ -224,6 +231,77 @@ public:
 	void EndLayer(std::uint32_t restore) override {
 		renderSystem->BindRenderTexture(restore ? layers[restore-1].target : nullptr,nullptr);
 	}
+	// Soft focus (REN-016): the base surface behind a modal, blurred by two
+	// separable Gaussian passes and desaturated into the destination layer.
+	// The capture and both targets keep GL row order on every backend, so
+	// each pass samples v = 1-y/h as the layer composites do.
+	bool SoftenBackdrop(std::uint32_t destination, float sigma, float saturation, const openq4::ui::Bounds& region) override {
+		if (!softFocus || !destination || destination > layers.size() || !layers[destination-1].target ||
+			!(sigma >= 0 && sigma <= 256) || !(saturation >= 0 && saturation <= 1)) return false;
+		const float right = static_cast<float>(viewportWidth), bottom = static_cast<float>(viewportHeight);
+		const float x0 = Max(region.x,0.f), x1 = Min(region.x+region.width,right);
+		const float y0 = Max(region.y,0.f), y1 = Min(region.y+region.height,bottom);
+		if (!(x0 < x1 && y0 < y1) || captureWidth <= 0 || captureHeight <= 0 || !EnsureBlurTargets()) return false;
+		// The copy reads the whole window; the view sits at its origin within it.
+		renderSystem->BindRenderTexture(nullptr,nullptr);
+		renderSystem->CaptureRenderToImage("_retainedBackdrop");
+		// The horizontal pass covers every row the vertical pass reads.
+		const float reach = std::ceil(3*sigma), top = Max(y0-reach,0.f), end = Min(y1+reach,bottom);
+		const float w = static_cast<float>(captureWidth), h = static_cast<float>(captureHeight);
+		renderSystem->BindRenderTexture(blurScratch,nullptr);
+		renderSystem->ClearRenderTarget(true,false,1,0,0,0,0);
+		DrawBlurPass(blurBackdropMaterial,{x0,top,x1-x0,end-top},
+			{(viewportX+x0)/w,1-(viewportY+top)/h,(viewportX+x1)/w,1-(viewportY+end)/h},{1/w,0,sigma,1});
+		renderSystem->BindRenderTexture(layers[destination-1].target,nullptr);
+		DrawBlurPass(blurScratchMaterial,{x0,y0,x1-x0,y1-y0},{x0/right,1-y0/bottom,x1/right,1-y1/bottom},
+			{0,1/bottom,sigma,saturation});
+		return true;
+	}
+	bool EnsureBlurTargets() {
+		if (blurScratch && blurWidth == viewportWidth && blurHeight == viewportHeight) return true;
+		renderSystem->DestroyRenderTexture(blurScratch); blurScratch = nullptr;
+		idImageOpts options;
+		options.format = FMT_RGBA8; options.numLevels = 1; options.isPersistant = true;
+		if (!backdropCreated) {
+			// Each capture sizes this image to the window; creating it first
+			// makes it a linear, clamped scratch image rather than a file.
+			options.width = captureWidth; options.height = captureHeight;
+			if (!renderSystem->CreateImage("_retainedBackdrop",&options,TF_LINEAR)) return false;
+			backdropCreated = true;
+		}
+		options.width = viewportWidth; options.height = viewportHeight;
+		idImage* image = renderSystem->CreateImage("_retainedBlurScratch",&options,TF_LINEAR);
+		if (!image || !(blurScratch = renderSystem->CreateRenderTexture(image,nullptr))) return false;
+		blurWidth = viewportWidth; blurHeight = viewportHeight;
+		blurBackdropMaterial = declManager->FindMaterial("_retainedBlur/backdrop");
+		blurScratchMaterial = declManager->FindMaterial("_retainedBlur/scratch");
+		if (!blurBackdropMaterial || blurBackdropMaterial->GetState() == DS_DEFAULTED ||
+			!blurScratchMaterial || blurScratchMaterial->GetState() == DS_DEFAULTED) {
+			renderSystem->DestroyRenderTexture(blurScratch); blurScratch = nullptr; return false;
+		}
+		return true;
+	}
+	// One blur pass over a view-space box. The program reads the step along its
+	// axis (in the source's UV), the sigma in pixels and the saturation from
+	// parm0..3, which the GUI colour supplies unclamped.
+	void DrawBlurPass(const idMaterial* material, const openq4::ui::Bounds& box, const float (&uv)[4], const float (&parms)[4]) {
+		const float sx = 640.f / viewportWidth, sy = 480.f / viewportHeight;
+		const float xs[4] = {box.x,box.x+box.width,box.x+box.width,box.x}, ys[4] = {box.y,box.y,box.y+box.height,box.y+box.height};
+		const float us[4] = {uv[0],uv[2],uv[2],uv[0]}, vs[4] = {uv[1],uv[1],uv[3],uv[3]};
+		idDrawVert vertices[4];
+		for (int i = 0; i < 4; ++i) {
+			idDrawVert& v = vertices[i];
+			v.Clear();
+			v.xyz.Set(xs[i]*sx,ys[i]*sy,0);
+			v.st.Set(us[i],vs[i]);
+			v.normal.Set(0,0,1); v.tangents[0].Set(1,0,0); v.tangents[1].Set(0,1,0);
+			for (int channel = 0; channel < 4; ++channel) v.color[channel] = v.color2[channel] = 255;
+		}
+		const glIndex_t indices[6] = {0,1,2,0,2,3};
+		renderSystem->SetColor4(parms[0],parms[1],parms[2],parms[3]);
+		renderSystem->DrawStretchPic(vertices,indices,4,6,material,false);
+		renderSystem->SetColor4(1,1,1,1);
+	}
 	openq4::ui::FontMetrics GetFontMetrics(const std::string& family, int size) override {
 		renderFontMetrics_t metrics;
 		const std::string key = FontFamily(family);
@@ -271,11 +349,24 @@ public:
 	void ClearLayers() {
 		for (auto& layer : layers) renderSystem->DestroyRenderTexture(layer.target);
 		layers.clear();
+		renderSystem->DestroyRenderTexture(blurScratch); blurScratch = nullptr;
+		blurBackdropMaterial = blurScratchMaterial = nullptr;
+		backdropCreated = false; blurWidth = blurHeight = 0;
 	}
 	int viewportWidth = 1280, viewportHeight = 720;
+	// The view's origin in the window and the window's size, which the
+	// backdrop capture copies; set for each drawn view.
+	float viewportX = 0, viewportY = 0;
+	int captureWidth = 0, captureHeight = 0;
+	bool softFocus = false;
 private:
 	struct Layer { idRenderTexture* target = nullptr; const idMaterial* material = nullptr; const idMaterial* maskMaterial = nullptr; int width = 0, height = 0; };
 	std::vector<Layer> layers;
+	idRenderTexture* blurScratch = nullptr;
+	const idMaterial* blurBackdropMaterial = nullptr;
+	const idMaterial* blurScratchMaterial = nullptr;
+	bool backdropCreated = false;
+	int blurWidth = 0, blurHeight = 0;
 	static std::string FontFamily(const std::string& family) {
 		return family == "marine" ? "marine" : family == "lowpixel" ? "lowpixel" : "chain";
 	}
@@ -391,6 +482,7 @@ void RecordProfile(double engineMilliseconds) {
 	unsigned long long paths = 0, uploads = 0, hits = 0, peakBytes = 0;
 	unsigned long long layerPushes = 0, layerComposites = 0, peakLayerDepth = 0;
 	unsigned long long maskSnapshots = 0, maskApplications = 0, peakLayerTargets = 0;
+	unsigned long long backdropComposites = 0, backdropFallbacks = 0;
 	for (const auto& sample : profile) {
 		times.push_back(sample.engineMilliseconds);
 		compileMilliseconds += sample.statistics.vectorCompileMilliseconds;
@@ -400,15 +492,28 @@ void RecordProfile(double engineMilliseconds) {
 		peakLayerDepth = Max(peakLayerDepth,static_cast<unsigned long long>(sample.statistics.peakLayerDepth));
 		maskSnapshots += sample.statistics.maskSnapshots; maskApplications += sample.statistics.maskApplications;
 		peakLayerTargets = Max(peakLayerTargets,static_cast<unsigned long long>(sample.statistics.peakLayerTargets));
+		backdropComposites += sample.statistics.backdropComposites; backdropFallbacks += sample.statistics.backdropFallbacks;
 	}
 	std::sort(times.begin(),times.end());
 	auto percentile = [&](double fraction) { return times[static_cast<size_t>(std::ceil(fraction*times.size()))-1]; };
-	common->Printf("Retained UI profile: {\"frames\":%d,\"engine_cpu_p50_ms\":%.6f,\"engine_cpu_p95_ms\":%.6f,\"engine_cpu_max_ms\":%.6f,\"vector_compile_ms\":%.6f,\"paths_compiled\":%llu,\"vector_uploads\":%llu,\"cache_hits\":%llu,\"tracked_peak_bytes\":%llu,\"layer_pushes\":%llu,\"layer_composites\":%llu,\"peak_layer_depth\":%llu,\"mask_snapshots\":%llu,\"mask_applications\":%llu,\"peak_layer_targets\":%llu}\n",
-		profileFrames,percentile(.5),percentile(.95),percentile(1),compileMilliseconds,paths,uploads,hits,peakBytes,layerPushes,layerComposites,peakLayerDepth,maskSnapshots,maskApplications,peakLayerTargets);
+	common->Printf("Retained UI profile: {\"frames\":%d,\"engine_cpu_p50_ms\":%.6f,\"engine_cpu_p95_ms\":%.6f,\"engine_cpu_max_ms\":%.6f,\"vector_compile_ms\":%.6f,\"paths_compiled\":%llu,\"vector_uploads\":%llu,\"cache_hits\":%llu,\"tracked_peak_bytes\":%llu,\"layer_pushes\":%llu,\"layer_composites\":%llu,\"peak_layer_depth\":%llu,\"mask_snapshots\":%llu,\"mask_applications\":%llu,\"peak_layer_targets\":%llu,\"backdrop_composites\":%llu,\"backdrop_fallbacks\":%llu}\n",
+		profileFrames,percentile(.5),percentile(.95),percentile(1),compileMilliseconds,paths,uploads,hits,peakBytes,layerPushes,layerComposites,peakLayerDepth,maskSnapshots,maskApplications,peakLayerTargets,backdropComposites,backdropFallbacks);
 	profileFrames = 0; profile.clear();
 }
 
 double PresentationTime() { return std::chrono::duration<double>(std::chrono::steady_clock::now()-epoch).count(); }
+// Soft focus runs an authored GLSL material program: Vulkan compiles it at
+// run time, GL needs GLSL support, and GLES keeps the scrim fallback.
+bool SoftFocusSupported() {
+	const rendererModuleApi_t api = R_RendererModule_GetStatus().activeApi;
+	if (api == RENDER_MODULE_API_VULKAN) return true;
+	return (api == RENDER_MODULE_API_GL || api == RENDER_MODULE_API_GL_MODULE) && renderSystem->GetGLConfig().GLSLProgramAvailable;
+}
+bool UpdateSoftFocus() {
+	const bool active = !ui_retainedOpaqueBacking.GetBool() && SoftFocusSupported();
+	if (ui_retainedSoftFocus.GetBool() != active) ui_retainedSoftFocus.SetBool(active);
+	return active;
+}
 bool WindowFocused() {
 #if defined(USE_SDL3)
 	return Sys_SDL_IsGameWindowFocused();
@@ -858,11 +963,15 @@ bool RetainedUI_DrawViewRoot(retainedUIView_t* view, const openq4::ui::Viewport&
     EditCall call;
 	if (!renderSystem || !renderSystem->IsOpenGLRunning() || viewport.width <= 0 || viewport.height <= 0 || !RetainedUI_PrepareView(view)) return false;
 	const int oldWidth = host.viewportWidth, oldHeight = host.viewportHeight;
+	const float oldX = host.viewportX, oldY = host.viewportY;
 	const bool oldViewport = renderSystem->GetUseUIViewportFor2D();
 	renderSystem->FlushGui();
 	renderSystem->BindRenderTexture(nullptr,nullptr);
 	renderSystem->SetUseUIViewportFor2D(true);
 	host.viewportWidth = viewport.width; host.viewportHeight = viewport.height;
+	host.viewportX = viewport.originX; host.viewportY = viewport.originY;
+	host.captureWidth = renderSystem->GetScreenWidth(); host.captureHeight = renderSystem->GetScreenHeight();
+	host.softFocus = UpdateSoftFocus();
 	rootSubmissionPending = true; rootSubmissionFrame = host.RenderFrame();
 	const double now = PresentationTime();
 	view->runtime->SetReducedMotion(ui_retainedReducedMotion.GetBool(),now);
@@ -871,6 +980,7 @@ bool RetainedUI_DrawViewRoot(retainedUIView_t* view, const openq4::ui::Viewport&
 	renderSystem->SetUseUIViewportFor2D(oldViewport);
 	renderSystem->SetColor4(1,1,1,1);
 	host.viewportWidth = oldWidth; host.viewportHeight = oldHeight;
+	host.viewportX = oldX; host.viewportY = oldY;
 	return true;
 }
 

@@ -52,6 +52,9 @@ static std::vector<openq4::ui::Runtime*> runtimes;
 class EngineHost {
 public:
     int viewportWidth=640,viewportHeight=480,resets=0;
+    float viewportX=0,viewportY=0;
+    int captureWidth=0,captureHeight=0;
+    bool softFocus=false;
     std::uint64_t frame=1;
     std::uint64_t RenderFrame() const { return frame; }
     void Reset();
@@ -91,6 +94,9 @@ public:
     void SetReducedMotion(bool,double) { assert(loaded); }
     void Frame(const Viewport& viewport,double now) {
         assert(loaded && viewport.width==host.viewportWidth && viewport.height==host.viewportHeight);
+        // Soft focus reads the view's place in the window and the window's size.
+        assert(host.viewportX==viewport.originX && host.viewportY==viewport.originY);
+        assert(host.captureWidth==2080 && host.captureHeight==1160 && host.softFocus);
         Record("frame",id,now);
     }
 };
@@ -109,6 +115,8 @@ struct Renderer {
     void FlushGui() { Record("flush"); }
     void BindRenderTexture(void*,void*) { Record("root-target"); }
     void SetColor4(float,float,float,float) {}
+    int GetScreenWidth() const { return 2080; }
+    int GetScreenHeight() const { return 1160; }
 } renderer, *renderSystem=&renderer;
 struct Common {
     void Warning(const char*,...) {}
@@ -133,6 +141,8 @@ HELPERS = r'''
 void SetApplicationOpen(bool value) { applicationOpen.store(value); }
 void CancelInput(bool=false,bool=true) { Record("cancel-preview"); }
 bool WindowFocused() { return true; }
+static int softFocusUpdates=0;
+bool UpdateSoftFocus() { ++softFocusUpdates; return true; }
 struct Owner {
     openq4::ui::Runtime* runtime=nullptr;
     int before=0,restored=0,failed=0;
@@ -234,12 +244,13 @@ int main() {
     assert(viewport.fits==1 && viewport.minimumWidth==640 && viewport.minimumHeight==480);
     ui_retainedDensity.value=2.5f;
     assert(RetainedUI_DefaultViewport(viewport) && viewport.displayScale==2.5f);
-    host.viewportWidth=777; host.viewportHeight=333;
+    host.viewportWidth=777; host.viewportHeight=333; host.viewportX=7; host.viewportY=3;
     renderer.uiViewport=false;
     assert(RetainedUI_DrawViewRoot(a,viewport));
     viewport.width=800; viewport.height=600;
     assert(RetainedUI_DrawViewRoot(b,viewport));
-    assert(host.viewportWidth==777 && host.viewportHeight==333 && !renderer.uiViewport);
+    assert(host.viewportWidth==777 && host.viewportHeight==333 && host.viewportX==7 && host.viewportY==3 && !renderer.uiViewport);
+    assert(softFocusUpdates==2); // Each drawn view refreshes the soft-focus capability first.
 
     // A dirty resource generation cannot invalidate geometry already queued
     // for this front-end frame. Unchanged-generation peers still prepare.
