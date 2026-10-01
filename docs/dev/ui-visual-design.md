@@ -1,6 +1,6 @@
 # openQ4 UI Visual Design
 
-Specification version 1.9, 29 September 2026 (1.7 and 1.8 the same day, 1.6 on
+Specification version 1.10, 1 October 2026 (1.7 to 1.9 on 29 September, 1.6 on
 28 September, 1.4 and 1.5 on 27 September, 1.1 to 1.3 on 26 September, 1.0 on
 8 September 2026). Status:
 implementation target; the replacement has not shipped. Applies to every
@@ -27,7 +27,8 @@ transmission waveform from their textures. Version 1.7 restores the Quake
 emblem to the title screen, sets the single-player pause menu apart from it and
 adds a Strogg pause menu. Version 1.8 rebuilds the initializing screen from
 separate layers and turns its rings slowly. Version 1.9 replaces the modal
-scrim with a soft focus of the screen beneath.
+scrim with a soft focus of the screen beneath. Version 1.10 adds a sub-page
+level beneath the menu pages, with its own band step and path crumb.
 [Appendix C](#appendix-c-change-record) lists every change and the
 requirement-register rows it affects.
 
@@ -964,7 +965,9 @@ presented frame.
 | `wheel.open` | 150 ms to readable, 300 ms in all | Marine: slit power-on, deploy, static burst, tune-in; Strogg: boot cascade and translation (section 14.6) (openQ4) |
 | `wheel.select` | 150–350 ms | Marine: a transmission cut; Strogg: the heading translation (section 14.6) (openQ4) |
 | `wheel.close` | 150–170 ms | Marine: sign-off to the slit; Strogg: scrambled drop-out (section 14.6) (openQ4) |
-| `title.carry` | 500 ms | With `frame.dock`: the activated label travels into the title slot and scales to the title size (openQ4) |
+| `title.carry` | 500 ms, or 300 ms going deeper | With `frame.dock`, or `frame.step` going deeper: the activated label travels into the title slot and scales to the title size (openQ4) |
+| `frame.step` | 300 ms | `accel(150, 150)`; only the top band moves one notch pitch (97 u) toward the trailing edge as a page opens a sub-page, from 50 ms, and back at once on Back; the bottom band stays docked (openQ4) |
+| `title.crumb` | 150 ms | Linear; going deeper, the page title rises 7 u into the top band's thin span, steps down to 80% of its size and dims to 0.40 as the parent in the path; on Back it returns over the last 150 ms of `frame.step`, once the step has passed back under it (openQ4) |
 
 These are authored defaults. Story-driven timing, terminal sequences, weapon
 reticles and scripted effects remain faithful to sources. Marine menu screen
@@ -1003,6 +1006,27 @@ switched instantly in stock, without a fade; the 150 ms title fade happens only
 on entry from home. Controls tabs switched instantly and flashed their row
 plates (`row.flash`). `page.enter` and `page.leave` now cover sibling pages.
 
+**Page to sub-page (openQ4).** In Remastered, a section that leads deeper
+opens its sub-page one level down (section 13.7). Accept plays
+`main_menu_selection` once. At 0 ms the page's plates fade over 150 ms while
+the page sweeps 640 u toward the trailing edge over 300 ms, as the stock did
+within the Multiplayer screen, and the page title becomes the crumb
+(`title.crumb`). From 50 ms only the top band steps one notch pitch toward
+the trailing edge (`frame.step`), so its 45-degree step slides under the crumb
+and becomes the separator in the path. At 350 ms the sub-page appears: its
+own plates show at once at rest, and its title (to 0.50, at the step's foot)
+and backing fade in over 150 ms (`content.in`). The bottom band and Back never
+move.
+
+**Sub-page to page (openQ4).** The sub-page title disappears at once, and the
+sub-page sweeps 640 u toward the leading edge over 300 ms with its plates
+(`screen.return`) while the top band steps back at once. The crumb returns to
+the title slot over the last 150 ms of the step, after the band's step has
+passed back under it. At 300 ms the page, re-placed while hidden, fades in its
+plates and content over 150 ms, with the focus on the section that led down.
+Classic keeps the stock: the bands stay docked, the page sweeps out over
+300 ms and the sub-page appears at 500 ms under a path title.
+
 **Opening, closing and modals.** The menu opens under `menu.fade` from black
 with the bands already at home; the in-game menu closes with `menu.fade` to
 black, and single-player RETURN TO GAME closes at once. Modals never move the
@@ -1028,9 +1052,12 @@ pages at their destinations and cross-fades content within 80 ms.
 The framing bands are the menu's largest moving surfaces; these rules keep
 their motion legible at every size and refresh rate.
 
-- **One path, two states.** Each band has exactly two dock states per menu,
-  home and page (Appendix B.2), and moves along the straight line between
-  them. Notches, risers and steps travel with the band and never deform;
+- **Dock states.** Each band has two dock states per menu, home and page
+  (Appendix B.2). Remastered adds a sub-page state, in which only the top band
+  moves on, one notch pitch (97 u) toward the trailing edge; the bottom band
+  and Back stay docked, so nothing leaves the 4:3 canvas. Bands move along the
+  straight lines between states. Notches, risers and steps travel with the
+  band and never deform;
   aspect expansion lengthens only the flat spans, which stay attached to the
   viewport edges throughout the move.
 - **Profile.** `frame.dock` is `accel(250, 250)` for both bands, sampled every
@@ -1039,15 +1066,18 @@ their motion legible at every size and refresh rate.
 - **Retargeting.** Input that reverses a screen change starts the opposite
   move from the bands' current positions. The new move keeps the `accel`
   profile and takes a duration proportional to the remaining distance, at least
-  150 ms and at most 500 ms, so position never jumps.
+  150 ms and at most 500 ms, so position never jumps. A reversed `frame.step`
+  takes 150–300 ms the same way.
 - **Title carry.** In Remastered, the activated navigation label travels into
   the title slot during `frame.dock` (`title.carry`) and becomes the path title
-  (section 13.8).
+  (section 13.8). Going deeper, it travels into the slot at the step's foot
+  during `frame.step`, and the page title becomes the crumb (`title.crumb`).
 - **Light.** The rim light is part of the band and moves with it; nothing
   pulses or flares on arrival.
 - **Compact classes.** Dock states follow the band depth limits of section
   13.3. The page state keeps its measured notch and step geometry; only the
-  travel distance shrinks.
+  travel distance shrinks. The sub-page step stays one notch pitch at the
+  class's scale.
 - **Rate.** A screen change renders at the display rate. The Phone profile's
   30 Hz cap applies to a menu at rest, never to a change in progress.
 - **Sound.** `main_menu_selection` plays once at activation; nothing plays
@@ -1202,6 +1232,16 @@ the bottom band moves 373 u toward the trailing edge and 35 u down. The top
 band then carries the screen title at 39,19 u and its notches over the
 content column; the bottom band's raised trailing section holds Back at
 532,441 u (109x30 u).
+
+**Sub-page state (openQ4).** The top band moves on one notch pitch, 97 u
+toward the trailing edge; the bottom band and Back stay docked. The band's
+step now falls at 122–136 u, its notches move one pitch along over the
+content, and its riser moves into the trailing side screen. The parent page's
+title is the crumb: it rises 7 u to 39,12 u, into the band's thin leading
+span, at 80% of the title size and 0.40, and shrinks to fit that span before
+it truncates. The band's 45-degree step separates it from the sub-page's
+title, which starts at the step's foot, 136,19 u. The sub-page keeps the page
+layout: section navigation from 14 u and content from 228 u.
 
 **Settings.** Section navigation plates run from 14 u across 208 u on a 30 u
 pitch from 172 u. The content column starts at 228 u: section headings at
@@ -1648,12 +1688,13 @@ and parallax off.
 
 ### 13.7 Screen patterns
 
-- **Title.** The emblem watermark keeps the trailing side (section 13.8). When
-  a save exists, Continue leads the navigation, and the message line under it
-  (the stock message-of-the-day slot at 44,364 u) shows its detail: a levelshot
+- **Title.** The emblem watermark keeps the trailing side (section 13.8). When a
+  save exists, Continue leads the navigation, and the message line under it (the
+  stock message-of-the-day slot at 44,364 u) shows its detail: a levelshot
   thumbnail, the mission, difficulty and play time. The same line explains
-  whichever item has focus. SINGLE PLAYER (Mission and Arena), LOAD GAME,
-  MULTIPLAYER and SETTINGS follow, and the secondary links stay on the plinth.
+  whichever item has focus. SINGLE PLAYER (a page leading to Campaign and
+  Arena), LOAD GAME, MULTIPLAYER and SETTINGS follow, and the secondary links
+  stay on the plinth.
 - **Pause.** Resume leads. Single player offers Save, Load, Settings, Restart
   Level, Objectives and Quit to Menu. Multiplayer uses the tabbed Escape menu
   of section 14.18 (Team, Players, Vote, Match, Settings, Voice, Server and
@@ -1685,14 +1726,22 @@ and parallax off.
   gauge drawn from the slider's tick ramp. Crosshair, HUD scale, text size,
   brightness and color-vision rows preview live. Apply and Discard live in the
   prompt bar, and display changes keep the 15-second Keep or Revert countdown.
+- **Menu levels.** Home, pages and sub-pages (sections 8 and 9). Single Player
+  is a page whose sections, Campaign and Arena, each open a sub-page: Campaign
+  holds New Campaign (the difficulty choice) and Chapters (the reached
+  missions), and Arena holds the tier ladder. Multiplayer's Join Game (the
+  server browser), Create Server and Demos (the demo list) open sub-pages too,
+  and Player Setup edits in place. A section that leads deeper summarizes itself
+  in the content column, with a levelshot where one fits, until Accept opens it.
+  Back always climbs one level.
 - **Lists** (servers, saves, demos). Filters are small cut tags built like the
   header band. Sort from the column header or with north. The detail column
   shows the levelshot, players and rules; Join, Spectate and Favorite sit in
   the prompt bar; west refreshes. Empty, loading and failed states follow
   section 7.
-- **Arena Campaign.** Tiers form a vertical ladder of plates. Locked tiers are
-  dimmed and carry the lock symbol, boss matches use a larger plate, and the
-  bumpers switch tier.
+- **Arena Campaign.** On the Arena sub-page, tiers form a vertical ladder of
+  plates in the section navigation. Locked tiers are dimmed and carry the lock
+  symbol, boss matches use a larger plate, and the bumpers switch tier.
 - **Match Control.** Keep its contract: unavailable actions stay visible, and
   the refusal reason shows in the detail area. The bumpers move between
   sections, and destructive actions use the stock modal.
@@ -3138,3 +3187,16 @@ Version 1.9 replaces the modal scrim with a soft focus of the screen beneath.
 
 Register schema 8 supersedes ART-023 and ART-024, which quoted the 0.94 scrim,
 with ART-032 and ART-033, and appends REN-016 (backdrop soft focus).
+
+### Version 1.10
+
+Version 1.10 adds a sub-page level beneath the menu pages.
+
+| Area | 1.9 | 1.10 | Basis |
+| --- | --- | --- | --- |
+| Menu levels | Home and pages; the stock went deeper only within the Multiplayer screen, with the bands docked | Home, pages and sub-pages: Single Player leads to Campaign and Arena, Multiplayer to Join Game, Create Server and Demos | The product owner's review |
+| Band dock states | Home and page | A sub-page state in Remastered: only the top band moves on one notch pitch (`frame.step`); the bottom band and Back stay docked | The stock notch pitch, 97 u |
+| Path title | The activated label carried into the title slot | The page title becomes the crumb in the band's thin span, and the band's step separates it from the sub-page's title (`title.crumb`) | Section 13.8's path title |
+
+Register schema 9 supersedes MOT-013, whose band motion rules allowed exactly
+two dock states, with MOT-016, and appends FLOW-050 (menu levels).
