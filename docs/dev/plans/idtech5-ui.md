@@ -110,10 +110,10 @@ menu requests and exact overflow clipping under translation and scale. The
 loading screen shows the Remastered progress: the loader's phase with its
 place or asset count, the percentage, the load time and a controller continue
 prompt, and in multiplayer the server card and JOINING. Its confirmations
-soften the screen beneath them on OpenGL and Vulkan, keeping the stock scrim
-for the opaque-backing option and GLES. The pause menu's Objectives action and
-live objectives, the Strogg variant, the softened pause backdrop, loading tips,
-the multiplayer arsenal and the Escape and Welcome menus remain. No gate
+and the pause menu soften the screen beneath them on OpenGL and Vulkan,
+keeping a darkening scrim for the opaque-backing option and GLES. The pause
+menu's Objectives action and live objectives, the Strogg variant, loading
+tips, the multiplayer arsenal and the Escape and Welcome menus remain. No gate
 closes.
 
 ## Objective and immutable completion scope

@@ -55,8 +55,12 @@ after editing the script; `--check` fails when an output is stale.
   QUIT TO MENU; only EXIT stays on the plinth, and both quits ask first. The
   current level block takes the emblem's place: a card with the levelshot, the
   mission, the difficulty and the map's objectives (the heading hides when the
-  map has none). The paused view stays behind the screen under its scrim. Back
-  resumes the game.
+  map has none). The paused view stays behind the screen, softened and never
+  dimmed: the specification gives scene softening no values of its own, so
+  it takes `modal.softfocus` (a 7.5 dp blur at 0.80 saturation), ramping in
+  over 250 ms with the screen's fade from black. With the opaque-backing
+  option, or on a renderer that cannot soften the view, a darkening scrim and
+  vignette stand in. Back resumes the game.
 - **Loading** (section 14.17). Replaces the stock `generic`, `splevel`,
   `mplevel` and `intro` loading GUIs; a map's own loading GUI stays. The
   levelshot, reticle grid, framing bands, brackets and dot matrix frame the
@@ -346,6 +350,15 @@ pins the capture and passes. Evidence:
 `.tmp/ui/retained-softfocus/validation-evidence.json`, SHA-256
 `ae57a44a9b1ddf3d582d1caa7d8565e82582b76a3c63f09717a7f8e5efec6eaf`.
 
+The softened paused view was captured the same way on OpenGL and Vulkan at
+1280x720, over airdefense1. The view is blurred and desaturated, the HUD
+crosshair blurs away, and the frame is not darkened. The darkening fallback
+keeps the crosshair sharp, and the quit confirmation softens the pause
+screen above the softened view. The screens test pins the ramp, a page's
+return and the next pause; without the ramp's restart key it fails.
+Evidence: `.tmp/ui/retained-pause-softfocus/validation-evidence.json`,
+SHA-256 `1443f7b6398db734e30c564d03a831f0aa401f3c3940d726a31bcb0ca9e4268d`.
+
 ## Known limitations
 
 - The pause menu has no OBJECTIVES action yet, so the navigation holds six of
@@ -354,12 +367,13 @@ pins the capture and passes. Evidence:
   mission, total time and last save.
 - The Strogg pause variant (R_Strogg labels, the translation reveal, 30-degree
   shoulders) is not implemented; the Marine screen is used throughout.
-- The scene behind the pause screen is darkened, not softened, and the HUD's
-  crosshair shows through the scrim.
-- Soft focus covers the confirmations only, and the opaque-backing option
-  has no Settings row yet (`ui_retainedOpaqueBacking` is a CVar). A node
-  inside a composition layer gets no soft focus, because only the base
-  surface is read. Only the confirmation width exists.
+- Resuming, or leaving the pause any other way, drops the softened view at
+  once instead of releasing it over 250 ms, and the HUD's crosshair still
+  shows through the darkening fallback.
+- Soft focus covers the confirmations and the pause screen, and the
+  opaque-backing option has no Settings row yet (`ui_retainedOpaqueBacking`
+  is a CVar). A node inside a composition layer gets no soft focus, because
+  only the base surface is read. Only the confirmation width exists.
 - The multiplayer Escape and Welcome menus (section 14.18) keep the stock
   menus: the retained home screen is never presented in a multiplayer game.
 - The loading screen has no tips and no touch prompt (touch counts as desktop
