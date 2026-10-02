@@ -395,8 +395,67 @@ static void PaddedValueParts(TestHost& host) {
     }
 }
 
+// A catalog list: six authored options, the first `count` shown, each one's
+// text published by the application through string state.
+static std::string CountedSource() {
+	auto source=Parse(Source());
+	source["state"]["count"]["type"]="number"; source["state"]["count"]["initial"]=3;
+	auto* choice=BoxFrameNode(source["root"],"choice"); Check(choice!=nullptr,"counted fixture finds its choice");
+	auto& control=(*choice)["control"]; control["optionCount"]=Ref("count");
+	for (unsigned i=0;i<6;++i) {
+		const auto key="label"+std::to_string(i);
+		source["state"][key]["type"]="string"; source["state"][key]["initial"]="";
+		auto& option=control["options"][i]; option.removeMember("labelIndex"); option["label"]=Ref(key.c_str());
+	}
+	return Text(source);
+}
+static Rml::Element* LiveElement(const char* id) {
+	auto* context=Rml::GetContext(0); auto* document=context?context->GetDocument(0):nullptr;
+	return document?document->GetElementById(id):nullptr;
+}
+static bool LiveHidden(const char* id) {
+	auto* element=LiveElement(id); const auto* display=element?element->GetLocalProperty("display"):nullptr;
+	return display && display->ToString()=="none";
+}
+static std::string LiveText(const char* id) { auto* element=LiveElement(id); return element?element->GetInnerRML():std::string("<missing>"); }
+static void CountedStateLabels(TestHost& host) {
+	View view(host,CountedSource());
+	view.State({{"label0",std::string("Display 1: Dell U2720Q")},{"label1",std::string("2560 \xc3\x97 1440")},{"label2",std::string("#str_label")},
+		{"label3",std::string("Hidden")},{"label4",std::string("Held but hidden")},{"label5",std::string("Never")},{"thirdEnabled",true}});
+	view.Frame();
+	Check(!LiveHidden("option-0") && !LiveHidden("option-2") && LiveHidden("option-3") && LiveHidden("option-5"),"options past the count are hidden");
+	Check(LiveText("option-0-label")=="Display 1: Dell U2720Q" && LiveText("option-1-label")=="2560 \xc3\x97 1440" && LiveText("option-2-label")=="Label",
+		"state labels show the application's text, a #str_ key translating as any retained text does");
+	view.runtime.FocusControl("choice",view.time);view.Key(MenuInput::Accept);view.Frame();
+	Check(view.Widget("choice").popupOpen,"a counted list opens");
+	view.Key(MenuInput::End);Check(view.Widget("choice").highlight=="option-2","End stops at the last shown option");
+	view.Key(MenuInput::Home);Check(view.Widget("choice").highlight=="option-0","Home reaches the first option");
+	view.State({{"label1",std::string("1920 \xc3\x97 1080")}});view.Frame();
+	Check(!view.Widget("choice").popupOpen && view.runtime.TakeActions().empty(),"a label change closes the open list without a proposal");
+	view.Key(MenuInput::Accept);view.Frame();Check(view.Widget("choice").popupOpen,"the list reopens over its new labels");
+	view.State({{"count",1.0}});view.Frame();
+	Check(!view.Widget("choice").popupOpen,"a count change closes the open list");
+	view.Key(MenuInput::Accept);view.Frame();view.Frame();
+	Check(view.Widget("choice").popupOpen && Near(view.BoxOf("popup").height,40),"one shown option sizes the list to one row");
+	view.Key(MenuInput::Down);view.Key(MenuInput::End);Check(view.Widget("choice").highlight=="option-0","navigation never reaches a hidden option");
+	const auto popup=view.BoxOf("popup");view.Click(popup.x+30,popup.y+popup.height+20);
+	Check(view.runtime.TakeActions().empty(),"the space a hidden row would fill selects nothing");
+	view.Key(MenuInput::Back);view.Frame();
+	view.State({{"choice",4.0}});view.Frame();
+	Check(LiveText("choice-value")=="Held but hidden","the closed value names a hidden option that holds the value");
+	view.State({{"count",99.0}});view.Frame();Check(!LiveHidden("option-5"),"a count past the options shows them all");
+	view.State({{"count",2.7}});view.Frame();Check(!LiveHidden("option-1") && LiveHidden("option-2"),"a fractional count floors");
+	view.State({{"count",-4.0}});view.Frame();Check(LiveHidden("option-0"),"a negative count shows no option");
+	view.runtime.FocusControl("choice",view.time);view.Key(MenuInput::Accept);view.Frame();
+	Check(view.Widget("choice").highlight.empty(),"an empty list highlights nothing");
+	view.Key(MenuInput::Accept);const auto picked=view.runtime.TakeActions();
+	Check(std::none_of(picked.begin(),picked.end(),[](const ControlAction& action){return action.proposal.has_value();}),"an empty list offers nothing to pick");
+	view.Key(MenuInput::Back);view.Frame();
+}
+
 int main() {
 	TestHost host;PaddedValueParts(host);ReadbackAndToggle(host);ProjectedDragAndHandoff(host);PopupAndPersistence(host);ScrollBodyAndFocusReveal(host);PositionedOverflowBoundaries(host);
+	CountedStateLabels(host);
 	Check(host.errors==0,"real Runtime/RmlUi reports no errors");
 	std::printf("Value Runtime: %u checks passed\n",checks);
     return 0;

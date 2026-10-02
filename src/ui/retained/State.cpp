@@ -181,6 +181,13 @@ bool State::Evaluate(const StateValues& candidate, PropertyValues& props, std::m
 		} else if (control.role == ControlRole::Choice) {
 			const auto* spec = std::get_if<ChoiceSpec>(&control.widget);
 			if (!spec) { error = "Invalid choice readback descriptor"; return reject(); }
+			if (spec->optionCount) {
+				StateValue count;
+				if (!EvaluateStateExpression(*spec->optionCount,candidate,count,error)) return reject();
+				const auto* number = std::get_if<double>(&count);
+				if (!number || !std::isfinite(*number)) { error = "A choice's option count must be a finite number"; return reject(); }
+				value.optionCount = static_cast<std::size_t>(std::clamp(std::floor(*number),0.0,static_cast<double>(spec->options.size())));
+			}
 			for (const auto& option : spec->options) {
 				if (option.value.index() != value.value.index() || !ValidStateValue(option.value)) {
 					error = "Choice option differs from the authoritative value type"; return reject();
@@ -190,6 +197,14 @@ bool State::Evaluate(const StateValues& candidate, PropertyValues& props, std::m
 				const auto* flag = std::get_if<bool>(&available);
 				if (!flag) { error = "Choice availability must be Boolean"; return reject(); }
 				value.enabledOptions.push_back(*flag);
+				std::string label;
+				if (!option.labelState.empty()) {
+					const auto found = candidate.find(option.labelState);
+					const auto* text = found == candidate.end() ? nullptr : std::get_if<std::string>(&found->second);
+					if (!text) { error = "A choice option's label state must hold a string"; return reject(); }
+					label = *text;
+				}
+				value.optionLabels.push_back(std::move(label));
 			}
 		} else { error = "Unsupported value control role"; return reject(); }
 		// Bounds/list membership constrain proposals, not authoritative reads:

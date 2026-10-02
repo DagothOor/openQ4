@@ -38,6 +38,41 @@ written through aliases, bindings or motion tracks. The canonical source retains
 the authored hierarchy for future editor round trips; runtime popup placement
 changes only the derived DOM.
 
+## Catalog lists
+
+A choice can carry a catalog whose entries and length the application decides,
+such as the displays, display modes and refresh rates the SYSTEM page offers.
+
+- **State labels.** An option's `label` can be `{"state":"<key>"}`. The key must
+  be declared string state, and the option then has no `labelIndex`. The option
+  shows that state's text. Like all retained text, a `#str_` key in it reads in
+  the player's language. The application therefore keeps untrusted names, such
+  as a monitor's name, from starting with one.
+- **An option count.** `optionCount` is a numeric state expression. The first
+  `optionCount` options lead the list, and the rest are hidden. A fraction
+  floors, the count clamps to the authored options, and an absent count means
+  every option. Each option node needs an explicit `display` base, which the
+  view restores when the option comes back. Hidden options are never eligible,
+  measured, painted in the popup or reached by navigation. The visible window
+  and the scroll extent cover only the shown options.
+- **The closed value.** A value held by a hidden option still shows that
+  option's label, so a stale or unlisted selection keeps its name.
+- **Changes under an open list.** A change to the labels or the count closes an
+  open popup, because its rows moved under the pointer and the highlight. A
+  change to availability alone keeps today's behaviour.
+
+The readback carries the published labels and the count beside the option
+availability, and they are evaluated atomically with it. An invalid count
+expression rejects the whole state update. The schema, readback and runtime
+tests cover state labels beside authored ones, the count's clamping and
+flooring, hidden rows, navigation stopping at the last shown option, the
+closed value of a hidden option, and closing on change.
+
+The catalog lists were qualified by the native schema, readback, interaction
+and runtime tests and the full Meson suite, with no engine change beyond the
+retained runtime. Evidence: `.tmp/ui/runtime-choice-lists/validation-evidence.json`,
+SHA-256 `a7942e4f9e15c32e1ce694164cff1ff856b69ee5cd27fa99f9343910b7208cd3`.
+
 ## Interaction and rendering
 
 Sliders project pointer coordinates through the actual track transform and

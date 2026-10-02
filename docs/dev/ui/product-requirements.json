@@ -4,7 +4,7 @@
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "c1ed29af5f99218bf5bab284b1e50bece28475fd",
+    "engine_revision": "353d8a55d33677b3bbdb6a0f602ac8f7634edb07",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -108,7 +108,7 @@
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/document-format.md",
       "scope": "Typed JSONC, stable IDs, value edits and motion only; components, structure editing and full model unfinished.",
-      "sha256": "5e2c46aad9027564d19dcf848b3a77d2f78ce3c6c7a87b51de0e99f61fbd9983"
+      "sha256": "7e43643f20585ac0900f5cf3a456bf5fea0de683195a5ede974cd8fb5e7406e9"
     },
     "binding-foundation": {
       "kind": "implementation_checkpoint",
@@ -253,7 +253,7 @@
       "scope": "M2 implementation subset: canonical typed toggle, stepped slider and constrained choice roles, atomic authoritative value/mixed/option readbacks, invocation-local immutable edit operands and acknowledged proposals. Authored stable vector parts have compiler-enforced geometry and property ownership; derived popup placement, tentative selection/drag state, source cancellation and versioned widget snapshots support the subset. The packaged openq4.system document declares the complete 53-field draft/baseline service schema and presents eight initial immediate image controls with local dirty-discard and eligible display-confirmation panels. A non-archived default-off ui_retainedSystem option selects the normal Session child route, preserving its exact parent and service-owned return guard. The final Windows build/package stage and 13 native UI suites pass; the production Session boundary passes 173 checks and the capture runner passes 15 tests with 444 rejected altered-log cases. Source/binary-bound hidden windowed Windows SP/OpenGL at 125% and MP/Vulkan at 200%, both at 1280x720, each pass 18 normal Session stages after active gameplay. Draft/readback/apply, dirty Back/continue/discard, tentative/committed choice, language/video recovery with an unapplied draft, exact parent return and fresh-owner reopen are covered. All 14 engine render-target images were reviewed, including column reflow, popup placement and distinct disabled Apply; SP has no warnings/errors, MP retains 94 baseline warnings with no new warning messages or errors. These are semantic integration and static-view checks, not full physical-input, transition, display/platform/language or artwork qualification. Precise numeric text entry/IME, complete controls and setting inventory, effect/preset executors, full source-derived artwork/transitions, touch/accessibility/scrollbars, editor round trips and full platform/corpus qualification remain required. Discard currently resets the draft and stays on the page. No requirement, milestone, production screen or migration entry is accepted.",
       "local_capture_summary": ".tmp/ui/value-controls-review/capture-evidence.json",
       "local_capture_summary_sha256": "2c5c14d4d0a9d0fb8cc8d45dab9af39fdc9e6c4ab017f93a1f6a3e49c3cf1a40",
-      "sha256": "948cfd1c87e67ab38ea25a0dc33fd995553472b4ab19dd44d7010ae4713412d1"
+      "sha256": "801ed39becd7e3ea5c68964089609ff140509713c37a5bc555c074f7b448843d"
     },
     "system-exit-foundation": {
       "kind": "implementation_checkpoint",
@@ -523,7 +523,7 @@
     "authored-choice-scrollbars": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/choice-scrollbars.md",
-      "sha256": "bf7f1fb74906e6545a127ecff6f356799ae66c8d2f58b7f2dcad7b7391e9369c",
+      "sha256": "efd98ff4e363b8302580428236c9fef1118589ae0e9cc28ac466b0261c6c7b8b",
       "baseline_engine_revision": "fc4443cb071022e29b429c9b74731dfa9b0c3b86",
       "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
       "scope": "Four SYSTEM choices own editable vector scrollbars with fresh geometry, logical offsets, transient gestures and strict semantic presentation APIs. Full build,69 UI suites,compiled mutations,Linux sanitizers and20 reviewed windowed engine images pass. Fitting bars are hidden. Physical/native input, full popup framing/safe-area placement, editor and complete state galleries remain required.",
@@ -767,6 +767,12 @@
       "path": "docs/dev/ui/retained-screens.md",
       "scope": "The multiplayer server card's players and message: the players by team (one list outside team modes) with spectators and players connecting, and the server's message (si_motd), captured on the host, on a map change and on a fresh connection through an optional connect-response roster block. Qualified by the gate test compiling the production sanitizer, roster and publish, the codec's native test, the native screens test, engine captures on OpenGL and Vulkan and in three more languages, and traces from a listen host and a second client.",
       "sha256": "8d1b37659cf6dbfebfc37465d16d90e73129edbdd72c0411371d8ba9eb50266c"
+    },
+    "runtime-choice-lists": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/value-controls.md",
+      "scope": "Catalog lists for retained choices: state-sourced option labels and a state-bound option count, with hidden options ineligible, unmeasured and unreachable, the closed value naming a hidden selection, and an open list closing when its labels or length change. Qualified by native schema, readback, interaction and runtime tests.",
+      "sha256": "801ed39becd7e3ea5c68964089609ff140509713c37a5bc555c074f7b448843d"
     }
   },
   "groups": {
@@ -4042,10 +4048,11 @@
       "current_evidence": [
         "value-controls-foundation",
         "performance-preset-drafts",
-        "authored-choice-scrollbars"
+        "authored-choice-scrollbars",
+        "runtime-choice-lists"
       ],
       "acceptance_evidence": [],
-      "remaining": "Canonical constrained choices now have stable typed options and authored field/chevron/popup/row/label/selection/highlight parts, authoritative readback, tentative open/cancel/commit behavior and measured popup scrolling/placement. Initial post-AA selection uses the settings draft. Four SYSTEM choices now integrate authored popup scrollbars, measured transformed geometry and logical offsets; fitting lists hide their bar. Complete safe-area placement without footer/rail overlap, source-derived popup framing, all constrained/overflow/dynamic availability cases, focus restoration, full physical-device/accessibility behavior, reusable artwork and state-gallery acceptance. Recorded native and normal-route Windows checks qualify this initial control subset only."
+      "remaining": "Canonical constrained choices now have stable typed options and authored field/chevron/popup/row/label/selection/highlight parts, authoritative readback, tentative open/cancel/commit behavior and measured popup scrolling/placement. Initial post-AA selection uses the settings draft. Four SYSTEM choices now integrate authored popup scrollbars, measured transformed geometry and logical offsets; fitting lists hide their bar. Catalog lists take their option text from application state and show only the leading options a state count names; the rest are hidden, ineligible and unmeasured, and an open list closes when its labels or length change. Complete safe-area placement without footer/rail overlap, source-derived popup framing, all constrained/overflow/dynamic availability cases, focus restoration, full physical-device/accessibility behavior, reusable artwork and state-gallery acceptance. Recorded native and normal-route Windows checks qualify this initial control subset only."
     },
     {
       "id": "WID-006",

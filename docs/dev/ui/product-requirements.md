@@ -503,6 +503,8 @@ The [full renderer shutdown increment](image-recovery-ownership.md), based on en
 
 The [editor file publication increment](editor-file-safety.md), based on engine `a11a00181b5997993bb9e225bad63a6422386311`, adds actual native creation of complete new files without replacing an existing or racing document. Windows Clang and MSVC each pass 340 checks, GCC with sanitizers passes 344, and all three reject seven compiled mutations. The full engine build and 78 UI suites pass. Windows symlink and DrvFS FIFO limitations are recorded. This file-only increment has no new game captures. Save As/autosave UI, live document association, overwrite/conflict handling and crash/relaunch recovery remain required. No requirement status, migration acceptance or final gate changes. Evidence: `.tmp/ui/editor-new-file/validation-evidence.json`, SHA-256 `846413e35eb34ed965a57005aa6eb724b5c8d3dbc2fb46f65ba30711a509cc63`.
 
+On engine `353d8a55d33677b3bbdb6a0f602ac8f7634edb07` retained choices gain catalog lists: option labels from application state and a state-bound option count, with hidden options ineligible, unmeasured and unreachable, a hidden selection still named, and an open list closing when its labels or length change. The native schema, readback, interaction and runtime tests qualify them. `WID-005` gains partial evidence without a status change. Evidence: `.tmp/ui/runtime-choice-lists/validation-evidence.json`, SHA-256 `a7942e4f9e15c32e1ce694164cff1ff856b69ee5cd27fa99f9343910b7208cd3`.
+
 There are **87 partial, 252 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.

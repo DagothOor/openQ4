@@ -82,6 +82,8 @@ struct ValueControlView::Impl {
 		std::vector<float> placementFingerprint;
 		std::uint64_t placementOpening = 0;
 		bool placementReady = false;
+		// The options the list last painted; the rest are hidden and unmeasured.
+		std::size_t optionCount = std::numeric_limits<std::size_t>::max();
 	};
 	struct Applied { std::string requested, actual; };
 	Rml::ElementDocument* document = nullptr;
@@ -118,7 +120,10 @@ struct ValueControlView::Impl {
 		return Property(id,"display",visible ? shown : "none");
 	}
 	std::string Translate(const std::string& value) const { return translate ? translate(value) : value; }
-	std::string Label(const ChoiceOption& option) const {
+	static std::size_t Shown(const Entry& entry, const ChoiceSpec& choice) { return std::min(entry.optionCount,choice.options.size()); }
+	// A state label is the application's text; it translates as any text does.
+	std::string Label(const ChoiceOption& option, const ControlReadback& readback, std::size_t index) const {
+		if (!option.labelState.empty()) return index < readback.optionLabels.size() ? readback.optionLabels[index] : std::string{};
 		const auto label = Translate(option.label);
 		if (!option.labelIndex) return label;
 		size_t begin = 0;
@@ -175,7 +180,8 @@ struct ValueControlView::Impl {
 			}
 		}
 		const auto& choice=std::get<ChoiceSpec>(entry.control.widget);
-		for (const auto& option:choice.options) {
+		for (std::size_t i=0;i<Shown(entry,choice);++i) {
+			const auto& option=choice.options[i];
 			auto* label=Element(option.labelPart);const auto& font=label->GetComputedValues();
 			result.geometry.push_back(font.font_size());result.geometry.push_back(font.line_height().value);
 			result.geometry.push_back(font.letter_spacing());result.transforms.push_back(font.font_family());
@@ -251,8 +257,8 @@ struct ValueControlView::Impl {
             const auto at=element->GetAbsoluteOffset(Rml::BoxArea::Content),size=element->GetBox().GetSize(Rml::BoxArea::Content);
             for(float value:{at.x,at.y,size.x,size.y}) {if(!std::isfinite(value))return {};values.push_back(value);}
         }
-        for(const auto& option:choice.options) {
-            auto* row=Element(option.node);const auto at=row->GetAbsoluteOffset(Rml::BoxArea::Border),size=row->GetBox().GetSize(Rml::BoxArea::Border);
+        for(std::size_t i=0;i<Shown(entry,choice);++i) {
+            auto* row=Element(choice.options[i].node);const auto at=row->GetAbsoluteOffset(Rml::BoxArea::Border),size=row->GetBox().GetSize(Rml::BoxArea::Border);
             for(float value:{at.x,at.y,size.x,size.y}) {if(!std::isfinite(value))return {};values.push_back(value);}
             Rml::Array<Rml::Vector2f,4> quad;
             if(!Rml::ElementUtilities::GetBorderBoxQuad(quad,row))return {};
@@ -303,7 +309,8 @@ struct ValueControlView::Impl {
 			!std::isfinite(anchor.Left()) || !std::isfinite(anchor.Top()) || !std::isfinite(anchor.Width()) || !std::isfinite(anchor.Height()))
 			return Display(choice.popup,false) || changed;
 		std::vector<float> starts, ends; float next = 0;
-		for (const auto& option : choice.options) {
+		for (std::size_t i = 0; i < Shown(entry,choice); ++i) {
+			const auto& option = choice.options[i];
 			auto* row = Element(option.node); const float measured = row->GetBox().GetSize(Rml::BoxArea::Border).y;
 			const float rowHeight = std::max(1.0f,measured > 0 ? measured : AuthoredLength(option.node,"height",ratio,32*ratio));
 			const float offset = row->GetAbsoluteOffset(Rml::BoxArea::Border).y-content->GetAbsoluteOffset(Rml::BoxArea::Content).y;
@@ -353,7 +360,7 @@ struct ValueControlView::Impl {
 		float y = std::clamp(flip ? anchor.Top()-outerHeight : anchor.Bottom(),margin,std::max(margin,height-margin-outerHeight));
 		if (entry.placementBounds) {
 			float minimumRow=0,minimumRowWidth=36*ratio;
-			for (std::size_t i=0;i<choice.options.size();++i) {
+			for (std::size_t i=0;i<starts.size();++i) {
 				const auto& option=choice.options[i];auto* row=Element(option.node);auto* label=Element(option.labelPart);
 				const auto& box=row->GetBox();
 				minimumRow=std::max(minimumRow,ends[i]-starts[i]+
@@ -406,7 +413,7 @@ struct ValueControlView::Impl {
 		}
 		if (visibleHeight < 1 || outerWidth < 1) return Display(choice.popup,false) || changed;
 		float scroll = choice.scrollbar ? static_cast<float>(view.popupOffsetDp*ratio) : starts[first];
-		for (size_t i = 0; i < choice.options.size(); ++i) if ((!choice.scrollbar || view.revealRevision) && choice.options[i].id == view.highlight) {
+		for (size_t i = 0; i < starts.size(); ++i) if ((!choice.scrollbar || view.revealRevision) && choice.options[i].id == view.highlight) {
 			if (ends[i] > scroll+visibleHeight) scroll = ends[i]-visibleHeight;
 			if (starts[i] < scroll) scroll = starts[i];
 			break;
@@ -542,12 +549,16 @@ bool ValueControlView::Paint(Interaction& interaction, const std::map<std::strin
 			changed |= impl->Text(slider->valueText,Number(value,static_cast<int>(slider->decimals)));
 		} else if (const auto* choice = std::get_if<ChoiceSpec>(&entry.control.widget)) {
 			std::string value = impl->ValueText(accepted.value);
-			for (const auto& option : choice->options) {
-				const auto label = impl->Label(option); const bool selected = option.value == accepted.value;
+			entry.optionCount = accepted.optionCount ? std::min(*accepted.optionCount,choice->options.size()) : choice->options.size();
+			for (std::size_t i = 0; i < choice->options.size(); ++i) {
+				const auto& option = choice->options[i];
+				// A hidden option still names the value it holds.
+				const auto label = impl->Label(option,accepted,i); const bool selected = option.value == accepted.value;
 				if (selected) value = label;
 				changed |= impl->Text(option.labelPart,label);
 				changed |= impl->Display(option.selectedPart,selected);
 				changed |= impl->Display(option.highlightPart,view->popupOpen && view->highlight == option.id);
+				if (choice->optionCount) changed |= impl->Display(option.node,i < entry.optionCount);
 			}
 			changed |= impl->Text(choice->valueText,value);
 			changed |= impl->Popup(entry,*choice,*view,interaction,id,width,height,ratio,opacity);

@@ -14,6 +14,8 @@ position and height, plus viewport width, are derived properties with explicit
 typed authored bases. Bindings, aliases and timelines cannot also own them.
 The thumb cannot have its own transform or minimum/maximum height constraint.
 The track keeps its authored width, with an eight-dp gap before option content.
+In a [catalog list](value-controls.md#catalog-lists) the scroll extent ends at
+the last shown option; hidden options take no room.
 
 Interaction owns the popup lifetime, local logical offset, explicit highlight
 reveal request and matched pointer gesture. A copied readback binds the current

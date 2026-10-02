@@ -895,7 +895,7 @@ private:
 			if (role == "button") Fields(control,p,{"role","action","event","label","enabled","states","navigation","extensions"});
 			else if (role == "toggle") Fields(control,p,{"role","action","label","enabled","states","navigation","value","mixed","parts","extensions"});
 			else if (role == "slider") Fields(control,p,{"role","action","label","enabled","states","navigation","value","minimum","maximum","step","decimals","orientation","parts","extensions"});
-			else if (role == "choice") Fields(control,p,{"role","action","label","enabled","states","navigation","value","parts","visibleRows","options","scrollbar","placementBounds","extensions"});
+			else if (role == "choice") Fields(control,p,{"role","action","label","enabled","states","navigation","value","parts","visibleRows","options","optionCount","scrollbar","placementBounds","extensions"});
 			else if (role == "number") Fields(control,p,{"role","action","label","enabled","states","navigation","value","minimum","maximum","exponent","integer","maxBytes","parts","extensions"});
 			else if (role == "scrollbar") Fields(control,p,{"role","label","enabled","states","navigation","viewport","orientation","lineStep","minimumThumb","parts","extensions"});
             else Require(false,control["role"],p+"/role","Supported roles are button, toggle, slider, choice, number and scrollbar");
@@ -1004,13 +1004,26 @@ private:
 					}
 					Require(control["options"].isArray() && !control["options"].empty() && control["options"].size() <= 256,
 						control["options"],p+"/options","Choice requires 1..256 authored options");
+					if (control.isMember("optionCount")) {
+						spec.optionCount = ReadExpression(control["optionCount"],p+"/optionCount");
+						Require(spec.optionCount->type == 0,control["optionCount"],p+"/optionCount","A choice's option count must be numeric");
+					}
 					std::set<std::string> ids; std::set<StateValue> values;
 					for (Json::ArrayIndex i = 0; i < control["options"].size(); ++i) {
 						const auto& value = control["options"][i]; const auto opt = p+"/options/"+std::to_string(i);
 						Fields(value,opt,{"id","node","label","labelIndex","value","enabled","parts","extensions"});
 						ChoiceOption option; option.id = Id(value["id"],opt+"/id"); option.node = Id(value["node"],opt+"/node");
 						Require(ids.insert(option.id).second,value["id"],opt+"/id","Duplicate choice option ID");
-						option.label = ControlLabel(value["label"],opt+"/label");
+						if (value["label"].isObject()) {
+							// Text the application publishes, such as a display's name.
+							const auto at = opt+"/label";
+							Fields(value["label"],at,{"state","extensions"});
+							option.labelState = Id(value["label"]["state"],at+"/state");
+							const auto found = model.state.find(option.labelState);
+							Require(found != model.state.end() && std::holds_alternative<std::string>(found->second.initial),value["label"],at,
+								"A state label names declared string state");
+							Require(!value.isMember("labelIndex"),value["labelIndex"],opt+"/labelIndex","A state label has no translated list index");
+						} else option.label = ControlLabel(value["label"],opt+"/label");
 						if (value.isMember("labelIndex")) {
 							Require(value["labelIndex"].isUInt() && value["labelIndex"].asUInt() <= 255,value["labelIndex"],opt+"/labelIndex","Localized label index must be 0..255");
 							option.labelIndex = value["labelIndex"].asUInt();
@@ -1306,6 +1319,8 @@ private:
 				separate(option.selectedPart,option.highlightPart);
 				separate(option.labelPart,option.selectedPart); separate(option.labelPart,option.highlightPart);
 				reserve(option.labelPart,"text"); reserve(option.selectedPart,"display"); reserve(option.highlightPart,"display");
+				// A counted list hides the options past its count.
+				if (choice->optionCount) reserve(option.node,"display");
 				for (size_t j = 0; j < i; ++j) separate(option.node,choice->options[j].node);
 			}
 		}

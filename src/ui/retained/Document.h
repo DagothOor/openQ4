@@ -115,6 +115,11 @@ struct SliderSpec {
 };
 struct ChoiceOption {
 	std::string id, node, label;
+	// A declared string state whose value is the option's text: a display's
+	// name, a formatted mode. Like all retained text, a #str_ key in it reads
+	// in the player's language, so the application keeps untrusted names from
+	// starting with one. Empty means the authored #str label and list index.
+	std::string labelState;
 	StateValue value;
 	Expression enabled = [] { Expression value; value.literal = true; value.type = 1; return value; }();
 	std::string labelPart, selectedPart, highlightPart;
@@ -131,6 +136,10 @@ struct ChoiceSpec {
 	std::vector<ChoiceOption> options;
 	std::optional<ScrollSpec> scrollbar; // Local popup artwork; never a nested semantic control.
 	std::string placementBounds; // Optional canonical proper ancestor; empty retains window placement.
+	// How many options lead the list. The rest are hidden, ineligible and
+	// unmeasured, so one authored list carries a catalog of varying length.
+	// Absent means every option.
+	std::optional<Expression> optionCount;
 };
 struct NumberSpec {
 	double minimum = 0, maximum = 1;
@@ -155,6 +164,11 @@ struct ControlReadback {
 	StateValue value;
 	bool mixed = false;
 	std::vector<bool> enabledOptions;
+	// Choices only: no labels, or each option's published text (empty for an
+	// authored label), and how many options lead the list, clamped to the
+	// options. An absent count means every option.
+	std::vector<std::string> optionLabels;
+	std::optional<std::size_t> optionCount;
 };
 struct ModalSpec {
 	std::string initialFocus;

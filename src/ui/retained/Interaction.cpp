@@ -193,8 +193,14 @@ bool Interaction::SetReadbacks(const std::map<std::string,ControlReadback>& read
 		if (!ValidStateValue(value.value) || !item.control.value || value.value.index() != item.control.value->type ||
 			(item.control.role != ControlRole::Toggle && value.mixed)) { error = "Invalid control readback type"; return false; }
 		if (item.control.role == ControlRole::Choice) {
-			if (value.enabledOptions.size() != std::get<ChoiceSpec>(item.control.widget).options.size()) { error = "Invalid choice availability"; return false; }
-		} else if (!value.enabledOptions.empty()) { error = "Unexpected choice availability"; return false; }
+			const auto options = std::get<ChoiceSpec>(item.control.widget).options.size();
+			if (value.enabledOptions.size() != options || (!value.optionLabels.empty() && value.optionLabels.size() != options) ||
+				(value.optionCount && *value.optionCount > options)) {
+				error = "Invalid choice availability"; return false;
+			}
+		} else if (!value.enabledOptions.empty() || !value.optionLabels.empty() || value.optionCount) {
+			error = "Unexpected choice availability"; return false;
+		}
 	}
 	if (expected != readbacks.size()) { error = "Unknown control readback"; return false; }
 	// Reserve every changed draft stamp before publishing any new readback.
@@ -211,6 +217,10 @@ bool Interaction::SetReadbacks(const std::map<std::string,ControlReadback>& read
 	for (const auto& [id,value] : readbacks) {
 		auto& item = items.at(id);
 		const bool changed = !item.readback || item.readback->value != value.value;
+		// An open list whose labels or length change closes: its rows moved
+		// under the pointer and the highlight.
+		if (popup == id && item.readback && (item.readback->optionLabels != value.optionLabels ||
+			item.readback->optionCount != value.optionCount)) CancelGesture();
         if(popup==id && HasChoiceBar(item.control) && (changed || item.readback->enabledOptions!=value.enabledOptions))CancelGesture();
 		item.readback = value;
 		if (changed && item.number) item.number->draftRevision = revisions.at(id);
@@ -950,7 +960,9 @@ void Interaction::SliderKey(MenuInput input) {
 	if (value != std::get<double>(EditingValue(item))) Propose(focused,value);
 }
 bool Interaction::OptionEligible(const Item& item, size_t index) const {
-	return item.readback && index < item.readback->enabledOptions.size() && item.readback->enabledOptions[index];
+	// Options past a counted list's length are hidden, so never eligible.
+	return item.readback && (!item.readback->optionCount || index < *item.readback->optionCount) &&
+		index < item.readback->enabledOptions.size() && item.readback->enabledOptions[index];
 }
 void Interaction::OpenPopup(const std::string& id) {
 	CancelGesture(); popupToken=ProposalToken();if(!popupToken)return;popup = id; focused = id;
@@ -975,8 +987,10 @@ void Interaction::KeepHighlightVisible() {
         }
         return;
     }
-	const auto rows = std::min<size_t>(spec.visibleRows,spec.options.size());
-	item.firstVisible = std::min<unsigned>(item.firstVisible,static_cast<unsigned>(spec.options.size()-rows));
+	// The window scrolls only over the options the list shows.
+	const auto shown = item.readback && item.readback->optionCount ? std::min(*item.readback->optionCount,spec.options.size()) : spec.options.size();
+	const auto rows = std::min<size_t>(spec.visibleRows,shown);
+	item.firstVisible = std::min<unsigned>(item.firstVisible,static_cast<unsigned>(shown-rows));
 	for (size_t i = 0; i < spec.options.size(); ++i) if (spec.options[i].id == highlight) {
 		if (i < item.firstVisible) item.firstVisible = static_cast<unsigned>(i);
 		else if (i >= item.firstVisible+rows) item.firstVisible = static_cast<unsigned>(i-rows+1);

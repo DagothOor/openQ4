@@ -105,6 +105,15 @@ static Json::Value Fixture() {
 	return root;
 }
 static std::string Text(const Json::Value& root) { Json::StreamWriterBuilder writer; writer["indentation"] = ""; writer["precision"] = 17; return Json::writeString(writer,root); }
+// A counted list: the first option's text is application state and a state
+// count says how many options lead the list, beside an authored label.
+static Json::Value CountedFixture() {
+	auto root = Fixture();
+	StateDecl(root,"name","string",""); StateDecl(root,"count","number",1);
+	auto& control = root["root"]["children"][2]["control"];
+	control["optionCount"] = Ref("count"); control["options"][0]["label"] = Ref("name"); control["options"][0].removeMember("labelIndex");
+	return root;
+}
 static void Load(Document& document, const Json::Value& root) {
 	std::vector<Diagnostic> diagnostics;
 	if (!document.Load(Text(root),diagnostics)) for (const auto& d : diagnostics) std::fprintf(stderr,"%s: %s\n",d.pointer.c_str(),d.message.c_str());
@@ -186,8 +195,28 @@ static void Schema() {
 	Check(std::get<SliderSpec>(document.Model().FindNode("slider")->control->widget).vertical,"vertical orientation uses the same typed model");
 	auto strings=source; strings["state"]["choice"]["type"]="string";strings["state"]["choice"]["initial"]="#str_custom";
 	strings["actions"]["set-choice"]["input"]="string";strings["root"]["children"][2]["control"]["options"][0]["value"]="best";
-	strings["root"]["children"][2]["control"]["options"][1]["value"]="arb2"; Load(document,strings);
+		strings["root"]["children"][2]["control"]["options"][1]["value"]="arb2"; Load(document,strings);
 	Check(std::get<ChoiceSpec>(document.Model().FindNode("choice")->control->widget).options[1].value==StateValue(std::string("arb2")),"machine choice values remain opaque strings independent of localized labels");
+	const auto counted=CountedFixture(); Load(document,counted);
+	const auto& countedSpec=std::get<ChoiceSpec>(document.Model().FindNode("choice")->control->widget);
+	Check(countedSpec.optionCount && countedSpec.optionCount->type==0 && countedSpec.options[0].labelState=="name" && countedSpec.options[0].label.empty() &&
+		!countedSpec.options[0].labelIndex && countedSpec.options[1].labelState.empty() && countedSpec.options[1].label=="#str_options","state labels and an option count compile beside authored labels");
+	const auto countedSaved=document.Source();
+	auto rejectCounted=[&](const std::function<void(Json::Value&)>& change) {
+		auto invalid=counted; change(invalid); std::vector<Diagnostic> diagnostics;
+		Check(!document.Load(Text(invalid),diagnostics) && !diagnostics.empty(),"an invalid counted list rejects with a located diagnostic");
+		Check(document.Source()==countedSaved,"a failed counted load preserves the exact source");
+	};
+	rejectCounted([](auto& r){r["root"]["children"][2]["control"]["options"][0]["label"]=Ref("missing");});
+	rejectCounted([](auto& r){r["root"]["children"][2]["control"]["options"][0]["label"]=Ref("count");});
+	rejectCounted([](auto& r){r["root"]["children"][2]["control"]["options"][0]["labelIndex"]=0;});
+	rejectCounted([](auto& r){r["root"]["children"][2]["control"]["options"][0]["label"]["unknown"]=1;});
+	rejectCounted([](auto& r){r["root"]["children"][2]["control"]["optionCount"]=Ref("available");});
+	rejectCounted([](auto& r){r["root"]["children"][2]["control"]["optionCount"]=Ref("name");});
+	rejectCounted([](auto& r){r["root"]["children"][2]["control"]["optionCount"]=Input();});
+	// The counted list hides options past its count, so each option node
+	// needs an explicit display base to return to.
+	rejectCounted([](auto& r){r["root"]["children"][2]["children"][0]["children"][0]["children"][0]["children"][0]["properties"].removeMember("display");});
 }
 static void Inputs() {
 	auto fixture=Fixture(); fixture["actions"]["set-slider"]["arguments"]["derived"]=Op("+",{Input(),Ref("brightness")});
@@ -235,6 +264,20 @@ static void AtomicReadbacks() {
 	fixture["root"]["children"][0]["control"]["mixed"]=Op(">",{Op("/",{1,Ref("divisor")}),0});Load(document,fixture);
 	Check(second.Reset(document.Model(),error),"initialize mixed-expression failure state");
 	Check(!second.Set({{"divisor",0.0}},error) && error.find("Control 'toggle'")!=std::string::npos && second.ControlValues().at("toggle").mixed,"invalid mixed state cannot partially publish");
+	// A counted list reads back its labels and a count clamped to the options.
+	auto counted=CountedFixture(); Load(document,counted); State countedState;
+	Check(countedState.Reset(document.Model(),error),"a counted list initializes its readback");
+	const auto read=[&]{ return countedState.ControlValues().at("choice"); };
+	Check(read().optionCount==std::size_t(1) && read().optionLabels==std::vector<std::string>({"",""}),"the count and the state label read back, authored labels empty");
+	Check(!first.ControlValues().at("choice").optionCount,"an uncounted list reads back no count");
+	Check(countedState.Set({{"name",std::string("Display 1: Dell U2720Q")},{"count",5.0}},error) && read().optionCount==std::size_t(2) &&
+		read().optionLabels[0]=="Display 1: Dell U2720Q" && read().optionLabels[1].empty(),"labels follow their state and the count clamps to the options");
+	Check(countedState.Set({{"count",1.9}},error) && read().optionCount==std::size_t(1),"a fractional count floors");
+	Check(countedState.Set({{"count",-3.0}},error) && read().optionCount==std::size_t(0),"a negative count shows no option");
+	counted["root"]["children"][2]["control"]["optionCount"]=Op("/",{Ref("count"),Ref("divisor")}); Load(document,counted);
+	Check(countedState.Reset(document.Model(),error),"initialize count-expression failure state");
+	const auto countedBefore=countedState.Variables();
+	Check(!countedState.Set({{"divisor",0.0}},error) && error.find("Control 'choice'")!=std::string::npos && countedState.Variables()==countedBefore,"an invalid count expression cannot partially publish");
 }
 int main() {
 	Schema(); Inputs(); AtomicReadbacks();
