@@ -52,6 +52,7 @@ struct idSessionLocal {
     GUI gui,*guiLoading=&gui;
     void UpdateScreen(){++redraws;NestedOffer(0);}
     void PublishRetainedLoadingCount(){}
+    void PublishRetainedLoadingTip(bool){}
     void PacifierUpdate();
 } session;
 void NestedOffer(int stage) {
