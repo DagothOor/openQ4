@@ -9,6 +9,10 @@
   compatibility, multiplayer and Arena before archiving the historical repositories.
   See [implementation/evidence](plans/game-source-consolidation.md).
 
+- [x] Restore CI build coverage after game-source consolidation by checking
+  Linux ARM64 cross-build guidance for the canonical in-tree SP/MP sources
+  instead of requiring retired companion-repository setup.
+
 - [x] Correct outdoor shadow-map terrain sampling on OpenGL and Vulkan.
   Point filters compare against the receiver plane at each sampled texel, while
   distant off-centre point sources use fitted perspective maps and cascades.
