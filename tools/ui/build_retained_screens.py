@@ -2357,6 +2357,27 @@ def corner_bracket(ident: str, left_u: float, top_u: float, flip_x: bool, flip_y
 
 # The multiplayer arsenal's kinds of item (RETAINED_ARSENAL_ICONS in Session.cpp).
 ARSENAL_ICONS = 20
+# Single player tips: Lowpixel 14 dp, two lines at most, from the band's riser
+# to the bar (216-384 u); ui_retained_gate.py checks every tip in every
+# language fits.
+TIP_LEFT, TIP_WIDTH, TIP_SIZE, TIP_LINE, TIP_ALPHA = 216.0, 168.0, 14.0, 10.5, 0.7
+
+
+def tip_lines(text: str, language_width: float | None = None) -> list:
+    """`text` wrapped as the host wraps it at the tip's width: greedy at
+    spaces, each glyph's advance from lowpixel.ttf."""
+    width = (language_width or U * TIP_WIDTH)
+    lines, current = [], ""
+    for word in text.split(" "):
+        candidate = word if not current else current + " " + word
+        if current and text_width("lowpixel", candidate, TIP_SIZE) > width:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    return lines
 
 
 def loading_document() -> dict:
@@ -2382,6 +2403,8 @@ def loading_document() -> dict:
         "loading_phase": {"type": "string", "initial": ""},
         "loading_count": {"type": "string", "initial": ""},
         "loading_controller": {"type": "boolean", "initial": False},
+        "loading_tip_a": {"type": "string", "initial": ""},
+        "loading_tip_b": {"type": "string", "initial": ""},
         **{f"load_icon_{index}": {"type": "number", "initial": 0} for index in range(1, ARSENAL_ICONS + 1)},
         **{f"load_icon_src_{index}": {"type": "string", "initial": ""} for index in range(1, ARSENAL_ICONS + 1)},
         **{f"load_icon_{channel}_{index}": {"type": "number", "initial": 1}
@@ -2598,11 +2621,39 @@ def loading_document() -> dict:
     arsenal = group("arsenal", {"display": keyword("block"), **absolute(top=U * 426, width=CANVAS_W, height=U * 54),
                                 "left": length(50, "%"), "margin-left": length(-CANVAS_W / 2)}, icons)
     doc.bind("arsenal.display", "arsenal", "display", {"op": "select", "args": [{"state": "loading_mp"}, "block", "none"]})
+    # Single player tips (section 14.17): the thick band's leading part, where
+    # multiplayer has its arsenal, holds a localized tip of at most two lines
+    # of Lowpixel 14 dp under a TIP tag while the level loads. The session
+    # publishes each tip's key into one of two slots every 6 s and plays tipA
+    # or tipB, which cross-fade the slots over 250 ms by text alpha (no
+    # composition layer). When the level is ready the continue prompt, which
+    # runs across this part in most languages, takes the band.
+    def tip_slot(ident: str) -> dict:
+        return label(ident, "#str_230030", {**absolute(left=U * TIP_LEFT, top=U * 12, width=U * TIP_WIDTH, height=U * 2 * TIP_LINE),
+                                            **typeface("lowpixel", TIP_SIZE, U * TIP_LINE, [1, 1, 1, 0]), "white-space": keyword("normal"),
+                                            "overflow": keyword("hidden")})
+    tips = group("tips", {"display": keyword("none"), **absolute(top=U * 426, width=CANVAS_W, height=U * 54), "left": length(50, "%"),
+                          "margin-left": length(-CANVAS_W / 2)}, [
+        label("tip-tag", "#str_230051", {**absolute(left=U * TIP_LEFT, top=U * 2.5, width=U * TIP_WIDTH, height=U * 9),
+                                         **typeface("lowpixel", TIP_SIZE, U * 9, rgb(OBJECTIVE_HEAD)), "white-space": keyword("nowrap")}),
+        tip_slot("tip-a"), tip_slot("tip-b"),
+    ])
+    for slot in ("a", "b"):
+        doc.bind(f"tip-{slot}.text", f"tip-{slot}", "text", {"state": f"loading_tip_{slot}"})
+    doc.bind("tips.display", "tips", "display", {"op": "select", "args": [
+        {"op": "||", "args": [{"op": "||", "args": [{"state": "loading_mp"}, {"state": "loading_ready"}]}, {"op": "&&", "args": [
+            {"op": "==", "args": [{"state": "loading_tip_a"}, ""]}, {"op": "==", "args": [{"state": "loading_tip_b"}, ""]}]}]},
+        "none", "block"]})
+    shown, hidden = colour([1, 1, 1, TIP_ALPHA]), colour([1, 1, 1, 0])
+    doc.timelines.add("tipA", 250, [track("tip-a", "color", [(0, hidden), (250, shown)]),
+                                    track("tip-b", "color", [(0, shown), (250, hidden)])])
+    doc.timelines.add("tipB", 250, [track("tip-b", "color", [(0, hidden), (250, shown)]),
+                                    track("tip-a", "color", [(0, shown), (250, hidden)])])
     root = group("screen", {**FULL, "background-color": colour([0, 0, 0, 1]), "font-family": font("marine"),
                             "font-size": length(16), "color": colour([1, 1, 1, 0.8])}, [
         shot,
         vector("load-grid", dict(FULL), [grid_path()]),
-        top_band, bottom_band, brackets, dot_matrix, identity, objectives, server, arsenal, progress,
+        top_band, bottom_band, brackets, dot_matrix, identity, objectives, server, arsenal, tips, progress,
     ])
     return doc.build(root)
 

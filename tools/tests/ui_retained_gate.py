@@ -172,6 +172,8 @@ struct idMath {
     static float Fabs(float value) { return value < 0 ? -value : value; }
     static int ClampInt(int low, int high, int value) { return value < low ? low : value > high ? high : value; }
 };
+static int sysMilliseconds = 0;
+static int Sys_Milliseconds() { return sysMilliseconds; }
 struct Manager {
     std::vector<std::unique_ptr<idUserInterface>> storage; std::vector<std::string> loads; bool fail = false;
     struct Flags { bool autoLoad, unique, shared; }; std::vector<Flags> flags;
@@ -221,6 +223,8 @@ public:
     ID_TIME_T retainedNewestSave = 0;
     idUserInterface* guiRetainedReleasing = nullptr; int retainedReleaseUntil = 0;
     idUserInterface* retainedSubpageFrom = nullptr; bool retainedSubpageDeeper = false; int retainedSubpageBegan = 0, retainedSubpageUntil = 0;
+    idUserInterface* guiLoading = nullptr; bool retainedLoadingActive = false;
+    int retainedLoadingTip = -1, retainedLoadingTipSlot = 0, retainedLoadingTipAt = 0; void PublishRetainedLoadingTip(bool);
     void BeginRetainedSubpage(idUserInterface*, bool); void UpdateRetainedSubpage(); bool RetainedSubpageEvent(const sysEvent_t*);
     bool retainedHomeReturning = false;
     idStrList retainedStock;
@@ -457,6 +461,25 @@ int main() {
         missing.OpenCampaignSelector(false); CHECK(arenaCampaign.selectors == 2 && commonObject.warnings.empty());
         auto broken = Session(true); managerObject.fail = true; broken.OpenCampaignSelector(false);
         CHECK(arenaCampaign.selectors == 1 && commonObject.warnings.size() == 1);
+    }
+    {   // Single player loading tips: the first when the screen presents, then the
+        // next every 6 s in the other slot; multiplayer runs the arsenal instead.
+        auto s = Session(true); idUserInterface loading("guis/loading/loading.q4ui"); s.guiLoading = &loading;
+        s.PublishRetainedLoadingTip(true); CHECK(loading.named.empty());  // not presenting the load
+        s.retainedLoadingActive = true; sysMilliseconds = 5;
+        s.PublishRetainedLoadingTip(true);
+        const std::string first = loading.state["loading_tip_a"];
+        CHECK(loading.named.back() == "tipA" && first.rfind("#str_", 0) == 0 && loading.state["loading_tip_b"].empty());
+        commonObject.time += 5999; s.PublishRetainedLoadingTip(false); CHECK(loading.named.size() == 1);
+        commonObject.time += 1; s.PublishRetainedLoadingTip(false);
+        const std::string second = loading.state["loading_tip_b"];
+        CHECK(loading.named.back() == "tipB" && second.rfind("#str_", 0) == 0 && second != first && loading.state["loading_tip_a"] == first);
+        commonObject.time += 6000; s.PublishRetainedLoadingTip(false);
+        CHECK(loading.named.back() == "tipA" && loading.state["loading_tip_a"] != first && loading.state["loading_tip_a"] != second);
+        sysMilliseconds = 6; s.PublishRetainedLoadingTip(true);  // a new load starts elsewhere in the list
+        CHECK(loading.state["loading_tip_a"] != first && loading.state["loading_tip_b"].empty() && loading.named.back() == "tipA");
+        loading.state["loading_mp"] = "1"; const size_t events = loading.named.size(); commonObject.time += 6000;
+        s.PublishRetainedLoadingTip(false); s.PublishRetainedLoadingTip(true); CHECK(loading.named.size() == events);
     }
     {   // Single Player and its Campaign sub-page (spec 1.10): the leaving document
         // plays its half, the other presents at the hand-over (350 ms deeper, 300 ms
@@ -833,10 +856,27 @@ def main() -> int:
     # The loading phase line and prompt device publish only while the retained
     # loading screen presents the load, which only the gate can select.
     for signature in ('void idSessionLocal::SetRetainedLoadingPhase(', 'void idSessionLocal::PublishRetainedLoadingCount(',
-                      'void idSessionLocal::PublishRetainedLoadingDevice('):
+                      'void idSessionLocal::PublishRetainedLoadingDevice(', 'void idSessionLocal::PublishRetainedLoadingTip('):
         assert 'if ( !retainedLoadingActive || guiLoading == NULL' in function_body(session, signature), signature
     loading = function_body(session, 'void idSessionLocal::LoadLoadingGui(')
     assert session.count('retainedLoadingActive = true;') == 1 and loading.index('if ( retainedLoading ) {') < loading.index('retainedLoadingActive = true;')
+    # Tips: the first as the screen presents, then from the load's redraws;
+    # every tip, in every shipped language, fits two lines.
+    assert loading.index('retainedLoadingActive = true;') < loading.index('PublishRetainedLoadingTip( true );')
+    assert 'PublishRetainedLoadingTip( false );' in function_body(session, 'void idSessionLocal::PacifierUpdate(')
+    assert session.count('PublishRetainedLoadingTip( false );') == 1
+    sys.path.insert(0, str(ROOT / 'tools' / 'ui'))
+    import build_retained_screens as generator
+    tips_table = session[session.index('static const char *const RETAINED_LOADING_TIPS[] = {'):]
+    tips_table = tips_table[:tips_table.index('static const int RETAINED_LOADING_TIP_MSEC = 6000;') + len('static const int RETAINED_LOADING_TIP_MSEC = 6000;')]
+    tip_keys = re.findall(r'"(#str_\d+)"', tips_table)
+    assert len(tip_keys) == len(set(tip_keys)) >= 12, tip_keys
+    for key in tip_keys + ['#str_230051']:
+        texts = generator.localized(key)
+        assert sorted(texts) == sorted(generator.LANGUAGES), (key, sorted(texts))
+        if key != '#str_230051':
+            for language, text in texts.items():
+                assert len(generator.tip_lines(text)) <= 2, (key, language, generator.tip_lines(text))
     assert 'PrepareRetainedLevel( spawnMapPath, isMultiplayerLoad );' in function_body(session, 'void idSessionLocal::LoadLoadingGui(')
     update = function_body(menu, 'void idSessionLocal::UpdateRetainedHome(')
     assert 'const bool context = Session_RetainedScreensEnabled() &&' in update
@@ -968,9 +1008,11 @@ def main() -> int:
         'idUserInterface *idSessionLocal::SelectRetainedLoadingGui(',
         'void idSessionLocal::PreloadRetainedScreens(', 'void idSessionLocal::PrepareRetainedLevel(',
         'void idSessionLocal::ReportRetainedScreens(')]
+    bodies.append(tips_table)
     bodies += [function_body(session, signature) for signature in (
         'static bool Session_ImageInstalled(', 'idStr idSessionLocal::RetainedPauseShot(',
         'void idSessionLocal::PrecacheRetainedLevelImages(', 'static idStr Session_RetainedSaveAge(',
+        'void idSessionLocal::PublishRetainedLoadingTip(',
         'void idSessionLocal::PublishRetainedPauseState(')]
     compiler = next((found for name in ('clang++', 'g++', 'c++') if (found := shutil.which(name))), None)
     if not compiler:

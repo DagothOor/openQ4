@@ -230,8 +230,22 @@ after editing the script; `--check` fails when an output is stale.
   one stage tinting the icon image; the session reads the image and the tint
   from the material's definition and publishes them with the icon
   (`load_icon_src_N` and `load_icon_r/g/b_N`), then plays its fade
-  (`arsenalN`). The name strip darkens the message line so it reads over any
-  levelshot.
+  (`arsenalN`). In single player the same part of the band runs tips while
+  the level loads: a TIP tag over one tip of at most two lines of Lowpixel
+  14 dp, changing every 6 s with a 250 ms cross-fade between two slots
+  (`loading_tip_a`/`_b`, `tipA`/`tipB`, by text alpha). The session starts
+  each load at a different tip and moves to the next from the load's redraws
+  (`PublishRetainedLoadingTip`); once the level is ready the continue
+  prompt, which runs across that part in most languages, takes the band.
+  The 18 tips state Quake 4 single-player mechanics checked against the game
+  code and stock data (the blaster's charge, the flashlight, medics and
+  techs, firing at people and screens instead of a use key, objectives on
+  TAB and the pause page, quick save, the machinegun's zoom, headshots,
+  armor, barrels, grenades, self damage, pickups that wait, dropped guns,
+  vehicle repair, the shotgun's reload and leaving a vehicle), and in every
+  shipped language each fits its two lines, which the gate test measures
+  from `lowpixel.ttf`. The name strip darkens the message line so it reads
+  over any levelshot.
 - **Single Player and Campaign** (`guis/menu/singleplayer.q4ui` and
   `campaigns.q4ui`, sections 8 and 9, the sub-page level of 1.10). The Single
   Player page titles itself in the top band's slot at 39,19 u, where the
@@ -443,7 +457,10 @@ controller or the mouse switches the prompt.
   the transformed clip, the emblem glint and its reduced-motion rule, the
   levelshot drift, the phase line, the percentage and the controller prompt,
   the multiplayer server card and JOINING, the arsenal's fade, tint and two
-  rows, the title carry on both menus, the
+  rows, the tips (hidden until published, the slot cross-fade, the tag and
+  two-line box inside the band, and the band given to the continue prompt
+  when the level is ready, or to the arsenal in multiplayer), the title
+  carry on both menus, the
   depth lean and its reduced-motion hold, the exit confirmation's lit margin,
   title placement, body placement and single 0.85 outline composite, its
   enter and leave timing with the contents and focus waiting for the
@@ -507,7 +524,11 @@ controller or the mouse switches the prompt.
   when another screen takes over, and the stock selector at once when the
   sub-page cannot present. It pins the frame pump and input hold, the halves'
   durations against the session's waits, the four reversal lengths and that
-  rest returns everything a change moves.
+  rest returns everything a change moves. It covers the loading tips: the
+  first as the screen presents, the next every 6 s in the other slot, a new
+  load starting elsewhere in the list, none in multiplayer or while another
+  screen presents the load, the calls from the load's redraws, and that every
+  tip in every shipped language fits its two lines.
 - `tools/ui/capture_retained_screens.py` captures the screens in the engine
   from a hidden window with engine screenshots and semantic
   `openq4_retainedGui` operations, never OS input. With `--gate 0` the title
@@ -736,6 +757,14 @@ to Campaign. Under reduced motion each level presented at once, and with
 Evidence: `.tmp/ui/retained-subpage/validation-evidence.json`, SHA-256
 `eca04d36298751db3331776e99e4fde0e3c123a6bb06570d0eed62c1935b44b5`.
 
+Single player tips were captured on OpenGL and Vulkan at 1280x720, on OpenGL at
+1024x768 and in German, Polish and Russian: the TIP tag over a two-line tip in
+the band's leading part while the level loads, the next one cross-fading in the
+other slot, and the band given to the continue prompt once the level is ready.
+A real airdefense1 load showed the tips changing every 6 s. Evidence:
+`.tmp/ui/retained-loading-tips/validation-evidence.json`, SHA-256
+`4f0f69638a05f185f8018379dd746d6cd804d2eef97d7b66d3206dc090dea4b4`.
+
 ## Known limitations
 
 - The completed objectives are kept per map and not saved, so after loading a
@@ -771,8 +800,8 @@ Evidence: `.tmp/ui/retained-subpage/validation-evidence.json`, SHA-256
 - The SYSTEM page stays opt-in until it offers every stock setting: it still
   lacks the display mode list, display device, multi-monitor, refresh rate,
   video quality and light-grid preload.
-- The loading screen has no tips and no touch prompt (touch counts as desktop
-  input). The multiplayer server card lacks the players by team and the
+- The loading screen has no touch prompt (touch counts as desktop input).
+  The multiplayer server card lacks the players by team and the
   server's message, and JOINING does not yet hand over to a Welcome menu. The
   arsenal fills in only where the map spawns its items: a listen server's
   own load, not a client joining another server.

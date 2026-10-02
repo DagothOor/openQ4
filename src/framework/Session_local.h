@@ -249,6 +249,9 @@ public:
 	void				SetRetainedLoadingPhase( int phase, const char *count = NULL );
 	void				PublishRetainedLoadingCount();
 	void				PublishRetainedLoadingDevice();
+	// Single player loading tips: the first when the screen presents, then the
+	// next every 6 s.
+	void				PublishRetainedLoadingTip( bool first );
 	// The multiplayer arsenal: the index'th kind of item to spawn, by its icon.
 	void				PublishRetainedLoadingIcon( int index, const char *icon );
 	// The Single Player page and Campaign sub-page change (spec 1.10).
@@ -456,6 +459,9 @@ public:
 	int					retainedLoadingLoaded;
 	int					retainedLoadingTotal;
 	int					retainedLoadingDevice;
+	int					retainedLoadingTip;		// index of the tip showing (-1: none)
+	int					retainedLoadingTipSlot;	// the label slot showing it (0: a, 1: b)
+	int					retainedLoadingTipAt;	// presentation time it was shown
 	idListGUI *			guiMainMenu_MapList;		// easy map list handling
 	idUserInterface *	guiDemoMenu;
 	idListGUI *			guiDemoList;

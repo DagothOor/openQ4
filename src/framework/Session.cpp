@@ -3810,6 +3810,9 @@ void idSessionLocal::Clear() {
 	retainedLoadingActive = false;
 	retainedLoadingPhase = 0;
 	retainedLoadingLoaded = retainedLoadingTotal = retainedLoadingDevice = -1;
+	retainedLoadingTip = -1;
+	retainedLoadingTipSlot = 0;
+	retainedLoadingTipAt = 0;
 	demoReturnGui = NULL;
 	demoOverlayVisible = false;
 	demoBrowserMode = true;
@@ -5916,6 +5919,42 @@ void idSessionLocal::PublishRetainedLoadingIcon( int index, const char *icon ) {
 	}
 }
 
+// Single player loading tips (section 14.17): localized one- or two-line
+// tips run under a TIP tag in the band's leading part while the level loads,
+// changing every 6 s; the continue prompt takes the band once it is ready.
+// The document cross-fades its two slots over 250 ms (tipA, tipB).
+static const char *const RETAINED_LOADING_TIPS[] = {
+	"#str_230052", "#str_230053", "#str_230054", "#str_230055", "#str_230056", "#str_230057", "#str_230058", "#str_230059", "#str_230060", "#str_230061", "#str_230062", "#str_230063", "#str_230064", "#str_230065", "#str_230066", "#str_230067", "#str_230068", "#str_230069"
+};
+static const int RETAINED_LOADING_TIP_MSEC = 6000;
+
+void idSessionLocal::PublishRetainedLoadingTip( bool first ) {
+	if ( !retainedLoadingActive || guiLoading == NULL || guiLoading->State().GetBool( "loading_mp" ) ) {
+		return;
+	}
+	const int now = common->GetPresentationTime();
+	const int count = static_cast<int>( sizeof( RETAINED_LOADING_TIPS ) / sizeof( RETAINED_LOADING_TIPS[0] ) );
+	if ( first ) {
+		// Each load starts somewhere else in the list.
+		retainedLoadingTip = static_cast<int>( static_cast<unsigned>( Sys_Milliseconds() ) % static_cast<unsigned>( count ) );
+		retainedLoadingTipSlot = 0;
+		guiLoading->SetStateString( "loading_tip_b", "" );
+	} else {
+		if ( retainedLoadingTip < 0 || now - retainedLoadingTipAt < RETAINED_LOADING_TIP_MSEC ) {
+			return;
+		}
+		retainedLoadingTip = ( retainedLoadingTip + 1 ) % count;
+		retainedLoadingTipSlot ^= 1;
+	}
+	retainedLoadingTipAt = now;
+	guiLoading->SetStateString( retainedLoadingTipSlot ? "loading_tip_b" : "loading_tip_a", RETAINED_LOADING_TIPS[ retainedLoadingTip ] );
+	guiLoading->StateChanged( now );
+	guiLoading->HandleNamedEvent( retainedLoadingTipSlot ? "tipB" : "tipA" );
+	if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+		common->Printf( "RETAINED_LOADING_TIP index=%d key=%s\n", retainedLoadingTip, RETAINED_LOADING_TIPS[ retainedLoadingTip ] );
+	}
+}
+
 /*
 ===============
 idSessionLocal::LoadLoadingGui
@@ -6094,6 +6133,7 @@ void idSessionLocal::LoadLoadingGui( const char *mapName ) {
 			retainedLoadingDevice = -1;
 			SetRetainedLoadingPhase( RETAINED_LOAD_IDLE );
 			PublishRetainedLoadingDevice();
+			PublishRetainedLoadingTip( true );
 		}
 	}
 }
@@ -7964,6 +8004,7 @@ void idSessionLocal::PacifierUpdate() {
 		// Loading bars should be monotonic.
 		targetPct = Max( targetPct, shownPct );
 		PublishRetainedLoadingCount();
+		PublishRetainedLoadingTip( false );
 
 		// Keep progress accurate, but smooth visual jumps when read-count deltas arrive in bursts.
 		const float alpha = idMath::ClampFloat( 0.0f, 1.0f, ( elapsedMs * 0.001f ) * 20.0f );

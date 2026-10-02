@@ -966,6 +966,36 @@ int main(int argc, char** argv) {
 		runtime.Frame(viewport,4.3);
 		const auto spArsenal = runtime.PresentedValue("arsenal","display");
 		Check(spArsenal && spArsenal->text == "none","single player has no arsenal");
+		// Single player tips (section 14.17): under a TIP tag in the band's
+		// leading part, each cross-fading in over 250 ms in the other slot.
+		const auto noTips = runtime.PresentedValue("tips","display");
+		Check(noTips && noTips->text == "none","no tip is shown until the session publishes one");
+		Check(runtime.SetState({{"loading_tip_a",std::string("#str_230052")}},error,4.4) && runtime.PlayTimeline("tipA",4.4),"the first tip");
+		runtime.Frame(viewport,4.525);
+		const auto tipsShown = runtime.PresentedValue("tips","display");
+		const auto halfTip = runtime.PresentedValue("tip-a","color");
+		const auto tipText = runtime.PresentedValue("tip-a","text");
+		Bounds tipBox, tagBox;
+		Check(tipsShown && tipsShown->text == "block" && halfTip && Near(static_cast<float>(halfTip->data[3]),.35f,.02f) && tipText &&
+			tipText->text == "#str_230052","the first tip fades in over 250 ms");
+		Check(runtime.GetBounds("tip-a",tipBox) && runtime.GetBounds("tip-tag",tagBox) && Near(tipBox.x,160+216*1.5f,1) &&
+			Near(tipBox.width,168*1.5f,1) && tagBox.y < tipBox.y && tipBox.y+tipBox.height <= 480*1.5f && tipBox.y >= 426*1.5f,
+			"the tip sits under its tag in the thick band, from the riser to the bar");
+		Check(runtime.SetState({{"loading_tip_b",std::string("#str_230053")}},error,10.4) && runtime.PlayTimeline("tipB",10.4),"the next tip");
+		runtime.Frame(viewport,10.65);
+		const auto outgoing = runtime.PresentedValue("tip-a","color");
+		const auto incoming = runtime.PresentedValue("tip-b","color");
+		Check(outgoing && Near(static_cast<float>(outgoing->data[3]),0,.001f) && incoming && Near(static_cast<float>(incoming->data[3]),.7f,.001f),
+			"the next tip cross-fades in the other slot");
+		Check(runtime.SetState({{"loading_ready",true}},error,10.66),"the level is ready");
+		runtime.Frame(viewport,10.66);
+		const auto readyTips = runtime.PresentedValue("tips","display");
+		Check(readyTips && readyTips->text == "none","the continue prompt takes the band once the level is ready");
+		Check(runtime.SetState({{"loading_ready",false},{"loading_mp",true}},error,10.7),"multiplayer");
+		runtime.Frame(viewport,10.7);
+		const auto mpTips = runtime.PresentedValue("tips","display");
+		Check(mpTips && mpTips->text == "none","multiplayer shows its arsenal instead of tips");
+		Check(runtime.SetState({{"loading_mp",false},{"loading_tip_a",std::string("")},{"loading_tip_b",std::string("")}},error,10.8),"reset");
 	}
 	// The Single Player page and its Campaign sub-page (sections 8 and 9, the
 	// sub-page level of 1.10): their rest states, going deeper and Back.

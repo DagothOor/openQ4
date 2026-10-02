@@ -108,6 +108,15 @@ SCENARIOS = {
         'screenshot "screenshots/loading-ready.tga"',
         'openq4_retainedGui state loading_controller 1', 'waitMsec 300', 'screenshot "screenshots/loading-controller.tga"',
         'openq4_retainedGui state loading_controller 0',
+        # Single player tips while the level loads, as the session publishes
+        # them: a tip in slot A, then the next cross-fading in slot B (two of
+        # the longest). A key must be quoted: the tokenizer splits an unquoted '#'.
+        'openq4_retainedGui pending loading_phase ASSETS', 'openq4_retainedGui pending loading_count "980/1630"',
+        'openq4_retainedGui pending loading_ready 0', 'openq4_retainedGui state map_loading 0.8',
+        'openq4_retainedGui state loading_tip_a "#str_230066"', 'openq4_retainedGui event tipA', 'waitMsec 400',
+        'screenshot "screenshots/loading-tip.tga"',
+        'openq4_retainedGui state loading_tip_b "#str_230068"', 'openq4_retainedGui event tipB', 'waitMsec 100',
+        'screenshot "screenshots/loading-tip-crossfade.tga"', 'waitMsec 400', 'screenshot "screenshots/loading-tip-next.tga"',
         'openq4_retainedGui pending server_name "openQ4 Test Server"', 'openq4_retainedGui pending server_ip "192.168.1.20:28004"',
         'openq4_retainedGui pending server_limit "Frag limit 30 - Time limit 10"', 'openq4_retainedGui pending server_gametype Deathmatch',
         'openq4_retainedGui pending loading_detail Deathmatch',
