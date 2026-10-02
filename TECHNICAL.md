@@ -116,7 +116,8 @@ See [Display Settings](docs/user/display-settings.md).
 
 ### Shadows
 
-- `r_useShadowMap 0|1` — experimental shadow maps instead of classic stencil shadows.
+- `r_useShadowMap 0|1` — shadow maps instead of classic stencil shadows; the `quality` and `ultra` performance presets turn it on.
+- `r_shadowMapFilterMode 0|1|2` — projected-light filtering: fixed PCF, rotated Poisson, or PCSS-lite (default), with `r_shadowMapFilterRadius` (default `2.0`) as its minimum radius.
 - `r_shadowMapCSM 0|1` — cascaded shadow maps for distant outdoor lighting.
 - `r_shadowMapHashedAlpha 0|1` — shadows from cutout surfaces such as grates and fences.
 - `r_shadowMapTranslucentMoments 0|1` — experimental shadows from translucent surfaces.

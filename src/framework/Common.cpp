@@ -3321,10 +3321,10 @@ static bool Common_PerformancePresetCheckRestoredAudio( const openQ4PerformanceP
 static bool Common_ValidatePerformancePresetIntent( const openQ4PerformancePreset_t &preset ) {
 	bool passed = true;
 
-	if ( preset.useShadowMap != 0 ) {
-		common->Printf( "PerformancePreset self-test failed: %s enables shadow maps; presets should keep shadow maps opt-in\n", preset.name );
-		passed = false;
-	}
+	// Shadow maps belong to the two top tiers only; the tiers below keep the
+	// stock stencil shadows.
+	const bool shadowMapTier = Common_PerformancePresetIsNamed( preset, "quality" ) || Common_PerformancePresetIsNamed( preset, "ultra" );
+	passed &= Common_PerformancePresetCheckExpectedInt( preset, "r_useShadowMap", preset.useShadowMap, shadowMapTier ? 1 : 0 );
 	if ( preset.bloom != 0 || preset.ssao != 0 || preset.hdrToneMap != 0 || preset.motionBlur != 0 || preset.crt != 0 ) {
 		common->Printf( "PerformancePreset self-test failed: %s enables optional post effects; presets should keep authored rendering as the baseline\n", preset.name );
 		passed = false;
@@ -3430,6 +3430,7 @@ static bool Common_ValidatePerformancePresetProgression( void ) {
 		passed &= Common_PerformancePresetCheckNonDecreasingInt( previousPreset, preset, "image_anisotropy", previousPreset.anisotropy, preset.anisotropy );
 		passed &= Common_PerformancePresetCheckNonDecreasingBudget( previousPreset, preset, "image_downSizeLimit", previousPreset.downSizeLimit, preset.downSizeLimit );
 		passed &= Common_PerformancePresetCheckNonDecreasingBudget( previousPreset, preset, "s_maxSoundsPerShader", previousPreset.maxSoundsPerShader, preset.maxSoundsPerShader );
+		passed &= Common_PerformancePresetCheckNonDecreasingInt( previousPreset, preset, "r_useShadowMap", previousPreset.useShadowMap, preset.useShadowMap );
 		passed &= Common_PerformancePresetCheckNonDecreasingInt( previousPreset, preset, "r_shadowMapSize", previousPreset.shadowMapSize, preset.shadowMapSize );
 		passed &= Common_PerformancePresetCheckNonDecreasingBudget( previousPreset, preset, "r_shadowMapMaxUpdatesPerView", previousPreset.shadowMapMaxUpdates, preset.shadowMapMaxUpdates );
 		passed &= Common_PerformancePresetCheckNonDecreasingInt( previousPreset, preset, "r_rendererUploadMegs", previousPreset.uploadMegs, preset.uploadMegs );

@@ -22,10 +22,10 @@ Running `applyPerformancePreset` without a name applies the stored `com_performa
 | `lowpower` | 75% scale, no AA, 30 FPS cap | Texture downsizing, 1x anisotropy, one sound sample per shader, stereo, no EAX, lower emitter budget | Raspberry Pi-class and other low-power systems. |
 | `performance` | 85% scale, SMAA medium, 60 FPS cap | Full-size textures, 2x anisotropy, stereo, no EAX, moderate emitter budget | Modest desktops and handhelds aiming for smoother frame pacing. |
 | `balanced` | 100% scale, 2x MSAA, SMAA medium, 120 FPS cap | Full-size textures, 4x anisotropy, surround/EAX restored, full emitter budget | General desktop default. |
-| `quality` | 100% scale, 4x MSAA, SMAA medium, 144 FPS cap | 8x anisotropy, DDS replacements enabled, larger upload budget, surround/EAX restored | Strong desktop GPUs. |
-| `ultra` | 100% scale, 8x MSAA, SMAA medium, 240 FPS cap | 16x anisotropy, source textures preferred over DDS replacements, high-end benchmark tag, surround/EAX restored | Explicit high-end choice; Auto-Detect does not select this automatically. |
+| `quality` | 100% scale, 4x MSAA, SMAA medium, 144 FPS cap, shadow maps on (1024) | 8x anisotropy, DDS replacements enabled, larger upload budget, surround/EAX restored | Strong desktop GPUs. |
+| `ultra` | 100% scale, 8x MSAA, SMAA medium, 240 FPS cap, shadow maps on (2048) | 16x anisotropy, source textures preferred over DDS replacements, high-end benchmark tag, surround/EAX restored | Explicit high-end choice; Auto-Detect does not select this automatically. |
 
-All presets keep optional shadow maps and subjective/modern post effects disabled, so the authored Quake 4 look remains the baseline. Enable shadow maps, bloom, SSAO, tone mapping, motion blur, or CRT filtering separately after choosing a preset if you want those effects.
+`quality` and `ultra` turn on [shadow maps](shadow-mapping.md); the presets below them keep Quake 4's original stencil shadows. Every preset leaves subjective/modern post effects disabled, so the authored Quake 4 look remains the baseline. Enable bloom, SSAO, tone mapping, motion blur, or CRT filtering separately after choosing a preset if you want those effects, and turn shadow maps on or off yourself the same way.
 
 Performance presets write video, texture-allocation, texture-sampling, and audio backend cvars. Anisotropy is capped to the maximum supported by the active GPU. Run `vid_restart` after applying one so renderer, texture allocation, and sampler changes take effect; run `s_restart` as well if you want speaker/EAX/emitter-budget changes to rebuild the active sound backend immediately.
 

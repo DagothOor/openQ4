@@ -4,7 +4,7 @@ This guide covers openQ4's user-facing shadow-map settings, including projected-
 
 ## Quick Start
 
-Recommended starting point:
+The `quality` and `ultra` [performance presets](display-settings.md) turn shadow maps on for you. On any other preset, this is the recommended starting point:
 
 ```cfg
 seta r_shadows 1
@@ -60,7 +60,8 @@ seta r_shadows 1
 seta r_useShadowMap 1
 seta r_shadowMapCSM 1
 seta r_shadowMapSize 1024
-seta r_shadowMapFilterRadius 0.75
+seta r_shadowMapFilterMode 2
+seta r_shadowMapFilterRadius 2.0
 seta r_shadowMapFilterTaps 9
 seta r_shadowMapPointFilterRadius 1.0
 seta r_shadowMapPointFilterTaps 9
@@ -79,7 +80,8 @@ seta r_shadowMapCSM 1
 seta r_shadowMapSize 2048
 seta r_shadowMapPointSize 1024
 seta r_shadowMapCascadeCount 4
-seta r_shadowMapFilterRadius 1.0
+seta r_shadowMapFilterMode 2
+seta r_shadowMapFilterRadius 2.0
 seta r_shadowMapFilterTaps 13
 seta r_shadowMapPointFilterRadius 1.0
 seta r_shadowMapPointFilterTaps 13
@@ -89,7 +91,11 @@ seta r_shadowMapCascadeStabilize 1
 vid_restart
 ```
 
-### Optional Modern Filtering
+### Filtering Modes
+
+Projected lights use PCSS-lite by default (`r_shadowMapFilterMode 2`): shadows stay sharp where a caster meets the receiver and soften with distance, never narrower than `r_shadowMapFilterRadius` (default `2.0` texels). Hardware depth-compare sampling cannot run the blocker search needed for PCSS-lite, so filter mode 2 automatically switches the renderer to the manual raw-depth path even while `r_shadowMapDepthCompare 1` is set.
+
+For a uniform edge instead, use stable rotated Poisson sampling:
 
 ```cfg
 seta r_shadowMapFilterMode 1
@@ -98,7 +104,7 @@ seta r_shadowMapStaticCache 1
 vid_restart
 ```
 
-For projected lights, `r_shadowMapFilterMode 2` enables the experimental PCSS-lite path. Hardware depth-compare sampling cannot run the blocker search needed for PCSS-lite, so selecting filter mode 2 automatically switches the renderer to the manual raw-depth path even while `r_shadowMapDepthCompare 1` is set.
+Point lights have their own filter cvars and do not use PCSS-lite.
 
 ### Performance-Focused
 
@@ -108,6 +114,7 @@ seta r_useShadowMap 1
 seta r_shadowMapCSM 0
 seta r_shadowMapSize 512
 seta r_shadowMapPointSize 256
+seta r_shadowMapFilterMode 0
 seta r_shadowMapFilterRadius 0.75
 seta r_shadowMapFilterTaps 5
 seta r_shadowMapPointFilterRadius 1.0
@@ -134,7 +141,7 @@ vid_restart
 | Setting | Default | Range | What it does |
 |---|---:|---:|---|
 | `r_shadows` | `1` | `0..1` | Master shadow toggle. |
-| `r_useShadowMap` | `0` | `0..1` | Enables the shadow-map pipeline for supported lights. |
+| `r_useShadowMap` | `0` | `0..1` | Enables the shadow-map pipeline for supported lights. The `quality` and `ultra` performance presets set it to `1`. |
 | `r_shadowMapCSM` | `0` | `0..1` | Enables cascaded shadow maps for projected lights. |
 | `r_shadowMapProjectedCSM` | `1` | `0..1` | Allows ordinary projected lights to use CSM when `r_shadowMapCSM` is enabled; parallel/global lights keep their dedicated large-coverage policy. |
 | `r_shadowMapConservativeCasters` | `1` | `0..1` | Keeps shadow-map caster submission separate from visible receiver scissors, so off-screen blockers can still shadow visible receivers. |
@@ -142,9 +149,9 @@ vid_restart
 | `r_shadowMapCasterCulling` | `2` | `0..2` | Caster face culling: `0` always renders two-sided, `1` forces the material-oriented light-facing near shell, and `2` automatically uses the near shell for sealed hulls outside the light while rendering open, uncertain, or light-enclosing geometry two-sided. Automatic mode prevents front-only/open props and enclosing shells from disappearing without storing a detached far shell. Authored `twoSided`/`backSided` orientation is honored whenever one-sided culling is active; the deliberately two-sided modes override it. |
 | `r_shadowMapSize` | `1024` | `128..4096` | Base shadow-map resolution. Higher values cost more VRAM and GPU time. |
 | `r_shadowMapAtlasSize` | `4096` | `2048..8192` | Edge size of the shared projected-light shadow atlas. Cached projected lights occupy `r_shadowMapSize`-sized cells inside it (CSM lights use a 2x2 cell block), so all cached lights stay resident in one texture. |
-| `r_shadowMapFilterRadius` | `0.75` | `0..8` | Projected-light PCF radius in texels. Increase resolution for more detail; increasing this value deliberately softens and widens the edge. |
+| `r_shadowMapFilterRadius` | `2.0` | `0..8` | Projected-light filter radius in texels: the fixed PCF width in modes `0` and `1`, and the minimum penumbra in PCSS-lite. Increase resolution for more detail; increasing this value deliberately softens and widens the edge. |
 | `r_shadowMapFilterTaps` | `9` | `1..13` | Projected-light PCF tap budget. Values up to `1`, `5`, `9`, and `13` select progressively denser sample sets without changing the requested radius. |
-| `r_shadowMapFilterMode` | `0` | `0..2` | Projected-light filter mode: fixed PCF, stable rotated Poisson, or experimental PCSS-lite with raw depth sampling. |
+| `r_shadowMapFilterMode` | `2` | `0..2` | Projected-light filter mode: fixed PCF, stable rotated Poisson, or PCSS-lite with raw depth sampling. Profiles still holding the old `0.75`/`0` pair move to `2.0`/`2` once on upgrade; any other choice is kept. |
 | `r_shadowMapDistantFilterScale` | `0.35` | `0..1` | Scales projected PCF and PCSS radii for parallel/global sources and fitted distant point sources such as outdoor sky lights. Their texels cover much more world space than local projectors, so a tighter kernel preserves caster silhouettes instead of over-blurring them. Set `1` to use the ordinary projected-light radii unchanged. |
 | `r_shadowMapPCSSLightRadius` | `4.0` | `0..16` | Projected PCSS-lite blocker search radius in shadow texels. |
 | `r_shadowMapPCSSMaxRadius` | `8.0` | `0..16` | Maximum projected PCSS-lite filter radius in shadow texels. |

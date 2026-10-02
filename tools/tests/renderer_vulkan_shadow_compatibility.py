@@ -2613,10 +2613,11 @@ def validate_shadow_contact_and_gl_robustness_contract() -> None:
     vk = read("src/renderer/Vulkan/vk_ShadowMap.cpp")
 
     init_cvars = braced_body(init, "void R_InitCvars( void )", "renderer cvar registration")
-    if "r_shadowMapContactQualityMigrated" in init_cvars:
-        raise AssertionError(
-            "Shadow quality migration must not run before archived configs are executed"
-        )
+    for migration_flag in ("r_shadowMapContactQualityMigrated", "r_shadowMapFilterDefaultsMigrated"):
+        if migration_flag in init_cvars:
+            raise AssertionError(
+                "Shadow quality migration must not run before archived configs are executed"
+            )
     migration = braced_body(
         init,
         "static void R_MigrateLegacyShadowMapContactQuality( void )",
@@ -2659,13 +2660,49 @@ def validate_shadow_contact_and_gl_robustness_contract() -> None:
     if migrate_profile(legacy_profile, True) != (legacy_profile, True):
         raise AssertionError("The shadow contact migration flag must make migration one-shot")
     for compiled_default in (
-        'r_shadowMapFilterRadius( "r_shadowMapFilterRadius", "0.75"',
+        'r_shadowMapFilterRadius( "r_shadowMapFilterRadius", "2.0"',
+        'r_shadowMapFilterMode( "r_shadowMapFilterMode", "2"',
         'r_shadowMapPointFilterRadius( "r_shadowMapPointFilterRadius", "1.0"',
         'r_shadowMapFilterTaps( "r_shadowMapFilterTaps", "9"',
         'r_shadowMapPointFilterTaps( "r_shadowMapPointFilterTaps", "9"',
         'r_shadowMapPolygonFactor( "r_shadowMapPolygonFactor", "0.25"',
     ):
-        require(init, compiled_default, "compiled balanced contact-shadow defaults")
+        require(init, compiled_default, "compiled contact-shadow and PCSS-lite filter defaults")
+
+    filter_migration = braced_body(
+        init,
+        "static void R_MigrateLegacyShadowMapFilterDefaults( void )",
+        "post-config projected filter default migration",
+    )
+    require_order(
+        filter_migration,
+        (
+            "r_shadowMapFilterDefaultsMigrated.GetBool()",
+            "return;",
+            "r_shadowMapFilterRadius.GetFloat() - 0.75f",
+            "r_shadowMapFilterMode.GetInteger() == 0",
+            "r_shadowMapFilterRadius.SetFloat( 2.0f )",
+            "r_shadowMapFilterMode.SetInteger( 2 )",
+            "r_shadowMapFilterDefaultsMigrated.SetBool( true )",
+        ),
+        "exact legacy fixed-PCF pair migrates once to PCSS-lite",
+    )
+
+    def migrate_filter(profile: tuple[float, int], migrated: bool) -> tuple[tuple[float, int], bool]:
+        if migrated:
+            return profile, True
+        return ((2.0, 2) if profile == (0.75, 0) else profile), True
+
+    # The contact migration leaves the legacy tuple on 0.75, which the filter
+    # migration then carries to the new default.
+    legacy_after_contact = migrate_profile(legacy_profile, False)[0]
+    if migrate_filter((legacy_after_contact[0], 0), False) != ((2.0, 2), True):
+        raise AssertionError("A contact-migrated legacy profile must reach the PCSS-lite default")
+    for chosen in ((0.75, 1), (3.0, 2), (1.0, 0)):
+        if migrate_filter(chosen, False) != (chosen, True):
+            raise AssertionError("Customized projected filter profiles must be preserved")
+    if migrate_filter((0.75, 0), True) != ((0.75, 0), True):
+        raise AssertionError("The projected filter migration flag must make migration one-shot")
     renderer_device_init = braced_body(
         init,
         "void idRenderSystemLocal::InitOpenGL( void )",
@@ -2675,6 +2712,7 @@ def validate_shadow_contact_and_gl_robustness_contract() -> None:
         renderer_device_init,
         (
             "R_MigrateLegacyShadowMapContactQuality();",
+            "R_MigrateLegacyShadowMapFilterDefaults();",
             "R_InitRendererDevice( true, false, error, sizeof( error ) )",
         ),
         "migration before either renderer device starts",

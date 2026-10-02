@@ -400,7 +400,7 @@ idCVar r_shadowMapCasterCulling( "r_shadowMapCasterCulling", "2", CVAR_RENDERER 
 idCVar r_shadowMapReceiverPlaneBias( "r_shadowMapReceiverPlaneBias", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "enable the experimental derivative receiver-plane depth-bias approximation for projected shadow filters" );
 idCVar r_shadowMapFilterTaps( "r_shadowMapFilterTaps", "9", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "projected-light PCF tap budget: 1, 5, 9, or 13", 1, 13, idCmdSystem::ArgCompletion_Integer<1,13> );
 idCVar r_shadowMapPointFilterTaps( "r_shadowMapPointFilterTaps", "9", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "point-light PCF tap budget: 1, 5, 9, or 13", 1, 13, idCmdSystem::ArgCompletion_Integer<1,13> );
-idCVar r_shadowMapFilterMode( "r_shadowMapFilterMode", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "projected-light shadow filter mode: 0 = fixed PCF, 1 = stable rotated Poisson, 2 = PCSS-lite when raw depth is available", 0, 2, idCmdSystem::ArgCompletion_Integer<0,2> );
+idCVar r_shadowMapFilterMode( "r_shadowMapFilterMode", "2", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "projected-light shadow filter mode: 0 = fixed PCF, 1 = stable rotated Poisson, 2 = PCSS-lite when raw depth is available", 0, 2, idCmdSystem::ArgCompletion_Integer<0,2> );
 idCVar r_shadowMapPointFilterMode( "r_shadowMapPointFilterMode", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "point-light shadow filter mode: 0 = fixed PCF, 1 = stable rotated Poisson", 0, 1, idCmdSystem::ArgCompletion_Integer<0,1> );
 idCVar r_shadowMapDistantFilterScale( "r_shadowMapDistantFilterScale", "0.35", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "scale projected PCF and PCSS radii for parallel/global sky lights whose shadow texels cover more world space", 0.0f, 1.0f );
 idCVar r_shadowMapPCSSLightRadius( "r_shadowMapPCSSLightRadius", "4.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "projected PCSS-lite blocker search radius in shadow texels", 0.0f, 16.0f );
@@ -651,7 +651,9 @@ idCVar r_shadowMapNormalBias( "r_shadowMapNormalBias", "0.00075", CVAR_RENDERER 
 idCVar r_shadowMapPointBias( "r_shadowMapPointBias", "0.00010", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "constant receiver depth bias for point-light shadow maps", 0.0f, 0.05f );
 idCVar r_shadowMapPointNormalBias( "r_shadowMapPointNormalBias", "0.0010", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "geometric normal bias added on sloped point-light receivers", 0.0f, 0.05f );
 idCVar r_shadowMapPointMaxWorldBias( "r_shadowMapPointMaxWorldBias", "4.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "maximum combined point-shadow receiver depth bias and normal offset at the padded far envelope, in world units; 0 disables the cap", 0.0f, 64.0f );
-idCVar r_shadowMapFilterRadius( "r_shadowMapFilterRadius", "0.75", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "projected-light PCF radius in texels for the simple shadow-map path", 0.0f, 8.0f );
+// Default projected filtering is PCSS-lite (r_shadowMapFilterMode 2), where this
+// radius is the penumbra's minimum rather than a fixed PCF width.
+idCVar r_shadowMapFilterRadius( "r_shadowMapFilterRadius", "2.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "projected-light PCF radius in texels for the simple shadow-map path", 0.0f, 8.0f );
 idCVar r_shadowMapPointFilterRadius( "r_shadowMapPointFilterRadius", "1.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "point-light PCF radius in texels for the simple shadow-map path", 0.0f, 8.0f );
 idCVar r_shadowMapProjectionPad( "r_shadowMapProjectionPad", "0.15", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "normalized padding applied around projected-light shadow-map coverage", 0.0f, 1.0f );
 idCVar r_shadowMapCascadeCount( "r_shadowMapCascadeCount", "4", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "number of projected-light cascades when r_shadowMapCSM is enabled", 1, 4, idCmdSystem::ArgCompletion_Integer<1,4> );
@@ -669,6 +671,7 @@ idCVar r_shadowMapPointFarScale( "r_shadowMapPointFarScale", "1.25", CVAR_RENDER
 idCVar r_shadowMapPolygonFactor( "r_shadowMapPolygonFactor", "0.25", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "slope-scale depth bias used when rendering shadow-map casters", 0.0f, 16.0f );
 idCVar r_shadowMapPolygonOffset( "r_shadowMapPolygonOffset", "0.5", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "constant depth bias used when rendering shadow-map casters", 0.0f, 64.0f );
 static idCVar r_shadowMapContactQualityMigrated( "r_shadowMapContactQualityMigrated", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for legacy broad shadow filtering defaults" );
+static idCVar r_shadowMapFilterDefaultsMigrated( "r_shadowMapFilterDefaultsMigrated", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for the legacy fixed-PCF projected shadow filter defaults" );
 idCVar r_frontBuffer( "r_frontBuffer", "0", CVAR_RENDERER | CVAR_BOOL, "draw to front buffer for debugging" );
 idCVar r_skipSubviews( "r_skipSubviews", "0", CVAR_RENDERER | CVAR_INTEGER, "1 = don't render any gui elements on surfaces" );
 idCVar r_skipParticles( "r_skipParticles", "0", CVAR_RENDERER | CVAR_INTEGER, "1 = skip all particle systems", 0, 1, idCmdSystem::ArgCompletion_Integer<0,1> );
@@ -5666,6 +5669,30 @@ static void R_MigrateLegacyShadowMapContactQuality( void ) {
 }
 
 /*
+==================
+R_MigrateLegacyShadowMapFilterDefaults
+
+Projected shadow maps now default to PCSS-lite with a 2 texel minimum radius.
+Every archived profile carries the filter cvars, so one still holding the old
+fixed-PCF pair (radius 0.75, mode 0) would never see the new defaults. Move
+that exact pair once; any other combination is a player's choice and is kept.
+Runs after the contact-quality migration, which can itself leave the old pair.
+==================
+*/
+static void R_MigrateLegacyShadowMapFilterDefaults( void ) {
+	if ( r_shadowMapFilterDefaultsMigrated.GetBool() ) {
+		return;
+	}
+	if ( idMath::Fabs( r_shadowMapFilterRadius.GetFloat() - 0.75f ) < 0.0001f &&
+		r_shadowMapFilterMode.GetInteger() == 0 ) {
+		common->Printf( "Migrating legacy projected shadow filtering: PCSS-lite with a 2 texel minimum radius\n" );
+		r_shadowMapFilterRadius.SetFloat( 2.0f );
+		r_shadowMapFilterMode.SetInteger( 2 );
+	}
+	r_shadowMapFilterDefaultsMigrated.SetBool( true );
+}
+
+/*
 =================
 R_InitCommands
 =================
@@ -6087,6 +6114,7 @@ static bool R_InitRendererDevice( bool legacyPolicy, bool forceWindow, char *err
 
 void idRenderSystemLocal::InitOpenGL( void ) {
 	R_MigrateLegacyShadowMapContactQuality();
+	R_MigrateLegacyShadowMapFilterDefaults();
 	char error[1024];
 	if ( !R_InitRendererDevice( true, false, error, sizeof( error ) ) ) common->FatalError( "%s", error );
 	r_recoverableRendererRestore = false;

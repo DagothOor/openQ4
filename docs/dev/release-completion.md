@@ -13,6 +13,16 @@
   Linux ARM64 cross-build guidance for the canonical in-tree SP/MP sources
   instead of requiring retired companion-repository setup.
 
+- [x] Turn shadow maps on in the `quality` and `ultra` performance presets and
+  default projected-light filtering to PCSS-lite (`r_shadowMapFilterMode 2`)
+  with a 2-texel minimum radius (`r_shadowMapFilterRadius 2.0`). Lower presets
+  keep stencil shadows. A profile still holding the old 0.75/fixed-PCF pair moves
+  to the new pair once; any other choice is kept. The engine preset self-test,
+  native preset tests and fresh/legacy/customized profile runs pass, and the
+  Air Defense 1 and q4dm2 terrain/occlusion checks pass on OpenGL and Vulkan
+  with the new filter default. See [display settings](../user/display-settings.md)
+  and [shadow mapping](../user/shadow-mapping.md).
+
 - [x] Correct outdoor shadow-map terrain sampling on OpenGL and Vulkan.
   Point filters compare against the receiver plane at each sampled texel, while
   distant off-centre point sources use fitted perspective maps and cascades.
