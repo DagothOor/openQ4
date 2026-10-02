@@ -6,6 +6,7 @@
 #include "application/SystemDisplay.h"
 #include "application/SystemSettingsHost.h"
 #include "../framework/DurableFile.h"
+#include "../renderer/RendererSettingsReports.h"
 #include "../sys/WindowSettings.h"
 
 // Native adapter for the application controller. Its lifetime exceeds GUI and
@@ -33,6 +34,8 @@ public:
 	// An automatic attempt proves its effect with later presented frames, so it
 	// needs a ready renderer and window presenting now.
 	bool ReadyForAutomatic() const;
+	// The renderer's latest light-grid load receipt and its engine serial.
+	bool LightGridLoad(renderLightGridLoadReceipt_t& receipt, std::uint64_t& serial) const;
 
 private:
 	bool Paths(std::string& error);

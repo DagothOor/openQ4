@@ -1115,4 +1115,8 @@
 	"#str_230075"	"Guardando ajustes…"
 	"#str_230076"	"Aplica por separado los cambios de pantalla, renderizado e iluminación."
 	"#str_230077"	"Los ajustes requieren atención"
+	"#str_230078"	"Este mapa mantiene el ajuste anterior de iluminación hasta que se cargue el siguiente mapa."
+	"#str_230079"	"Este mapa precarga su iluminación."
+	"#str_230080"	"Este mapa carga la iluminación a medida que las zonas se hacen visibles."
+	"#str_230081"	"Este mapa no tiene iluminación precalculada."
 }

@@ -397,8 +397,9 @@ the single policy request with a receipt at every exit, and the provider rule.
 The settings service harness compiles the provider against its catalog double:
 the live choice outside an attempt, the baseline while one is open, fresh
 tokens, and no answer when the setting cannot be read. The deferred
-executor below relies on that rule; the receipts and the selection report
-wait for the light-grid status row and the renderer executor.
+executor below relies on that rule, the SYSTEM page's
+[Preload Light Grids status](system-render-options.md) reads the light-grid
+receipts, and the selection report waits for the renderer executor.
 
 The reports were qualified by the contract test, the settings service harness
 and the full Meson suite, and by SP map loads on OpenGL and Vulkan that logged

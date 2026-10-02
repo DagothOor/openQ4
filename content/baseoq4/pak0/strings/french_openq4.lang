@@ -1115,4 +1115,8 @@
 	"#str_230075"	"Enregistrement des paramètres…"
 	"#str_230076"	"Appliquez séparément les changements d’affichage, de rendu et de lumière."
 	"#str_230077"	"Les paramètres demandent votre attention"
+	"#str_230078"	"Cette carte garde l’ancien réglage des grilles de lumière jusqu’au prochain chargement."
+	"#str_230079"	"Cette carte précharge ses grilles de lumière."
+	"#str_230080"	"Cette carte charge ses grilles de lumière au fil des zones visibles."
+	"#str_230081"	"Cette carte n’a pas de grilles de lumière précalculées."
 }

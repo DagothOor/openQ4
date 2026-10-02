@@ -1115,4 +1115,8 @@
 	"#str_230075"	"Saving settings…"
 	"#str_230076"	"Apply display, renderer and light-grid changes separately."
 	"#str_230077"	"Settings need attention"
+	"#str_230078"	"This map keeps the previous light-grid setting until the next map loads."
+	"#str_230079"	"This map preloads its light grids."
+	"#str_230080"	"This map streams light grids as areas come into view."
+	"#str_230081"	"This map has no baked light grids."
 }

@@ -31,7 +31,8 @@ struct TestHost final:Host,SettingsHost {
  bool Read(StateValues& v,std::string&)override{v=live;return true;}bool Defaults(StateValues& v,std::string&)override{v=live;return true;}
  bool Validate(const StateValues& b,const StateValues& c,std::string&)override{if(b.size()!=c.size())return false;for(auto& [k,v]:c)if(!b.contains(k)||b.at(k).index()!=v.index()||!ValidStateValue(v))return false;return true;}
  bool Write(const StateValues& patch,std::string&)override{++writes;if(!writable)return false;for(const auto& [key,value]:patch)live.at(key)=value;return true;}bool NeedsConfirmation(const StateValues&,const StateValues&)const override{return !writable;}
- void Locale(const std::string& path){std::istringstream f(::Read(path));std::string line;while(std::getline(f,line)){std::istringstream s(line);std::string k,v;s>>std::quoted(k)>>std::quoted(v);if(k.starts_with("#str_"))strings[k]=v;}for(auto* k:{"#str_229976","#str_229977","#str_229978","#str_230010"})Check(strings.contains(k),"all actual locale preset/status strings exist");}
+ static bool Quoted(std::istream& s,std::string& out){s>>std::ws;if(s.get()!='"')return false;out.clear();for(int c=s.get();c!=EOF;c=s.get()){if(c=='"')return true;if(c=='\\'){const int n=s.get();if(n==EOF)return false;out+=n=='n'?'\n':n=='t'?'\t':char(n);continue;}out+=char(c);}return false;}
+ void Locale(const std::string& path){std::istringstream f(::Read(path));std::string line;while(std::getline(f,line)){std::istringstream s(line);std::string k,v;if(Quoted(s,k)&&Quoted(s,v)&&k.starts_with("#str_"))strings[k]=v;}for(auto* k:{"#str_229976","#str_229977","#str_229978","#str_230010"})Check(strings.contains(k),"all actual locale preset/status strings exist");}
 };
 struct View {
  TestHost host;SettingsTransaction tx{host};Runtime runtime{host};Viewport viewport;std::string source,error,message="#str_230007";double time=1;bool pending=false,canApply=false;static constexpr std::uint64_t Owner=29;

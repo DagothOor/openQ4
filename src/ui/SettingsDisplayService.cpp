@@ -16,6 +16,10 @@ bool EngineSettingsDisplayHost::SupportsMultisampling() const {
 	// Vulkan's strict device initialization currently requires zero samples.
 	return api == RENDER_MODULE_API_GL || api == RENDER_MODULE_API_GL_MODULE || api == RENDER_MODULE_API_GLES;
 }
+bool EngineSettingsDisplayHost::LightGridLoad(renderLightGridLoadReceipt_t& receipt, std::uint64_t& serial) const {
+	std::uint64_t epoch = 0;
+	return R_RendererModule_QueryLightGridLoad(receipt,serial,epoch);
+}
 bool EngineSettingsDisplayHost::ReadyForAutomatic() const {
 	rendererDisplayState_t state{};
 	return R_RendererModule_QueryDisplay(&state) && state.rendererReady && state.windowValid && state.presentation.available;

@@ -1115,4 +1115,8 @@
 	"#str_230075"	"Ayarlar kaydediliyor…"
 	"#str_230076"	"Görüntü, oluşturucu ve ışık ızgarası ayarlarını ayrı ayrı uygula."
 	"#str_230077"	"Ayarlar dikkat gerektiriyor"
+	"#str_230078"	"Bu harita, sonraki harita yüklenene kadar önceki ışık ızgarası ayarını korur."
+	"#str_230079"	"Bu harita ışık ızgaralarını önceden yükler."
+	"#str_230080"	"Bu harita ışık ızgaralarını bölgeler görünür oldukça yükler."
+	"#str_230081"	"Bu haritanın önceden hesaplanmış ışık ızgarası yok."
 }

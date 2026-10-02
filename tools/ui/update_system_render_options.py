@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
-"""Title the SYSTEM confirmation panel by the attempt it reports.
+"""Author the SYSTEM page's deferred render options and their status.
+
+Preload Light Grids edits r_lightGridPreload in the ordinary draft. Apply
+completes it automatically, and the next map load uses it; a status line
+under the row says what the loaded map does with its light grids and when a
+saved change waits for the next load.
 
 The Keep/Revert question belongs to a display confirmation. An automatic
-attempt, such as the next map's light-grid preload, never asks it: the panel
-opens for such an attempt only when it needs recovery (a failed preparation or
-restore, or a save that did not finish), and then needs a title that fits any
-attempt. While the service reports RecoveryRequired the title reads the
-neutral recovery heading; otherwise it keeps the Keep question.
-This tool owns the title's text binding and the renderOptions extension
-record. --check verifies reproducible generation without writing.
+attempt never asks it: the panel opens for such an attempt only when it needs
+recovery (a failed preparation or restore, or a save that did not finish),
+and then needs a title that fits any attempt. While the service reports
+RecoveryRequired the title reads the neutral recovery heading; otherwise it
+keeps the Keep question.
+
+This tool owns the preload row, its help and status lines, their states,
+aliases, bindings and timelines, the confirmation title's text binding and the
+renderOptions extension record. --check verifies reproducible generation
+without writing.
 """
 from __future__ import annotations
 import argparse
 import copy
 import json
 from pathlib import Path
-from update_system_number_fields import index_nodes, load
+from update_system_presets import allowed, length, load, nodes, renamed, typed
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = Path('content/baseoq4/pak0/guis/menu/settings/system.q4ui')
@@ -26,28 +34,109 @@ RECOVERY_REQUIRED = 3  # SettingsPhase::RecoveryRequired
 # keeps one stable place however the passes are ordered.
 ANCHOR = 'settings_vsync.opacity'
 
+ROW, SOURCE_ROW, KEY = 'settings_lightgrid_preload', 'settings_irradiance', 'r_lightGridPreload'
+LABEL, HELP = '#str_42820', '#str_42821'
+# The loaded map keeps the previous choice, preloads, streams, or has none.
+PENDING, PRELOADS, STREAMS, NO_GRIDS = '#str_230078', '#str_230079', '#str_230080', '#str_230081'
+STATUS_KEYS = ('committed', 'mapLoaded', 'consumed', 'effective', 'pending')
+
+
+def state(name):
+    return {'state': 'settings.lightGrid.' + name}
+
+
+def select(condition, shown, hidden):
+    return {'op': 'select', 'args': [condition, shown, hidden]}
+
 
 def compose(document):
     result = copy.deepcopy(document)
-    title = index_nodes(result['root']).get(TITLE)
+    index = nodes(result['root'])
+    title = index.get(TITLE)
     if title is None or title['properties'].get('text') != {'type': 'text', 'value': KEEP_TITLE}:
         raise ValueError('The SYSTEM confirmation title no longer reads the Keep question; review its binding')
-    binding = {'id': TITLE + '.text', 'node': TITLE, 'property': 'text', 'value': {'op': 'select', 'args': [
-        {'op': '==', 'args': [{'state': 'settings.phase'}, RECOVERY_REQUIRED]}, RECOVERY_TITLE, KEEP_TITLE]}}
-    bindings = [entry for entry in result.get('bindings', []) if entry['id'] != binding['id']]
-    position = next((index for index, entry in enumerate(bindings) if entry['id'] == ANCHOR), None)
+    action = {'input': 'boolean', 'operation': 'settings.system.edit', 'arguments': {KEY: {'input': 'value'}}}
+    if result['actions'].get('edit.' + KEY) != action:
+        raise ValueError('Review the existing light-grid preload proposal contract')
+    source = index.get(SOURCE_ROW)
+    if source is None or source.get('control', {}).get('role') != 'toggle':
+        raise ValueError('The Irradiance Volumes toggle the preload row is cloned from changed')
+
+    # The row: a toggle cloned from Irradiance Volumes, placed after it. Its
+    # help and status lines sit inside the card under the label, so focus
+    # reveals the whole explanation and the plate and frame grow around it.
+    row = renamed(source, SOURCE_ROW, ROW)
+    row['control'].update(label=LABEL, action='edit.' + KEY, value={'state': 'settings.draft.' + KEY})
+    nodes(row)[ROW + '-label']['properties']['text'] = typed('text', LABEL)
+    hint = index['dimensions-hint']
+    helper = renamed(copy.deepcopy(hint), 'dimensions-hint', ROW + '-help')
+    helper['properties'].update({'text': typed('text', HELP), 'white-space': typed('keyword', 'pre-line'),
+                                 'width': length(100, '%'), 'margin-top': length(4), 'margin-bottom': length(0)})
+    status = renamed(copy.deepcopy(hint), 'dimensions-hint', ROW + '-status')
+    # Hidden until a map is loaded; its static text is the binding's last case.
+    status['properties'].update({'text': typed('text', NO_GRIDS), 'display': typed('keyword', 'none'),
+                                 'width': length(100, '%'), 'margin-top': length(4), 'margin-bottom': length(0)})
+    label_at = next(i for i, child in enumerate(row['children']) if child['id'] == ROW + '-label') + 1
+    row['children'][label_at:label_at] = [helper, status]
+    owned = {ROW, ROW + '-help', ROW + '-status'}
+    column = next(node for node in index.values() if any(child['id'] == SOURCE_ROW for child in node.get('children', [])))
+    children = [child for child in column['children'] if child['id'] not in owned]
+    position = next(i for i, child in enumerate(children) if child['id'] == SOURCE_ROW) + 1
+    column['children'] = children[:position] + [row] + children[position:]
+
+    # Service status keys and the row's draft/applied readback.
+    for name in STATUS_KEYS:
+        result['state']['settings.lightGrid.' + name] = {'type': 'boolean', 'initial': False}
+    for phase in ('draft', 'baseline'):
+        variable = phase + 'LightGridPreload'
+        result['presentationVariables'][variable] = {'type': 'boolean', 'initial': False,
+                                                     'value': {'state': 'settings.' + phase + '.' + KEY}}
+        result['aliases'][variable] = {'variable': variable}
+
+    # Bindings: the row follows the shared editing rule; the status line shows
+    # only while a map is loaded. The confirmation title names recovery.
+    bindings = [entry for entry in result.get('bindings', [])
+                if entry['node'] not in owned and entry['id'] != TITLE + '.text']
+    added = [
+        {'id': ROW + '.enabled', 'node': ROW, 'property': 'enabled', 'value': allowed()},
+        {'id': ROW + '.opacity', 'node': ROW, 'property': 'opacity', 'value': select(allowed(), 1, 0.4)},
+        {'id': ROW + '-status.display', 'node': ROW + '-status', 'property': 'display',
+         'value': select(state('mapLoaded'), 'block', 'none')},
+        {'id': ROW + '-status.text', 'node': ROW + '-status', 'property': 'text',
+         'value': select(state('pending'), PENDING, select(state('consumed'), select(state('effective'), PRELOADS, STREAMS), NO_GRIDS))},
+    ]
+    anchor = next((i for i, entry in enumerate(bindings) if entry['id'] == SOURCE_ROW + '.opacity'), None)
+    if anchor is None:
+        raise ValueError('The Irradiance Volumes opacity binding is missing; choose a new anchor for the preload row')
+    bindings[anchor + 1:anchor + 1] = added
+    title_binding = {'id': TITLE + '.text', 'node': TITLE, 'property': 'text', 'value': select(
+        {'op': '==', 'args': [{'state': 'settings.phase'}, RECOVERY_REQUIRED]}, RECOVERY_TITLE, KEEP_TITLE)}
+    position = next((i for i, entry in enumerate(bindings) if entry['id'] == ANCHOR), None)
     if position is None:
         raise ValueError('The SYSTEM VSync opacity binding is missing; choose a new anchor for the confirmation title')
-    bindings.insert(position + 1, binding)
+    bindings.insert(position + 1, title_binding)
     result['bindings'] = bindings
+
+    # Feedback timelines cloned from the source row's states.
+    timelines = [entry for entry in result['timelines'] if not entry['id'].startswith(ROW + '.')]
+    cloned = [renamed(entry, SOURCE_ROW, ROW) for entry in timelines if entry['id'].startswith(SOURCE_ROW + '.')]
+    if {entry['id'] for entry in cloned} != {ROW + '.' + s for s in ('default', 'hover', 'focus', 'pressed', 'disabled')}:
+        raise ValueError('The Irradiance Volumes feedback timelines changed')
+    last = max(i for i, entry in enumerate(timelines) if entry['id'].startswith(SOURCE_ROW + '.'))
+    result['timelines'] = timelines[:last + 1] + cloned + timelines[last + 1:]
+
     result.setdefault('extensions', {}).setdefault('openq4', {})['renderOptions'] = {
-        'scope': 'Automatic attempts (the next map\'s light-grid preload) apply without Keep/Revert and report '
-                 'Applying, Restoring and Saving status. The confirmation panel opens for one only when it needs '
-                 'recovery, under the neutral recovery title.',
+        'scope': 'Preload Light Grids edits the draft; Apply completes it automatically without Keep/Revert, reporting '
+                 'Applying, Restoring and Saving status, and the next map load uses it. The status line names what the '
+                 'loaded map does with its light grids and when a saved change waits for the next load. The confirmation '
+                 'panel opens for an automatic attempt only when it needs recovery, under the neutral recovery title.',
         'confirmationTitle': {'recoveryPhase': RECOVERY_REQUIRED, 'recovery': RECOVERY_TITLE, 'otherwise': KEEP_TITLE},
-        'localization': [KEEP_TITLE, RECOVERY_TITLE, '#str_230073', '#str_230074', '#str_230075', '#str_230076'],
-        'remaining': 'The Preload Light Grids, Renderer Fallback, display device and resolution rows follow in '
-                     'their own increments.'}
+        'preloadRow': {'control': ROW, 'clonedFrom': SOURCE_ROW, 'setting': KEY,
+                       'status': {'pending': PENDING, 'preloads': PRELOADS, 'streams': STREAMS, 'noGrids': NO_GRIDS}},
+        'localization': [KEEP_TITLE, RECOVERY_TITLE, '#str_230073', '#str_230074', '#str_230075', '#str_230076',
+                         LABEL, HELP, PENDING, PRELOADS, STREAMS, NO_GRIDS],
+        'remaining': 'The Renderer Fallback, display device and resolution rows follow in their own increments.'}
+    nodes(result['root'])
     return result
 
 
@@ -60,7 +149,7 @@ def main():
     result = compose(document)
     if args.check:
         if result != document:
-            raise SystemExit('SYSTEM confirmation title differs from its render-options definition')
+            raise SystemExit('SYSTEM render options differ from their authoring definition')
     else:
         args.source.write_text(prefix + json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8', newline='\n')
 

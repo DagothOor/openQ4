@@ -54,8 +54,9 @@ std::unique_ptr<Service>& Instance() { static std::unique_ptr<Service> service; 
 Service& Settings() { auto& service=Instance(); if (!service) service=std::make_unique<Service>(); return *service; }
 std::uint64_t nextOwner = 1; // Survives game/renderer/service shutdown, never reused.
 // Level-load policy tokens survive the service too, so a receipt from an
-// earlier service can never match a later request.
-std::uint64_t levelLoadToken = 0, levelUnloads = 0;
+// earlier service can never match a later request. A receipt describes the
+// map on screen only for the latest token, issued after the last unload.
+std::uint64_t levelLoadToken = 0, levelUnloads = 0, unloadedToken = 0;
 struct RenderFrame {
     unsigned depth = 0;
     bool valid = false, drawn = false, submitting = false;
@@ -147,6 +148,39 @@ SettingsResult CompleteExit(Service& service, Service::ExitIdentity identity) {
         service.exitReceipt = identity; TraceExit(identity,"ready");
     } else CancelExit(service,identity.owner);
     return result;
+}
+// The light-grid preload a level load must use: an open attempt's baseline
+// until its choice is saved, otherwise the live catalog value.
+bool CommittedPreload(Service& service, bool& preload) {
+    StateValue value; std::string error;
+    if (service.display.Active() && !service.display.Persisted()) {
+        // The attempt could still be undone: its baseline is the committed choice.
+        const auto found = service.transaction.Baseline().find("r_lightGridPreload");
+        if (found == service.transaction.Baseline().end()) return false;
+        value = found->second;
+    } else if (!service.host.ReadValue("r_lightGridPreload",value,error)) return false;
+    const auto* flag = std::get_if<bool>(&value);
+    if (!flag) return false;
+    preload = *flag; return true;
+}
+// What the loaded map did with its light grids, and whether the committed
+// choice waits for the next load. Only the receipt of the latest policy
+// request since the last unload describes the map on screen.
+void LightGridStatus(Service& service, StateValues& values) {
+    bool committed = false, mapLoaded = false, consumed = false, effective = false, pending = false;
+    const bool known = CommittedPreload(service,committed);
+    renderLightGridLoadReceipt_t receipt{}; std::uint64_t serial = 0;
+    if (levelLoadToken && levelLoadToken > unloadedToken && service.device.LightGridLoad(receipt,serial) &&
+        receipt.token == levelLoadToken && receipt.outcome != RENDER_LIGHTGRID_RENDERER_STOPPED) {
+        mapLoaded = true;
+        consumed = receipt.outcome == RENDER_LIGHTGRID_STREAMED || receipt.outcome == RENDER_LIGHTGRID_PRELOADED ||
+            receipt.outcome == RENDER_LIGHTGRID_PRELOAD_INCOMPLETE;
+        effective = consumed && receipt.preload;
+        pending = consumed && known && receipt.preload != committed;
+    }
+    values["settings.lightGrid.committed"] = committed; values["settings.lightGrid.mapLoaded"] = mapLoaded;
+    values["settings.lightGrid.consumed"] = consumed; values["settings.lightGrid.effective"] = effective;
+    values["settings.lightGrid.pending"] = pending;
 }
 const char* Message(SettingsCode code, SettingsPhase phase, bool dirty) {
     switch (code) {
@@ -281,21 +315,14 @@ bool UI_SettingsBlocksConfigWrite() {
 }
 bool UI_SettingsStartup(std::string& error) { return Settings().device.Startup(error); }
 bool UI_SettingsLevelLoadPolicy(bool& preload, std::uint64_t& token) {
-    auto& service = Settings();
-    StateValue value; std::string error;
-    if (service.display.Active() && !service.display.Persisted()) {
-        // The attempt could still be undone: its baseline is the committed choice.
-        const auto found = service.transaction.Baseline().find("r_lightGridPreload");
-        if (found == service.transaction.Baseline().end()) return false;
-        value = found->second;
-    } else if (!service.host.ReadValue("r_lightGridPreload",value,error)) return false;
-    const auto* flag = std::get_if<bool>(&value);
-    if (!flag || levelLoadToken == (std::numeric_limits<std::uint64_t>::max)()) return false;
-    preload = *flag; token = ++levelLoadToken;
+    bool committed = false;
+    if (!CommittedPreload(Settings(),committed) || levelLoadToken == (std::numeric_limits<std::uint64_t>::max)()) return false;
+    preload = committed; token = ++levelLoadToken;
     return true;
 }
 void UI_SettingsLevelUnloaded() {
     if (levelUnloads != (std::numeric_limits<std::uint64_t>::max)()) ++levelUnloads;
+    unloadedToken = levelLoadToken;
 }
 bool UI_SettingsInitializeDisplay(std::string& error) { return Settings().device.InitializeDisplay(error); }
 bool UI_SettingsStartupActive() { return Settings().device.StartupActive(); }
@@ -526,7 +553,9 @@ const std::map<std::string,std::size_t>& UI_SettingsStateSchema() {
     static const auto schema = [] {
         std::map<std::string,std::size_t> result{{"settings.open",1},{"settings.dirty",1},
             {"settings.busy",1},{"settings.canApply",1},{"settings.message",2},{"settings.phase",0},{"settings.msaaAvailable",1},
-            {"settings.request",2},{"settings.canConfirm",1},{"settings.canRevert",1},{"settings.canRetry",1},{"settings.remaining",0},{"settings.confirmationVisible",1}};
+            {"settings.request",2},{"settings.canConfirm",1},{"settings.canRevert",1},{"settings.canRetry",1},{"settings.remaining",0},{"settings.confirmationVisible",1},
+            {"settings.lightGrid.committed",1},{"settings.lightGrid.mapLoaded",1},{"settings.lightGrid.consumed",1},
+            {"settings.lightGrid.effective",1},{"settings.lightGrid.pending",1}};
         for (const auto& [key,type] : SystemSettingsHost::Schema()) {
             result.emplace("settings.draft."+key,type);
             result.emplace("settings.baseline."+key,type);
@@ -577,6 +606,7 @@ bool UI_SettingsRead(std::uint64_t owner, StateValues& values) {
         default: break;
     }
     if (own) {
+        LightGridStatus(service,candidate);
         for (const auto& [key,value] : transaction.Draft()) candidate.emplace("settings.draft."+key,value);
         for (const auto& [key,value] : transaction.Baseline()) candidate.emplace("settings.baseline."+key,value);
     }

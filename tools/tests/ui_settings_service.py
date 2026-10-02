@@ -40,6 +40,7 @@ SUPPORT = r'''
 #include <xmmintrin.h>
 #endif
 #include "src/ui/SettingsService.h"
+#include "src/renderer/RendererSettingsReports.h"
 #include "src/ui/application/SystemSettingsHost.h"
 #include "src/ui/application/SettingsDisplayController.h"
 using namespace openq4::ui;
@@ -206,7 +207,8 @@ struct idCommonLocal {
 static struct DeviceData {
     SettingsDisplayObservation observation{1,1,0,0,0,true,false,true,false};
     bool held=false,startup=false,blocked=false,refusePrepare=false,refusePersist=false,refuseRestart=false,refuseFinish=false;
-    bool msaaSupported=true,automaticReady=true;
+    bool msaaSupported=true,automaticReady=true,receiptValid=false;
+    renderLightGridLoadReceipt_t receipt{};std::uint64_t receiptSerial=0;
     int prepares=0,cancels=0,restarts=0,restores=0,observes=0,persists=0,finishes=0,startups=0,frames=0,shutdowns=0;
 } deviceData;
 class EngineSettingsDisplayHost final:public SettingsDisplayHost {
@@ -245,6 +247,9 @@ public:
     bool StartupActive()const noexcept{return deviceData.startup;}
     bool SupportsMultisampling()const{return deviceData.msaaSupported;}
     bool ReadyForAutomatic()const{return deviceData.automaticReady;}
+    bool LightGridLoad(renderLightGridLoadReceipt_t& receipt,std::uint64_t& serial)const{
+        if(!deviceData.receiptValid)return false;receipt=deviceData.receipt;serial=deviceData.receiptSerial;return true;
+    }
 };
 // Execute the production Session::UpdateScreen frame boundary with a counted
 // synchronous renderer. No window, GPU or input APIs are used by these doubles.
@@ -307,7 +312,7 @@ static std::uint64_t Pending() {
 }
 static void Validation() {
     const auto& schema=UI_SettingsStateSchema();
-    Check(schema.size()==27 && schema.at("settings.msaaAvailable")==1 && schema.at("settings.message")==2 && schema.at("settings.open")==1 &&
+    Check(schema.size()==32 && schema.at("settings.lightGrid.pending")==1 && schema.at("settings.lightGrid.mapLoaded")==1 && schema.at("settings.msaaAvailable")==1 && schema.at("settings.message")==2 && schema.at("settings.open")==1 &&
           schema.at("settings.phase")==0,"service status schema types");
     for(const auto& [key,type]:SystemSettingsHost::Schema())
         Check(schema.at("settings.draft."+key)==type && schema.at("settings.baseline."+key)==type,"typed snapshot schema");
@@ -845,6 +850,50 @@ static void UnsupportedEffects() {
     Expect(owner,"canApply",false);
     Check(!Dispatch(owner,"apply") && deviceData.prepares==0 && host.writes.empty(),"the renderer fallback waits for its executor");
 }
+// The light-grid row's status: what the loaded map did with its light grids
+// and whether a saved choice waits for the next load.
+static void SetReceipt(std::uint64_t token,bool preload,int outcome) {
+    deviceData.receiptValid=true;deviceData.receipt={};deviceData.receipt.token=token;deviceData.receipt.preload=preload;
+    deviceData.receipt.outcome=outcome;deviceData.receipt.areasUsable=29;deviceData.receipt.areasResident=preload?29:0;
+    ++deviceData.receiptSerial;
+}
+static void LightGridState(std::uint64_t owner,bool committed,bool mapLoaded,bool consumed,bool effective,bool pending,const char* why) {
+    const auto values=Read(owner);
+    Check(values.at("settings.lightGrid.committed")==StateValue(committed) && values.at("settings.lightGrid.mapLoaded")==StateValue(mapLoaded) &&
+          values.at("settings.lightGrid.consumed")==StateValue(consumed) && values.at("settings.lightGrid.effective")==StateValue(effective) &&
+          values.at("settings.lightGrid.pending")==StateValue(pending),why);
+}
+static void LightGridStatus() {
+    const auto owner=Begin();
+    LightGridState(owner,false,false,false,false,false,"no map, no status");
+    bool preload=true;std::uint64_t token=0;
+    Check(UI_SettingsLevelLoadPolicy(preload,token) && !preload,"the first map takes the streaming policy");
+    LightGridState(owner,false,false,false,false,false,"a load in progress has no receipt yet");
+    SetReceipt(token,false,RENDER_LIGHTGRID_STREAMED);
+    LightGridState(owner,false,true,true,false,false,"the loaded map streams its light grids");
+    AwaitDeferred(owner);
+    LightGridState(owner,false,true,true,false,false,"an attempt not yet saved keeps the committed choice");
+    PresentFrame();UI_SettingsFrame();
+    LightGridState(owner,true,true,true,false,true,"a saved preload waits for the next map");
+    UI_SettingsLevelUnloaded();
+    LightGridState(owner,true,false,false,false,false,"an unloaded map has no status");
+    Check(UI_SettingsLevelLoadPolicy(preload,token) && preload,"the next map takes the saved preload");
+    LightGridState(owner,true,false,false,false,false,"the previous map's receipt does not describe the loading map");
+    SetReceipt(token,true,RENDER_LIGHTGRID_PRELOADED);
+    LightGridState(owner,true,true,true,true,false,"the next map preloads its light grids");
+    SetReceipt(token-1,true,RENDER_LIGHTGRID_PRELOADED);
+    LightGridState(owner,true,false,false,false,false,"a receipt for an earlier token is refused");
+    SetReceipt(token,true,RENDER_LIGHTGRID_NO_ASSETS);
+    LightGridState(owner,true,true,false,false,false,"a map without baked light grids says so");
+    SetReceipt(token,true,RENDER_LIGHTGRID_RENDERER_STOPPED);
+    LightGridState(owner,true,false,false,false,false,"a load without a renderer has no status");
+    SetReceipt(token,true,RENDER_LIGHTGRID_PRELOAD_INCOMPLETE);
+    LightGridState(owner,true,true,true,true,false,"an incomplete preload still preloads");
+    deviceData.receiptValid=false;
+    LightGridState(owner,true,false,false,false,false,"without a receipt from the current module there is no status");
+    const auto other=UI_SettingsCreateOwner();StateValues values;
+    Check(UI_SettingsRead(other,values) && !values.contains("settings.lightGrid.pending"),"other owners get no light-grid status");
+}
 static void DisplayClose(bool written) {
     const auto owner=Begin();
     if(written)AwaitDisplay(owner);
@@ -1154,7 +1203,7 @@ int main(int argc,char** argv) {
     else if(name=="deferred_not_ready")DeferredNotReady();else if(name=="deferred_persist_failure")DeferredPersistFailure();
     else if(name=="deferred_close")DeferredClose();else if(name=="deferred_apply_exit")DeferredApplyExit();
     else if(name=="deferred_apply_exit_restore")DeferredApplyExitRestore();else if(name=="unsupported_effects")UnsupportedEffects();
-    else if(name=="deferred_retry_renews")DeferredRetryRenews();
+    else if(name=="deferred_retry_renews")DeferredRetryRenews();else if(name=="light_grid_status")LightGridStatus();
     else if(name=="exit_immediate")ExitImmediate(false);else if(name=="exit_noop")ExitImmediate(true);
     else if(name.starts_with("exit_invalidate_"))ExitInvalidate(name.substr(16));
     else if(name.starts_with("exit_failure_"))ExitFailure(name.substr(13));
@@ -1179,7 +1228,7 @@ SCENARIOS = (
     'timeout_frame', 'capability', 'msaa_capability', 'display_draft_preflight', 'display_keep', 'display_persist_failure',
     'display_close_queued', 'display_close_written', 'startup_shutdown', 'stale_display_actions', 'level_load_policy', 'level_load_unreadable',
     'deferred_apply', 'deferred_mixed', 'deferred_not_ready', 'deferred_persist_failure', 'deferred_close', 'deferred_apply_exit',
-    'deferred_apply_exit_restore', 'unsupported_effects', 'deferred_retry_renews',
+    'deferred_apply_exit_restore', 'unsupported_effects', 'deferred_retry_renews', 'light_grid_status',
     'frame_outside','frame_skipped','frame_submit_only','frame_present_only',
     'frame_readback_before_draw','frame_readback_after_draw','frame_readback_during_end',
     'frame_nested','frame_aborted','frame_begin_aborted','frame_wrong_request','frame_shutdown',

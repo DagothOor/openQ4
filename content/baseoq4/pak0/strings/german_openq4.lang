@@ -1115,4 +1115,8 @@
 	"#str_230075"	"Einstellungen werden gespeichert…"
 	"#str_230076"	"Wenden Sie Anzeige-, Renderer- und Lichtgitteränderungen getrennt an."
 	"#str_230077"	"Einstellungen erfordern Aufmerksamkeit"
+	"#str_230078"	"Diese Karte behält die bisherige Einstellung der Lichtgitter bis zum nächsten Kartenladen."
+	"#str_230079"	"Diese Karte lädt ihre Lichtgitter vorab."
+	"#str_230080"	"Diese Karte lädt Lichtgitter nach, sobald Bereiche sichtbar werden."
+	"#str_230081"	"Diese Karte hat keine vorberechneten Lichtgitter."
 }

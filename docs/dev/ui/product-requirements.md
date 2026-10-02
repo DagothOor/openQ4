@@ -509,6 +509,8 @@ On engine `2c1f988a7ac1c15453cd81159bcde95a17013390` render API 20 gives the set
 
 On engine `fd4dd84355ee7f13acb7ff7a10711eefa76f5d6c` the light-grid preload gains its deferred executor: one executor per Apply, a schema-2 next-map journal that completes automatically after a later presented frame, the committed policy for level loads until it is saved, and cold-start replay in both directions. The page has no row for it yet. Production-body service, host, catalog and controller tests, a mutation pass and a cold-recovery probe qualify it. `BEH-002` gains partial evidence without a status change. Evidence: `.tmp/ui/deferred-light-grid-executor/validation-evidence.json`, SHA-256 `4909d049af40f5c7a8a8436bba2e85caffe6168b9ca676cb64ce213e90664598`.
 
+On engine `218745151e4778026c53c7cb034de6b5da478635` the retained SYSTEM page gains Preload Light Grids: the toggle with its help and a status line that names what the loaded map does with its light grids, from the committed preload and the renderer's receipts. Apply completes it through the deferred executor, and the next map load uses it. The service harness, a native page test across seven locales, sizes and densities, and in-game OpenGL and Vulkan runs qualify it. `FLOW-002` and `BEH-002` gain partial evidence without a status change. Evidence: `.tmp/ui/system-render-options/validation-evidence.json`, SHA-256 `092fe0eb98ffc56f6dc38fc2141b6bbe302f9620c37c1798ed9395e753f6b237`.
+
 There are **87 partial, 252 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.

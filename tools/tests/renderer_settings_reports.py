@@ -129,11 +129,14 @@ def main() -> int:
     dedicated = service[:service.index("#else")]
     for token in ("bool UI_SettingsLevelLoadPolicy(bool&, std::uint64_t&) { return false; }", "void UI_SettingsLevelUnloaded() {}"):
         require(dedicated, token, "dedicated stubs")
+    committed = body(service, "bool CommittedPreload(Service& service, bool& preload)")
+    ordered(committed, ["service.display.Active() && !service.display.Persisted()", "service.transaction.Baseline().find(\"r_lightGridPreload\")",
+                        "service.host.ReadValue(\"r_lightGridPreload\",value,error)"],
+            "the committed preload is the baseline until an attempt's choice is saved")
     provider = body(service, "bool UI_SettingsLevelLoadPolicy(bool& preload, std::uint64_t& token)")
-    ordered(provider, ["service.display.Active() && !service.display.Persisted()", "service.transaction.Baseline().find(\"r_lightGridPreload\")",
-                       "service.host.ReadValue(\"r_lightGridPreload\",value,error)", "token = ++levelLoadToken;"],
-            "the provider uses the baseline until an attempt's choice is saved")
-    if "cvarSystem" in provider:
+    ordered(provider, ["CommittedPreload(Settings(),committed)", "token = ++levelLoadToken;"],
+            "each level load takes the committed preload and a fresh token")
+    if "cvarSystem" in provider or "cvarSystem" in committed:
         raise AssertionError("the provider reads the catalog, not raw CVars")
     host = read("src/ui/application/SystemSettingsHost.cpp")
     require(body(host, "bool SystemSettingsHost::ReadValue("), "Parse(item, variable->GetString(), candidate, error)",

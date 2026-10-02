@@ -461,7 +461,8 @@ canonical candidate-to-device request builder remain integration work.
 - Establish explicit effect and persistence policy. `r_displayRefresh` and
   `r_skipSky` lack `CVAR_ARCHIVE` in the baseline. Presets cross into AUDIO.
   Light-grid preload applies through the deferred executor at the next map
-  load, but the page has no row for it yet.
+  load, and the page's [Preload Light Grids row](system-render-options.md)
+  says what the loaded map does with its light grids.
 - Resolve existing inconsistencies: SYSTEM refresh does not initialize the
   `r_forceAmbientOn` facade; the disabled ambient slider leaves its numeric editor
   active; unsupported Post AA is greyed but remains interactive; capability data

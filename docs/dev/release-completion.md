@@ -566,6 +566,13 @@
   with the new `si_motd` server variable (up to 256 bytes, wrapped to three
   lines). The multiplayer menus remain in development.
 
+- The opt-in SYSTEM page adds **Preload Light Grids** under Irradiance Volumes.
+  Apply saves it without a Keep/Revert question, since it takes effect when the
+  next map loads, and a line under it says whether the current map preloads or
+  streams its light grids, has none, or keeps the previous setting until the
+  next map. If the game closes before the change is saved, the next launch
+  finishes or undoes it.
+
 - The experimental SYSTEM page adds window and custom fullscreen width/height
   fields with localized whole-pixel validation. Custom dimensions select Custom
   resolution automatically. Unsupported display combinations remain editable

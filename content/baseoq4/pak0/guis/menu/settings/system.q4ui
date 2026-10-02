@@ -542,6 +542,26 @@
       "type": "boolean",
       "initial": false,
       "cvar": "ui_retainedSoftFocus"
+    },
+    "settings.lightGrid.committed": {
+      "type": "boolean",
+      "initial": false
+    },
+    "settings.lightGrid.mapLoaded": {
+      "type": "boolean",
+      "initial": false
+    },
+    "settings.lightGrid.consumed": {
+      "type": "boolean",
+      "initial": false
+    },
+    "settings.lightGrid.effective": {
+      "type": "boolean",
+      "initial": false
+    },
+    "settings.lightGrid.pending": {
+      "type": "boolean",
+      "initial": false
     }
   },
   "actions": {
@@ -3614,6 +3634,209 @@
           },
           1,
           0.4
+        ]
+      }
+    },
+    {
+      "id": "settings_lightgrid_preload.enabled",
+      "node": "settings_lightgrid_preload",
+      "property": "enabled",
+      "value": {
+        "op": "&&",
+        "args": [
+          {
+            "op": "&&",
+            "args": [
+              {
+                "op": "&&",
+                "args": [
+                  {
+                    "op": "&&",
+                    "args": [
+                      {
+                        "op": "&&",
+                        "args": [
+                          {
+                            "state": "settings.open"
+                          },
+                          {
+                            "op": "==",
+                            "args": [
+                              {
+                                "state": "settings.phase"
+                              },
+                              1
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "!",
+                        "args": [
+                          {
+                            "state": "settings.busy"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "!",
+                    "args": [
+                      {
+                        "state": "settings.confirmationVisible"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "!",
+                "args": [
+                  {
+                    "state": "page.discardVisible"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "op": "!",
+            "args": [
+              {
+                "state": "ui.numberDraftsPending"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings_lightgrid_preload.opacity",
+      "node": "settings_lightgrid_preload",
+      "property": "opacity",
+      "value": {
+        "op": "select",
+        "args": [
+          {
+            "op": "&&",
+            "args": [
+              {
+                "op": "&&",
+                "args": [
+                  {
+                    "op": "&&",
+                    "args": [
+                      {
+                        "op": "&&",
+                        "args": [
+                          {
+                            "op": "&&",
+                            "args": [
+                              {
+                                "state": "settings.open"
+                              },
+                              {
+                                "op": "==",
+                                "args": [
+                                  {
+                                    "state": "settings.phase"
+                                  },
+                                  1
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "!",
+                            "args": [
+                              {
+                                "state": "settings.busy"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "!",
+                        "args": [
+                          {
+                            "state": "settings.confirmationVisible"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "!",
+                    "args": [
+                      {
+                        "state": "page.discardVisible"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "!",
+                "args": [
+                  {
+                    "state": "ui.numberDraftsPending"
+                  }
+                ]
+              }
+            ]
+          },
+          1,
+          0.4
+        ]
+      }
+    },
+    {
+      "id": "settings_lightgrid_preload-status.display",
+      "node": "settings_lightgrid_preload-status",
+      "property": "display",
+      "value": {
+        "op": "select",
+        "args": [
+          {
+            "state": "settings.lightGrid.mapLoaded"
+          },
+          "block",
+          "none"
+        ]
+      }
+    },
+    {
+      "id": "settings_lightgrid_preload-status.text",
+      "node": "settings_lightgrid_preload-status",
+      "property": "text",
+      "value": {
+        "op": "select",
+        "args": [
+          {
+            "state": "settings.lightGrid.pending"
+          },
+          "#str_230078",
+          {
+            "op": "select",
+            "args": [
+              {
+                "state": "settings.lightGrid.consumed"
+              },
+              {
+                "op": "select",
+                "args": [
+                  {
+                    "state": "settings.lightGrid.effective"
+                  },
+                  "#str_230079",
+                  "#str_230080"
+                ]
+              },
+              "#str_230081"
+            ]
+          }
         ]
       }
     },
@@ -7984,6 +8207,141 @@
       ]
     },
     {
+      "id": "settings_lightgrid_preload.default",
+      "durationMs": 90,
+      "iterations": 1,
+      "tracks": [
+        {
+          "node": "settings_lightgrid_preload-focus",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 0.12
+              }
+            },
+            {
+              "atMs": 90,
+              "value": {
+                "type": "number",
+                "value": 0.12
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "settings_lightgrid_preload.hover",
+      "durationMs": 90,
+      "iterations": 1,
+      "tracks": [
+        {
+          "node": "settings_lightgrid_preload-focus",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 0.55
+              }
+            },
+            {
+              "atMs": 90,
+              "value": {
+                "type": "number",
+                "value": 0.55
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "settings_lightgrid_preload.focus",
+      "durationMs": 90,
+      "iterations": 1,
+      "tracks": [
+        {
+          "node": "settings_lightgrid_preload-focus",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 1
+              }
+            },
+            {
+              "atMs": 90,
+              "value": {
+                "type": "number",
+                "value": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "settings_lightgrid_preload.pressed",
+      "durationMs": 45,
+      "iterations": 1,
+      "tracks": [
+        {
+          "node": "settings_lightgrid_preload-focus",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 0.8
+              }
+            },
+            {
+              "atMs": 45,
+              "value": {
+                "type": "number",
+                "value": 0.8
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "settings_lightgrid_preload.disabled",
+      "durationMs": 90,
+      "iterations": 1,
+      "tracks": [
+        {
+          "node": "settings_lightgrid_preload-focus",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 0.025
+              }
+            },
+            {
+              "atMs": 90,
+              "value": {
+                "type": "number",
+                "value": 0.025
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "settings_ui_aspect.default",
       "durationMs": 90,
       "iterations": 1,
@@ -12244,11 +12602,22 @@
         "remaining": "Dynamic display/resolution/refresh catalogs, visible fullscreen/platform qualification, native input and full SYSTEM/editor acceptance."
       },
       "renderOptions": {
-        "scope": "Automatic attempts (the next map's light-grid preload) apply without Keep/Revert and report Applying, Restoring and Saving status. The confirmation panel opens for one only when it needs recovery, under the neutral recovery title.",
+        "scope": "Preload Light Grids edits the draft; Apply completes it automatically without Keep/Revert, reporting Applying, Restoring and Saving status, and the next map load uses it. The status line names what the loaded map does with its light grids and when a saved change waits for the next load. The confirmation panel opens for an automatic attempt only when it needs recovery, under the neutral recovery title.",
         "confirmationTitle": {
           "recoveryPhase": 3,
           "recovery": "#str_230077",
           "otherwise": "#str_229993"
+        },
+        "preloadRow": {
+          "control": "settings_lightgrid_preload",
+          "clonedFrom": "settings_irradiance",
+          "setting": "r_lightGridPreload",
+          "status": {
+            "pending": "#str_230078",
+            "preloads": "#str_230079",
+            "streams": "#str_230080",
+            "noGrids": "#str_230081"
+          }
         },
         "localization": [
           "#str_229993",
@@ -12256,9 +12625,15 @@
           "#str_230073",
           "#str_230074",
           "#str_230075",
-          "#str_230076"
+          "#str_230076",
+          "#str_42820",
+          "#str_42821",
+          "#str_230078",
+          "#str_230079",
+          "#str_230080",
+          "#str_230081"
         ],
-        "remaining": "The Preload Light Grids, Renderer Fallback, display device and resolution rows follow in their own increments."
+        "remaining": "The Renderer Fallback, display device and resolution rows follow in their own increments."
       }
     }
   },
@@ -62462,6 +62837,1127 @@
                         }
                       },
                       {
+                        "id": "settings_lightgrid_preload",
+                        "type": "group",
+                        "properties": {
+                          "position": {
+                            "type": "keyword",
+                            "value": "relative"
+                          },
+                          "display": {
+                            "type": "keyword",
+                            "value": "block"
+                          },
+                          "box-sizing": {
+                            "type": "keyword",
+                            "value": "border-box"
+                          },
+                          "opacity": {
+                            "type": "number",
+                            "value": 1
+                          },
+                          "width": {
+                            "type": "length",
+                            "value": 100,
+                            "unit": "%"
+                          },
+                          "min-height": {
+                            "type": "length",
+                            "value": 44,
+                            "unit": "dp"
+                          },
+                          "margin-bottom": {
+                            "type": "length",
+                            "value": 8,
+                            "unit": "dp"
+                          },
+                          "padding": {
+                            "type": "length",
+                            "value": 10,
+                            "unit": "dp"
+                          },
+                          "padding-right": {
+                            "type": "length",
+                            "value": 48,
+                            "unit": "dp"
+                          }
+                        },
+                        "children": [
+                          {
+                            "id": "settings_lightgrid_preload-plate",
+                            "type": "vector",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "absolute"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "block"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "left": {
+                                "type": "length",
+                                "value": 0,
+                                "unit": "dp"
+                              },
+                              "top": {
+                                "type": "length",
+                                "value": 0,
+                                "unit": "dp"
+                              },
+                              "width": {
+                                "type": "length",
+                                "value": 100,
+                                "unit": "%"
+                              },
+                              "height": {
+                                "type": "length",
+                                "value": 100,
+                                "unit": "%"
+                              },
+                              "pointer-events": {
+                                "type": "keyword",
+                                "value": "none"
+                              }
+                            },
+                            "children": [],
+                            "paths": [
+                              {
+                                "id": "field",
+                                "commands": [
+                                  {
+                                    "id": "point-0",
+                                    "op": "move",
+                                    "points": [
+                                      [
+                                        6,
+                                        0
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-1",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": -6
+                                        },
+                                        0
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-2",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        },
+                                        6
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-3",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        },
+                                        {
+                                          "fraction": 1,
+                                          "dp": -6
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-4",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": -6
+                                        },
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-5",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        0,
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-6",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        0,
+                                        6
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "close",
+                                    "op": "close"
+                                  }
+                                ],
+                                "fill": {
+                                  "type": "solid",
+                                  "color": {
+                                    "type": "color",
+                                    "value": [
+                                      0.035,
+                                      0.047,
+                                      0.031,
+                                      0.96
+                                    ]
+                                  }
+                                },
+                                "stroke": {
+                                  "paint": {
+                                    "type": "solid",
+                                    "color": {
+                                      "type": "color",
+                                      "value": [
+                                        0.5451,
+                                        0.5882,
+                                        0.2941,
+                                        0.32
+                                      ]
+                                    }
+                                  },
+                                  "widthDp": 1,
+                                  "minimumPixels": 1,
+                                  "join": "miter"
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "id": "settings_lightgrid_preload-focus",
+                            "type": "vector",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "absolute"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "block"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 0.12
+                              },
+                              "left": {
+                                "type": "length",
+                                "value": 0,
+                                "unit": "dp"
+                              },
+                              "top": {
+                                "type": "length",
+                                "value": 0,
+                                "unit": "dp"
+                              },
+                              "width": {
+                                "type": "length",
+                                "value": 100,
+                                "unit": "%"
+                              },
+                              "height": {
+                                "type": "length",
+                                "value": 100,
+                                "unit": "%"
+                              },
+                              "pointer-events": {
+                                "type": "keyword",
+                                "value": "none"
+                              }
+                            },
+                            "children": [],
+                            "paths": [
+                              {
+                                "id": "focus",
+                                "commands": [
+                                  {
+                                    "id": "point-0",
+                                    "op": "move",
+                                    "points": [
+                                      [
+                                        6,
+                                        0
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-1",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": -6
+                                        },
+                                        0
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-2",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        },
+                                        6
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-3",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        },
+                                        {
+                                          "fraction": 1,
+                                          "dp": -6
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-4",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": -6
+                                        },
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-5",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        0,
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-6",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        0,
+                                        6
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "close",
+                                    "op": "close"
+                                  }
+                                ],
+                                "stroke": {
+                                  "paint": {
+                                    "type": "solid",
+                                    "color": {
+                                      "type": "color",
+                                      "value": [
+                                        0.8902,
+                                        0.5373,
+                                        0,
+                                        1
+                                      ]
+                                    }
+                                  },
+                                  "widthDp": 1,
+                                  "minimumPixels": 1,
+                                  "join": "miter"
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "id": "settings_lightgrid_preload-label",
+                            "type": "text",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "relative"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "block"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "text": {
+                                "type": "text",
+                                "value": "#str_42820"
+                              },
+                              "font-family": {
+                                "type": "font",
+                                "value": "marine"
+                              },
+                              "font-size": {
+                                "type": "length",
+                                "value": 16,
+                                "unit": "dp"
+                              },
+                              "line-height": {
+                                "type": "length",
+                                "value": 23,
+                                "unit": "dp"
+                              },
+                              "color": {
+                                "type": "color",
+                                "value": [
+                                  1,
+                                  1,
+                                  1,
+                                  0.88
+                                ]
+                              },
+                              "white-space": {
+                                "type": "keyword",
+                                "value": "normal"
+                              }
+                            }
+                          },
+                          {
+                            "id": "settings_lightgrid_preload-help",
+                            "type": "text",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "relative"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "block"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "text": {
+                                "type": "text",
+                                "value": "#str_42821"
+                              },
+                              "font-family": {
+                                "type": "font",
+                                "value": "marine"
+                              },
+                              "font-size": {
+                                "type": "length",
+                                "value": 14,
+                                "unit": "dp"
+                              },
+                              "line-height": {
+                                "type": "length",
+                                "value": 20,
+                                "unit": "dp"
+                              },
+                              "color": {
+                                "type": "color",
+                                "value": [
+                                  0.72,
+                                  0.76,
+                                  0.62,
+                                  1
+                                ]
+                              },
+                              "white-space": {
+                                "type": "keyword",
+                                "value": "pre-line"
+                              },
+                              "min-height": {
+                                "type": "length",
+                                "value": 20,
+                                "unit": "dp"
+                              },
+                              "margin-bottom": {
+                                "type": "length",
+                                "value": 0,
+                                "unit": "dp"
+                              },
+                              "text-align": {
+                                "type": "keyword",
+                                "value": "left"
+                              },
+                              "width": {
+                                "type": "length",
+                                "value": 100,
+                                "unit": "%"
+                              },
+                              "margin-top": {
+                                "type": "length",
+                                "value": 4,
+                                "unit": "dp"
+                              }
+                            }
+                          },
+                          {
+                            "id": "settings_lightgrid_preload-status",
+                            "type": "text",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "relative"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "none"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "text": {
+                                "type": "text",
+                                "value": "#str_230081"
+                              },
+                              "font-family": {
+                                "type": "font",
+                                "value": "marine"
+                              },
+                              "font-size": {
+                                "type": "length",
+                                "value": 14,
+                                "unit": "dp"
+                              },
+                              "line-height": {
+                                "type": "length",
+                                "value": 20,
+                                "unit": "dp"
+                              },
+                              "color": {
+                                "type": "color",
+                                "value": [
+                                  0.72,
+                                  0.76,
+                                  0.62,
+                                  1
+                                ]
+                              },
+                              "white-space": {
+                                "type": "keyword",
+                                "value": "normal"
+                              },
+                              "min-height": {
+                                "type": "length",
+                                "value": 20,
+                                "unit": "dp"
+                              },
+                              "margin-bottom": {
+                                "type": "length",
+                                "value": 0,
+                                "unit": "dp"
+                              },
+                              "text-align": {
+                                "type": "keyword",
+                                "value": "left"
+                              },
+                              "width": {
+                                "type": "length",
+                                "value": 100,
+                                "unit": "%"
+                              },
+                              "margin-top": {
+                                "type": "length",
+                                "value": 4,
+                                "unit": "dp"
+                              }
+                            }
+                          },
+                          {
+                            "id": "settings_lightgrid_preload-box",
+                            "type": "vector",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "absolute"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "block"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "right": {
+                                "type": "length",
+                                "value": 12,
+                                "unit": "dp"
+                              },
+                              "top": {
+                                "type": "length",
+                                "value": 12,
+                                "unit": "dp"
+                              },
+                              "width": {
+                                "type": "length",
+                                "value": 20,
+                                "unit": "dp"
+                              },
+                              "height": {
+                                "type": "length",
+                                "value": 20,
+                                "unit": "dp"
+                              },
+                              "pointer-events": {
+                                "type": "keyword",
+                                "value": "none"
+                              }
+                            },
+                            "children": [],
+                            "paths": [
+                              {
+                                "id": "box",
+                                "commands": [
+                                  {
+                                    "id": "point-0",
+                                    "op": "move",
+                                    "points": [
+                                      [
+                                        3,
+                                        0
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-1",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": -3
+                                        },
+                                        0
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-2",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        },
+                                        3
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-3",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        },
+                                        {
+                                          "fraction": 1,
+                                          "dp": -3
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-4",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": -3
+                                        },
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-5",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        0,
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-6",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        0,
+                                        3
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "close",
+                                    "op": "close"
+                                  }
+                                ],
+                                "stroke": {
+                                  "paint": {
+                                    "type": "solid",
+                                    "color": {
+                                      "type": "color",
+                                      "value": [
+                                        0.5451,
+                                        0.5882,
+                                        0.2941,
+                                        0.8
+                                      ]
+                                    }
+                                  },
+                                  "widthDp": 1,
+                                  "minimumPixels": 1,
+                                  "join": "miter"
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "id": "settings_lightgrid_preload-checked",
+                            "type": "group",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "absolute"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "none"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "right": {
+                                "type": "length",
+                                "value": 12,
+                                "unit": "dp"
+                              },
+                              "top": {
+                                "type": "length",
+                                "value": 12,
+                                "unit": "dp"
+                              },
+                              "width": {
+                                "type": "length",
+                                "value": 20,
+                                "unit": "dp"
+                              },
+                              "height": {
+                                "type": "length",
+                                "value": 20,
+                                "unit": "dp"
+                              },
+                              "pointer-events": {
+                                "type": "keyword",
+                                "value": "none"
+                              }
+                            },
+                            "children": [
+                              {
+                                "id": "settings_lightgrid_preload-tick",
+                                "type": "vector",
+                                "properties": {
+                                  "position": {
+                                    "type": "keyword",
+                                    "value": "absolute"
+                                  },
+                                  "display": {
+                                    "type": "keyword",
+                                    "value": "block"
+                                  },
+                                  "box-sizing": {
+                                    "type": "keyword",
+                                    "value": "border-box"
+                                  },
+                                  "opacity": {
+                                    "type": "number",
+                                    "value": 1
+                                  },
+                                  "left": {
+                                    "type": "length",
+                                    "value": 0,
+                                    "unit": "dp"
+                                  },
+                                  "top": {
+                                    "type": "length",
+                                    "value": 0,
+                                    "unit": "dp"
+                                  },
+                                  "width": {
+                                    "type": "length",
+                                    "value": 100,
+                                    "unit": "%"
+                                  },
+                                  "height": {
+                                    "type": "length",
+                                    "value": 100,
+                                    "unit": "%"
+                                  },
+                                  "pointer-events": {
+                                    "type": "keyword",
+                                    "value": "none"
+                                  }
+                                },
+                                "children": [],
+                                "paths": [
+                                  {
+                                    "id": "tick",
+                                    "commands": [
+                                      {
+                                        "id": "point-0",
+                                        "op": "move",
+                                        "points": [
+                                          [
+                                            3,
+                                            9
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-1",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            7,
+                                            13
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-2",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            17,
+                                            3
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-3",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            19,
+                                            5
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-4",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            7,
+                                            17
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-5",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            1,
+                                            11
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "close",
+                                        "op": "close"
+                                      }
+                                    ],
+                                    "fill": {
+                                      "type": "solid",
+                                      "color": {
+                                        "type": "color",
+                                        "value": [
+                                          0.8902,
+                                          0.5373,
+                                          0,
+                                          1
+                                        ]
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "id": "settings_lightgrid_preload-mixed",
+                            "type": "group",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "absolute"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "none"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "right": {
+                                "type": "length",
+                                "value": 12,
+                                "unit": "dp"
+                              },
+                              "top": {
+                                "type": "length",
+                                "value": 12,
+                                "unit": "dp"
+                              },
+                              "width": {
+                                "type": "length",
+                                "value": 20,
+                                "unit": "dp"
+                              },
+                              "height": {
+                                "type": "length",
+                                "value": 20,
+                                "unit": "dp"
+                              },
+                              "pointer-events": {
+                                "type": "keyword",
+                                "value": "none"
+                              }
+                            },
+                            "children": [
+                              {
+                                "id": "settings_lightgrid_preload-dash",
+                                "type": "vector",
+                                "properties": {
+                                  "position": {
+                                    "type": "keyword",
+                                    "value": "absolute"
+                                  },
+                                  "display": {
+                                    "type": "keyword",
+                                    "value": "block"
+                                  },
+                                  "box-sizing": {
+                                    "type": "keyword",
+                                    "value": "border-box"
+                                  },
+                                  "opacity": {
+                                    "type": "number",
+                                    "value": 1
+                                  },
+                                  "left": {
+                                    "type": "length",
+                                    "value": 0,
+                                    "unit": "dp"
+                                  },
+                                  "top": {
+                                    "type": "length",
+                                    "value": 0,
+                                    "unit": "dp"
+                                  },
+                                  "width": {
+                                    "type": "length",
+                                    "value": 100,
+                                    "unit": "%"
+                                  },
+                                  "height": {
+                                    "type": "length",
+                                    "value": 100,
+                                    "unit": "%"
+                                  },
+                                  "pointer-events": {
+                                    "type": "keyword",
+                                    "value": "none"
+                                  }
+                                },
+                                "children": [],
+                                "paths": [
+                                  {
+                                    "id": "dash",
+                                    "commands": [
+                                      {
+                                        "id": "point-0",
+                                        "op": "move",
+                                        "points": [
+                                          [
+                                            4,
+                                            8
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-1",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            16,
+                                            8
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-2",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            16,
+                                            12
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-3",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            4,
+                                            12
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "close",
+                                        "op": "close"
+                                      }
+                                    ],
+                                    "fill": {
+                                      "type": "solid",
+                                      "color": {
+                                        "type": "color",
+                                        "value": [
+                                          0.8902,
+                                          0.5373,
+                                          0,
+                                          1
+                                        ]
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ],
+                        "control": {
+                          "role": "toggle",
+                          "label": "#str_42820",
+                          "action": "edit.r_lightGridPreload",
+                          "states": {
+                            "default": "settings_lightgrid_preload.default",
+                            "hover": "settings_lightgrid_preload.hover",
+                            "focus": "settings_lightgrid_preload.focus",
+                            "pressed": "settings_lightgrid_preload.pressed",
+                            "disabled": "settings_lightgrid_preload.disabled"
+                          },
+                          "value": {
+                            "state": "settings.draft.r_lightGridPreload"
+                          },
+                          "parts": {
+                            "checked": "settings_lightgrid_preload-checked",
+                            "mixed": "settings_lightgrid_preload-mixed"
+                          }
+                        }
+                      },
+                      {
                         "id": "settings_ui_aspect",
                         "type": "group",
                         "properties": {
@@ -80818,6 +82314,20 @@
       "value": {
         "state": "ui.numberDraftsPending"
       }
+    },
+    "draftLightGridPreload": {
+      "type": "boolean",
+      "initial": false,
+      "value": {
+        "state": "settings.draft.r_lightGridPreload"
+      }
+    },
+    "baselineLightGridPreload": {
+      "type": "boolean",
+      "initial": false,
+      "value": {
+        "state": "settings.baseline.r_lightGridPreload"
+      }
     }
   },
   "aliases": {
@@ -81003,6 +82513,12 @@
     },
     "numberDraftsPending": {
       "variable": "numberDraftsPending"
+    },
+    "draftLightGridPreload": {
+      "variable": "draftLightGridPreload"
+    },
+    "baselineLightGridPreload": {
+      "variable": "baselineLightGridPreload"
     }
   }
 }

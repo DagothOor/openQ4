@@ -1115,4 +1115,8 @@
 	"#str_230075"	"Salvataggio delle impostazioni…"
 	"#str_230076"	"Applica separatamente le modifiche a schermo, rendering e griglie luce."
 	"#str_230077"	"Le impostazioni richiedono attenzione"
+	"#str_230078"	"Questa mappa mantiene l’impostazione precedente delle griglie luce fino al prossimo caricamento."
+	"#str_230079"	"Questa mappa precarica le sue griglie luce."
+	"#str_230080"	"Questa mappa carica le griglie luce man mano che le aree diventano visibili."
+	"#str_230081"	"Questa mappa non ha griglie luce precalcolate."
 }

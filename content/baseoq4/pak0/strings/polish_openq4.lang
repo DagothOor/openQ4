@@ -1124,4 +1124,8 @@
 	"#str_230075"	"Zapisywanie ustawień…"
 	"#str_230076"	"Zmiany ekranu, renderera i siatek światła zastosuj osobno."
 	"#str_230077"	"Ustawienia wymagają uwagi"
+	"#str_230078"	"Ta mapa zachowuje poprzednie ustawienie siatek światła do wczytania następnej mapy."
+	"#str_230079"	"Ta mapa wczytuje siatki światła z góry."
+	"#str_230080"	"Ta mapa wczytuje siatki światła w miarę pojawiania się obszarów."
+	"#str_230081"	"Ta mapa nie ma wypalonych siatek światła."
 }

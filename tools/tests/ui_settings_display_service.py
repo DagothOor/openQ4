@@ -119,6 +119,7 @@ bool Sys_BuildWindowPlacementCommit(std::uint64_t token,const sysWindowPlacement
 }
 bool Sys_WindowPlacementLeaseActive(){return geometryToken!=0;}
 bool R_RendererModule_QueryDisplay(rendererDisplayState_t* out){if(!queryOkay)return false;*out=actual;return true;}
+bool R_RendererModule_QueryLightGridLoad(renderLightGridLoadReceipt_t&,uint64_t&,uint64_t&){return false;}
 static rendererModuleStatus_t moduleStatus{};
 const rendererModuleStatus_t& R_RendererModule_GetStatus(){return moduleStatus;}
 static void ApplyActual(const renderWindowRequest_t& r){

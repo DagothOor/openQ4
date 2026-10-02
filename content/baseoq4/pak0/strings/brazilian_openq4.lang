@@ -1115,4 +1115,8 @@
 	"#str_230075"	"Salvando configurações…"
 	"#str_230076"	"Aplique separadamente as alterações de tela, renderizador e grades de iluminação."
 	"#str_230077"	"As configurações precisam de atenção"
+	"#str_230078"	"Este mapa mantém a configuração anterior das grades de iluminação até o próximo carregamento."
+	"#str_230079"	"Este mapa pré-carrega suas grades de iluminação."
+	"#str_230080"	"Este mapa carrega as grades de iluminação conforme as áreas ficam visíveis."
+	"#str_230081"	"Este mapa não tem grades de iluminação pré-calculadas."
 }
