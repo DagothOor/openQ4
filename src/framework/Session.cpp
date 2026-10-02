@@ -3796,6 +3796,7 @@ void idSessionLocal::Clear() {
 	systemGuiTransition = systemGuiBackEvent = false;
 	guiRetainedHome = guiRetainedTitle = guiRetainedPause = guiRetainedPauseStrogg = NULL;
 	retainedPauseStrogg = -1;
+	retainedNewestSave = 0;
 	retainedHomeReturning = false;
 	retainedStock.Clear();
 	retainedHandoffUntil = 0;
@@ -6018,12 +6019,68 @@ void idSessionLocal::LoadLoadingGui( const char *mapName ) {
 	}
 }
 
+// Whether an image the renderer would load by this name is installed: the
+// name itself, or the name with one of the image formats it tries.
+static bool Session_ImageInstalled( const char *name ) {
+	static const char *const extensions[] = { "", ".tga", ".dds", ".jpg", ".png" };
+	for ( int i = 0; i < static_cast<int>( sizeof( extensions ) / sizeof( extensions[0] ) ); ++i ) {
+		if ( Session_FileExistsInSearchPaths( va( "%s%s", name, extensions[i] ) ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/*
+===============
+idSessionLocal::PrecacheRetainedLevelImages
+
+Every objective screenshot this level can show on the retained pause
+screen's Objectives page resolves inside the level load, as the levelshot
+does, so opening the page reads no picture mid-frame. Only while a retained
+pause document is loaded; a game module that does not answer lists none.
+===============
+*/
+void idSessionLocal::PrecacheRetainedLevelImages() {
+#ifndef ID_DEDICATED
+	if ( ( guiRetainedPause == NULL && guiRetainedPauseStrogg == NULL ) || game == NULL || guiMainMenu == NULL ) {
+		return;
+	}
+	guiMainMenu->SetStateInt( "level_image_count", 0 );
+	game->HandleMainMenuCommands( "retainedLevelImages", guiMainMenu );
+	const int count = guiMainMenu->State().GetInt( "level_image_count", "0" );
+	for ( int i = 0; i < count; i++ ) {
+		const idStr image = guiMainMenu->State().GetString( va( "level_image_%d", i ), "" );
+		if ( UI_RetainedImageSource( image.c_str() ) && Session_ImageInstalled( image.c_str() ) ) {
+			UI_RetainedPrecacheImage( image.c_str() );
+		}
+	}
+#endif
+}
+
+#ifndef ID_DEDICATED
+// How long ago the newest save was written, for the pause screen's time
+// line: just now within a minute, then in minutes, then in hours.
+static idStr Session_RetainedSaveAge( ID_TIME_T saved, ID_TIME_T now ) {
+	const long long seconds = now > saved ? static_cast<long long>( now - saved ) : 0;
+	if ( seconds < 60 ) {
+		return common->GetLanguageDict()->GetString( "#str_230050" );
+	}
+	if ( seconds < 3600 ) {
+		return va( common->GetLanguageDict()->GetString( "#str_230048" ), static_cast<int>( seconds / 60 ) );
+	}
+	return va( common->GetLanguageDict()->GetString( "#str_230049" ), static_cast<int>( seconds / 3600 ) );
+}
+#endif
+
 /*
 ===============
 idSessionLocal::PublishRetainedPauseState
 
-The retained pause screen's level block: the level, difficulty, the map's
-objectives summary and its levelshot.
+The retained pause screen's level block and Objectives page: the level,
+difficulty, the map's objectives summary and its levelshot, and what the
+game publishes (the objectives with their descriptions and screenshots, the
+completed ones and the time in the mission).
 ===============
 */
 void idSessionLocal::PublishRetainedPauseState( idUserInterface *gui ) {
@@ -6049,23 +6106,30 @@ void idSessionLocal::PublishRetainedPauseState( idUserInterface *gui ) {
 	if ( game != NULL && mapSpawned ) {
 		game->HandleMainMenuCommands( "retainedPauseState", gui );
 	}
-	const int seconds = gui->State().GetInt( "pause_mission_seconds", "-1" );
-	gui->SetStateString( "pause_stats", seconds < 0 ? "" : va( "%d:%02d:%02d %s", seconds / 3600, seconds / 60 % 60, seconds % 60,
-		common->GetLanguageDict()->GetString( "#str_230046" ) ) );
-	gui->StateChanged( common->GetPresentationTime() );
-#endif
-}
-
-// Whether an image the renderer would load by this name is installed: the
-// name itself, or the name with one of the image formats it tries.
-static bool Session_ImageInstalled( const char *name ) {
-	static const char *const extensions[] = { "", ".tga", ".dds", ".jpg", ".png" };
-	for ( int i = 0; i < static_cast<int>( sizeof( extensions ) / sizeof( extensions[0] ) ); ++i ) {
-		if ( Session_FileExistsInSearchPaths( va( "%s%s", name, extensions[i] ) ) ) {
-			return true;
+	// An objective's screenshot shows only when it is a plain image name that
+	// is installed; any other leaves its frame empty. The Objectives page
+	// lists eight (OBJECTIVE_PAGE_ROWS in build_retained_screens.py).
+	const int pageRows = 8;
+	const int held = gui->State().GetInt( "pause_objective_count", "0" );
+	for ( int i = 0; i < held && i < pageRows; i++ ) {
+		const idStr shot = gui->State().GetString( va( "pause_objective_shot_%d", i ), "" );
+		if ( shot.Length() > 0 && ( !UI_RetainedImageSource( shot.c_str() ) || !Session_ImageInstalled( shot.c_str() ) ) ) {
+			gui->SetStateString( va( "pause_objective_shot_%d", i ), "" );
 		}
 	}
-	return false;
+	// The time in the mission, then how long ago the newest save was written.
+	const int seconds = gui->State().GetInt( "pause_mission_seconds", "-1" );
+	idStr stats;
+	if ( seconds >= 0 ) {
+		stats = va( "%d:%02d:%02d %s", seconds / 3600, seconds / 60 % 60, seconds % 60, common->GetLanguageDict()->GetString( "#str_230046" ) );
+		if ( retainedNewestSave > 0 ) {
+			stats += " \xc2\xb7 ";
+			stats += Session_RetainedSaveAge( retainedNewestSave, time( NULL ) );
+		}
+	}
+	gui->SetStateString( "pause_stats", stats.c_str() );
+	gui->StateChanged( common->GetPresentationTime() );
+#endif
 }
 
 // The level block's levelshot, chosen as the loading screen chooses its
@@ -6366,6 +6430,7 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 	}
 	playerSpawnMsec = Sys_Milliseconds() - phaseStart;
 	phaseStart = Sys_Milliseconds();
+	PrecacheRetainedLevelImages();
 	fileSystem->FinishLevelLoadCache( true );
 	cacheJoinMsec = Sys_Milliseconds() - phaseStart;
 	phaseStart = Sys_Milliseconds();
@@ -7122,6 +7187,7 @@ bool idSessionLocal::SaveGame( const char *saveName, saveType_t saveType ) {
 
 	common->Printf( "Saved '%s'\n", saveSlotName.c_str() );
 	operationGuard.Complete();
+	retainedNewestSave = time( NULL );
 
 	return true;
 #endif

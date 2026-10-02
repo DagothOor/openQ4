@@ -117,8 +117,10 @@ prompt, and in multiplayer the server card and JOINING. Its confirmations
 and the pause menu soften the screen beneath them on OpenGL and Vulkan,
 keeping a darkening scrim for the opaque-backing option and GLES. After
 Kane's stroggification the pause menu takes the Strogg family, and its labels
-translate from runes as it opens. The pause menu's Objectives action, loading
-tips, the multiplayer arsenal and the Escape and Welcome menus remain. No gate
+translate from runes as it opens. The pause menu's OBJECTIVES opens the
+objectives display as a page of the pause, with every objective, its
+screenshot and description, and the ones completed on the level. Loading tips,
+the multiplayer arsenal and the Escape and Welcome menus remain. No gate
 closes.
 
 ## Objective and immutable completion scope

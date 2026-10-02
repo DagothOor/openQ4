@@ -1084,4 +1084,8 @@
 	"#str_230044"	"Juega una campaña o supera los niveles de la Arena."
 	"#str_230045"	"ATRÁS"
 	"#str_230046"	"en la misión"
+	"#str_230047"	"COMPLETADOS"
+	"#str_230048"	"guardado hace %d min"
+	"#str_230049"	"guardado hace %d h"
+	"#str_230050"	"guardado ahora mismo"
 }

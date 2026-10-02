@@ -1044,8 +1044,28 @@ struct Runtime::Impl {
 		VisibleModals(state,motion,roots,error);
 		const bool valid = interaction.SyncAuthoredModals(roots,error);
 		if (!valid && error != modalError) host.Log(true,error);
-		modalError = std::move(error); return valid;
+		modalError = std::move(error);
+		// An authored modal opens with its scroll viewports at their start,
+		// so a list reopened later shows its first entries again.
+		if (valid) {
+			for (const auto& root : roots)
+				if (std::find(openModals.begin(),openModals.end(),root) == openModals.end()) ResetModalScroll(root);
+			openModals = roots;
+		}
+		return valid;
 	}
+	void ResetModalScroll(const std::string& root) {
+		const Node* node = canonical ? canonical->Model().FindNode(root) : nullptr;
+		std::vector<const Node*> pending; if (node) pending.push_back(node);
+		while (!pending.empty()) {
+			const Node* current = pending.back(); pending.pop_back();
+			const auto overflow = current->properties.find("overflow");
+			if (overflow != current->properties.end() && (overflow->second.text == "auto" || overflow->second.text == "scroll"))
+				if (auto* element = document ? document->GetElementById(current->id) : nullptr) { element->SetScrollTop(0); element->SetScrollLeft(0); }
+			for (const auto& child : current->children) pending.push_back(&child);
+		}
+	}
+	std::vector<std::string> openModals;
 	void CollectInputEligibility(const Node& node, bool inherited = true) {
 		const auto display = PresentedProperty({node.id,"display"});
 		const auto events = PresentedProperty({node.id,"pointer-events"});
@@ -1894,6 +1914,8 @@ bool Runtime::RestoreSnapshot(const std::string& snapshot, std::string& error, d
 		impl->state = std::move(state); impl->motion = std::move(motion);
 		impl->time = now; impl->pointerPresent = impl->pointerNavigation = false; impl->applied.clear(); impl->appliedInputs.clear();
         impl->preserveRestoredScroll=widgets.version==3;
+		// The restored modals are open already: their saved scroll offsets stand.
+		impl->openModals = modalRoots;
 		impl->appliedStateRevision = impl->state.Revision(); impl->stateError.clear();
 		return true;
 	} catch (const std::exception& problem) { error = std::string("Cannot restore instance snapshot: ")+problem.what(); return false; }

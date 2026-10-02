@@ -1084,4 +1084,8 @@
 	"#str_230044"	"Jouez une campagne ou affrontez les paliers de l’Arène."
 	"#str_230045"	"RETOUR"
 	"#str_230046"	"en mission"
+	"#str_230047"	"TERMINÉS"
+	"#str_230048"	"sauvegardé il y a %d min"
+	"#str_230049"	"sauvegardé il y a %d h"
+	"#str_230050"	"sauvegardé à l'instant"
 }

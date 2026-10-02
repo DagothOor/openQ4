@@ -876,6 +876,7 @@ void idInventory::Clear( void ) {
 	nextItemNum = 1;
 	onePickupTime = 0;
 	objectiveNames.Clear();
+	completedObjectives.Clear();
 
  	ammoPredictTime = 0;
  	lastGiveTime = 0;
@@ -6428,6 +6429,8 @@ void idPlayer::CompleteObjective( const char *title ) {
 	int c = inventory.objectiveNames.Num();
 	for ( int i = 0;  i < c; i++ ) {
 		if ( idStr::Icmp(inventory.objectiveNames[i].title, title) == 0 ) {
+			// openQ4: the retained pause screen lists it as completed.
+			inventory.completedObjectives.Append( inventory.objectiveNames[i] );
 			inventory.objectiveNames.RemoveIndex( i );
 			break;
 		}

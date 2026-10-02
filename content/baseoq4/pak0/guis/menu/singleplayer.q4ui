@@ -4589,6 +4589,7 @@
      "top": {"type": "length", "value": 670.5, "unit": "dp"},
      "height": {"type": "length", "value": 22, "unit": "dp"},
      "right": {"type": "length", "value": 18.0, "unit": "dp"},
+     "opacity": {"type": "number", "value": 1},
      "display": {"type": "keyword", "value": "flex"},
      "flex-direction": {"type": "keyword", "value": "row"},
      "align-items": {"type": "keyword", "value": "center"}

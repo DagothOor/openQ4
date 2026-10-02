@@ -1084,4 +1084,8 @@
 	"#str_230044"	"Gioca una campagna o affronta i livelli dell’Arena."
 	"#str_230045"	"INDIETRO"
 	"#str_230046"	"in missione"
+	"#str_230047"	"COMPLETATI"
+	"#str_230048"	"salvato %d min fa"
+	"#str_230049"	"salvato %d h fa"
+	"#str_230050"	"salvato ora"
 }

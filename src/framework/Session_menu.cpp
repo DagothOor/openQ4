@@ -5153,6 +5153,12 @@ void idSessionLocal::PrepareRetainedLevel( const char *mapPath, bool multiplayer
 	if ( guiRetainedPauseStrogg == NULL ) {
 		guiRetainedPauseStrogg = FindRetainedGui( RETAINED_PAUSE_STROGG_GUI, false, true );
 	}
+	// The pause screen's time line reports the newest save's age; read it
+	// here, inside the load, and keep it as saves are written.
+	idStrList saves;
+	idList<fileTIME_T> times;
+	GetSaveGameList( saves, times );
+	retainedNewestSave = times.Num() > 0 ? times[0].timeStamp : 0;
 	UI_RetainedPrecacheImage( RetainedPauseShot( mapPath ).c_str() );
 #endif
 }

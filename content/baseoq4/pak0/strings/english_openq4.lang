@@ -1084,4 +1084,8 @@
 	"#str_230044"	"Play a story campaign or take on the Arena tier ladder."
 	"#str_230045"	"BACK"
 	"#str_230046"	"in mission"
+	"#str_230047"	"COMPLETED"
+	"#str_230048"	"saved %d min ago"
+	"#str_230049"	"saved %d h ago"
+	"#str_230050"	"saved just now"
 }

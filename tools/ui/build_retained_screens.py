@@ -480,14 +480,15 @@ def plinth(doc: Document, links: list) -> dict:
 
 
 def action_plate(doc: Document, ident: str, key: str, left: float, top: float, *, action: str | None = None,
-                 event: str | None = None, width: float = 180) -> dict:
+                 event: str | None = None, width: float = 180, tint: str = OLIVE, hot: str = ORANGE,
+                 face: str = "marine") -> dict:
     """An action button (section 6): a light plate, 35 dp visible in a 45 dp
     target, a 20 dp lower-leading cut, rails on the leading edge, cut and
     bottom, fill 0.49 fading from 33 % to nothing; 8 dp marker, Marine 20 dp."""
     band_top, band_bottom = 5.0, 40.0
     cut = 20.0
-    fill = [(0, rgb(OLIVE, 0.49)), (0.33, rgb(OLIVE, 0.49)), (1, rgb(OLIVE, 0))]
-    rail = [(0, rgb(OLIVE)), (0.33, rgb(OLIVE)), (1, rgb(OLIVE, 0))]
+    fill = [(0, rgb(tint, 0.49)), (0.33, rgb(tint, 0.49)), (1, rgb(tint, 0))]
+    rail = [(0, rgb(tint)), (0.33, rgb(tint)), (1, rgb(tint, 0))]
     plate = vector(f"{ident}-plate", {**absolute(left=0, top=0, width=width, height=45), "opacity": number(0.4)}, [
         path("fill", [(0, band_top), (width, band_top), (width, band_bottom), (cut, band_bottom), (0, band_bottom - cut)],
              fill=linear((0, 0), (width, 0), fill)),
@@ -496,22 +497,22 @@ def action_plate(doc: Document, ident: str, key: str, left: float, top: float, *
     ])
     focus = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=width, height=45), "opacity": number(0)}, [
         path("inset", [(3.5, band_top + 3), (3.5, band_bottom - cut + 1.5), (cut + 1.5, band_bottom - 3.5), (width - 20, band_bottom - 3.5)],
-             closed=False, stroke=stroke(solid(rgb(ORANGE)), 1.2))])
+             closed=False, stroke=stroke(solid(rgb(hot)), 1.2))])
     marker_rest = vector(f"{ident}-marker", {**absolute(left=14, top=14, width=8, height=8), "opacity": number(0.4)}, [
-        marker_path("mark", 0, 0, 8, rgb(MARKER))])
+        marker_path("mark", 0, 0, 8, rgb(MARKER if tint == OLIVE else tint))])
     marker_hot = vector(f"{ident}-marker-hot", {**absolute(left=14, top=14, width=8, height=8), "opacity": number(0)}, [
-        marker_path("mark", 0, 0, 8, rgb(ORANGE))])
+        marker_path("mark", 0, 0, 8, rgb(hot))])
     text_node = label(f"{ident}-label", key, {**absolute(left=26, top=0, width=width - 30, height=45),
-        **typeface("marine", 20, 45, [1, 1, 1, 0.8]), "white-space": keyword("nowrap"), "transform": transform()})
+        **typeface(face, 20, 45, [1, 1, 1, 0.8]), "white-space": keyword("nowrap"), "transform": transform()})
     ids = doc.states(ident, {
         "default": [(f"{ident}-plate", "opacity", number(0.4)), (f"{ident}-marker", "opacity", number(0.4)), (f"{ident}-marker-hot", "opacity", number(0)),
                     (f"{ident}-focus", "opacity", number(0)), (f"{ident}-label", "color", colour([1, 1, 1, 0.8])), (f"{ident}-label", "transform", transform())],
         "hover": [(f"{ident}-plate", "opacity", number(0.8)), (f"{ident}-marker", "opacity", number(0)), (f"{ident}-marker-hot", "opacity", number(1)),
-                  (f"{ident}-focus", "opacity", number(0)), (f"{ident}-label", "color", colour(rgb(ORANGE))), (f"{ident}-label", "transform", transform(sx=1.03, sy=1.03))],
+                  (f"{ident}-focus", "opacity", number(0)), (f"{ident}-label", "color", colour(rgb(hot))), (f"{ident}-label", "transform", transform(sx=1.03, sy=1.03))],
         "focus": [(f"{ident}-plate", "opacity", number(0.8)), (f"{ident}-marker", "opacity", number(0)), (f"{ident}-marker-hot", "opacity", number(1)),
-                  (f"{ident}-focus", "opacity", number(1)), (f"{ident}-label", "color", colour(rgb(ORANGE))), (f"{ident}-label", "transform", transform(sx=1.03, sy=1.03))],
+                  (f"{ident}-focus", "opacity", number(1)), (f"{ident}-label", "color", colour(rgb(hot))), (f"{ident}-label", "transform", transform(sx=1.03, sy=1.03))],
         "pressed": [(f"{ident}-plate", "opacity", number(1)), (f"{ident}-marker", "opacity", number(0)), (f"{ident}-marker-hot", "opacity", number(1)),
-                    (f"{ident}-focus", "opacity", number(1)), (f"{ident}-label", "color", colour(rgb(ORANGE))), (f"{ident}-label", "transform", transform(tx=1, ty=1, sx=1.03, sy=1.03))],
+                    (f"{ident}-focus", "opacity", number(1)), (f"{ident}-label", "color", colour(rgb(hot))), (f"{ident}-label", "transform", transform(tx=1, ty=1, sx=1.03, sy=1.03))],
         "disabled": [(f"{ident}-plate", "opacity", number(0.4)), (f"{ident}-marker", "opacity", number(0.4)), (f"{ident}-marker-hot", "opacity", number(0)),
                      (f"{ident}-focus", "opacity", number(0)), (f"{ident}-label", "color", colour([1, 1, 1, 0.4])), (f"{ident}-label", "transform", transform())],
     })
@@ -699,7 +700,7 @@ def prompt_bar(doc: Document, prompts: list, cap_tint: list[float] | None = None
         verb_node = label(f"prompt-{verb[5:]}-verb", verb, {"position": keyword("relative"), "display": keyword("block"),
             "margin-right": length(22), **typeface(face, size, 22, tint), "white-space": keyword("nowrap")})
         items += [cap, verb_node]
-    return group("prompts", {**absolute(top=U * 447, height=22, right=U * 12),
+    return group("prompts", {**absolute(top=U * 447, height=22, right=U * 12), "opacity": number(1),
                              "display": keyword("flex"), "flex-direction": keyword("row"), "align-items": keyword("center")}, items)
 
 
@@ -1091,6 +1092,33 @@ def campaign_document(campaigns: bool) -> dict:
 OBJECTIVE_ROWS = 3   # the stock objective screen's three slots
 
 
+def level_row_bindings(doc: Document, ident: str, index: int, text_nodes: tuple) -> dict:
+    """A level block row shows the objectives with their state (section
+    13.7): the open ones first, newest first, then the ones completed on
+    this map, newest first, behind a check. Returns the expression that is
+    true while the row holds a completed objective."""
+    held = {"state": "pause_objective_count"}
+    text = {"state": f"pause_objective_{index}"}
+    tail = ""
+    for count in range(0, index + 1):
+        tail = {"op": "select", "args": [{"op": "==", "args": [held, count]}, {"state": f"pause_completed_{index - count}"}, tail]}
+    text = {"op": "select", "args": [{"op": ">", "args": [held, index]}, text, tail]}
+    for node in text_nodes:
+        doc.bind(f"{node}.text", node, "text", text)
+    rows = {"op": "+", "args": [held, {"state": "pause_completed_count"}]}
+    doc.bind(f"{ident}.display", ident, "display", {"op": "select", "args": [{"op": ">", "args": [rows, index]}, "block", "none"]})
+    completed = {"op": "<=", "args": [held, index]}
+    doc.bind(f"{ident}-mark.display", f"{ident}-mark", "display", {"op": "select", "args": [completed, "none", "block"]})
+    doc.bind(f"{ident}-check.display", f"{ident}-check", "display", {"op": "select", "args": [completed, "block", "none"]})
+    return completed
+
+
+def level_check(ident: str, tint: list[float]) -> dict:
+    """A completed objective's check (the atlas level block)."""
+    return vector(f"{ident}-check", {**absolute(left=15, top=2, width=12, height=11), "display": keyword("none")}, [
+        path("check", [(0, 6), (3.6, 9.9), (10.5, 1.8)], closed=False, stroke=stroke(solid(tint), 2.1, join="round", cap="round"))])
+
+
 def level_block(doc: Document) -> dict:
     """The current level block in the emblem's place (section 13.7): a card
     (section 6: black 0.94 in a marine.rail.card rail, 12 and 3 dp cuts, a
@@ -1127,19 +1155,19 @@ def level_block(doc: Document) -> dict:
     rows_top, row_h, stats_rule = below + 76, U * 12.5, h - U * 22
     objectives = label("level-objectives", "#str_230030", {**absolute(left=15, top=rows_top, width=pw, height=stats_rule - rows_top - 3),
         **typeface("lowpixel", 14, 18, [0.82, 0.87, 0.71, 1]), "overflow": keyword("hidden"), "display": keyword("block")})
-    # Each open objective: the atlas marker, then its title (13 dp, white 0.9).
+    # Each objective with its state: an open one behind the atlas marker,
+    # its title white 0.9; a completed one behind a check at 0.5.
     rows = []
     for index in range(OBJECTIVE_ROWS):
         ident = f"level-objective-{index}"
-        mark = vector(f"{ident}-mark", absolute(left=15, top=4, width=9, height=9),
+        mark = vector(f"{ident}-mark", {**absolute(left=15, top=4, width=9, height=9), "display": keyword("block")},
                       [path("mark", [(0, 0), (9, 0), (0, 9)], fill=solid(rgb(OBJECTIVE_MARK, 0.4)))])
         title = label(f"{ident}-text", "#str_230030", {**absolute(left=33, top=0, width=pw - 18, height=row_h),
             **typeface("lowpixel", 13, row_h, [1, 1, 1, 0.9]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
         rows.append(group(ident, {**absolute(left=0, top=rows_top + index * row_h, width=w, height=row_h), "display": keyword("none")},
-                          [mark, title]))
-        doc.bind(f"{ident}.display", ident, "display",
-                 {"op": "select", "args": [{"op": ">", "args": [{"state": "pause_objective_count"}, index]}, "block", "none"]})
-        doc.bind(f"{ident}-text.text", f"{ident}-text", "text", {"state": f"pause_objective_{index}"})
+                          [mark, level_check(ident, rgb("#B5C784")), title]))
+        completed = level_row_bindings(doc, ident, index, (f"{ident}-text",))
+        doc.bind(f"{ident}-text.color", f"{ident}-text", "color", [1, 1, 1, {"op": "select", "args": [completed, 0.5, 0.9]}])
     # The time in the mission under a faint rule at the foot of the card.
     rule = vector("level-stats-rule", {**absolute(left=15, top=stats_rule, width=pw, height=1), "display": keyword("none")},
                   [path("rule", [(0, 0.5), (pw, 0.5)], closed=False, stroke=stroke(solid([1, 1, 1, 0.1]), 1))])
@@ -1152,7 +1180,7 @@ def level_block(doc: Document) -> dict:
     doc.bind("level-name.text", "level-name", "text", {"state": "pause_level"})
     doc.bind("level-detail.text", "level-detail", "text", {"state": "pause_detail"})
     doc.bind("level-objectives.text", "level-objectives", "text", {"state": "pause_objectives"})
-    published = {"op": ">", "args": [{"state": "pause_objective_count"}, 0]}
+    published = {"op": ">", "args": [{"op": "+", "args": [{"state": "pause_objective_count"}, {"state": "pause_completed_count"}]}, 0]}
     doc.bind("level-objectives.display", "level-objectives", "display", {"op": "select", "args": [published, "none", "block"]})
     # A map without objectives shows no empty heading.
     doc.bind("level-objectives-head.display", "level-objectives-head", "display",
@@ -1580,17 +1608,17 @@ def strogg_level_block(doc: Document, translation: Translation, start: float) ->
     rows = []
     for index in range(OBJECTIVE_ROWS):
         ident = f"level-objective-{index}"
-        mark = vector(f"{ident}-mark", absolute(left=15, top=4, width=9, height=9), [
+        mark = vector(f"{ident}-mark", {**absolute(left=15, top=4, width=9, height=9), "display": keyword("block")}, [
             path("mark", [(1.95, 0), (9, 0), (7.05, 7.5), (0, 7.5)], fill=solid(rgb(ST_LINE, 0.6)))])
         text_parts = strogg_text(f"{ident}-text", "#str_230030", absolute(left=33, top=0, width=pw - 18, height=row_h),
                                  16, row_h, rgb(ST_READ), overflow=keyword("hidden"))
         translation.add(f"{ident}-text", start + 220 + 60 * index, 200, rest=rgb(ST_READ), width=pw - 18)
-        rows.append(group(ident, {**absolute(left=0, top=rows_top + index * row_h, width=w, height=row_h), "display": keyword("none")},
-                          [mark, *text_parts]))
-        doc.bind(f"{ident}.display", ident, "display",
-                 {"op": "select", "args": [{"op": ">", "args": [{"state": "pause_objective_count"}, index]}, "block", "none"]})
-        doc.bind(f"{ident}-text.text", f"{ident}-text", "text", {"state": f"pause_objective_{index}"})
-        doc.bind(f"{ident}-text-rune.text", f"{ident}-text-rune", "text", {"state": f"pause_objective_{index}"})
+        # The translation owns the text's color, so a completed row dims as
+        # a whole, to the atlas's 0.55.
+        rows.append(group(ident, {**absolute(left=0, top=rows_top + index * row_h, width=w, height=row_h), "display": keyword("none"),
+                                  "opacity": number(1)}, [mark, level_check(ident, rgb(ST_SELECT)), *text_parts]))
+        completed = level_row_bindings(doc, ident, index, (f"{ident}-text", f"{ident}-text-rune"))
+        doc.bind(f"{ident}.opacity", ident, "opacity", {"op": "select", "args": [completed, 0.55, 1]})
     rule = vector("level-stats-rule", {**absolute(left=15, top=stats_rule, width=pw, height=1), "display": keyword("none")},
                   [path("rule", [(0, 0.5), (pw, 0.5)], closed=False, stroke=stroke(solid([1, 1, 1, 0.1]), 1))])
     stats = label("level-stats", "#str_230030", {**absolute(left=15, top=h - U * 20, width=pw, height=U * 14),
@@ -1603,7 +1631,7 @@ def strogg_level_block(doc: Document, translation: Translation, start: float) ->
         doc.bind(f"{ident}.text", ident, "text", {"state": value})
         doc.bind(f"{ident}-rune.text", f"{ident}-rune", "text", {"state": value})
     doc.bind("level-objectives.text", "level-objectives", "text", {"state": "pause_objectives"})
-    published = {"op": ">", "args": [{"state": "pause_objective_count"}, 0]}
+    published = {"op": ">", "args": [{"op": "+", "args": [{"state": "pause_objective_count"}, {"state": "pause_completed_count"}]}, 0]}
     doc.bind("level-objectives.display", "level-objectives", "display", {"op": "select", "args": [published, "none", "block"]})
     shown = {"op": "select", "args": [{"op": "||", "args": [published, {"op": "!=", "args": [{"state": "pause_objectives"}, ""]}]},
                                       "block", "none"]}
@@ -1633,6 +1661,269 @@ def strogg_title(translation: Translation) -> dict:
                  [bar, rune, latin])
 
 
+# ------------------------------------------------------- the objectives page
+
+# The pause menu's OBJECTIVES (section 13.7) opens the objectives display of
+# section 14.11 in its Remastered form as a page of the pause: every open
+# objective, newest first, and the ones completed on this map below them.
+OBJECTIVE_PAGE_ROWS = 8      # open objectives the page lists (Session.cpp pageRows)
+COMPLETED_ROWS = 8           # completed ones, newest first
+OBJ_FRAME = "#B0CD6B"        # frames and markers (section 3, wristcomm)
+OBJ_TEXT = "#D0DEB6"         # descriptions
+OBJ_SERIAL = "#D9E7BF"
+ST_OBJ_FRAME, ST_OBJ_MARK = "#FF9000", "#FF9900"   # the Strogg display (section 14.11)
+OBJ_TOP, OBJ_BOTTOM = 62.0, 428.0    # u: the list, under the docked top band, over the docked bottom band
+OBJ_LEFT, OBJ_WIDTH = 14.0, 600.0    # u: the stock plates are 600 u wide
+
+
+def objective_frame(ident: str, tint: str) -> dict:
+    """The objective plate (section 14.11): an open plate whose foot strip is
+    cut at the lower leading corner through the whole foot, its fill
+    dissolving toward the trailing side (full to 29%, half at 40%, 0.05 at
+    51%, gone at 56%) and its rail along the leading edge, the cut and the
+    bottom. Frames rest at 0.40, baked into the paint, so no layer is held
+    for them. It spans its entry, so it grows with the entry's text."""
+    cut = U * 20 * 0.9
+    outline = [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (cut, {"fraction": 1}), (0, {"fraction": 1, "dp": -cut})]
+    def ramp(peak: float) -> list:
+        return [(0, rgb(tint, round(peak * 0.4, 4))), (0.29, rgb(tint, round(peak * 0.4, 4))), (0.40, rgb(tint, round(peak * 0.2, 4))),
+                (0.51, rgb(tint, round(peak * 0.04, 4))), (0.56, rgb(tint, 0)), (1, rgb(tint, 0))]
+    return vector(ident, {**absolute(left=0, top=0), "right": length(0), "bottom": length(0), "pointer-events": keyword("none")}, [
+        path("fill", outline, fill=linear((0, 0), ({"fraction": 1}, 0), ramp(0.49))),
+        path("rail", [(0.9, 0), (0.9, {"fraction": 1, "dp": -cut}), (cut, {"fraction": 1, "dp": -0.9}), ({"fraction": 1}, {"fraction": 1, "dp": -0.9})],
+             closed=False, stroke=stroke(linear((0, 0), ({"fraction": 1}, 0), ramp(1.0)), 1.8)),
+    ])
+
+
+def objectives_scrollbar(doc: Document, ident: str, viewport: str, tint: str, hot: str, left: float, top: float, height: float) -> dict:
+    """The list's scrollbar at the plates' trailing end (the atlas): a thin
+    trough at 0.15 and a thumb at 0.55 in the frame color, the family's
+    focus color on hover, focus and press. Scroll position stays view state."""
+    trough = vector(f"{ident}-trough", {**absolute(left=0, top=0), "width": length(100, "%"), "height": length(100, "%"),
+                                        "pointer-events": keyword("none")}, [
+        path("line", [(15.75, 0), (20.25, 0), (20.25, {"fraction": 1}), (15.75, {"fraction": 1})], fill=solid(rgb(tint, 0.15)))])
+    thumb_shape = [(14.25, 0), (21.75, 0), (21.75, {"fraction": 1, "dp": -3}), (18.75, {"fraction": 1}), (14.25, {"fraction": 1})]
+    base = vector(f"{ident}-thumb-base", {**absolute(left=0, top=0), "width": length(100, "%"), "height": length(100, "%"),
+                                          "pointer-events": keyword("none"), "opacity": number(1)}, [path("thumb", thumb_shape, fill=solid(rgb(tint, 0.55)))])
+    active = vector(f"{ident}-thumb-active", {**absolute(left=0, top=0), "width": length(100, "%"), "height": length(100, "%"),
+                                              "pointer-events": keyword("none"), "opacity": number(0)}, [path("thumb", thumb_shape, fill=solid(rgb(hot)))])
+    thumb = group(f"{ident}-thumb", {**absolute(left=0, top=0, width=36, height=36)}, [base, active])
+    track_node = group(f"{ident}-track", {"position": keyword("relative"), "display": keyword("block"), "width": length(36),
+                                          "height": length(100, "%")}, [trough, thumb])
+    ids = doc.states(ident, {
+        "default": [(f"{ident}-thumb-base", "opacity", number(1)), (f"{ident}-thumb-active", "opacity", number(0))],
+        "hover": [(f"{ident}-thumb-base", "opacity", number(0)), (f"{ident}-thumb-active", "opacity", number(1))],
+        "focus": [(f"{ident}-thumb-base", "opacity", number(0)), (f"{ident}-thumb-active", "opacity", number(1))],
+        "pressed": [(f"{ident}-thumb-base", "opacity", number(0)), (f"{ident}-thumb-active", "opacity", number(1))],
+        "disabled": [(f"{ident}-thumb-base", "opacity", number(0.4)), (f"{ident}-thumb-active", "opacity", number(0))],
+    })
+    return group(ident, {**absolute(left=left, top=top, width=36, height=height)}, [track_node],
+                 control={"role": "scrollbar", "label": "#str_200380", "viewport": viewport, "orientation": "vertical",
+                          "lineStep": round(U * 48, 3), "minimumThumb": 36,
+                          "parts": {"track": f"{ident}-track", "thumb": f"{ident}-thumb"}, "states": ids})
+
+
+def strogg_action_plate(doc: Document, ident: str, key: str, left: float, top: float, *, event: str, width: float) -> dict:
+    """An action plate in the Strogg family: the Marine plate's 35 dp band
+    in a 45 dp target, ending in the 30-degree shoulder of the Strogg
+    navigation plates, its #F59512 rail along the foot, up the trailing
+    edge and over the shoulder, the slanted marker, and an R_Strogg label in
+    #FCFFC8 turning #FFCC00 on hover and focus."""
+    band_top, band_bottom = 5.0, 40.0
+    shoulder_x, shoulder_y = U * 16, U * 9.2
+    fill = [(0, rgb(ST_LINE, 0.49)), (0.33, rgb(ST_LINE, 0.49)), (1, rgb(ST_LINE, 0.12))]
+    rail = [(0, rgb(ST_LINE, 0.9)), (0.55, rgb(ST_LINE, 0.9)), (1, rgb(ST_LINE, 0.45))]
+    plate = vector(f"{ident}-plate", {**absolute(left=0, top=0, width=width, height=45), "opacity": number(0.4)}, [
+        path("fill", [(0, band_top), (width - shoulder_x, band_top), (width, band_top + shoulder_y), (width, band_bottom), (0, band_bottom)],
+             fill=linear((0, 0), (width, 0), fill)),
+        path("rail", [(0.75, band_top), (0.75, band_bottom - 0.75), (width - 0.75, band_bottom - 0.75), (width - 0.75, band_top + shoulder_y),
+                      (width - shoulder_x, band_top + 0.75), (width * 0.6, band_top + 0.75)],
+             closed=False, stroke=stroke(linear((0, 0), (width, 0), rail), 1.5)),
+    ])
+    focus = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=width, height=45), "opacity": number(0)}, [
+        path("inset", [(3.5, band_bottom - 3.5), (width - shoulder_x - 4, band_bottom - 3.5)], closed=False,
+             stroke=stroke(solid(rgb(ST_SELECT)), 1.2))])
+
+    def slanted(name: str, tint: list[float], alpha: float) -> dict:
+        return vector(name, {**absolute(left=14, top=14, width=10, height=9), "opacity": number(alpha)}, [
+            path("mark", [(2.4, 0), (9.6, 0), (7.2, 9), (0, 9)], fill=solid(tint))])
+    marker_rest, marker_hot = slanted(f"{ident}-marker", rgb(ST_LINE), 0.4), slanted(f"{ident}-marker-hot", rgb(ST_SELECT), 0)
+    text_node = label(f"{ident}-label", key, {**absolute(left=28, top=0, width=width - 32, height=45),
+        **typeface("r_strogg", 20, 45, rgb(ST_READ, 0.8)), "white-space": keyword("nowrap"), "transform": transform()})
+    rest, lit = colour(rgb(ST_READ, 0.8)), colour(rgb(ST_SELECT))
+    ids = doc.states(ident, {
+        "default": [(f"{ident}-plate", "opacity", number(0.4)), (f"{ident}-marker", "opacity", number(0.4)), (f"{ident}-marker-hot", "opacity", number(0)),
+                    (f"{ident}-focus", "opacity", number(0)), (f"{ident}-label", "color", rest), (f"{ident}-label", "transform", transform())],
+        "hover": [(f"{ident}-plate", "opacity", number(0.8)), (f"{ident}-marker", "opacity", number(0)), (f"{ident}-marker-hot", "opacity", number(1)),
+                  (f"{ident}-focus", "opacity", number(0)), (f"{ident}-label", "color", lit), (f"{ident}-label", "transform", transform(sx=1.03, sy=1.03))],
+        "focus": [(f"{ident}-plate", "opacity", number(0.8)), (f"{ident}-marker", "opacity", number(0)), (f"{ident}-marker-hot", "opacity", number(1)),
+                  (f"{ident}-focus", "opacity", number(1)), (f"{ident}-label", "color", lit), (f"{ident}-label", "transform", transform(sx=1.03, sy=1.03))],
+        "pressed": [(f"{ident}-plate", "opacity", number(1)), (f"{ident}-marker", "opacity", number(0)), (f"{ident}-marker-hot", "opacity", number(1)),
+                    (f"{ident}-focus", "opacity", number(1)), (f"{ident}-label", "color", lit), (f"{ident}-label", "transform", transform(tx=1, ty=1, sx=1.03, sy=1.03))],
+        "disabled": [(f"{ident}-plate", "opacity", number(0.4)), (f"{ident}-marker", "opacity", number(0.4)), (f"{ident}-marker-hot", "opacity", number(0)),
+                     (f"{ident}-focus", "opacity", number(0)), (f"{ident}-label", "color", colour(rgb(ST_READ, 0.4))), (f"{ident}-label", "transform", transform())],
+    })
+    return group(ident, absolute(left=left, top=top, width=width, height=45), [plate, focus, marker_rest, marker_hot, text_node],
+                 control={"role": "button", "label": key, "states": ids, "event": event})
+
+
+def objectives_page(doc: Document, strogg: bool) -> tuple:
+    """The OBJECTIVES page (sections 13.7 and 14.11). Choosing OBJECTIVES
+    docks the bands as a page hand-off does and carries the label into the
+    title slot; at 550 ms, when a stock page would appear, the stock entry
+    motion plays: the back bar slides 220 u in and fades to 0.80 over
+    150 ms, then the heading, plates, text and screenshots fade in over
+    100 ms (the frames rest at 0.40 in their paint, so they fade in with
+    the text rather than leading at 0.50). Every open objective is
+    reachable, newest first, as plates of
+    the stock construction whose titles wrap to two lines and descriptions
+    wrap without a limit; the completed ones follow under COMPLETED, title
+    only at 0.40 with a check. The list scrolls with the wheel, the stick or
+    the bar, and Back (the plate at 532,441 u, or the back input) returns
+    to the pause with the bands. The Strogg family keeps the construction
+    with #FF9000 frames, #FF9900 markers, an R_Strogg heading and the STROGG
+    NET serial. Returns the back bar, which lies under the framing bands,
+    and the page."""
+    frame_tint = ST_OBJ_FRAME if strogg else OBJ_FRAME
+    mark_tint = ST_OBJ_MARK if strogg else OBJ_FRAME
+    hot = ST_SELECT if strogg else ORANGE
+    visible, leaving = "objectives.visible", "objectives.leaving"
+    doc.state[visible] = {"type": "boolean", "initial": False}
+    doc.state[leaving] = {"type": "boolean", "initial": False}
+    doc.state["pause_completed_count"] = {"type": "number", "initial": 0}
+    for index in range(OBJECTIVE_PAGE_ROWS):
+        doc.state.setdefault(f"pause_objective_{index}", {"type": "string", "initial": ""})
+        doc.state[f"pause_objective_text_{index}"] = {"type": "string", "initial": ""}
+        doc.state[f"pause_objective_shot_{index}"] = {"type": "string", "initial": ""}
+    for index in range(COMPLETED_ROWS):
+        doc.state[f"pause_completed_{index}"] = {"type": "string", "initial": ""}
+    # The back bar: black 0.80 over the leading 45% of the view, opaque to
+    # 190 u, half at 285 u, clear by 380 u. It lies under the framing bands,
+    # so their rim light keeps its strength.
+    bar = vector("objectives-bar", {**FULL, "transform": transform(), "opacity": number(0), "pointer-events": keyword("none"),
+                                    "display": keyword("none")}, [
+        path("bar", [(0, 0), (vx(380), 0), (vx(380), {"fraction": 1}), (0, {"fraction": 1})],
+             fill=linear((vx(190), 0), (vx(380), 0), [(0, [0, 0, 0, 0.8]), (0.5, [0, 0, 0, 0.4]), (1, [0, 0, 0, 0])]))])
+    heading_face = ("r_strogg", 17) if strogg else ("marine", 18)
+    heading = label("objectives-heading", "#str_200291", {**absolute(left=U * 20, top=U * 44, width=U * 560, height=24),
+        **typeface(heading_face[0], heading_face[1], 24, rgb(OBJECTIVE_HEAD)), "letter-spacing": length(-1.5),
+        "white-space": keyword("nowrap")})
+    entries = []
+    for index in range(OBJECTIVE_PAGE_ROWS):
+        ident = f"objectives-entry-{index}"
+        marker = vector(f"{ident}-mark", absolute(left=U * 10, top=U * 5, width=U * 8, height=U * 8.5), [
+            path("mark", [(0, 0), (U * 8, 0), (U * 8, U * 8.5)], fill=solid(rgb(mark_tint, 0.4)))])
+        # The title wraps to two lines at the stock's 308 u; a longer one is
+        # cut at the second line's foot.
+        title = label(f"{ident}-title", "#str_230030", {"position": keyword("relative"), "display": keyword("block"),
+            "margin-left": length(U * 20), "padding-top": length(U * 4), "width": length(U * 308), "max-height": length(U * 24),
+            "overflow": keyword("hidden"), **typeface("lowpixel", 14.4, U * 12, [1, 1, 1, 1]), "white-space": keyword("normal")})
+        shot = picture(f"{ident}-shot", "", {**absolute(left=U * 1, top=U * 1, width=U * 132, height=U * 98)})
+        shot_frame = vector(f"{ident}-shot-frame", {**absolute(left=0, top=0, width=U * 134, height=U * 100)}, [
+            path("back", [(0, 0), (U * 134, 0), (U * 134, U * 100), (0, U * 100)], fill=solid([0, 0, 0, 0.5]),
+                 stroke=stroke(solid([0, 0, 0, 1]), U * 1))])
+        shot_box = group(f"{ident}-shotbox", {"position": keyword("relative"), "display": keyword("block"), "margin-left": length(U * 22),
+            "width": length(U * 134), "height": length(U * 100), "flex-shrink": number(0)}, [shot_frame, shot])
+        text_node = label(f"{ident}-text", "#str_230030", {"position": keyword("relative"), "display": keyword("block"),
+            "margin-left": length(U * 8), "width": length(U * 178), **typeface("lowpixel", 14.4, U * 13.75, rgb(OBJ_TEXT)),
+            "white-space": keyword("normal")})
+        body = group(f"{ident}-body", {"position": keyword("relative"), "display": keyword("flex"), "flex-direction": keyword("row"),
+            "align-items": keyword("flex-start"), "margin-top": length(U * 2)}, [shot_box, text_node])
+        # 112 + 20 u at least. As in the stock, the screenshot (18-118 u)
+        # reaches into the foot strip, and 14 u stay clear below the content.
+        entries.append(group(ident, {"position": keyword("relative"), "display": keyword("none"), "margin-left": length(U * OBJ_LEFT),
+            "box-sizing": keyword("border-box"), "width": length(U * OBJ_WIDTH), "min-height": length(U * 132), "padding-bottom": length(U * 14),
+            "margin-bottom": length(U * 11)}, [objective_frame(f"{ident}-frame", frame_tint), marker, title, body]))
+        doc.bind(f"{ident}.display", ident, "display",
+                 {"op": "select", "args": [{"op": ">", "args": [{"state": "pause_objective_count"}, index]}, "block", "none"]})
+        doc.bind(f"{ident}-title.text", f"{ident}-title", "text", {"state": f"pause_objective_{index}"})
+        doc.bind(f"{ident}-text.text", f"{ident}-text", "text", {"state": f"pause_objective_text_{index}"})
+        doc.bind(f"{ident}-shot.image", f"{ident}-shot", "image", {"state": f"pause_objective_shot_{index}"})
+    # No open objective: one plate with the stock static screenshot and the
+    # stock line beside it, Lowpixel 0.31 in #D0DEB6 wrapping at 164 u.
+    empty = group("objectives-empty", {"position": keyword("relative"), "display": keyword("none"), "margin-left": length(U * OBJ_LEFT),
+        "width": length(U * OBJ_WIDTH), "height": length(U * 132), "margin-bottom": length(U * 11)}, [
+        objective_frame("objectives-empty-frame", frame_tint),
+        vector("objectives-empty-shot-frame", absolute(left=U * 22, top=U * 17, width=U * 134, height=U * 100), [
+            path("back", [(0, 0), (U * 134, 0), (U * 134, U * 100), (0, U * 100)], fill=solid([0, 0, 0, 0.5]),
+                 stroke=stroke(solid([0, 0, 0, 1]), U * 1))]),
+        picture("objectives-empty-shot", "gfx/objectives/none", {**absolute(left=U * 23, top=U * 18, width=U * 132, height=U * 98)}),
+        label("objectives-empty-text", "#str_200935", {**absolute(left=U * 164, top=U * 43, width=U * 164, height=U * 73),
+              **typeface("lowpixel", 22.3, U * 16, rgb(OBJ_TEXT)), "white-space": keyword("normal")})])
+    doc.bind("objectives-empty.display", "objectives-empty", "display",
+             {"op": "select", "args": [{"op": "==", "args": [{"state": "pause_objective_count"}, 0]}, "block", "none"]})
+    # The completed ones: title only at 0.40 behind a check, newest first.
+    completed_rows = [group("objectives-completed-head", {"position": keyword("relative"), "display": keyword("flex"),
+        "flex-direction": keyword("row"), "margin-bottom": length(U * 4)}, [
+        label("objectives-completed-label", "#str_230047", {"position": keyword("relative"), "display": keyword("block"),
+              **typeface("lowpixel", 13, U * 12, [1, 1, 1, 0.4]), "white-space": keyword("nowrap")}),
+        label("objectives-completed-count", "#str_230030", {"position": keyword("relative"), "display": keyword("block"),
+              "margin-left": length(U * 6), **typeface("lowpixel", 13, U * 12, [1, 1, 1, 0.4]), "white-space": keyword("nowrap")})])]
+    doc.bind("objectives-completed-count.text", "objectives-completed-count", "text",
+             {"op": "numberText", "args": [{"state": "pause_completed_count"}], "decimals": 0})
+    for index in range(COMPLETED_ROWS):
+        ident = f"objectives-done-{index}"
+        check = vector(f"{ident}-check", absolute(left=0, top=U * 2, width=U * 9, height=U * 8), [
+            path("check", [(U * 0.5, U * 4), (U * 3, U * 6.6), (U * 7.6, U * 1.2)], closed=False,
+                 stroke=stroke(solid(rgb(hot if strogg else "#B5C784", 0.4)), U * 1.4, join="round", cap="round"))])
+        title = label(f"{ident}-title", "#str_230030", {**absolute(left=U * 12, top=0, width=U * 560, height=U * 12),
+            **typeface("lowpixel", 14.4, U * 12, [1, 1, 1, 0.4]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+        completed_rows.append(group(ident, {"position": keyword("relative"), "display": keyword("none"), "height": length(U * 13)},
+                                    [check, title]))
+        doc.bind(f"{ident}.display", ident, "display",
+                 {"op": "select", "args": [{"op": ">", "args": [{"state": "pause_completed_count"}, index]}, "block", "none"]})
+        doc.bind(f"{ident}-title.text", f"{ident}-title", "text", {"state": f"pause_completed_{index}"})
+    completed = group("objectives-completed", {"position": keyword("relative"), "display": keyword("none"),
+        "margin-left": length(U * (OBJ_LEFT + 12)), "margin-top": length(U * 2)}, completed_rows)
+    doc.bind("objectives-completed.display", "objectives-completed", "display",
+             {"op": "select", "args": [{"op": ">", "args": [{"state": "pause_completed_count"}, 0]}, "block", "none"]})
+    serial = label("objectives-serial", "#str_200280" if strogg else "#str_200275", {"position": keyword("relative"),
+        "display": keyword("block"), "margin-left": length(U * (OBJ_LEFT + 12)), "margin-top": length(U * 12),
+        "margin-bottom": length(U * 8), **typeface("r_strogg" if strogg else "marine", 13, 18, rgb(OBJ_SERIAL, 0.25)),
+        "white-space": keyword("nowrap")})
+    column = group("objectives-column", {"position": keyword("relative"), "display": keyword("block")},
+                   [*entries, empty, completed, serial])
+    viewport = group("objectives-list", {**absolute(left=0, top=U * OBJ_TOP, width=U * (OBJ_LEFT + OBJ_WIDTH + 2),
+        height=U * (OBJ_BOTTOM - OBJ_TOP)), "overflow": keyword("auto")}, [column])
+    scrollbar = objectives_scrollbar(doc, "objectives_scroll", "objectives-list", frame_tint, hot,
+                                     U * (OBJ_LEFT + OBJ_WIDTH) + 2, U * OBJ_TOP, U * (OBJ_BOTTOM - OBJ_TOP))
+    if strogg:
+        back = strogg_action_plate(doc, "objectives_back", "#str_200018", U * 532, U * 441, event="objectivesHide", width=U * 109)
+    else:
+        back = action_plate(doc, "objectives_back", "#str_200018", U * 532, U * 441, event="objectivesHide", width=U * 109)
+    canvas = group("objectives-canvas", {**absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"),
+                                         "margin-left": length(-CANVAS_W / 2)}, [heading, viewport, scrollbar, back])
+    content = group("objectives-content", {**FULL, "opacity": number(0)}, [canvas])
+    node = group("objectives", {**FULL, "display": keyword("none")}, [content],
+                 modal={"initialFocus": "objectives_scroll", "back": "objectivesHide"})
+    for part in ("objectives", "objectives-bar"):
+        doc.bind(f"{part}.display", part, "display", {"op": "select", "args": [{"state": visible}, "block", "none"]})
+    # Choosing OBJECTIVES docks the bands and carries the label as a page
+    # hand-off does; the stock entry motion follows at 550 ms. Back fades the
+    # page and brings the bands home; the page closes when they arrive, and
+    # a second Back during that leave changes nothing.
+    home_return = [{"op": "call", "event": "returnHome"}] if strogg else [{"op": "playTimeline", "timeline": "returnHome"}]
+    doc.events["objectivesShow"] = [{"op": "setState", "values": {visible: True, leaving: False}}, {"op": "call", "event": "carry_objectives"},
+                                    {"op": "playTimeline", "timeline": "depart"}, {"op": "playTimeline", "timeline": "objectivesEnter"}]
+    doc.events["objectivesHide"] = [{"op": "if", "condition": {"op": "!", "args": [{"state": leaving}]},
+                                     "then": [{"op": "setState", "values": {leaving: True}},
+                                              {"op": "playTimeline", "timeline": "objectivesLeave"}, *home_return]}]
+    doc.events["objectivesHidden"] = [{"op": "setState", "values": {visible: False, leaving: False}}]
+    shown, hidden_bar = transform(), transform(-220 * U)
+    doc.timelines.add("objectivesEnter", 800, [
+        track("objectives-bar", "transform", [(0, hidden_bar), (1, hidden_bar), (550, hidden_bar, EASE_OUT), (700, shown)]),
+        track("objectives-bar", "opacity", [(0, number(0)), (1, number(0)), (550, number(0)), (700, number(1))]),
+        track("objectives-content", "opacity", [(0, number(0)), (1, number(0)), (700, number(0)), (800, number(1))]),
+        track("prompts", "opacity", [(0, number(1)), (150, number(0)), (800, number(0))]),
+    ])
+    doc.timelines.add("objectivesLeave", 650, [
+        track("objectives-content", "opacity", [(0, number(1)), (100, number(0)), (650, number(0))]),
+        track("objectives-bar", "opacity", [(0, number(1)), (150, number(0)), (650, number(0))]),
+        track("prompts", "opacity", [(0, number(0)), (500, number(0)), (650, number(1))]),
+    ], complete="objectivesHidden")
+    return bar, node
+
+
 def pause_document(strogg: bool = False) -> dict:
     """The single-player pause (section 13.7). `strogg` builds the Strogg
     pause that the session presents after Kane's stroggification."""
@@ -1658,7 +1949,8 @@ def pause_document(strogg: bool = False) -> dict:
     doc.events["onBack"] = [{"op": "action", "action": "resume"}]
     items = [("nav_resume", "#str_200381", "resume", None), ("nav_savegame", "#str_200003", "saveGame", None),
              ("nav_loadgame", "#str_200001", "loadGame", None), ("nav_restart", "#str_229983", "restartLevel", None),
-             ("nav_settings", "#str_200009", "settings", None), ("nav_quit", "#str_230025", None, "quitModalShow")]
+             ("nav_objectives", "#str_200380", None, "objectivesShow"), ("nav_settings", "#str_200009", "settings", None),
+             ("nav_quit", "#str_230025", None, "quitModalShow")]
     translation = Translation() if strogg else None
     if strogg:
         plates = [strogg_navigation_plate(doc, ident, key, translation, index, action=action, event=event)
@@ -1698,7 +1990,9 @@ def pause_document(strogg: bool = False) -> dict:
     ])
     prompts = [("#str_107019", "#str_200747"), ("#str_107020", "#str_200381")]
     carries = [("saveGame", "#str_200003", 212.2), ("loadGame", "#str_200001", 242.2),
-               ("restartLevel", "#str_229983", 272.2), ("settings", "#str_200009", 302.2)]
+               ("restartLevel", "#str_229983", 272.2), ("objectives", "#str_200380", 302.2),
+               ("settings", "#str_200009", 332.2)]
+    objectives_bar, objectives = objectives_page(doc, strogg)
     if strogg:
         # The Strogg light, crosses and bands; the confirmations stay the
         # stock dialogs of section 6.
@@ -1715,8 +2009,10 @@ def pause_document(strogg: bool = False) -> dict:
         softened,
         scrim,
         *field,
+        objectives_bar,
         *bands,
         content,
+        objectives,
         prompt,
         carry,
         quit_modal,
@@ -1736,6 +2032,11 @@ def pause_document(strogg: bool = False) -> dict:
     hide_carry_at_home(doc)
     if strogg:
         translation.finish(doc)
+    # A pause can close without Back (a console load or disconnect); every
+    # opening starts at home without the Objectives page, prompts showing.
+    opening["tracks"].append(track("prompts", "opacity", [(0, number(1)), (1, number(1)), (250, number(1))]))
+    reset = {"op": "setState", "values": {"objectives.visible": False, "objectives.leaving": False}}
+    doc.events["open"] = [reset, *doc.events.get("open", [{"op": "playTimeline", "timeline": "open"}])]
     return doc.build(root)
 
 

@@ -96,23 +96,70 @@ after editing the script; `--check` fails when an output is stale.
   follow, and the secondary links and EXIT stay on the plinth. EXIT asks before
   leaving. The prompt bar sits in the bottom band's raised section.
 - **Pause** (section 13.7, single player). GAME PAUSED replaces the wordmark,
-  RESUME leads, followed by SAVE GAME, LOAD GAME, RESTART LEVEL, SETTINGS and
-  QUIT TO MENU; only EXIT stays on the plinth, and both quits ask first. The
-  current level block takes the emblem's place: a card with the levelshot, the
-  mission, the difficulty, the objectives the player holds and the time in the
-  mission. The session asks the game for them with the `retainedPauseState`
-  menu command when the screen opens: up to three open objectives, newest
-  first as the stock objective screen stacks them, each on a row behind the
-  atlas marker, and the mission's game time (it restarts with each map and is
-  saved with it) as "0:42:10 in mission" under a faint rule. A game module
-  that publishes neither leaves the map's own objective summary and no time
-  line, and the heading hides when there is nothing to list. The paused view
+  RESUME leads, followed by SAVE GAME, LOAD GAME, RESTART LEVEL, OBJECTIVES,
+  SETTINGS and QUIT TO MENU, the seven actions from 172 u (the plates' art is
+  drawn from 172 u, as the title's from 202 u); only EXIT stays on the
+  plinth, and both quits ask first. The current level block takes the
+  emblem's place: a card with the levelshot, the mission, the difficulty, the
+  objectives with their state and the time line. The session asks the game
+  with the `retainedPauseState` menu command when the screen opens. Three
+  rows list the open objectives, newest first as the stock objective screen
+  stacks them, each behind the atlas marker, and then the ones completed on
+  this map, newest first, behind a check at 0.5. The time line under a faint
+  rule gives the mission's game time (it restarts with each map and is saved
+  with it) and how long ago the newest save was written: "0:42:10 in mission
+  · saved 4 min ago". A game module that publishes neither leaves the map's
+  own objective summary and no time line, and the heading hides when there
+  is nothing to list. The paused view
   stays behind the screen, softened and never
   dimmed: the specification gives scene softening no values of its own, so
   it takes `modal.softfocus` (a 7.5 dp blur at 0.80 saturation), ramping in
   over 250 ms with the screen's fade from black. With the opaque-backing
   option, or on a renderer that cannot soften the view, a darkening scrim and
   vignette stand in. Back resumes the game.
+- **Objectives page** (sections 13.7 and 14.11). OBJECTIVES opens the
+  objectives display in its Remastered form as a page of the pause:
+  - **Hand-off.** Choosing it docks the bands as a page hand-off does and
+    carries OBJECTIVES into the title slot. At 550 ms, when a stock page
+    would appear, the stock entry motion plays: the back bar (black 0.80 over
+    the leading 45%, under the framing bands so their rim light keeps its
+    strength) slides 220 u in over 150 ms, then the heading, plates, text and
+    screenshots fade in over 100 ms. The stock frames lead the text at 0.50;
+    here they fade in with it, because their 0.40 is baked into their paint.
+  - **Plates.** Every open objective is reachable, newest first, as a plate of
+    the stock construction on the 143 u pitch: the marker at 0.40, the title
+    in Lowpixel 0.20 wrapping to two lines at 308 u, the 134x100 u screenshot in its
+    black border and the description in #D0DEB6 wrapping without a limit,
+    the plate growing with it. The frames rest at 0.40, baked into their
+    paint.
+  - **Completed.** Under COMPLETED and its count, the objectives completed on
+    this map follow, newest first: the title only, at 0.40 behind a check.
+    The stock serial closes the list, at the 13 dp type floor. With no open
+    objective one plate shows the stock static screenshot and its line beside
+    it, in Lowpixel 0.31 and #D0DEB6.
+  - **Scrolling and Back.** The list scrolls under its bar with the wheel, the
+    stick, the keys or a drag; the bar holds focus. The prompt bar gives way
+    to Back at 532,441 u in the docked bottom band, and Back (or the back
+    input) fades the page while the bands come home. The page closes when
+    they arrive; a second Back during that leave changes nothing. In the
+    Strogg family Back is a Strogg plate with its shoulder and an R_Strogg
+    label. A reopened list starts at its first entry, and a pause that closed
+    without Back, as a console load closes it, opens at home without the
+    page.
+  - **Data.** The game publishes each objective's title, description and
+    screenshot, and the completed ones, with `retainedPauseState`. The
+    session shows a screenshot only when it is a plain, installed image
+    name. Every level load asks the game for all the level's objective
+    screenshots (`retainedLevelImages`) after it spawns the map and resolves
+    them inside the load, so the page reads no picture mid-frame; they include
+    the screenshots of the objectives the player holds, whose entities removed
+    themselves when given, so a savegame load resolves them too. The game
+    keeps the completed objectives per map, unsaved, so the save format is
+    unchanged. The newest save's time is read once in the level load and
+    restamped by each save, so opening the pause lists no files.
+  - **Strogg.** The Strogg page keeps the construction with #FF9000 frames,
+    #FF9900 markers, an R_Strogg heading and the STROGG NET serial. Its
+    return plays the translation again.
 - **Strogg pause** (`guis/menu/pause_strogg.q4ui`, section 13.7 and the atlas
   Strogg pause). After Kane's stroggification the pause takes the Strogg
   family; it offers the same actions, level block and confirmations.
@@ -344,7 +391,16 @@ controller or the mouse switches the prompt.
   published lines, the grain, the label wrapper that the scan bar spans, the
   translation's order and timing (RESUME by 320 ms, QUIT TO MENU and the
   level block still waiting, GAME PAUSED white and settling to #FCFFC8 at
-  0.80), the focus scan bar, reduced motion and the soft focus.
+  0.80), the focus scan bar, reduced motion and the soft focus. For the
+  Objectives page it checks the hand-off and the entry motion, a plate per
+  open objective with its description and screenshot, the title's 308 u
+  wrap, a long description growing its plate, the completed rows, the
+  scrollbar's focus and the down input scrolling the list, a snapshot
+  restored with the page open keeping its scroll, Back closing the page with
+  the bands home and a second Back ignored, a reopened list at its top, a
+  pause opening without the page, the empty state's static and line, the
+  level block's rows with their state, and the Strogg page's heading, serial,
+  BACK plate and return. It checks that the back bar lies under the bands.
 - `openq4-retained-ui` and `openq4-ui-document` cover timeline completion
   programs: firing once at the end, cancellation, replay, pause, reduced
   motion and a snapshot taken while a completion is due, and the rejected
@@ -361,7 +417,12 @@ controller or the mouse switches the prompt.
   installed or stopped drawing. It pins the game's `retainedPauseFamily`
   answer, and compiles the host's face names and rune fold to check that
   every code point of the shipped string tables, and every other one below
-  U+FFFF, folds onto a rune the face has or onto a space.
+  U+FFFF, folds onto a rune the face has or onto a space. It covers the
+  Objectives page's data: the level's screenshots resolved inside the load
+  (after the game spawns the map, before the media finish), only installed
+  plain image names shown, the held objectives' screenshots among them, and
+  the time line's last save: read once in the level load, not when the pause
+  opens, absent with the gate off, and restamped by a save.
 - `tools/ui/capture_retained_screens.py` captures the screens in the engine
   from a hidden window with engine screenshots and semantic
   `openq4_retainedGui` operations, never OS input. With `--gate 0` the title
@@ -378,6 +439,8 @@ controller or the mouse switches the prompt.
   and at rest, then focuses a plate, opens the quit confirmation and resumes.
   The pause scenarios wait for the confirmation's 300 ms leave before they
   focus RESUME, because the modal keeps focus until it closes.
+  `pause-objectives-page` gives airdefense1's first objective, completes it
+  and gives two more, then opens the Objectives page, scrolls and closes it.
 
 ## Evidence
 
@@ -533,14 +596,28 @@ cleanly with no errors, and all 109 Meson tests pass. Evidence:
 `.tmp/ui/retained-pause-strogg/validation-evidence.json`, SHA-256
 `2180c19336bea8e678a54440b5eacb20ab01d31a4a5121893dcbc9e725886894`.
 
+The Objectives page was captured over airdefense1, with its first objective
+given and completed and two more given, on OpenGL and Vulkan at 1280x720 and
+on OpenGL at 1024x768: docking, the page with both plates and the completed
+row, scrolled, and closed, the level block then listing the two open
+objectives above the completed one and "saved just now" after the level's
+start autosave. Over game/recomp the Strogg page shows its plate, serial and
+Strogg BACK. No run loaded a picture outside the level load, the Strogg
+page matches across renderers within two levels (the Marine page differs
+only in the moving sky behind the plates), and with `ui_retained 0` nothing
+retained loaded. All runs exited cleanly with no errors, and all 109 Meson
+tests pass. Evidence:
+`.tmp/ui/retained-pause-objectives-page/validation-evidence.json`, SHA-256
+`f700445cf82cb8e6e7e01ba64b30bdbe8e55adcb22fbb0237e23d9976f0577c6`.
+
 ## Known limitations
 
-- The pause menu has no OBJECTIVES action yet, so the navigation holds six of
-  the seven actions of section 13.7: the stock objective screen shows only
-  while the scores button is held, so opening it from the menu needs game
-  input work. The level block lists the open objectives but not completed
-  ones (the game drops an objective when it completes), and it has no total
-  time or last save.
+- The completed objectives are kept per map and not saved, so after loading a
+  save the page and the level block list only those completed since. The
+  time line has no total time: nothing tracks play time across missions. A
+  failed objective is not marked (failure ends the mission at once). The
+  objectives display held on the scores button in play, its hold or toggle
+  setting and the notices keep the stock screens.
 - The Strogg pause keeps the stock confirmation dialogs, and its grain does
   not drift. Its translation is the menu's short form: the full credits
   translation, with its 2000 ms rune fade-in and 250 ms line stagger, is not

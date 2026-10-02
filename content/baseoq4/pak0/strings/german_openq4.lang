@@ -1084,4 +1084,8 @@
 	"#str_230044"	"Spiele eine Kampagne oder stelle dich den Stufen der Arena."
 	"#str_230045"	"ZURÜCK"
 	"#str_230046"	"im Einsatz"
+	"#str_230047"	"ABGESCHLOSSEN"
+	"#str_230048"	"vor %d Min. gespeichert"
+	"#str_230049"	"vor %d Std. gespeichert"
+	"#str_230050"	"gerade gespeichert"
 }

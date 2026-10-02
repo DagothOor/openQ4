@@ -106,7 +106,12 @@ static bool Session_GetMapDeclDict(const char* map, const char*, idDict& out) {
     const auto found = mapDecls.find(map); if (found == mapDecls.end()) return false; out = found->second; return true;
 }
 static bool Session_FileExistsInSearchPaths(const char* path) { return fileSystemObject.files.count(path) != 0; }
-struct LanguageDict { const char* GetString(const char* key) const { return !std::strcmp(key, "#str_230046") ? "in mission" : key; } } languageObject;
+struct LanguageDict {
+    const char* GetString(const char* key) const {
+        return !std::strcmp(key, "#str_230046") ? "in mission" : !std::strcmp(key, "#str_230048") ? "saved %d min ago" :
+               !std::strcmp(key, "#str_230049") ? "saved %d h ago" : !std::strcmp(key, "#str_230050") ? "saved just now" : key;
+    }
+} languageObject;
 const LanguageDict* Common::GetLanguageDict() const { return &languageObject; }
 static const char* Session_GetSkillName() { return "Corporal"; }
 struct idUserInterface;
@@ -131,6 +136,7 @@ struct idUserInterface {
         const std::map<std::string, std::string>& values;
         int GetInt(const char* key, const char* fallback) const { const auto found = values.find(key); return std::atoi(found == values.end() ? fallback : found->second.c_str()); }
         bool GetBool(const char* key, const char* fallback = "0") const { return GetInt(key, fallback) != 0; }
+        const char* GetString(const char* key, const char* fallback = "") const { const auto found = values.find(key); return found == values.end() ? fallback : found->second.c_str(); }
     };
     StateView State() const { return {state}; }
     void SetStateString(const char* key, const char* value) { state[key] = value; }
@@ -192,12 +198,13 @@ public:
     idUserInterface *guiActive = nullptr, *guiMainMenu = nullptr, *guiTest = nullptr;
     idUserInterface *guiRetainedHome = nullptr, *guiRetainedTitle = nullptr, *guiRetainedPause = nullptr, *guiRetainedPauseStrogg = nullptr;
     int retainedPauseStrogg = -1;
+    ID_TIME_T retainedNewestSave = 0;
     bool retainedHomeReturning = false;
     idStrList retainedStock;
     int retainedHandoffUntil = 0;
     float retainedPointerX = 0, retainedPointerY = 0;
     bool mapSpawned = false, multiplayer = false;
-    int exits = 0, pauseStates = 0, drains = 0;
+    int exits = 0, pauseStates = 0, drains = 0, saveLists = 0;
     std::vector<std::string> dispatched, loadedGames, played;
     std::vector<std::string> saves;
     bool IsMultiplayer() { return multiplayer; }
@@ -207,6 +214,7 @@ public:
     void HandleMainMenuCommands(const char* command) { played.push_back(command); }
     void LoadGame(const char* slot) { loadedGames.push_back(slot); }
     void GetSaveGameList(idStrList& files, idList<fileTIME_T>& times) {
+        ++saveLists;
         for (size_t i = 0; i < saves.size(); ++i) { files.Append(idStr(saves[i])); times.Append({static_cast<int>(i), 100 - static_cast<ID_TIME_T>(i)}); }
     }
     idStr currentMapName = idStr("game/airdefense1");
@@ -224,7 +232,7 @@ public:
     idUserInterface* RetainedHomeDocument(idUserInterface*&, const char*);
     bool RetainedPauseIsStrogg();
     bool RetainedSystemAvailable() const;
-    void PreloadRetainedScreens(); void PrepareRetainedLevel(const char*, bool);
+    void PreloadRetainedScreens(); void PrepareRetainedLevel(const char*, bool); void PrecacheRetainedLevelImages();
     void ReportRetainedScreens();
 };
 '''
@@ -447,6 +455,27 @@ int main() {
         CHECK(pause->state["pause_level"] == "Air Defense Bunker" && pause->state["pause_detail"] == "Corporal");
         CHECK(pause->state["pause_objective_count"] == "2" && pause->state["pause_objective_0"] == "Destroy the battery");
         CHECK(pause->state["pause_stats"] == "0:42:10 in mission");
+        // With a save, the time line adds how long ago the newest one was written:
+        // read once inside the level load, so opening the pause lists no files.
+        auto saved = Session(true, true); saved.saves = {"quick", "older"}; mapDecls["game/airdefense1"] = idDict{};
+        gameObject.publish = [](idUserInterface* gui) { gui->SetStateInt("pause_mission_seconds", 2530); };
+        saved.PrepareRetainedLevel("game/airdefense1", false);
+        CHECK(saved.saveLists == 1 && saved.retainedNewestSave == 100);
+        saved.UpdateRetainedHome();
+        CHECK(saved.guiRetainedHome->state["pause_stats"].rfind("0:42:10 in mission \xc2\xb7 saved ", 0) == 0);
+        saved.ExitMenu(); saved.UpdateRetainedHome(); saved.guiActive = saved.guiMainMenu; saved.UpdateRetainedHome();
+        CHECK(saved.saveLists == 1);
+        // A level without saves, or a load with the gate off, shows no save age.
+        auto unsaved = Session(true, true); unsaved.PrepareRetainedLevel("game/airdefense1", false);
+        gameObject.publish = [](idUserInterface* gui) { gui->SetStateInt("pause_mission_seconds", 2530); };
+        unsaved.UpdateRetainedHome();
+        CHECK(unsaved.retainedNewestSave == 0 && unsaved.guiRetainedHome->state["pause_stats"] == "0:42:10 in mission");
+        auto gateOff = Session(false, true); gateOff.saves = {"quick"}; gateOff.PrepareRetainedLevel("game/airdefense1", false);
+        CHECK(gateOff.saveLists == 0 && gateOff.retainedNewestSave == 0);
+        CHECK(std::string(Session_RetainedSaveAge(1000, 1030).c_str()) == "saved just now");
+        CHECK(std::string(Session_RetainedSaveAge(1000, 1000 + 4 * 60 + 59).c_str()) == "saved 4 min ago");
+        CHECK(std::string(Session_RetainedSaveAge(1000, 1000 + 3 * 3600 + 10).c_str()) == "saved 3 h ago");
+        CHECK(std::string(Session_RetainedSaveAge(2000, 1000).c_str()) == "saved just now"); // a clock set back
         // A game module that publishes nothing leaves the map's summary and no time line.
         auto quiet = Session(true, true); mapDecls["game/airdefense1"] = idDict{{{"objectives", "Reach the bunker."}}};
         quiet.UpdateRetainedHome();
@@ -488,6 +517,30 @@ int main() {
         CHECK((Stock(missing) == std::vector<std::string>{"guis/menu/pause_strogg.q4ui"}));
         // The title never asks the game.
         auto title = Session(true); title.UpdateRetainedHome(); CHECK(gameObject.commands.empty());
+    }
+    {   // The Objectives page: the game lists every objective screenshot of the level,
+        // which resolves inside the load, and a published screenshot shows only when
+        // it is a plain, installed image name.
+        auto s = Session(true, true);
+        for (const char* file : {"gfx/objectives/airdefense_obj_1.tga", "gfx/objectives/airdefense_obj_2.tga"}) fileSystemObject.files.insert(file);
+        gameObject.publish = [](idUserInterface* gui) {
+            gui->SetStateInt("level_image_count", 3); gui->SetStateString("level_image_0", "gfx/objectives/airdefense_obj_1");
+            gui->SetStateString("level_image_1", "gfx/objectives/missing"); gui->SetStateString("level_image_2", "../escape");
+            gui->SetStateInt("pause_objective_count", 3);
+            gui->SetStateString("pause_objective_shot_0", "gfx/objectives/airdefense_obj_2");
+            gui->SetStateString("pause_objective_shot_1", "gfx/objectives/missing");
+            gui->SetStateString("pause_objective_shot_2", "../escape");
+        };
+        s.PrecacheRetainedLevelImages(); CHECK(precached.empty() && gameObject.commands.empty()); // no pause document loaded yet
+        s.PrepareRetainedLevel("game/airdefense1", false); precached.clear();
+        s.PrecacheRetainedLevelImages();
+        CHECK((gameObject.commands == std::vector<std::string>{"retainedLevelImages"}));
+        CHECK((precached == std::vector<std::string>{"gfx/objectives/airdefense_obj_1"}));
+        s.UpdateRetainedHome(); auto* pause = s.guiRetainedHome;
+        CHECK(pause && pause->state["pause_objective_shot_0"] == "gfx/objectives/airdefense_obj_2");
+        CHECK(pause->state["pause_objective_shot_1"].empty() && pause->state["pause_objective_shot_2"].empty());
+        auto off = Session(false, true); off.PrepareRetainedLevel("game/airdefense1", false); off.PrecacheRetainedLevelImages();
+        CHECK(precached.empty() && gameObject.commands.empty()); // the gate off loads no pause, so nothing resolves
     }
     std::printf("ui_retained gate: %d checks passed\n", checks);
 }
@@ -683,6 +736,16 @@ def main() -> int:
     family = family[:family.index('}')]
     assert 'gui->SetStateBool( "pause_strogg", player != NULL && player->spawnArgs.GetBool( "strogg" ) );' in family
     assert 'retainedPauseStrogg = -1;' in function_body(menu, 'void idSessionLocal::PrepareRetainedLevel(')
+    # The Objectives page's screenshots resolve inside the load, after the game
+    # spawns the map and before the media are finished.
+    change = function_body(session, 'void idSessionLocal::ExecuteMapChange(')
+    assert change.index('game->SpawnPlayer( i, false, NULL );') < change.index('PrecacheRetainedLevelImages();') < \
+        change.index('renderSystem->EndLevelLoad();') < change.index('declManager->EndLevelLoad();')
+    images = game[game.index('!idStr::Icmp( menuCommand, "retainedLevelImages" )'):]
+    assert 'ent->IsType( idObjective::GetClassType() )' in images[:images.index('gui->SetStateInt( "level_image_count", images );')]
+    assert 'player->inventory.objectiveNames[ i ].screenshot' in images[:images.index('gui->SetStateInt( "level_image_count", images );')]
+    saving = function_body(session, 'bool idSessionLocal::SaveGame(')
+    assert saving.index('operationGuard.Complete();') < saving.index('retainedNewestSave = time( NULL );') < saving.index('return true;', saving.index('operationGuard.Complete();'))
 
     # Documents: current with their generator, verbs allowlisted and handled.
     generator = subprocess.run([sys.executable, str(ROOT / 'tools/ui/build_retained_screens.py'), '--check'], capture_output=True, text=True)
@@ -696,6 +759,9 @@ def main() -> int:
         text = (ROOT / relative).read_text(encoding='utf-8')
         document = json.loads(re.sub(r'^\s*//.*$', '', text, flags=re.M))
         assert document.get('canvas') == {'height': 720}, relative
+        if 'pause' in relative:
+            layers = [child['id'] for child in document['root']['children']]
+            assert layers.index('objectives-bar') < layers.index('band-top') < layers.index('objectives'), relative
         for action in document.get('actions', {}).values():
             assert action['operation'] == 'session.menu' and action['arguments']['command'] in allowlist, relative
     # No game or legacy content names a retained document.
@@ -724,6 +790,7 @@ def main() -> int:
         'void idSessionLocal::ReportRetainedScreens(')]
     bodies += [function_body(session, signature) for signature in (
         'static bool Session_ImageInstalled(', 'idStr idSessionLocal::RetainedPauseShot(',
+        'void idSessionLocal::PrecacheRetainedLevelImages(', 'static idStr Session_RetainedSaveAge(',
         'void idSessionLocal::PublishRetainedPauseState(')]
     compiler = next((found for name in ('clang++', 'g++', 'c++') if (found := shutil.which(name))), None)
     if not compiler:

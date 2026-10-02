@@ -533,6 +533,142 @@ int main(int argc, char** argv) {
 			Check(again && Near(static_cast<float>(again->data[0]),3.75f,.05f),"each pause ramps the softening in from nothing");
 			host.softFocus = false;
 		}
+		// OBJECTIVES (sections 13.7 and 14.11) is a page of the pause: it docks
+		// the bands and carries its label, then the stock entry motion shows
+		// every open objective, newest first, with its description and
+		// screenshot, and the completed ones under COMPLETED. Back fades the
+		// page and closes it when the bands are home.
+		{
+			const auto objectivesRow = runtime.PresentedValue("nav_objectives-label","text");
+			Check(objectivesRow && objectivesRow->text == "#str_200380","OBJECTIVES is the fifth action");
+			Bounds restartRow, objectivesBox;
+			Check(runtime.GetBounds("nav_restart-label",restartRow) && runtime.GetBounds("nav_objectives-label",objectivesBox) &&
+				Near(objectivesBox.y-restartRow.y,45),"OBJECTIVES follows RESTART LEVEL on the 30 u pitch");
+			std::string longText; for (int word = 0; word < 120; ++word) longText += "squad ";
+			Check(runtime.SetState({{"pause_objective_count",3.0},{"pause_objective_0",std::string("Destroy the battery")},
+				{"pause_objective_text_0",std::string("Strogg forces hold the hangar.")},
+				{"pause_objective_shot_0",std::string("gfx/objectives/airdefense_obj_1")},
+				{"pause_objective_1",std::string("Reach the bunker")},{"pause_objective_text_1",longText},
+				{"pause_objective_2",std::string("Regroup with Rhino squad")},
+				{"pause_completed_count",1.0},{"pause_completed_0",std::string("Retrieve the medic")}},error,10),
+				"publish the objectives page");
+			Runtime::EventEffects page;
+			host.materials.clear();
+			Check(runtime.RunEvent("objectivesShow",10.1,page,error),"OBJECTIVES opens its page");
+			runtime.Frame(viewport,10.2);
+			const auto open = runtime.PresentedValue("objectives","display");
+			const auto waiting = runtime.PresentedValue("objectives-content","opacity");
+			const auto carried = runtime.PresentedValue("title-carry","text");
+			const auto docking = runtime.PresentedValue("band-top","transform");
+			Check(open && open->text == "block" && waiting && Near(static_cast<float>(waiting->data[0]),0,.001f) &&
+				carried && carried->text == "#str_200380" && docking && docking->data[0] > 1,
+				"the bands dock and OBJECTIVES carries before the page appears");
+			runtime.Frame(viewport,11.0);
+			const auto shown = runtime.PresentedValue("objectives-content","opacity");
+			const auto barIn = runtime.PresentedValue("objectives-bar","transform");
+			const auto prompts = runtime.PresentedValue("prompts","opacity");
+			Check(shown && Near(static_cast<float>(shown->data[0]),1,.001f) && barIn && Near(static_cast<float>(barIn->data[0]),0,.01f) &&
+				prompts && Near(static_cast<float>(prompts->data[0]),0,.001f),"by 900 ms the page is in with its back bar, and the prompts give way");
+			const auto first = runtime.PresentedValue("objectives-entry-0","display");
+			const auto third = runtime.PresentedValue("objectives-entry-2","display");
+			const auto fourth = runtime.PresentedValue("objectives-entry-3","display");
+			const auto empty = runtime.PresentedValue("objectives-empty","display");
+			const auto done = runtime.PresentedValue("objectives-done-0","display");
+			const auto notDone = runtime.PresentedValue("objectives-done-1","display");
+			const auto count = runtime.PresentedValue("objectives-completed-count","text");
+			Check(first && first->text == "block" && third && third->text == "block" && fourth && fourth->text == "none" &&
+				empty && empty->text == "none" && done && done->text == "block" && notDone && notDone->text == "none" && count && count->text == "1",
+				"a plate for each open objective and a row for each completed one");
+			const auto title = runtime.PresentedValue("objectives-entry-0-title","text");
+			const auto text = runtime.PresentedValue("objectives-entry-0-text","text");
+			Check(title && title->text == "Destroy the battery" && text && text->text == "Strogg forces hold the hangar.","the plates carry each objective's title and description");
+			Bounds titleBox;
+			Check(runtime.GetBounds("objectives-entry-0-title",titleBox) && Near(titleBox.width,308*1.5f,1),"a title wraps at the stock 308 u");
+			Check(std::find(host.materials.begin(),host.materials.end(),"gfx/objectives/airdefense_obj_1") != host.materials.end(),
+				"the plates show each objective's screenshot");
+			// Descriptions wrap without a limit, so a long one grows its plate.
+			Bounds shortPlate, longPlate, frame;
+			Check(runtime.GetBounds("objectives-entry-0",shortPlate) && runtime.GetBounds("objectives-entry-1",longPlate) &&
+				runtime.GetBounds("objectives-entry-1-frame",frame) && Near(shortPlate.height,132*1.5f,1) &&
+				longPlate.height > shortPlate.height+30 && Near(frame.height,longPlate.height,1),"a long description grows its plate and frame");
+			// The list scrolls: the bar holds focus, and the down input moves it.
+			Check(runtime.FocusedControl() == "objectives_scroll","the page opens with its list's scrollbar in focus");
+			const auto before = runtime.GetWidgetState("objectives_scroll");
+			Check(before && before->scroll && before->scroll->geometry.usable && before->scroll->geometry.range > 0,"the list overflows and can scroll");
+			runtime.MenuAction(MenuInput::Down,true,11.1); runtime.MenuAction(MenuInput::Down,false,11.12);
+			runtime.Frame(viewport,11.2);
+			const auto after = runtime.GetWidgetState("objectives_scroll");
+			Check(after && after->scroll && after->scroll->geometry.offset > before->scroll->geometry.offset,"the down input scrolls the list");
+			// A snapshot restored with the page open keeps its scroll: the restored
+			// page is open already, not newly opened.
+			{
+				std::string saved; std::vector<Diagnostic> restoredDiagnostics;
+				Check(runtime.SaveSnapshot(saved,error,11.2),"save the open Objectives page");
+				Runtime restored(host);
+				Check(restored.Initialize() && restored.LoadDocument(source,"guis/menu/pause.q4ui",restoredDiagnostics) &&
+					restored.RestoreSnapshot(saved,error,11.2),"restore it into a fresh runtime");
+				restored.Frame(viewport,11.21); restored.Frame(viewport,11.22);
+				const auto kept = restored.GetWidgetState("objectives_scroll");
+				Check(kept && kept->scroll && Near(static_cast<float>(kept->scroll->geometry.offset),static_cast<float>(after->scroll->geometry.offset),.5f),
+					"a restored page keeps its scroll");
+			}
+			// Back: the page fades, the bands come home, and the page closes.
+			Check(runtime.RunEvent("objectivesHide",12,page,error),"Back leaves the page");
+			runtime.Frame(viewport,12.2);
+			const auto fading = runtime.PresentedValue("objectives-content","opacity");
+			const auto still = runtime.PresentedValue("objectives","display");
+			Check(fading && Near(static_cast<float>(fading->data[0]),0,.001f) && still && still->text == "block","the page fades while the bands return");
+			Check(runtime.RunEvent("objectivesHide",12.3,page,error),"a second Back during the leave");
+			runtime.Frame(viewport,12.8);
+			const auto closed = runtime.PresentedValue("objectives","display");
+			const auto back = runtime.PresentedValue("prompts","opacity");
+			Check(closed && closed->text == "none" && back && Near(static_cast<float>(back->data[0]),1,.001f) &&
+				runtime.FocusedControl() != "objectives_scroll","the page closes with the bands home and the prompts back, the second Back ignored");
+			// Reopened, the list starts at its first entry again.
+			Check(runtime.RunEvent("objectivesShow",12.9,page,error),"OBJECTIVES opens again");
+			runtime.Frame(viewport,13.8);
+			const auto reopened = runtime.GetWidgetState("objectives_scroll");
+			Check(reopened && reopened->scroll && Near(static_cast<float>(reopened->scroll->geometry.offset),0,.01f),"a reopened page starts at the top of its list");
+			// A pause that closed without Back (a console load) opens at home
+			// without the page, its prompts showing.
+			Check(runtime.RunEvent("open",14,page,error),"the game pauses again");
+			runtime.Frame(viewport,14.3);
+			const auto reset = runtime.PresentedValue("objectives","display");
+			const auto resetBar = runtime.PresentedValue("objectives-bar","display");
+			const auto resetPrompts = runtime.PresentedValue("prompts","opacity");
+			Check(reset && reset->text == "none" && resetBar && resetBar->text == "none" && resetPrompts &&
+				Near(static_cast<float>(resetPrompts->data[0]),1,.001f) && runtime.FocusedControl() != "objectives_scroll",
+				"every pause opens without the Objectives page");
+			// No open objective: the stock static screenshot and line in one plate.
+			Check(runtime.SetState({{"pause_objective_count",0.0},{"pause_completed_count",0.0}},error,14.5),"no objectives");
+			host.materials.clear();
+			Check(runtime.RunEvent("objectivesShow",14.6,page,error),"OBJECTIVES opens on an empty list");
+			runtime.Frame(viewport,15.5);
+			const auto none = runtime.PresentedValue("objectives-empty","display");
+			const auto noneDone = runtime.PresentedValue("objectives-completed","display");
+			Bounds noneText;
+			Check(none && none->text == "block" && noneDone && noneDone->text == "none" &&
+				std::find(host.materials.begin(),host.materials.end(),"gfx/objectives/none") != host.materials.end() &&
+				runtime.GetBounds("objectives-empty-text",noneText) && Near(noneText.width,164*1.5f,1),
+				"without objectives the page shows the stock static and line");
+			// The level block lists the objectives with their state: the open ones,
+			// then the completed ones behind a check at 0.5.
+			Check(runtime.SetState({{"pause_objective_count",1.0},{"pause_objective_0",std::string("Escort Anderson")},
+				{"pause_completed_count",2.0},{"pause_completed_0",std::string("Retrieve the medic")},
+				{"pause_completed_1",std::string("Regroup")}},error,16),"one open and two completed objectives");
+			runtime.Frame(viewport,16.1);
+			const auto openRow = runtime.PresentedValue("level-objective-0-text","text");
+			const auto openMark = runtime.PresentedValue("level-objective-0-mark","display");
+			const auto doneRow = runtime.PresentedValue("level-objective-1-text","text");
+			const auto doneCheck = runtime.PresentedValue("level-objective-1-check","display");
+			const auto doneMark = runtime.PresentedValue("level-objective-1-mark","display");
+			const auto doneColour = runtime.PresentedValue("level-objective-1-text","color");
+			const auto lastRow = runtime.PresentedValue("level-objective-2-text","text");
+			Check(openRow && openRow->text == "Escort Anderson" && openMark && openMark->text == "block" &&
+				doneRow && doneRow->text == "Retrieve the medic" && doneCheck && doneCheck->text == "block" && doneMark && doneMark->text == "none" &&
+				doneColour && Near(static_cast<float>(doneColour->data[3]),.5f,.001f) && lastRow && lastRow->text == "Regroup",
+				"the level block lists the open objective, then the completed ones behind a check");
+		}
 	}
 	// Strogg pause (section 13.7): the Marine pause's level block and verbs in
 	// the Strogg family, every label arriving in runes and translating.
@@ -653,6 +789,22 @@ int main(int argc, char** argv) {
 		ActionInvocation invocation;
 		Check(runtime.ResolveAction("resume",invocation,error) && std::get<std::string>(invocation.arguments.at("command")) == "resume",
 			"RESUME returns to the game");
+		// The Strogg OBJECTIVES page keeps the construction in the family's colors
+		// and returns through the translation.
+		Runtime::EventEffects page;
+		Check(runtime.RunEvent("objectivesShow",20,page,error),"the Strogg OBJECTIVES page opens");
+		runtime.Frame(viewport,20.9);
+		const auto strogged = runtime.PresentedValue("objectives-heading","font-family");
+		const auto serial = runtime.PresentedValue("objectives-serial","text");
+		Check(strogged && strogged->text == "r_strogg" && serial && serial->text == "#str_200280","an R_Strogg heading and the STROGG NET serial");
+		const auto backFace = runtime.PresentedValue("objectives_back-label","font-family");
+		const auto backColour = runtime.PresentedValue("objectives_back-label","color");
+		Check(backFace && backFace->text == "r_strogg" && backColour && Near(static_cast<float>(backColour->data[0]),0xFC/255.f,.002f) &&
+			Near(static_cast<float>(backColour->data[2]),0xC8/255.f,.002f),"BACK is a Strogg plate with its label in R_Strogg");
+		Check(runtime.RunEvent("objectivesHide",21,page,error),"Back leaves the Strogg page");
+		runtime.Frame(viewport,21.05);
+		const auto translating = runtime.PresentedValue("nav_resume-latin","opacity");
+		Check(translating && Near(static_cast<float>(translating->data[0]),0,.001f),"returning plays the translation again");
 	}
 	// Loading: progress, the continue prompt and the multiplayer server card.
 	{

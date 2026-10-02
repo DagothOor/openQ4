@@ -43,6 +43,10 @@ preservation applies only to the authored viewport's declared axis; unrelated,
 nested and perpendicular legacy scroll axes can still reveal focus. Restored
 focus is checked after the corresponding fresh layout bounds are available.
 
+An authored modal opens with its scroll viewports at their start, so a list
+reopened later shows its first entries again. A snapshot restored with the
+modal open counts it as open already, so its saved offsets stand.
+
 ## Qualification scope
 
 The pure interaction and actual Runtime/RmlUi tests cover geometry, ownership,

@@ -265,6 +265,10 @@ public:
 	int						onePickupTime;
 	idList<idItemInfo>		pickupItemNames;
 	idList<idObjectiveInfo>	objectiveNames;
+	// openQ4: the objectives completed on this map, oldest first, for the
+	// retained pause screen's Objectives page. Not saved: a loaded game
+	// starts the list empty, so the save format is unchanged.
+	idList<idObjectiveInfo>	completedObjectives;
 //	idList<rvDatabaseEntry>	database;
 	
 	int						secretAreasDiscovered;

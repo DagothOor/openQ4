@@ -5646,6 +5646,27 @@ const char* idGameLocal::HandleGuiCommands( const char *menuCommand ) {
 
 /*
 ================
+Game_RetainedObjectiveShot
+
+The image an objective's screenshot names. Objective entities give a bare
+name that the stock materials and Event_CamShot keep under gfx/objectives/.
+================
+*/
+static idStr Game_RetainedObjectiveShot( const char *shot ) {
+	idStr image = shot != NULL ? shot : "";
+	if ( image.Length() == 0 ) {
+		return image;
+	}
+	image.BackSlashesToSlashes();
+	image.StripFileExtension();
+	if ( image.Find( '/' ) < 0 ) {
+		image = "gfx/objectives/" + image;
+	}
+	return image;
+}
+
+/*
+================
 idGameLocal::HandleMainMenuCommands
 ================
 */
@@ -5721,17 +5742,47 @@ void idGameLocal::HandleMainMenuCommands( const char *menuCommand, idUserInterfa
 		filterMod = -1;
 		gui->SetStateString( "filterMod", common->GetLocalizedString( "#str_123008" ) );
 	} else if ( !idStr::Icmp( menuCommand, "retainedPauseState" ) ) {
-		// openQ4: the retained pause screen's level block. The objectives the
-		// local player holds, newest first as the objective screen stacks
-		// them, and the time spent in this mission (game time restarts with
-		// each map and is saved with it).
+		// openQ4: the retained pause screen's level block and Objectives
+		// page. The objectives the local player holds, newest first as the
+		// objective screen stacks them, each with its description and
+		// screenshot; the ones completed on this map, newest first; and the
+		// time spent in this mission (game time restarts with each map and is
+		// saved with it).
 		idPlayer *player = GetLocalPlayer();
 		const int count = player != NULL ? player->inventory.objectiveNames.Num() : 0;
 		gui->SetStateInt( "pause_objective_count", count );
 		for ( int i = 0; i < count; i++ ) {
-			gui->SetStateString( va( "pause_objective_%d", i ), player->inventory.objectiveNames[ count - 1 - i ].title.c_str() );
+			const idObjectiveInfo &objective = player->inventory.objectiveNames[ count - 1 - i ];
+			gui->SetStateString( va( "pause_objective_%d", i ), objective.title.c_str() );
+			gui->SetStateString( va( "pause_objective_text_%d", i ), objective.text.c_str() );
+			gui->SetStateString( va( "pause_objective_shot_%d", i ), Game_RetainedObjectiveShot( objective.screenshot ).c_str() );
+		}
+		const int completed = player != NULL ? player->inventory.completedObjectives.Num() : 0;
+		gui->SetStateInt( "pause_completed_count", completed );
+		for ( int i = 0; i < completed; i++ ) {
+			gui->SetStateString( va( "pause_completed_%d", i ), player->inventory.completedObjectives[ completed - 1 - i ].title.c_str() );
 		}
 		gui->SetStateInt( "pause_mission_seconds", time / 1000 );
+	} else if ( !idStr::Icmp( menuCommand, "retainedLevelImages" ) ) {
+		// openQ4: every objective screenshot this level can show on the
+		// retained pause screen's Objectives page, so the session resolves
+		// them inside the level load: the objectives still to be given, and
+		// the ones the player holds (a given objective's entity removes
+		// itself, so after a savegame load only the inventory names it).
+		int images = 0;
+		for ( idEntity *ent = spawnedEntities.Next(); ent != NULL; ent = ent->spawnNode.Next() ) {
+			const char *shot = ent->IsType( idObjective::GetClassType() ) ? ent->spawnArgs.GetString( "screenshot" ) : "";
+			if ( shot[ 0 ] != '\0' ) {
+				gui->SetStateString( va( "level_image_%d", images++ ), Game_RetainedObjectiveShot( shot ).c_str() );
+			}
+		}
+		idPlayer *player = GetLocalPlayer();
+		for ( int i = 0; player != NULL && i < player->inventory.objectiveNames.Num(); i++ ) {
+			if ( player->inventory.objectiveNames[ i ].screenshot.Length() > 0 ) {
+				gui->SetStateString( va( "level_image_%d", images++ ), Game_RetainedObjectiveShot( player->inventory.objectiveNames[ i ].screenshot ).c_str() );
+			}
+		}
+		gui->SetStateInt( "level_image_count", images );
 	} else if ( !idStr::Icmp( menuCommand, "retainedPauseFamily" ) ) {
 		// openQ4: after Kane's stroggification (the player_strogg definition)
 		// the retained pause screen takes the Strogg family.

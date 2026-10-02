@@ -70,10 +70,25 @@ SCENARIOS = {
         'openq4_assertMenuActivation 10000', 'waitMsec 300', 'screenshot "screenshots/pause-strogg-translating.tga"',
         'waitMsec 1500', 'ui_retainedStatus', 'screenshot "screenshots/pause-strogg.tga"',
         'openq4_retainedGui focus nav_restart', 'waitMsec 120', 'screenshot "screenshots/pause-strogg-focus.tga"',
+        'openq4_retainedGui event objectivesShow', 'waitMsec 1200', 'screenshot "screenshots/pause-strogg-objectives.tga"',
+        'openq4_retainedGui event objectivesHide', 'waitMsec 1300',
         'openq4_retainedGui event quitModalShow', 'waitMsec 500', 'screenshot "screenshots/pause-strogg-quit.tga"',
         'openq4_retainedGui event quitModalHide', 'waitMsec 600',
         'openq4_retainedGui focus nav_resume', 'openq4_retainedGui menu accept 1', 'openq4_retainedGui menu accept 0',
         'waitMsec 800', 'ui_retainedStatus', 'screenshot "screenshots/pause-strogg-resumed.tga"',
+    ]),
+    # The OBJECTIVES page: airdefense1's first objective completed and two
+    # more held, so the page lists two plates and one completed row.
+    'pause-objectives-page': ('game/airdefense1', [
+        'trigger objectiveIntro', 'waitMsec 500', 'trigger objectiveMedic', 'waitMsec 500', 'trigger completeObjectiveIntro',
+        'waitMsec 500', 'trigger objectiveReturnMedic', 'waitMsec 1500',
+        'openq4_assertMenuActivation 10000', 'waitMsec 1200', 'screenshot "screenshots/objectives-menu.tga"',
+        'openq4_retainedGui event objectivesShow', 'waitMsec 300', 'screenshot "screenshots/objectives-docking.tga"',
+        'waitMsec 900', 'ui_retainedStatus', 'screenshot "screenshots/objectives-page.tga"',
+        'openq4_retainedGui menu down 1', 'openq4_retainedGui menu down 0', 'waitMsec 300', 'screenshot "screenshots/objectives-scrolled.tga"',
+        'openq4_retainedGui event objectivesHide', 'waitMsec 900', 'screenshot "screenshots/objectives-closed.tga"',
+        'openq4_retainedGui focus nav_resume', 'openq4_retainedGui menu accept 1', 'openq4_retainedGui menu accept 0',
+        'waitMsec 600', 'ui_retainedStatus',
     ]),
     'loading': (None, [
         'waitMsec 3000', 'testGUI "guis/loading/loading.q4ui"', 'waitMsec 300',
