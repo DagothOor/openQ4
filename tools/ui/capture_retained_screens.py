@@ -153,6 +153,25 @@ SCENARIOS = {
         'waitMsec 1500', 'openq4_guiGet p_settings_sys::visible', 'openq4_system report', 'ui_retainedStatus',
         'screenshot "screenshots/fallback-system.tga"',
     ]),
+    # The Single Player page and its Campaign sub-page (spec 1.10): Campaign
+    # leads deeper (the band steps, the title becomes the crumb, the sub-page
+    # presents at 350 ms), and Back climbs to the page at 300 ms.
+    'subpage': (None, [
+        'waitMsec 4000', 'campaignMenu', 'waitMsec 1200', 'screenshot "screenshots/subpage-page.tga"',
+        'openq4_retainedGui focus campaign', 'openq4_retainedGui menu accept 1', 'openq4_retainedGui menu accept 0',
+        'waitMsec 120', 'screenshot "screenshots/subpage-deeper.tga"', 'waitMsec 900', 'ui_retainedStatus',
+        'screenshot "screenshots/subpage-sub.tga"', 'openq4_retainedGui focus back', 'openq4_retainedGui menu accept 1',
+        'openq4_retainedGui menu accept 0', 'waitMsec 200', 'screenshot "screenshots/subpage-back.tga"', 'waitMsec 900',
+        'openq4_retainedGui report', 'screenshot "screenshots/subpage-returned.tga"',
+    ]),
+    # The same change under reduced motion: each level presents at once and
+    # its arrival fades in within 80 ms.
+    'subpage-reduced': (None, [
+        'waitMsec 4000', 'campaignMenu', 'waitMsec 1200', 'openq4_retainedGui focus campaign', 'openq4_retainedGui menu accept 1',
+        'openq4_retainedGui menu accept 0', 'waitMsec 40', 'screenshot "screenshots/subpage-reduced-deeper.tga"', 'waitMsec 400',
+        'screenshot "screenshots/subpage-reduced-sub.tga"', 'openq4_retainedGui focus back', 'openq4_retainedGui menu accept 1',
+        'openq4_retainedGui menu accept 0', 'waitMsec 400', 'openq4_retainedGui report', 'screenshot "screenshots/subpage-reduced-returned.tga"',
+    ]),
     # A mod with its own copies of the stock loading screens: the level loads
     # under the mod's screen, and the retained loading screen never loads.
     'fallback-loading': ('game/airdefense2', [
@@ -195,7 +214,7 @@ def stock_menu_without_demos(runtime: Path) -> str:
 
 # CVars a scenario sets beyond the common ones.
 SCENARIO_CVARS = {'system-optin': {'ui_retainedSystem': '1'}, 'fallback-system': {'ui_retainedSystem': '1'},
-                  'fallback-loading': {'developer': '1'}}
+                  'fallback-loading': {'developer': '1'}, 'subpage-reduced': {'ui_retainedReducedMotion': '1'}}
 
 # The private mod the fallback scenarios run as, and the files it provides.
 FALLBACK_MOD = 'retainedfallback'

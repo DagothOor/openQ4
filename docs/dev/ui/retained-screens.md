@@ -232,6 +232,48 @@ after editing the script; `--check` fails when an output is stale.
   (`load_icon_src_N` and `load_icon_r/g/b_N`), then plays its fade
   (`arsenalN`). The name strip darkens the message line so it reads over any
   levelshot.
+- **Single Player and Campaign** (`guis/menu/singleplayer.q4ui` and
+  `campaigns.q4ui`, sections 8 and 9, the sub-page level of 1.10). The Single
+  Player page titles itself in the top band's slot at 39,19 u, where the
+  title's carry lands. Its Campaign section opens a sub-page:
+  - **Sub-page state.** The top band stands one notch pitch (97 u) further
+    toward the trailing edge while the bottom band stays docked. The parent
+    title is the crumb in the band's thin span at 39,12 u and 0.40, cut at
+    the step, and the sub-page title starts at the step's foot, 136,19 u.
+  - **Crumb fit.** The crumb takes 80 % of the title's size, or less where the
+    title would overrun the 83 u span, but never less than the 13 dp type
+    floor; past that it is cut. The generator measures each shipped
+    language's title in `marine.ttf` as the host lays it out (advances at
+    pixels per em, no kerning) and plays that language's crumb timelines,
+    chosen by `sys_lang`. English and German shrink to the floor and fit;
+    Italian and Polish are cut.
+  - **Going deeper.** Campaign plays the page's half: its plates fade over
+    150 ms while it sweeps 640 u toward the trailing edge over 300 ms. Its
+    title becomes the crumb over 150 ms. From 50 ms the top band steps
+    (`frame.step`, accel(150, 150) over 300 ms) and the CAMPAIGN label
+    carries from its row into the slot at the step's foot, scaling to the
+    title size. At 350 ms the session presents the sub-page: its plates and
+    title show at once and its backing fades in over 150 ms. Back while the
+    page goes deeper reverses the change from where it stands, over 150 to
+    300 ms by the distance the band has stepped.
+  - **Back.** The sub-page title drops at once and the sub-page sweeps 640 u
+    toward the leading edge over 300 ms (`screen.return`, linear, as the
+    page's sweep going deeper) while its backing fades over 250 ms
+    (`content.out`) and the band steps back from the start. The crumb returns
+    to the title slot over the last 150 ms. At 300 ms the page returns,
+    fading its plates and content in over 150 ms with the focus on Campaign.
+  - **Session.** The two levels are two documents. The session
+    (`BeginRetainedSubpage`, `UpdateRetainedSubpage`, `RetainedSubpageEvent`)
+    plays the leaving document's half and presents the other at the
+    hand-over: 350 ms going deeper and 300 ms back. Under reduced motion it
+    hands over at once and the arrival's 80 ms fade is the change. Mid-change
+    a key's release still reaches the leaving document, so a key held into
+    the change retires normally; Back going deeper reverses it, and other
+    input and requests wait for the hand-over. Anything else taking the
+    screen abandons the change. Leaving the screen places a document at rest
+    while it is hidden, so it never presents moved, and every arrival shows
+    its plates at once and fades its backing in (`content.in`). When the
+    other level cannot present, its stock selector opens at once, as before.
 - **Confirmations** (section 6, the 480 dp confirmation width). EXIT and both
   pause quits ask in the stock confirmation dialog. The screen beneath stays
   in view in soft focus (`modal.softfocus`: a 5 u, 7.5 dp blur at 0.80
@@ -447,6 +489,25 @@ controller or the mouse switches the prompt.
   plain image names shown, the held objectives' screenshots among them, and
   the time line's last save: read once in the level load, not when the pause
   opens, absent with the gate off, and restamped by a save.
+- The screens test also lays out the Single Player page and its Campaign
+  sub-page: the page title in the slot, the sub-page's band one notch on with
+  the bottom band docked, the crumb's rise, fit, floor (in Italian) and cut,
+  the sub-page title at the step's foot, both changes' timing (the plates
+  half gone, the band stepping and the page a quarter swept at 75 ms, the
+  crumb by 150 ms, the step, sweep and carry at 350 ms, the backing fading
+  in, the title dropping at once on Back, the crumb returning over the last
+  150 ms, the backing out and the sub-page swept by 300 ms, the page's first
+  frame already docked and fading back in place), the rest each document
+  takes when hidden, the French crumb at 80 %, Back reversing a change from
+  where the band stands, and the reduced-motion arrival. The gate test covers
+  the hand-over: each half's event, the 350 ms and 300 ms waits, the
+  immediate hand-over under reduced motion, a press held and a release
+  forwarded mid-change, no second request, Back reversing over 150 or 250 ms
+  by the step's distance (and not reversing a Back), the change abandoned
+  when another screen takes over, and the stock selector at once when the
+  sub-page cannot present. It pins the frame pump and input hold, the halves'
+  durations against the session's waits, the four reversal lengths and that
+  rest returns everything a change moves.
 - `tools/ui/capture_retained_screens.py` captures the screens in the engine
   from a hidden window with engine screenshots and semantic
   `openq4_retainedGui` operations, never OS input. With `--gate 0` the title
@@ -467,6 +528,10 @@ controller or the mouse switches the prompt.
   focus RESUME, because the modal keeps focus until it closes.
   `pause-objectives-page` gives airdefense1's first objective, completes it
   and gives two more, then opens the Objectives page, scrolls and closes it.
+  `subpage` opens the Single Player page, goes deeper to Campaign and comes
+  back, with shots mid-change and at rest; `subpage-reduced` does the same
+  under reduced motion. Back during a change reaches the session only as
+  real input, so the gate and screens tests cover the reversal.
 
 ## Evidence
 
@@ -662,6 +727,15 @@ the thick band on OpenGL and Vulkan at 1280x720, identically on both.
 Evidence: `.tmp/ui/retained-loading-arsenal/validation-evidence.json`,
 SHA-256 `a2bd70225491d8ea1ff802bcb3b046b68ac7ca17136e49d46680faf92ceee094`.
 
+The Single Player page went deeper to Campaign and back on OpenGL and Vulkan
+at 1280x720 (identical to within one level) and on OpenGL at 1024x768: the
+session handed over at 350 ms and 300 ms, the band stepped one notch, the
+crumb read SINGLE PLAYER in the band's thin span, and Back returned the focus
+to Campaign. Under reduced motion each level presented at once, and with
+`ui_retained 0` the stock selectors opened and nothing retained loaded.
+Evidence: `.tmp/ui/retained-subpage/validation-evidence.json`, SHA-256
+`eca04d36298751db3331776e99e4fde0e3c123a6bb06570d0eed62c1935b44b5`.
+
 ## Known limitations
 
 - The completed objectives are kept per map and not saved, so after loading a
@@ -686,6 +760,14 @@ SHA-256 `a2bd70225491d8ea1ff802bcb3b046b68ac7ca17136e49d46680faf92ceee094`.
   surface is read. Only the confirmation width exists.
 - The multiplayer Escape and Welcome menus (section 14.18) keep the stock
   menus: the retained home screen is never presented in a multiplayer game.
+- The sub-page level covers Single Player's Campaign only. Arena opens its
+  stock selector, Multiplayer's Join Game, Create Server and Demos keep the
+  stock menus, and Campaign's New Campaign and Chapters are not yet levels of
+  their own. The Single Player page keeps the home navigation plates and the
+  BACK row instead of the section layout (navigation from 14 u, content from
+  228 u) and the Back action in the bottom band; Classic is not built. A
+  change going back cannot be reversed, and the crumb of a title too long for
+  the 13 dp floor (Italian, Polish) is cut at the step.
 - The SYSTEM page stays opt-in until it offers every stock setting: it still
   lacks the display mode list, display device, multi-monitor, refresh rate,
   video quality and light-grid preload.

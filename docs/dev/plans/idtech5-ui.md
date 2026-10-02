@@ -121,7 +121,8 @@ Kane's stroggification the pause menu takes the Strogg family, and its labels
 translate from runes as it opens. The pause menu's OBJECTIVES opens the
 objectives display as a page of the pause, with every objective, its
 screenshot and description, and the ones completed on the level. A
-multiplayer load fills the arsenal with each kind of item as it spawns.
+multiplayer load fills the arsenal with each kind of item as it spawns, and
+Single Player's Campaign opens as a sub-page with the band step and crumb.
 Loading tips and the Escape and Welcome menus remain. No gate closes.
 
 ## Objective and immutable completion scope

@@ -37,7 +37,9 @@ struct ScreenHost final : Host {
 	bool softFocus = false;
 	struct Softened { float sigma = 0, saturation = 1; Bounds region; };
 	std::vector<Softened> softened;
+	std::string language = "english";
 	bool ReadCVar(const std::string& name, size_t type, StateValue& value) override {
+		if (type == 2 && name == "sys_lang") { value = language; return true; }
 		if (type != 1) return false;
 		if (name == "ui_retainedReducedMotion") { value = reducedMotion; return true; }
 		if (name == "ui_retainedSoftFocus") { value = softFocus; return true; }
@@ -185,7 +187,7 @@ static bool Additive(const ScreenHost& host) {
 }
 
 int main(int argc, char** argv) {
-	Check(argc == 5,"usage: title.q4ui pause.q4ui loading.q4ui pause_strogg.q4ui");
+	Check(argc == 7,"usage: title.q4ui pause.q4ui loading.q4ui pause_strogg.q4ui singleplayer.q4ui campaigns.q4ui");
 	CheckSchema();
 	ScreenHost host;
 	CheckTransformedClip(host);
@@ -964,6 +966,189 @@ int main(int argc, char** argv) {
 		runtime.Frame(viewport,4.3);
 		const auto spArsenal = runtime.PresentedValue("arsenal","display");
 		Check(spArsenal && spArsenal->text == "none","single player has no arsenal");
+	}
+	// The Single Player page and its Campaign sub-page (sections 8 and 9, the
+	// sub-page level of 1.10): their rest states, going deeper and Back.
+	{
+		const auto pageSource = Read(argv[5]);
+		const auto subSource = Read(argv[6]);
+		Document pageDocument, subDocument; std::vector<Diagnostic> diagnostics;
+		Check(pageDocument.Load(pageSource,diagnostics) && subDocument.Load(subSource,diagnostics),"the selector documents validate");
+		for (const auto& diagnostic : diagnostics) std::fprintf(stderr,"selectors %s: %s\n",diagnostic.pointer.c_str(),diagnostic.message.c_str());
+		Runtime page(host), sub(host);
+		Check(page.Initialize() && page.LoadDocument(pageSource,"guis/menu/singleplayer.q4ui",diagnostics) &&
+			sub.Initialize() && sub.LoadDocument(subSource,"guis/menu/campaigns.q4ui",diagnostics),"the selectors load into runtimes");
+		Viewport viewport; viewport.canvasHeight = 720;
+		std::string error;
+		Runtime::EventEffects effects;
+		Check(page.RunEvent("onActivate",1,effects,error) && sub.RunEvent("onActivate",1,effects,error),"activation places both at rest");
+		page.Frame(viewport,1.1); sub.Frame(viewport,1.1);
+		// At rest: the page title in the band's slot; on the sub-page the top
+		// band one notch pitch on, the bottom band docked, the crumb 7 u up at
+		// 80 % and 0.40 in the band's thin span, and the sub-page title at the
+		// step's foot.
+		Bounds pageTitle, subTitle, crumbClip;
+		Check(page.GetBounds("title",pageTitle) && Near(pageTitle.x,160+39*1.5f,1) && Near(pageTitle.y,19*1.5f,1),"the page titles itself at 39,19 u");
+		const auto pageTop = page.PresentedValue("band-top","transform");
+		const auto subTop = sub.PresentedValue("band-top","transform");
+		const auto pageBottom = page.PresentedValue("band-bottom","transform");
+		const auto subBottom = sub.PresentedValue("band-bottom","transform");
+		Check(pageTop && subTop && pageBottom && subBottom && Near(static_cast<float>(subTop->data[0]-pageTop->data[0]),97*1.5f,.05f) &&
+			Near(static_cast<float>(subTop->data[1]),static_cast<float>(pageTop->data[1]),.01f) &&
+			Near(static_cast<float>(subBottom->data[0]),static_cast<float>(pageBottom->data[0]),.01f),
+			"the sub-page's top band sits one notch pitch on; the bottom band stays docked");
+		// SINGLE PLAYER would overrun the band's thin span at 80 %, so the crumb
+		// shrinks to fit it (0.714 of the title, measured from marine.ttf).
+		const auto crumb = sub.PresentedValue("crumb","transform");
+		const auto crumbColour = sub.PresentedValue("crumb","color");
+		const auto crumbText = sub.PresentedValue("crumb","text");
+		Check(crumb && Near(static_cast<float>(crumb->data[2]),.7224f,.002f) && crumbColour && Near(static_cast<float>(crumbColour->data[3]),.4f,.001f) &&
+			crumbText && crumbText->text == "#str_42000","the parent title is the crumb at 0.40, shrunk to fit the span");
+		// The crumb's top: 19 u less 7 u, with the scale about the box center.
+		Bounds crumbBox;
+		Check(sub.GetBounds("crumb",crumbBox) && Near(crumbBox.y+static_cast<float>(crumb->data[1])+crumbBox.height*(1-static_cast<float>(crumb->data[2]))/2,
+			12*1.5f,.5f),"the crumb rises 7 u into the band's thin span");
+		// Italian's GIOCATORE SINGOLO stops shrinking at the 13 dp type floor.
+		host.language = "italian";
+		Check(sub.RunEvent("onActivate",1.2,effects,error),"activation in Italian");
+		sub.Frame(viewport,1.3);
+		const auto floored = sub.PresentedValue("crumb","transform");
+		Check(floored && Near(static_cast<float>(floored->data[2])*18,13,.05f),"a crumb never shrinks below the 13 dp type floor");
+		// French's UN JOUEUR fits the span at the full 80 %.
+		host.language = "french";
+		Check(sub.RunEvent("onActivate",1.32,effects,error),"activation in French");
+		sub.Frame(viewport,1.35);
+		const auto french = sub.PresentedValue("crumb","transform");
+		Check(french && Near(static_cast<float>(french->data[2]),.8f,.001f),"a crumb that fits keeps 80 % of the title");
+		host.language = "english";
+		Check(sub.RunEvent("onActivate",1.4,effects,error),"activation in English");
+		sub.Frame(viewport,1.5);
+		Check(sub.GetBounds("crumb-clip",crumbClip) && Near(crumbClip.x,160+39*1.5f,1) && Near(crumbClip.width,83*1.5f,1),
+			"the crumb is cut at the band's step");
+		Check(sub.GetBounds("title",subTitle) && Near(subTitle.x,160+136*1.5f,1) && Near(subTitle.y,19*1.5f,1),
+			"the sub-page title starts at the step's foot");
+		// Going deeper: the plates fade over 150 ms while the page sweeps
+		// 640 u; the title becomes the crumb in 150 ms; from 50 ms the band
+		// steps and CAMPAIGN carries into the slot at the step's foot.
+		Check(page.RunEvent("subpageEnter",2,effects,error),"Campaign leads deeper");
+		page.Frame(viewport,2.075);
+		const auto fading = page.PresentedValue("content","opacity");
+		const auto stepping = page.PresentedValue("band-top","transform");
+		const auto sweeping = page.PresentedValue("content","transform");
+		Check(sweeping && Near(static_cast<float>(sweeping->data[0]),640*1.5f/4,.5f),"the page sweeps linearly (a quarter at 75 ms)");
+		Check(fading && Near(static_cast<float>(fading->data[0]),.5f,.02f) && stepping &&
+			stepping->data[0] > pageTop->data[0] && stepping->data[0] < subTop->data[0],"at 75 ms the plates are half gone and the band is stepping");
+		page.Frame(viewport,2.15);
+		const auto crumbed = page.PresentedValue("title","transform");
+		const auto crumbedColour = page.PresentedValue("title","color");
+		const auto gone = page.PresentedValue("content","opacity");
+		Check(crumbed && Near(static_cast<float>(crumbed->data[2]),static_cast<float>(crumb->data[2]),.001f) &&
+			Near(static_cast<float>(crumbed->data[0]),static_cast<float>(crumb->data[0]),.01f) &&
+			Near(static_cast<float>(crumbed->data[1]),static_cast<float>(crumb->data[1]),.01f) && crumbedColour &&
+			Near(static_cast<float>(crumbedColour->data[3]),.4f,.001f) && gone && Near(static_cast<float>(gone->data[0]),0,.001f),
+			"by 150 ms the title is the crumb and the plates are gone");
+		page.Frame(viewport,2.35);
+		const auto stepped = page.PresentedValue("band-top","transform");
+		const auto swept = page.PresentedValue("content","transform");
+		const auto carried = page.PresentedValue("subpage-carry","transform");
+		const auto carriedColour = page.PresentedValue("subpage-carry","color");
+		Bounds carry;
+		Check(stepped && Near(static_cast<float>(stepped->data[0]),static_cast<float>(subTop->data[0]),.05f) && swept &&
+			Near(static_cast<float>(swept->data[0]),640*1.5f,.5f) && carried && Near(static_cast<float>(carried->data[2]),.75f,.001f) &&
+			carriedColour && Near(static_cast<float>(carriedColour->data[3]),.5f,.001f) && page.GetBounds("subpage-carry",carry) &&
+			Near(carry.x,160+136*1.5f,1),"at 350 ms the band has stepped, the page has swept and CAMPAIGN sits at the step's foot");
+		// The session presents the sub-page at 350 ms: plates and title at once,
+		// the backing fading in over 150 ms (its activation).
+		Check(sub.RunEvent("onDeactivate",2.9,effects,error) && sub.RunEvent("onActivate",3,effects,error),"the sub-page appears");
+		sub.Frame(viewport,3.075);
+		const auto backing = sub.PresentedValue("details","opacity");
+		const auto plates = sub.PresentedValue("content","opacity");
+		const auto shownTitle = sub.PresentedValue("title","color");
+		Check(backing && Near(static_cast<float>(backing->data[0]),.5f,.02f) && plates && Near(static_cast<float>(plates->data[0]),1,.001f) &&
+			shownTitle && Near(static_cast<float>(shownTitle->data[3]),.5f,.001f),"its plates and title show at once, its backing fades in");
+		// Back: the sub-page title drops at once, the sub-page sweeps 640 u
+		// toward the leading edge and the band steps back from the start; the
+		// crumb returns over the last 150 ms.
+		Check(sub.RunEvent("subpageLeave",4,effects,error),"Back climbs one level");
+		sub.Frame(viewport,4.01);
+		const auto dropped = sub.PresentedValue("title","color");
+		const auto leaving = sub.PresentedValue("band-top","transform");
+		const auto heldCrumb = sub.PresentedValue("crumb","transform");
+		Check(dropped && Near(static_cast<float>(dropped->data[3]),0,.001f) && leaving && leaving->data[0] < subTop->data[0] &&
+			heldCrumb && Near(static_cast<float>(heldCrumb->data[2]),static_cast<float>(crumb->data[2]),.001f),
+			"the title drops at once and the band steps back while the crumb holds");
+		sub.Frame(viewport,4.225);
+		const auto returning = sub.PresentedValue("crumb","transform");
+		Check(returning && returning->data[2] > crumb->data[2] && returning->data[2] < 1,"the crumb returns over the last 150 ms");
+		sub.Frame(viewport,4.3);
+		const auto home = sub.PresentedValue("band-top","transform");
+		const auto returned = sub.PresentedValue("crumb","transform");
+		const auto sweptLeft = sub.PresentedValue("content","transform");
+		const auto backingOut = sub.PresentedValue("details","opacity");
+		Check(home && Near(static_cast<float>(home->data[0]),static_cast<float>(pageTop->data[0]),.05f) && returned &&
+			Near(static_cast<float>(returned->data[2]),1,.001f) && Near(static_cast<float>(returned->data[1]),0,.01f) && sweptLeft &&
+			Near(static_cast<float>(sweptLeft->data[0]),-640*1.5f,.5f) && backingOut && Near(static_cast<float>(backingOut->data[0]),0,.001f),
+			"by 300 ms the band is docked, the crumb is the title, the backing is out and the sub-page has swept out");
+		// Hidden, the sub-page goes back to rest, so it never presents moved.
+		Check(sub.RunEvent("onDeactivate",4.4,effects,error),"the sub-page leaves the screen");
+		sub.Frame(viewport,4.45);
+		const auto restedTitle = sub.PresentedValue("title","color");
+		const auto restedContent = sub.PresentedValue("content","transform");
+		const auto restedCrumb = sub.PresentedValue("crumb","transform");
+		const auto subRestBand = sub.PresentedValue("band-top","transform");
+		const auto restedBacking = sub.PresentedValue("details","opacity");
+		Check(restedTitle && Near(static_cast<float>(restedTitle->data[3]),.5f,.001f) && restedContent && Near(static_cast<float>(restedContent->data[0]),0,.01f) &&
+			restedCrumb && Near(static_cast<float>(restedCrumb->data[2]),static_cast<float>(crumb->data[2]),.001f) && subRestBand &&
+			Near(static_cast<float>(subRestBand->data[0]),static_cast<float>(subTop->data[0]),.05f) && restedBacking &&
+			Near(static_cast<float>(restedBacking->data[0]),0,.001f),"hidden, the sub-page rests in the sub-page state with its backing out");
+		// The page returns at 300 ms: its plates and content fade in over 150 ms.
+		Check(page.RunEvent("onDeactivate",3,effects,error),"the page left the screen at the hand-over");
+		Check(page.RunEvent("onActivate",5,effects,error) && page.RunEvent("subpageReturn",5,effects,error),"the page returns");
+		page.Frame(viewport,5.0005);
+		const auto firstFrame = page.PresentedValue("band-top","transform");
+		Check(firstFrame && Near(static_cast<float>(firstFrame->data[0]),static_cast<float>(pageTop->data[0]),.05f),
+			"its first frame already shows it docked, never moved");
+		page.Frame(viewport,5.075);
+		const auto back = page.PresentedValue("content","opacity");
+		const auto placed = page.PresentedValue("content","transform");
+		const auto restored = page.PresentedValue("title","transform");
+		const auto restedBand = page.PresentedValue("band-top","transform");
+		const auto noCarry = page.PresentedValue("subpage-carry","opacity");
+		Check(back && Near(static_cast<float>(back->data[0]),.5f,.02f) && placed && Near(static_cast<float>(placed->data[0]),0,.01f) &&
+			restored && Near(static_cast<float>(restored->data[2]),1,.001f) && restedBand &&
+			Near(static_cast<float>(restedBand->data[0]),static_cast<float>(pageTop->data[0]),.05f) && noCarry && Near(static_cast<float>(noCarry->data[0]),0,.001f),
+			"the page fades back in place with its title in the slot and no carry");
+		// Back while going deeper: every part returns from where it stands.
+		page.Frame(viewport,5.3);
+		Check(page.RunEvent("subpageEnter",6,effects,error),"Campaign leads deeper again");
+		page.Frame(viewport,6.12);
+		const auto partway = page.PresentedValue("band-top","transform");
+		Check(page.RunEvent("subpageReverse150",6.12,effects,error),"Back reverses the change");
+		page.Frame(viewport,6.125);
+		const auto reversing = page.PresentedValue("band-top","transform");
+		Check(partway && reversing && reversing->data[0] <= partway->data[0] + .01f && reversing->data[0] > pageTop->data[0],
+			"the band starts back from where it stood");
+		page.Frame(viewport,6.3);
+		const auto reversed = page.PresentedValue("band-top","transform");
+		const auto reversedContent = page.PresentedValue("content","transform");
+		const auto reversedOpacity = page.PresentedValue("content","opacity");
+		const auto reversedTitle = page.PresentedValue("title","transform");
+		const auto reversedCarry = page.PresentedValue("subpage-carry","opacity");
+		Check(reversed && Near(static_cast<float>(reversed->data[0]),static_cast<float>(pageTop->data[0]),.05f) && reversedContent &&
+			Near(static_cast<float>(reversedContent->data[0]),0,.01f) && reversedOpacity && Near(static_cast<float>(reversedOpacity->data[0]),1,.001f) &&
+			reversedTitle && Near(static_cast<float>(reversedTitle->data[2]),1,.001f) && reversedCarry && Near(static_cast<float>(reversedCarry->data[0]),0,.001f),
+			"by 150 ms the page is back as it was");
+		// Reduced motion: the session hands over at once and the arrival fades
+		// in within 80 ms.
+		sub.SetReducedMotion(true,6.9);
+		Check(sub.RunEvent("onDeactivate",6.9,effects,error) && sub.RunEvent("onActivate",7,effects,error),"the sub-page arrives at once");
+		sub.Frame(viewport,7.04);
+		const auto halfIn = sub.PresentedValue("details","opacity");
+		sub.Frame(viewport,7.09);
+		const auto fullIn = sub.PresentedValue("details","opacity");
+		Check(halfIn && halfIn->data[0] > 0 && halfIn->data[0] < 1 && fullIn && Near(static_cast<float>(fullIn->data[0]),1,.001f),
+			"reduced motion fades the arrival in within 80 ms");
+		sub.SetReducedMotion(false,7.2);
 	}
 	Check(host.errors == 0,"no retained diagnostics");
 	std::printf("retained screens: %d checks passed\n",checks);

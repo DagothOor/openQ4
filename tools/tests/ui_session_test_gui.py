@@ -107,6 +107,7 @@ struct idSessionLocal {
     // ui_retained home screens never present while a test GUI owns the session.
     void UpdateRetainedHome() {}
     void RetainedHomeFrameEvent() {}
+    void UpdateRetainedSubpage() {}
     void DispatchCommand(idUserInterface* gui,const char* command) {
         assert(gui && !gui->retired && command && *command);
         ++dispatches;

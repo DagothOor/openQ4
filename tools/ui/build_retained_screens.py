@@ -22,6 +22,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
+import struct
 import sys
 from pathlib import Path
 
@@ -1034,12 +1036,153 @@ def title_document() -> dict:
     return doc.build(root)
 
 
+SUBPAGE_STEP = 97.0                                   # one notch pitch (frame.step, section 8)
+TOP_TO_SUBPAGE = ((323 + SUBPAGE_STEP) * U, -63 * U)
+CRUMB_SLOT = (39.0, 12.0)                             # the parent title in the band's thin span
+SUBPAGE_SLOT = (136.0, 19.0)                          # the sub-page title at the step's foot
+CRUMB_SPAN = 83.0                                     # the thin span, 39 u to the step at 122 u
+PAGE_TITLE_W, PAGE_TITLE_H = 300.0, 24.4 * 0.75       # the 18 dp screen title (text.title)
+CRUMB_SCALE = 0.8
+SUBPAGE_REVERSE_MS = (150, 200, 250, 300)            # a reversed frame.step (MOT-016)
+
+
+def page_title(ident: str, key: str, left: float, top: float, alpha: float = 0.5) -> dict:
+    """The screen title in the top band (section 9): Marine 18 dp at 0.50,
+    where the home's title carry lands."""
+    return label(ident, key, {**absolute(left=U * left, top=U * top, width=U * PAGE_TITLE_W, height=U * PAGE_TITLE_H),
+                              **typeface("marine", 18, U * PAGE_TITLE_H, [1, 1, 1, alpha]), "white-space": keyword("nowrap"),
+                              "transform": transform()})
+
+
+def crumb_transform(scale: float = CRUMB_SCALE) -> dict:
+    """The page title as the crumb: `scale` of its size (80 %, or less to fit
+    the span) and 7 u up, its leading and top edges held while it scales
+    about its center."""
+    width, height = U * PAGE_TITLE_W, U * PAGE_TITLE_H
+    return {"type": "transform", "unit": "dp", "value": [round(-(1 - scale) * width / 2, 3),
+                                                       round(-(1 - scale) * height / 2 - U * (TITLE_SLOT[1] - CRUMB_SLOT[1]), 3),
+                                                       round(scale, 4), round(scale, 4), 0]}
+
+
+STRINGS = ROOT / "content" / "baseoq4" / "pak0" / "strings"
+LANGUAGES = ("english", "french", "german", "italian", "polish", "russian", "spanish")
+
+
+def localized(key: str) -> dict:
+    """The shipped openQ4 string tables' text for `key`, by sys_lang value."""
+    texts = {}
+    for language in LANGUAGES:
+        for line in (STRINGS / f"{language}_openq4.lang").read_text(encoding="utf-8").splitlines():
+            match = re.match(r'\s*"(#str_\d+)"\s+"(.*)"\s*$', line)
+            if match and match.group(1) == key:
+                texts[language] = match.group(2)
+    return texts
+
+
+def text_width(face: str, text: str, size: float) -> float:
+    """The width in dp of `text` set in a shipped face at `size` dp, as the
+    retained host lays it out: each glyph's advance at pixels / unitsPerEm,
+    no kerning, '?' for a missing glyph."""
+    data = (ROOT / "content" / "baseoq4" / "pak0" / "fonts" / f"{face}.ttf").read_bytes()
+    tables = {}
+    for index in range(struct.unpack(">H", data[4:6])[0]):
+        tag, _, offset, length = struct.unpack(">4sIII", data[12 + 16 * index:28 + 16 * index])
+        tables[tag.decode("latin-1")] = offset
+    units = struct.unpack(">H", data[tables["head"] + 18:tables["head"] + 20])[0]
+    metrics = struct.unpack(">H", data[tables["hhea"] + 34:tables["hhea"] + 36])[0]
+    cmap, glyphs = tables["cmap"], {}
+    for index in range(struct.unpack(">H", data[cmap + 2:cmap + 4])[0]):
+        offset = cmap + struct.unpack(">I", data[cmap + 8 + 8 * index:cmap + 12 + 8 * index])[0]
+        form = struct.unpack(">H", data[offset:offset + 2])[0]
+        if form == 4:
+            pairs = struct.unpack(">H", data[offset + 6:offset + 8])[0] // 2
+            ends = struct.unpack(f">{pairs}H", data[offset + 14:offset + 14 + 2 * pairs])
+            base = offset + 16 + 2 * pairs
+            starts = struct.unpack(f">{pairs}H", data[base:base + 2 * pairs])
+            deltas = struct.unpack(f">{pairs}h", data[base + 2 * pairs:base + 4 * pairs])
+            ranges = base + 4 * pairs
+            for segment in range(pairs):
+                shift = struct.unpack(">H", data[ranges + 2 * segment:ranges + 2 * segment + 2])[0]
+                for code in range(starts[segment], ends[segment] + 1):
+                    if code == 0xFFFF:
+                        continue
+                    if shift == 0:
+                        glyph = (code + deltas[segment]) & 0xFFFF
+                    else:
+                        at = ranges + 2 * segment + shift + 2 * (code - starts[segment])
+                        glyph = struct.unpack(">H", data[at:at + 2])[0]
+                        glyph = (glyph + deltas[segment]) & 0xFFFF if glyph else 0
+                    glyphs.setdefault(code, glyph)
+        elif form == 12:
+            for group_index in range(struct.unpack(">I", data[offset + 12:offset + 16])[0]):
+                first, last, glyph = struct.unpack(">III", data[offset + 16 + 12 * group_index:offset + 28 + 12 * group_index])
+                for code in range(first, last + 1):
+                    glyphs.setdefault(code, glyph + code - first)
+
+    def advance(glyph: int) -> int:
+        at = tables["hmtx"] + 4 * min(glyph, metrics - 1)
+        return struct.unpack(">H", data[at:at + 2])[0]
+    return sum(advance(glyphs.get(ord(char)) or glyphs.get(ord("?"), 0)) for char in text) * size / units
+
+
+def crumb_fits(key: str) -> dict:
+    """The crumb's scale for each shipped language: 80 % of the title, or
+    less where that would not fit the band's thin span, but never below the
+    13 dp type floor (section 9: the crumb shrinks to fit before it
+    truncates)."""
+    span, floor = U * CRUMB_SPAN - 2, 13 / 18
+    return {language: max(floor, min(CRUMB_SCALE, span / text_width("marine", text, 18)))
+            for language, text in localized(key).items()}
+
+
+def by_language(doc: Document, prefix: str, fits: dict) -> list:
+    """Steps playing `<prefix>-<language>` for the running language, or
+    `<prefix>` where no fit was measured."""
+    if "language" not in doc.state:
+        doc.state["language"] = {"type": "string", "initial": "", "cvar": "sys_lang"}
+    steps = [{"op": "playTimeline", "timeline": prefix}]
+    for language in sorted(fits, reverse=True):
+        steps = [{"op": "if", "condition": {"op": "==", "args": [{"state": "language"}, language]},
+                  "then": [{"op": "playTimeline", "timeline": f"{prefix}-{language}"}], "else": steps}]
+    return steps
+
+
 def campaign_document(campaigns: bool) -> dict:
-    """Single Player page and Campaign sub-page, specification sections 8/9.
+    """Single Player page and Campaign sub-page, specification sections 8/9
+    and the sub-page level of 1.10.
 
     Use the shared Marine plates and docked vector bands. Content readiness
     comes from the filesystem probe, never a module or a folder's name alone.
-    """
+
+    The page titles itself in the top band's slot (39,19 u). The Campaign
+    sub-page holds the sub-page state: the top band one notch pitch (97 u) on
+    toward the trailing edge, the bottom band docked, the page title as the
+    crumb in the band's thin span (39,12 u, 80 %, 0.40, cut at the step) and
+    the sub-page title at the step's foot (136,19 u). The session plays the
+    change between the two documents (section 8, FLOW-050):
+    subpageEnter  on the page, 350 ms: its plates fade over 150 ms while it
+                  sweeps 640 u toward the trailing edge over 300 ms; its
+                  title becomes the crumb (title.crumb, 150 ms, linear); from
+                  50 ms the top band steps (frame.step, accel(150, 150) over
+                  300 ms) and the CAMPAIGN label carries into the slot at the
+                  step's foot (title.carry, 300 ms going deeper);
+    onActivate    every arrival: a page's own plates at once at rest, its
+                  backing fading in over 150 ms (content.in), so the sub-page
+                  presented at 350 ms needs nothing more;
+    subpageLeave  on the sub-page, 300 ms: its title drops at once, it sweeps
+                  640 u toward the leading edge over 300 ms with its plates
+                  (screen.return, linear), its backing fades over 250 ms
+                  (content.out), the top band steps back at once, and the
+                  crumb returns to the title slot over the last 150 ms;
+    subpageReturn on the page at 300 ms: its plates and content fade in over
+                  150 ms with the bands docked and its title in the slot;
+    subpageReverseN on the page, Back while it goes deeper: every part returns
+                  from where it stands over N ms (150-300 ms, by the distance
+                  the band has stepped).
+    Leaving the screen (onDeactivate) places a document at rest while it is
+    hidden, so it is never seen moved when it next presents, and a change
+    that was cut short never leaves it moved. Under reduced motion the
+    session hands over at once and the arrival's 80 ms fade is the change."""
     doc = Document("openq4.campaigns" if campaigns else "openq4.singleplayer")
     back = "campaignBack" if campaigns else "campaignHome"
     doc.session("back", back)
@@ -1073,16 +1216,141 @@ def campaign_document(campaigns: bool) -> dict:
         details.append(label("description", "#str_230044", {**absolute(left=0, top=0, width=U * 210, height=U * 140),
                                                            **typeface("lowpixel", 18, 26, rgb(OLIVE))}))
     bands = framing_bands("band")
-    bands[0]["properties"]["transform"] = transform(*TOP_TO_PAGE)
+    top_rest = transform(*(TOP_TO_SUBPAGE if campaigns else TOP_TO_PAGE))
+    bands[0]["properties"]["transform"] = top_rest
     bands[1]["properties"]["transform"] = transform(*BOTTOM_TO_PAGE)
-    content = group("content", {**absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"), "margin-left": length(-CANVAS_W / 2)}, [
-        label("title", "#str_230038" if campaigns else "#str_42000", {**absolute(left=U * 44, top=U * 54, width=U * 550, height=U * 38),
-                         **typeface("marine", 36, 44, rgb(ORANGE))}),
-        group("navigation", {**absolute(left=0, top=U * 190, width=U * 357), "display": keyword("flex"), "flex-direction": keyword("column")}, buttons),
-        group("details", absolute(left=U * 395, top=U * 190, width=U * 210, height=U * 140), details),
+    nav_top = 190.0
+    content = group("content", {**absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"), "margin-left": length(-CANVAS_W / 2),
+                                "transform": transform(), "opacity": number(1)}, [
+        group("navigation", {**absolute(left=0, top=U * nav_top, width=U * 357), "display": keyword("flex"), "flex-direction": keyword("column"),
+                             "opacity": number(1)}, buttons),
+        group("details", {**absolute(left=U * 395, top=U * 190, width=U * 210, height=U * 140), "opacity": number(0)}, details),
     ])
+    # The titles ride outside the sweeping content, in canvas coordinates.
+    crumb_key = "#str_42000"
+    if campaigns:
+        # The crumb's clip ends at the step; while it returns it is let out
+        # to the full title width.
+        titles = [
+            group("crumb-clip", {**absolute(left=U * CRUMB_SLOT[0], top=0, width=U * CRUMB_SPAN, height=U * 40), "overflow": keyword("hidden")}, [
+                label("crumb", crumb_key, {**absolute(left=0, top=U * TITLE_SLOT[1], width=U * PAGE_TITLE_W, height=U * PAGE_TITLE_H),
+                                           **typeface("marine", 18, U * PAGE_TITLE_H, [1, 1, 1, 0.4]), "white-space": keyword("nowrap"),
+                                           "transform": crumb_transform()})]),
+            page_title("title", "#str_230038", *SUBPAGE_SLOT),
+        ]
+    else:
+        titles = [
+            group("title-clip", {**absolute(left=U * TITLE_SLOT[0], top=0, width=U * PAGE_TITLE_W, height=U * 40), "overflow": keyword("hidden")}, [
+                label("title", crumb_key, {**absolute(left=0, top=U * TITLE_SLOT[1], width=U * PAGE_TITLE_W, height=U * PAGE_TITLE_H),
+                                           **typeface("marine", 18, U * PAGE_TITLE_H, [1, 1, 1, 0.5]), "white-space": keyword("nowrap"),
+                                           "transform": transform()})]),
+            # Going deeper, the CAMPAIGN label carries from its row into the
+            # slot at the step's foot (title.carry, 300 ms).
+            label("subpage-carry", "#str_230038", {**absolute(left=U * SUBPAGE_SLOT[0], top=U * SUBPAGE_SLOT[1], width=U * 314, height=U * 24.4),
+                  **typeface("marine", 24, U * 24.4, rgb(ORANGE)), "white-space": keyword("nowrap"), "opacity": number(0),
+                  "transform": transform(), "pointer-events": keyword("none")}),
+        ]
+    titles_group = group("titles", {**absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"), "margin-left": length(-CANVAS_W / 2),
+                                    "pointer-events": keyword("none")}, titles)
+
+    page_top, sub_top = transform(*TOP_TO_PAGE), transform(*TOP_TO_SUBPAGE)
+    identity = transform()
+    swept_right, swept_left = transform(640 * U, 0), transform(-640 * U, 0)
+    white = lambda alpha: colour([1, 1, 1, alpha])
+    fits = crumb_fits(crumb_key)
+    variants = [("", CRUMB_SCALE)] + [(f"-{language}", fit) for language, fit in fits.items()]
+    # Every arrival: the plates at once, the backing fading in (content.in).
+    doc.timelines.add("arrive", 150, [
+        track("content", "opacity", [(0, number(1)), (1, number(1)), (150, number(1))]),
+        track("details", "opacity", [(0, number(0)), (1, number(0)), (150, number(1))]),
+    ])
+    if campaigns:
+        # Hidden, the sub-page waits in the sub-page state with its backing out.
+        doc.timelines.add("rest", 1, [
+            track("band-top", "transform", [(0, sub_top), (1, sub_top)]),
+            track("content", "transform", [(0, identity), (1, identity)]),
+            track("content", "opacity", [(0, number(1)), (1, number(1))]),
+            track("details", "opacity", [(0, number(0)), (1, number(0))]),
+            track("title", "color", [(0, white(0.5)), (1, white(0.5))]),
+            track("crumb", "color", [(0, white(0.4)), (1, white(0.4))]),
+            track("crumb-clip", "width", [(0, length(U * CRUMB_SPAN)), (1, length(U * CRUMB_SPAN))]),
+        ])
+        doc.timelines.add("subpageLeave", 300, [
+            track("title", "color", [(0, white(0)), (1, white(0)), (300, white(0))]),
+            track("content", "transform", [(0, identity), (300, swept_left)]),
+            track("details", "opacity", [(0, number(1)), (250, number(0)), (300, number(0))]),
+            track("band-top", "transform", [(0, sub_top, ACCEL), (300, page_top)]),
+            track("crumb-clip", "width", [(0, length(U * CRUMB_SPAN)), (150, length(U * CRUMB_SPAN)), (151, length(U * PAGE_TITLE_W)),
+                                          (300, length(U * PAGE_TITLE_W))]),
+            track("crumb", "color", [(0, white(0.4)), (150, white(0.4)), (300, white(0.5))]),
+        ])
+        # The crumb's fitted scale for each language: at rest, and returning.
+        for suffix, scale in variants:
+            fitted = crumb_transform(scale)
+            doc.timelines.add(f"crumbRest{suffix}", 1, [track("crumb", "transform", [(0, fitted), (1, fitted)])])
+            doc.timelines.add(f"crumbReturn{suffix}", 300, [track("crumb", "transform", [(0, fitted), (150, fitted), (300, identity)])])
+        doc.events["onDeactivate"] = [{"op": "playTimeline", "timeline": "rest"}, *by_language(doc, "crumbRest", fits)]
+        doc.events["onActivate"] = [{"op": "playTimeline", "timeline": "arrive"}, *by_language(doc, "crumbRest", fits)]
+        doc.events["subpageLeave"] = [{"op": "playTimeline", "timeline": "subpageLeave"}, *by_language(doc, "crumbReturn", fits)]
+    else:
+        start = {"type": "transform", "unit": "dp", "value": [round(U * (44 - SUBPAGE_SLOT[0]), 3),
+                                                            round(U * (nav_top + 2.8 - SUBPAGE_SLOT[1]), 3), 1, 1, 0]}
+        width, height, scale = U * 314, U * 24.4, 0.75
+        end = {"type": "transform", "unit": "dp", "value": [round(-(1 - scale) * width / 2, 3), round(-(1 - scale) * height / 2, 3),
+                                                           scale, scale, 0]}
+        # Hidden, the page waits docked with its title in the slot and its
+        # content out, so a return fades it in from nothing.
+        doc.timelines.add("rest", 1, [
+            track("band-top", "transform", [(0, page_top), (1, page_top)]),
+            track("content", "transform", [(0, identity), (1, identity)]),
+            track("content", "opacity", [(0, number(0)), (1, number(0))]),
+            track("details", "opacity", [(0, number(0)), (1, number(0))]),
+            track("title", "transform", [(0, identity), (1, identity)]),
+            track("title", "color", [(0, white(0.5)), (1, white(0.5))]),
+            track("title-clip", "width", [(0, length(U * PAGE_TITLE_W)), (1, length(U * PAGE_TITLE_W))]),
+            track("subpage-carry", "opacity", [(0, number(0)), (1, number(0))]),
+            track("subpage-carry", "transform", [(0, start), (1, start)]),
+            track("subpage-carry", "color", [(0, colour(rgb(ORANGE))), (1, colour(rgb(ORANGE)))]),
+        ])
+        doc.timelines.add("subpageEnter", 350, [
+            track("content", "opacity", [(0, number(1)), (150, number(0)), (350, number(0))]),
+            track("content", "transform", [(0, identity), (300, swept_right), (350, swept_right)]),
+            track("title", "color", [(0, white(0.5)), (150, white(0.4)), (350, white(0.4))]),
+            track("title-clip", "width", [(0, length(U * PAGE_TITLE_W)), (150, length(U * CRUMB_SPAN)), (350, length(U * CRUMB_SPAN))]),
+            track("band-top", "transform", [(0, page_top), (50, page_top, ACCEL), (350, sub_top)]),
+            track("subpage-carry", "opacity", [(0, number(1)), (1, number(1)), (350, number(1))]),
+            track("subpage-carry", "transform", [(0, start), (1, start), (50, start, ACCEL), (350, end)]),
+            track("subpage-carry", "color", [(0, colour(rgb(ORANGE))), (1, colour(rgb(ORANGE))), (50, colour(rgb(ORANGE)), ACCEL),
+                                             (350, white(0.5))]),
+        ])
+        for suffix, scale in variants:
+            doc.timelines.add(f"crumbEnter{suffix}", 350, [
+                track("title", "transform", [(0, identity), (150, crumb_transform(scale)), (350, crumb_transform(scale))])])
+        doc.timelines.add("subpageReturn", 150, [
+            track("content", "transform", [(0, identity), (1, identity), (150, identity)]),
+            track("content", "opacity", [(0, number(0)), (150, number(1))]),
+            track("details", "opacity", [(0, number(0)), (150, number(1))]),
+        ])
+        # Back while going deeper: every part returns from where it stands
+        # (each play retargets its first key to the current value), over a
+        # time proportional to the band's step (150-300 ms).
+        for duration in SUBPAGE_REVERSE_MS:
+            doc.timelines.add(f"subpageReverse{duration}", duration, [
+                track("content", "opacity", [(0, number(0)), (duration, number(1))]),
+                track("content", "transform", [(0, identity), (duration, identity)]),
+                track("title", "transform", [(0, identity), (duration, identity)]),
+                track("title", "color", [(0, white(0.4)), (duration, white(0.5))]),
+                track("title-clip", "width", [(0, length(U * CRUMB_SPAN)), (duration, length(U * PAGE_TITLE_W))]),
+                track("band-top", "transform", [(0, sub_top, ACCEL), (duration, page_top)]),
+                track("subpage-carry", "opacity", [(0, number(1)), (duration // 2, number(0)), (duration, number(0))]),
+            ])
+            doc.events[f"subpageReverse{duration}"] = [{"op": "playTimeline", "timeline": f"subpageReverse{duration}"}]
+        doc.events["onDeactivate"] = [{"op": "playTimeline", "timeline": "rest"}]
+        doc.events["onActivate"] = [{"op": "playTimeline", "timeline": "arrive"}]
+        doc.events["subpageEnter"] = [{"op": "playTimeline", "timeline": "subpageEnter"}, *by_language(doc, "crumbEnter", fits)]
+        doc.events["subpageReturn"] = [{"op": "playTimeline", "timeline": "subpageReturn"}]
     return doc.build(group("screen", {**FULL, "background-color": colour([0, 0, 0, 1])}, [
-        *lit_field("field", 0.7), *bands, content,
+        *lit_field("field", 0.7), *bands, content, titles_group,
         prompt_bar(doc, [("#str_107019", "#str_200747"), ("#str_107020", "#str_230045")]),
     ]))
 

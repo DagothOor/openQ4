@@ -213,6 +213,8 @@ On engine `e4583498dba9e7e67b2b15f757880c75c68631ee` a mod's own copy of a stock
 
 On engine `779a2bc91ede808813f80c541daff9943abac840` a multiplayer load fills the retained loading screen's arsenal: each kind of item appears as it spawns, fading in over 150 ms in its color code, which the session reads from the item's colour-coded material. A listen server's mp/q4dm1 load publishes its eleven kinds with their Appendix B.4 tints, and captures on OpenGL and Vulkan at 1280x720 show the arsenal in the thick band. `FLOW-047` gains partial evidence without a status change. Evidence: `.tmp/ui/retained-loading-arsenal/validation-evidence.json`, SHA-256 `a2bd70225491d8ea1ff802bcb3b046b68ac7ca17136e49d46680faf92ceee094`.
 
+On engine `5484be6253b5be7fe88723eb60e828ca700f46a7` the retained Single Player page opens its Campaign section as a sub-page (specification 1.10): the top band steps one notch pitch, the page title becomes the crumb, fitted per language to the band's thin span, and the CAMPAIGN label carries to the step's foot; the sub-page presents at 350 ms, Back climbs out over 300 ms with the focus returned to Campaign, Back while going deeper reverses the change from where it stands, and reduced motion places both levels with an 80 ms fade. Engine captures on OpenGL and Vulkan at 1280x720 and on OpenGL at 1024x768 show both changes. `MOT-016` and `FLOW-050` move from pending to partial, with acceptance evidence still empty: the other sub-pages, the section layout, Classic, a reversible Back and the sampled traces remain. Evidence: `.tmp/ui/retained-subpage/validation-evidence.json`, SHA-256 `eca04d36298751db3331776e99e4fde0e3c123a6bb06570d0eed62c1935b44b5`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial
@@ -497,7 +499,7 @@ The [full renderer shutdown increment](image-recovery-ownership.md), based on en
 
 The [editor file publication increment](editor-file-safety.md), based on engine `a11a00181b5997993bb9e225bad63a6422386311`, adds actual native creation of complete new files without replacing an existing or racing document. Windows Clang and MSVC each pass 340 checks, GCC with sanitizers passes 344, and all three reject seven compiled mutations. The full engine build and 78 UI suites pass. Windows symlink and DrvFS FIFO limitations are recorded. This file-only increment has no new game captures. Save As/autosave UI, live document association, overwrite/conflict handling and crash/relaunch recovery remain required. No requirement status, migration acceptance or final gate changes. Evidence: `.tmp/ui/editor-new-file/validation-evidence.json`, SHA-256 `846413e35eb34ed965a57005aa6eb724b5c8d3dbc2fb46f65ba30711a509cc63`.
 
-There are **85 partial, 254 pending and one verified requirement**, counting the
+There are **87 partial, 252 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock

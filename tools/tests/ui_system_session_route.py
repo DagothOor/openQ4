@@ -141,6 +141,7 @@ struct idSessionLocal {
     // Retained home screens are outside this route: they never present in these scenarios.
     idUserInterface* guiRetainedHome=nullptr;int retainedHomeUpdates=0;
     void UpdateRetainedHome(){++retainedHomeUpdates;}void RetainedHomeFrameEvent(){CHECK(guiRetainedHome==nullptr);}
+    void UpdateRetainedSubpage(){}
     void HandleRetainedSessionRequest(idUserInterface*,const char*){CHECK(false);}
     void SetSaveGameGuiVars(){}void SetMainMenuGuiVars(bool){++mainRefresh;}
     void PumpApplicationActions(idUserInterface* only=nullptr) {

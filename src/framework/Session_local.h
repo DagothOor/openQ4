@@ -251,6 +251,10 @@ public:
 	void				PublishRetainedLoadingDevice();
 	// The multiplayer arsenal: the index'th kind of item to spawn, by its icon.
 	void				PublishRetainedLoadingIcon( int index, const char *icon );
+	// The Single Player page and Campaign sub-page change (spec 1.10).
+	void				BeginRetainedSubpage( idUserInterface *gui, bool deeper );
+	void				UpdateRetainedSubpage();
+	bool				RetainedSubpageEvent( const sysEvent_t *event );
 
 	virtual const char *MessageBox( msgBoxType_t type, const char *message, const char *title = NULL, bool wait = false, const char *fire_yes = NULL, const char *fire_no = NULL, bool network = false  );
 	virtual void		StopBox( void );
@@ -433,6 +437,12 @@ public:
 	ID_TIME_T			retainedNewestSave;		// when the newest save was written (0: none)
 	idUserInterface *	guiRetainedReleasing;	// a closed pause screen releasing the softened view
 	int					retainedReleaseUntil;	// presentation time the release ends
+	// A change between the Single Player page and its Campaign sub-page: the
+	// leaving document plays its half, and the other presents at the hand-over.
+	idUserInterface *	retainedSubpageFrom;	// the document playing its half (NULL: none)
+	bool				retainedSubpageDeeper;	// going to the sub-page, or back to the page
+	int					retainedSubpageBegan;	// presentation time the change began
+	int					retainedSubpageUntil;	// presentation time of the hand-over
 	bool				retainedHomeReturning;
 	// Retained documents that fell back to their stock screens this session.
 	idStrList			retainedStock;

@@ -4073,6 +4073,12 @@ void idSessionLocal::MenuEvent( const sysEvent_t *event ) {
 		return;
 	}
 
+	// A change between the Single Player page and its sub-page: Back reverses
+	// a change going deeper, and other input waits for the other level.
+	if ( RetainedSubpageEvent( event ) ) {
+		return;
+	}
+
 	if ( guiRetainedHome != NULL && guiActive == guiMainMenu ) {
 		// The retained screen owns input while it covers the legacy home state.
 		// During a hand-off the legacy page is not presented yet; like the stock
@@ -4145,6 +4151,7 @@ void idSessionLocal::GuiFrameEvents() {
 	// home, or the pause screen would outlive a resume.
 	UpdateRetainedHome();
 	RetainedHomeFrameEvent();
+	UpdateRetainedSubpage();
 
 	if ( guiTest ) {
 		gui = guiTest;
@@ -4703,6 +4710,17 @@ static const int RETAINED_POPUP_HANDOFF_MSEC = 200;
 // Returning to the game releases the paused view's soft focus over 250 ms,
 // as the modal backdrop does (section 4).
 static const int RETAINED_RELEASE_MSEC = 250;
+// Single Player and its Campaign sub-page: going deeper the page plays its
+// half and the sub-page presents at 350 ms; Back plays the sub-page's half and
+// the page returns at 300 ms (section 8). With reduced motion the hand-over
+// is at once, and the arrival's 80 ms fade is the change. Back while going
+// deeper reverses the change from where it stands, over 150-300 ms in 50 ms
+// steps (subpageReverse<N>), by the distance the band has stepped since it
+// started at 50 ms.
+static const int RETAINED_SUBPAGE_DEEPER_MSEC = 350;
+static const int RETAINED_SUBPAGE_BACK_MSEC = 300;
+static const int RETAINED_SUBPAGE_STEP_START_MSEC = 50;
+static const int RETAINED_SUBPAGE_STEP_MSEC = 300;
 
 typedef struct retainedHandoff_s {
 	const char *	request;
@@ -5040,15 +5058,106 @@ void idSessionLocal::DrawRetainedHome( int presentationTime ) {
 	guiRetainedHome->Redraw( presentationTime );
 }
 
+// The Single Player page and its Campaign sub-page are two documents (see
+// RETAINED_SUBPAGE_DEEPER_MSEC). When the other document cannot present, its
+// stock selector opens at once.
+void idSessionLocal::BeginRetainedSubpage( idUserInterface *gui, bool deeper ) {
+#ifndef ID_DEDICATED
+	if ( FindRetainedGui( deeper ? RETAINED_CAMPAIGNS_GUI : RETAINED_SINGLEPLAYER_GUI, true, false ) == NULL ||
+			cvarSystem->GetCVarBool( "ui_retainedReducedMotion" ) ) {
+		// The stock selector, or reduced motion: the other level at once.
+		OpenCampaignSelector( deeper );
+		if ( !deeper && guiActive != NULL && !idStr::Icmp( guiActive->Name(), RETAINED_SINGLEPLAYER_GUI ) ) {
+			guiActive->HandleNamedEvent( "subpageReturn" );
+			PumpApplicationActions( guiActive );
+		}
+		return;
+	}
+	gui->HandleNamedEvent( deeper ? "subpageEnter" : "subpageLeave" );
+	PumpApplicationActions( gui );
+	retainedSubpageFrom = gui;
+	retainedSubpageDeeper = deeper;
+	retainedSubpageBegan = common->GetPresentationTime();
+	retainedSubpageUntil = retainedSubpageBegan + ( deeper ? RETAINED_SUBPAGE_DEEPER_MSEC : RETAINED_SUBPAGE_BACK_MSEC );
+	if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+		common->Printf( "RETAINED_SUBPAGE begin deeper=%d handover=%d\n", deeper ? 1 : 0, retainedSubpageUntil - common->GetPresentationTime() );
+	}
+#endif
+}
+
+void idSessionLocal::UpdateRetainedSubpage() {
+#ifndef ID_DEDICATED
+	if ( retainedSubpageFrom == NULL ) {
+		return;
+	}
+	// Anything else taking the screen abandons the change.
+	if ( guiActive != retainedSubpageFrom ) {
+		retainedSubpageFrom = NULL;
+		return;
+	}
+	if ( common->GetPresentationTime() < retainedSubpageUntil ) {
+		return;
+	}
+	const bool deeper = retainedSubpageDeeper;
+	retainedSubpageFrom = NULL;
+	// The arriving document's activation fades its backing in; the page
+	// coming back also fades its plates in.
+	OpenCampaignSelector( deeper );
+	if ( !deeper && guiActive != NULL && !idStr::Icmp( guiActive->Name(), RETAINED_SINGLEPLAYER_GUI ) ) {
+		guiActive->HandleNamedEvent( "subpageReturn" );
+		PumpApplicationActions( guiActive );
+	}
+	if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+		common->Printf( "RETAINED_SUBPAGE handover deeper=%d gui=%s\n", deeper ? 1 : 0, guiActive != NULL ? guiActive->Name() : "-" );
+	}
+#endif
+}
+
+// Input while a change is under way. A key's release still reaches the
+// leaving document, so a key held into the change retires normally, but no
+// command it returns runs mid-change. Back while going deeper reverses the
+// change from where it stands (section 8, MOT-016) and gives the page its
+// input back; anything else waits for the hand-over.
+bool idSessionLocal::RetainedSubpageEvent( const sysEvent_t *event ) {
+#ifndef ID_DEDICATED
+	if ( retainedSubpageFrom == NULL || guiActive != retainedSubpageFrom ) {
+		return false;
+	}
+	if ( event->evType == SE_KEY && event->evValue2 == 0 ) {
+		retainedSubpageFrom->HandleEvent( event, common->GetPresentationTime() );
+		return true;
+	}
+	const bool back = event->evType == SE_KEY && ( event->evValue == K_ESCAPE || event->evValue == K_JOY4 ||
+		event->evValue == K_JOY7 || event->evValue == K_JOY8 );
+	if ( back && retainedSubpageDeeper ) {
+		const int stepped = idMath::ClampInt( 0, RETAINED_SUBPAGE_STEP_MSEC,
+			common->GetPresentationTime() - retainedSubpageBegan - RETAINED_SUBPAGE_STEP_START_MSEC );
+		const int duration = idMath::ClampInt( 150, 300, ( stepped + 49 ) / 50 * 50 );
+		idUserInterface *page = retainedSubpageFrom;
+		retainedSubpageFrom = NULL;
+		page->HandleNamedEvent( va( "subpageReverse%d", duration ) );
+		PumpApplicationActions( page );
+		if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+			common->Printf( "RETAINED_SUBPAGE reverse duration=%d\n", duration );
+		}
+	}
+	return true;
+#else
+	return false;
+#endif
+}
+
 void idSessionLocal::HandleRetainedSessionRequest( idUserInterface *gui, const char *request ) {
 #ifndef ID_DEDICATED
     if ( gui && request && gui == guiActive &&
          ( !idStr::Icmp( gui->Name(), RETAINED_SINGLEPLAYER_GUI ) || !idStr::Icmp( gui->Name(), RETAINED_CAMPAIGNS_GUI ) ) ) {
-        if ( !idStr::Icmp( request, "campaigns" ) ) OpenCampaignSelector( true );
+        // A change of level in progress takes no further request.
+        if ( retainedSubpageFrom != NULL ) return;
+        if ( !idStr::Icmp( request, "campaigns" ) ) BeginRetainedSubpage( gui, true );
         else if ( !idStr::Icmp( request, "campaignQuake4" ) ) SelectCampaign( "quake4" );
         else if ( !idStr::Icmp( request, "campaignAwakening" ) ) SelectCampaign( "awakening" );
         else if ( !idStr::Icmp( request, "campaignArena" ) ) SelectCampaign( "arena" );
-        else if ( !idStr::Icmp( request, "campaignBack" ) ) OpenCampaignSelector( false );
+        else if ( !idStr::Icmp( request, "campaignBack" ) ) BeginRetainedSubpage( gui, false );
         else if ( !idStr::Icmp( request, "campaignHome" ) ) StartMenu();
         return;
     }

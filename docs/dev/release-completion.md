@@ -501,6 +501,9 @@
   stroggified, the pause menu turns Strogg: an orange frame with angular
   shoulders and circuit traces, Strogg lettering, and labels that decode from
   Strogg runes as the menu opens (shown at once with reduced motion).
+  Single Player's Campaign now opens one level down: the frame steps one
+  notch along, SINGLE PLAYER moves up into the frame as the path, and Back
+  climbs out again, or reverses the move if pressed on the way in.
   Choosing a page carries its name up into the page title as the frame docks,
   and the title screen's backdrop leans slightly away from the pointer or the
   right stick (off with reduced motion). Exiting or quitting asks in a dialog

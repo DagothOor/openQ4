@@ -91,6 +91,7 @@ struct idFile {};
 struct CVarSystem {
     std::map<std::string, std::string> strings;
     const char* GetCVarString(const char* name) const { const auto found = strings.find(name); return found == strings.end() ? "" : found->second.c_str(); }
+    bool GetCVarBool(const char* name) const { return std::string(GetCVarString(name)) == "1"; }
 } cvarSystemObject, *cvarSystem = &cvarSystemObject;
 struct FileSystem {
     std::set<std::string> files;
@@ -134,8 +135,9 @@ struct Game {
     void HandleMainMenuCommands(const char* command, idUserInterface* gui) { commands.push_back(command); if (publish) publish(gui); }
 } gameObject, *game = &gameObject;
 struct CVar { bool value = false; bool GetBool() const { return value; } } ui_retained, ui_retainedSystem;
-enum { SE_NONE = 0, CMD_EXEC_APPEND = 1 };
-struct sysEvent_t { int evType = SE_NONE; };
+enum { SE_NONE = 0, CMD_EXEC_APPEND = 1, SE_KEY = 2, SE_MOUSE = 3 };
+enum { K_ESCAPE = 27, K_ENTER = 13, K_JOY4 = 200, K_JOY7 = 203, K_JOY8 = 204 };
+struct sysEvent_t { int evType = SE_NONE, evValue = 0, evValue2 = 0; };
 struct idUserInterface {
     std::string source; bool active = false, failed = false; int activations = 0, deactivations = 0;
     std::vector<std::string> named; std::map<std::string, std::string> state;
@@ -143,7 +145,8 @@ struct idUserInterface {
     const char* Name() const { return source.c_str(); }
     const char* Activate(bool value, int) { active = value; ++(value ? activations : deactivations); return ""; }
     void HandleNamedEvent(const char* name) { named.push_back(name); }
-    const char* HandleEvent(const sysEvent_t*, int) { return ""; }
+    std::vector<sysEvent_t> events;
+    const char* HandleEvent(const sysEvent_t* event, int) { events.push_back(*event); return ""; }
     void SetStateBool(const char* key, bool value) { state[key] = value ? "1" : "0"; }
     void SetStateInt(const char* key, int value) { state[key] = std::to_string(value); }
     struct StateView {
@@ -167,6 +170,7 @@ static int MenuControllerAbs(int value) { return value < 0 ? -value : value; }
 struct idMath {
     static float ClampFloat(float low, float high, float value) { return value < low ? low : value > high ? high : value; }
     static float Fabs(float value) { return value < 0 ? -value : value; }
+    static int ClampInt(int low, int high, int value) { return value < low ? low : value > high ? high : value; }
 };
 struct Manager {
     std::vector<std::unique_ptr<idUserInterface>> storage; std::vector<std::string> loads; bool fail = false;
@@ -174,6 +178,8 @@ struct Manager {
     idUserInterface* FindGui(const char* path, bool autoLoad, bool unique, bool shared) {
         loads.push_back(path); flags.push_back({autoLoad, unique, shared});
         if (fail) return nullptr;
+        if (shared && !unique)  // the manager keeps one shared instance per path
+            for (const auto& gui : storage) if (gui->source == path) return gui.get();
         storage.push_back(std::make_unique<idUserInterface>(path)); return storage.back().get();
     }
 } managerObject, *uiManager = &managerObject;
@@ -214,6 +220,8 @@ public:
     int retainedPauseStrogg = -1;
     ID_TIME_T retainedNewestSave = 0;
     idUserInterface* guiRetainedReleasing = nullptr; int retainedReleaseUntil = 0;
+    idUserInterface* retainedSubpageFrom = nullptr; bool retainedSubpageDeeper = false; int retainedSubpageBegan = 0, retainedSubpageUntil = 0;
+    void BeginRetainedSubpage(idUserInterface*, bool); void UpdateRetainedSubpage(); bool RetainedSubpageEvent(const sysEvent_t*);
     bool retainedHomeReturning = false;
     idStrList retainedStock;
     int retainedHandoffUntil = 0;
@@ -239,8 +247,9 @@ public:
     void UpdateRetainedHome(); bool RetainedHomeInputBlocked() const; void RetainedHomeFrameEvent();
     void HandleRetainedSessionRequest(idUserInterface*, const char*);
     void OpenCampaignSelector(bool);
-    void SelectCampaign(const char*) {}
-    void StartMenu() {}
+    std::vector<std::string> selected; int menus = 0;
+    void SelectCampaign(const char* campaign) { selected.push_back(campaign); }
+    void StartMenu() { ++menus; }
     void SetGUI(idUserInterface* gui, void*) { guiActive = gui; }
     idUserInterface* SelectRetainedLoadingGui(idUserInterface*, bool);
     idUserInterface* FindRetainedGui(const char*, bool, bool);
@@ -448,6 +457,57 @@ int main() {
         missing.OpenCampaignSelector(false); CHECK(arenaCampaign.selectors == 2 && commonObject.warnings.empty());
         auto broken = Session(true); managerObject.fail = true; broken.OpenCampaignSelector(false);
         CHECK(arenaCampaign.selectors == 1 && commonObject.warnings.size() == 1);
+    }
+    {   // Single Player and its Campaign sub-page (spec 1.10): the leaving document
+        // plays its half, the other presents at the hand-over (350 ms deeper, 300 ms
+        // on Back), and input waits for it.
+        auto s = Session(true); s.OpenCampaignSelector(false); auto* page = s.guiActive;
+        s.HandleRetainedSessionRequest(page, "campaigns");
+        CHECK(s.guiActive == page && page->named.back() == "subpageEnter" && s.retainedSubpageFrom == page && s.retainedSubpageDeeper);
+        CHECK(s.retainedSubpageUntil == commonObject.time + 350);
+        const size_t enterEvents = page->named.size();
+        s.HandleRetainedSessionRequest(page, "campaignArena"); s.HandleRetainedSessionRequest(page, "campaigns");
+        CHECK(s.guiActive == page && s.selected.empty() && page->named.size() == enterEvents);  // no second request mid-change
+        // Input waits: a press is held, a release still reaches the page.
+        sysEvent_t press; press.evType = SE_KEY; press.evValue = K_ENTER; press.evValue2 = 1;
+        sysEvent_t release = press; release.evValue2 = 0;
+        CHECK(s.RetainedSubpageEvent(&press) && page->events.empty());
+        CHECK(s.RetainedSubpageEvent(&release) && page->events.size() == 1 && page->events[0].evValue2 == 0);
+        commonObject.time += 349; s.UpdateRetainedSubpage(); CHECK(s.guiActive == page);
+        commonObject.time += 1; s.UpdateRetainedSubpage(); auto* sub = s.guiActive;
+        CHECK(sub && std::string(sub->Name()) == "guis/menu/campaigns.q4ui" && s.retainedSubpageFrom == nullptr);
+        CHECK(!s.RetainedSubpageEvent(&press));  // the sub-page takes input again
+        s.HandleRetainedSessionRequest(sub, "campaignBack");
+        CHECK(s.guiActive == sub && sub->named.back() == "subpageLeave" && !s.retainedSubpageDeeper && s.retainedSubpageUntil == commonObject.time + 300);
+        sysEvent_t back = press; back.evValue = K_ESCAPE;
+        CHECK(s.RetainedSubpageEvent(&back) && s.retainedSubpageFrom == sub);  // Back does not reverse a Back
+        commonObject.time += 300; s.UpdateRetainedSubpage();
+        CHECK(s.guiActive == page && page->named.back() == "subpageReturn");
+        // Back while going deeper reverses the change from where it stands, by
+        // the distance the band has stepped since 50 ms: 150 ms at least ...
+        s.HandleRetainedSessionRequest(page, "campaigns"); commonObject.time += 120;
+        CHECK(s.RetainedSubpageEvent(&back) && page->named.back() == "subpageReverse150" && s.retainedSubpageFrom == nullptr && s.guiActive == page);
+        s.UpdateRetainedSubpage(); CHECK(s.guiActive == page);
+        // ... and 250 ms once it has stepped most of the way.
+        s.HandleRetainedSessionRequest(page, "campaigns"); commonObject.time += 280;
+        sysEvent_t pad = back; pad.evValue = K_JOY4;
+        CHECK(s.RetainedSubpageEvent(&pad) && page->named.back() == "subpageReverse250");
+        // Reduced motion hands over at once: the arrival's 80 ms fade is the change.
+        cvarSystemObject.strings["ui_retainedReducedMotion"] = "1";
+        s.HandleRetainedSessionRequest(page, "campaigns");
+        CHECK(std::string(s.guiActive->Name()) == "guis/menu/campaigns.q4ui" && s.retainedSubpageFrom == nullptr && page->named.back() != "subpageEnter");
+        s.HandleRetainedSessionRequest(s.guiActive, "campaignBack");
+        CHECK(s.guiActive == page && page->named.back() == "subpageReturn" && s.retainedSubpageFrom == nullptr);
+        cvarSystemObject.strings["ui_retainedReducedMotion"] = "0";
+        // Anything else taking the screen abandons the change.
+        s.HandleRetainedSessionRequest(page, "campaigns");
+        idUserInterface other("guis/msg.gui"); s.guiActive = &other; s.UpdateRetainedSubpage();
+        CHECK(s.retainedSubpageFrom == nullptr && s.guiActive == &other);
+        // A sub-page that cannot present: its stock selector opens at once.
+        auto stock = Session(true); stock.OpenCampaignSelector(false); auto* alone = stock.guiActive;
+        fileSystemObject.files.erase("guis/menu/campaigns.q4ui");
+        stock.HandleRetainedSessionRequest(alone, "campaigns");
+        CHECK(std::string(stock.guiActive->Name()) == "guis/campaign_menu.gui" && stock.retainedSubpageFrom == nullptr && alone->named.empty());
     }
     {   // The gate alone keeps the stock SYSTEM page while the retained one lacks stock settings;
         // ui_retainedSystem opts into it until it falls back.
@@ -835,6 +895,31 @@ def main() -> int:
     fades = [item for item in loading_doc['timelines'] if item['id'].startswith('arsenal')]
     assert sorted(item['id'] for item in fades) == sorted(f'arsenal{index}' for index in range(1, arsenal_count + 1))
     assert all(item['durationMs'] == 150 for item in fades)
+    # The sub-page change: the frame pump runs the hand-over, MenuEvent holds
+    # input meanwhile, and the documents' halves last as long as the session
+    # waits.
+    pump = function_body(menu, 'void idSessionLocal::GuiFrameEvents(')
+    assert pump.index('UpdateRetainedHome();') < pump.index('UpdateRetainedSubpage();') < pump.index('if ( guiTest ) {')
+    menu_event = function_body(menu, 'void idSessionLocal::MenuEvent(')
+    assert menu_event.index('if ( RetainedSubpageEvent( event ) ) {') < menu_event.index('HandleEvent(')
+    waits = {name: int(re.search(rf'static const int RETAINED_SUBPAGE_{name}_MSEC = (\d+);', menu).group(1)) for name in ('DEEPER', 'BACK')}
+    for name, event in (('singleplayer', 'subpageEnter'), ('campaigns', 'subpageLeave')):
+        text = (ROOT / f'content/baseoq4/pak0/guis/menu/{name}.q4ui').read_text(encoding='utf-8')
+        document = json.loads(re.sub(r'^\s*//.*$', '', text, flags=re.M))
+        timelines = {item['id']: item for item in document['timelines']}
+        assert timelines[event]['durationMs'] == waits['DEEPER' if event == 'subpageEnter' else 'BACK'], name
+        assert document['events']['onDeactivate'][0] == {'op': 'playTimeline', 'timeline': 'rest'}, name
+        # Rest returns everything a change moves, so a hidden document never
+        # presents moved (the crumb's fitted scale rests in crumbRest).
+        moved = {(track['node'], track['property']) for item in timelines.values()
+                 if item['id'].startswith(('subpage', 'crumbEnter', 'crumbReturn')) for track in item['tracks']}
+        rested = {(track['node'], track['property']) for item in timelines.values()
+                  if item['id'] == 'rest' or item['id'].startswith('crumbRest') for track in item['tracks']}
+        assert moved <= rested, (name, sorted(moved - rested))
+    reversals = sorted(int(item['id'][len('subpageReverse'):]) for item in json.loads(re.sub(r'^\s*//.*$', '',
+        (ROOT / 'content/baseoq4/pak0/guis/menu/singleplayer.q4ui').read_text(encoding='utf-8'), flags=re.M))['timelines']
+        if item['id'].startswith('subpageReverse'))
+    assert reversals == [150, 200, 250, 300], reversals
     saving = function_body(session, 'bool idSessionLocal::SaveGame(')
     assert saving.index('operationGuard.Complete();') < saving.index('retainedNewestSave = time( NULL );') < saving.index('return true;', saving.index('operationGuard.Complete();'))
 
@@ -878,6 +963,8 @@ def main() -> int:
         'void idSessionLocal::UpdateRetainedHome(', 'idUserInterface *idSessionLocal::RetainedHomeDocument(',
         'bool idSessionLocal::RetainedPauseIsStrogg(', 'void idSessionLocal::RetainedHomeFrameEvent(',
         'void idSessionLocal::HandleRetainedSessionRequest(', 'static bool Session_ModSuppliesFile(',
+        'void idSessionLocal::BeginRetainedSubpage(', 'void idSessionLocal::UpdateRetainedSubpage(',
+        'bool idSessionLocal::RetainedSubpageEvent(',
         'idUserInterface *idSessionLocal::SelectRetainedLoadingGui(',
         'void idSessionLocal::PreloadRetainedScreens(', 'void idSessionLocal::PrepareRetainedLevel(',
         'void idSessionLocal::ReportRetainedScreens(')]

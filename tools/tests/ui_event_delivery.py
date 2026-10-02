@@ -68,6 +68,8 @@ struct idSessionLocal {
     idUserInterface* guiRetainedHome=nullptr;
     void UpdateRetainedHome() {}
     void RetainedHomeFrameEvent() {}
+    void UpdateRetainedSubpage() {}
+    bool RetainedSubpageEvent(const sysEvent_t*) { return false; }
     void HandleRetainedSessionRequest(idUserInterface*,const char*) { assert(false); }
 };
 static void PumpControllerMenuNavigation(idSessionLocal*) {}

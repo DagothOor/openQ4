@@ -3799,6 +3799,10 @@ void idSessionLocal::Clear() {
 	retainedNewestSave = 0;
 	guiRetainedReleasing = NULL;
 	retainedReleaseUntil = 0;
+	retainedSubpageFrom = NULL;
+	retainedSubpageDeeper = false;
+	retainedSubpageBegan = 0;
+	retainedSubpageUntil = 0;
 	retainedHomeReturning = false;
 	retainedStock.Clear();
 	retainedHandoffUntil = 0;
