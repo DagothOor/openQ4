@@ -199,6 +199,7 @@ public:
     idUserInterface *guiRetainedHome = nullptr, *guiRetainedTitle = nullptr, *guiRetainedPause = nullptr, *guiRetainedPauseStrogg = nullptr;
     int retainedPauseStrogg = -1;
     ID_TIME_T retainedNewestSave = 0;
+    idUserInterface* guiRetainedReleasing = nullptr; int retainedReleaseUntil = 0;
     bool retainedHomeReturning = false;
     idStrList retainedStock;
     int retainedHandoffUntil = 0;
@@ -267,7 +268,7 @@ int main() {
         s.HandleRetainedSessionRequest(s.guiMainMenu, "quit");
         CHECK(commonObject.quits == 0 && legacyActions.empty());
         s.ReportRetainedScreens();
-        CHECK(commonObject.output.find("OPENQ4_RETAINED enabled=0 system=0 home=- title=0 pause=0 strogg=0 handoff=0 views=0 stock=-") != std::string::npos);
+        CHECK(commonObject.output.find("OPENQ4_RETAINED enabled=0 system=0 home=- title=0 pause=0 strogg=0 handoff=0 release=0 views=0 stock=-") != std::string::npos);
         // Off, the campaign selectors are the stock ones and nothing retained loads.
         s.OpenCampaignSelector(false); CHECK(arenaCampaign.selectors == 1 && managerObject.loads.empty());
         s.OpenCampaignSelector(true); CHECK((managerObject.loads == std::vector<std::string>{"guis/campaign_menu.gui"}));
@@ -494,8 +495,10 @@ int main() {
         CHECK((managerObject.loads == std::vector<std::string>{"guis/menu/pause_strogg.q4ui"}));
         s.HandleRetainedSessionRequest(strogg, "resume"); CHECK(s.exits == 1);
         s.UpdateRetainedHome(); CHECK(s.guiRetainedHome == nullptr && !strogg->active);
+        CHECK(strogg->named.back() == "release" && s.guiRetainedReleasing == strogg);  // either family releases the softened view
         s.guiActive = s.guiMainMenu; s.UpdateRetainedHome();
         CHECK(s.guiRetainedHome == strogg && std::count(gameObject.commands.begin(), gameObject.commands.end(), "retainedPauseFamily") == 1);
+        CHECK(s.guiRetainedReleasing == nullptr && strogg->named.back() == "open");  // pausing again during the release reopens it
         s.ReportRetainedScreens(); CHECK(commonObject.output.find("pause=0 strogg=1 handoff=0") != std::string::npos);
         // Each level asks again: a Marine level pauses in the Marine family.
         s.ExitMenu(); s.UpdateRetainedHome(); s.PrepareRetainedLevel("game/airdefense1", false);
@@ -517,6 +520,29 @@ int main() {
         CHECK((Stock(missing) == std::vector<std::string>{"guis/menu/pause_strogg.q4ui"}));
         // The title never asks the game.
         auto title = Session(true); title.UpdateRetainedHome(); CHECK(gameObject.commands.empty());
+    }
+    {   // RESUME closes the pause screen at once, but the closed screen keeps
+        // drawing over the running game for 250 ms while the softened view
+        // releases; anything else taking the screen ends the release.
+        auto s = Session(true, true); s.UpdateRetainedHome(); auto* pause = s.guiRetainedHome;
+        CHECK(pause && std::string(pause->Name()) == "guis/menu/pause.q4ui" && s.guiRetainedReleasing == nullptr);
+        s.HandleRetainedSessionRequest(pause, "resume"); s.UpdateRetainedHome();
+        CHECK(s.guiRetainedHome == nullptr && !pause->active && pause->deactivations == 1);
+        CHECK(pause->named.back() == "release" && s.guiRetainedReleasing == pause && s.retainedReleaseUntil == commonObject.time + 250);
+        s.ReportRetainedScreens(); CHECK(commonObject.output.find("home=- title=0 pause=1 strogg=0 handoff=0 release=1") != std::string::npos);
+        commonObject.time += 249; s.UpdateRetainedHome(); CHECK(s.guiRetainedReleasing == pause && !pause->active);
+        commonObject.time += 1; s.UpdateRetainedHome(); CHECK(s.guiRetainedReleasing == nullptr && pause->activations == 1);
+        // A disconnect or a level load ends it at once.
+        s.guiActive = s.guiMainMenu; s.UpdateRetainedHome(); s.ExitMenu(); s.UpdateRetainedHome(); CHECK(s.guiRetainedReleasing == pause);
+        s.mapSpawned = false; s.UpdateRetainedHome(); CHECK(s.guiRetainedReleasing == nullptr);
+        s.mapSpawned = true; s.guiActive = s.guiMainMenu; s.UpdateRetainedHome(); s.ExitMenu(); s.UpdateRetainedHome();
+        s.PrepareRetainedLevel("game/airdefense1", false); CHECK(s.guiRetainedReleasing == nullptr);
+        // The pause handing over to another screen, and the title closing, release nothing.
+        s.guiActive = s.guiMainMenu; s.UpdateRetainedHome(); idUserInterface other("guis/msg.gui"); s.guiActive = &other;
+        s.UpdateRetainedHome(); CHECK(s.guiRetainedHome == nullptr && s.guiRetainedReleasing == nullptr && pause->named.back() != "release");
+        auto title = Session(true); title.UpdateRetainedHome(); auto* home = title.guiRetainedHome;
+        title.mapSpawned = true; title.ExitMenu(); title.UpdateRetainedHome();  // CONTINUE: the title closes into a level
+        CHECK(home && std::string(home->Name()) == "guis/menu/title.q4ui" && title.guiRetainedReleasing == nullptr && home->named.back() != "release");
     }
     {   // The Objectives page: the game lists every objective screenshot of the level,
         // which resolves inside the load, and a published screenshot shows only when
@@ -744,6 +770,22 @@ def main() -> int:
     images = game[game.index('!idStr::Icmp( menuCommand, "retainedLevelImages" )'):]
     assert 'ent->IsType( idObjective::GetClassType() )' in images[:images.index('gui->SetStateInt( "level_image_count", images );')]
     assert 'player->inventory.objectiveNames[ i ].screenshot' in images[:images.index('gui->SetStateInt( "level_image_count", images );')]
+    draw = session[session.index('} else if ( mapSpawned ) {'):]
+    draw = draw[:draw.index('} else {')]
+    assert draw.index('gameDraw = game->Draw( GetLocalClientNum() );') < draw.index('renderSystem->WriteDemoPics();') < \
+        draw.index('guiRetainedReleasing->Redraw( presentationTime );')
+    assert session.count('guiRetainedReleasing->Redraw(') == 1
+    release_ms = int(re.search(r'static const int RETAINED_RELEASE_MSEC = (\d+);', menu).group(1))
+    for name in ('pause', 'pause_strogg'):
+        text = (ROOT / f'content/baseoq4/pak0/guis/menu/{name}.q4ui').read_text(encoding='utf-8')
+        document = json.loads(re.sub(r'^\s*//.*$', '', text, flags=re.M))
+        release = next(item for item in document['timelines'] if item['id'] == 'release')
+        assert release['durationMs'] == release_ms, name
+        # Every activation after a release shows the screen again, whether
+        # open or returnHome follows.
+        reset = document['events']['onActivate'][0]
+        assert reset['op'] == 'if' and reset['condition'] == {'state': 'pause.released'}, name
+        assert {'op': 'setState', 'values': {'pause.released': False}} in reset['then'], name
     saving = function_body(session, 'bool idSessionLocal::SaveGame(')
     assert saving.index('operationGuard.Complete();') < saving.index('retainedNewestSave = time( NULL );') < saving.index('return true;', saving.index('operationGuard.Complete();'))
 
@@ -760,7 +802,8 @@ def main() -> int:
         document = json.loads(re.sub(r'^\s*//.*$', '', text, flags=re.M))
         assert document.get('canvas') == {'height': 720}, relative
         if 'pause' in relative:
-            layers = [child['id'] for child in document['root']['children']]
+            assert [child['id'] for child in document['root']['children']] == ['scene-softfocus', 'scrim', 'chrome'], relative
+            layers = [child['id'] for child in document['root']['children'][2]['children']]
             assert layers.index('objectives-bar') < layers.index('band-top') < layers.index('objectives'), relative
         for action in document.get('actions', {}).values():
             assert action['operation'] == 'session.menu' and action['arguments']['command'] in allowlist, relative

@@ -4700,6 +4700,9 @@ static const char *const RETAINED_CAMPAIGNS_GUI = "guis/menu/campaigns.q4ui";
 // covers the legacy departure for that long before the page takes over.
 static const int RETAINED_PAGE_HANDOFF_MSEC = 550;
 static const int RETAINED_POPUP_HANDOFF_MSEC = 200;
+// Returning to the game releases the paused view's soft focus over 250 ms,
+// as the modal backdrop does (section 4).
+static const int RETAINED_RELEASE_MSEC = 250;
 
 typedef struct retainedHandoff_s {
 	const char *	request;
@@ -4892,6 +4895,12 @@ void idSessionLocal::UpdateRetainedHome() {
 	bool returning = false;
 	bool fromPopup = false;
 	const int now = common->GetPresentationTime();
+	// A release ends after its 250 ms, or as soon as anything but the game
+	// takes the screen again.
+	if ( guiRetainedReleasing != NULL && ( now >= retainedReleaseUntil || guiActive != NULL || !mapSpawned ) ) {
+		guiRetainedReleasing = NULL;
+		retainedReleaseUntil = 0;
+	}
 	const bool context = Session_RetainedScreensEnabled() && guiMainMenu != NULL && guiActive == guiMainMenu &&
 		guiTest == NULL && !RetainedUI_IsOpen() && ( !mapSpawned || !IsMultiplayer() );
 	if ( context && !MainMenuWindowStateIsNonZero( guiMainMenu, "desktop::video_check" ) ) {
@@ -4925,6 +4934,16 @@ void idSessionLocal::UpdateRetainedHome() {
 	retainedHandoffUntil = 0;
 	if ( previous != NULL ) {
 		previous->Activate( false, now );
+		// Returning to the game closes the pause screen at once (section 8),
+		// but the softened view releases over 250 ms as the modal backdrop
+		// does (section 4): the closed screen keeps drawing only that, over
+		// the running game, without input or cursor.
+		if ( want == NULL && guiActive == NULL && mapSpawned &&
+				( previous == guiRetainedPause || previous == guiRetainedPauseStrogg ) ) {
+			previous->HandleNamedEvent( "release" );
+			guiRetainedReleasing = previous;
+			retainedReleaseUntil = now + RETAINED_RELEASE_MSEC;
+		}
 		PumpApplicationActions( previous );
 	}
 	if ( want != NULL ) {
@@ -5144,6 +5163,8 @@ void idSessionLocal::PrepareRetainedLevel( const char *mapPath, bool multiplayer
 	// mid-frame, even when the gate was switched on after startup. Whether
 	// the player is Strogg is asked again of each level.
 	retainedPauseStrogg = -1;
+	guiRetainedReleasing = NULL;
+	retainedReleaseUntil = 0;
 	if ( !Session_RetainedScreensEnabled() || multiplayer ) {
 		return;
 	}
@@ -5171,9 +5192,10 @@ void idSessionLocal::ReportRetainedScreens() {
 		stock += i > 0 ? "," : "";
 		stock += retainedStock[i];
 	}
-	common->Printf( "OPENQ4_RETAINED enabled=%d system=%d home=%s title=%d pause=%d strogg=%d handoff=%d views=%d stock=%s\n",
+	common->Printf( "OPENQ4_RETAINED enabled=%d system=%d home=%s title=%d pause=%d strogg=%d handoff=%d release=%d views=%d stock=%s\n",
 		Session_RetainedScreensEnabled() ? 1 : 0, Session_RetainedSystemEnabled() ? 1 : 0,
 		guiRetainedHome != NULL ? guiRetainedHome->Name() : "-",
 		guiRetainedTitle != NULL ? 1 : 0, guiRetainedPause != NULL ? 1 : 0, guiRetainedPauseStrogg != NULL ? 1 : 0,
-		RetainedHomeInputBlocked() ? 1 : 0, RetainedUI_ViewCount(), stock.Length() > 0 ? stock.c_str() : "-" );
+		RetainedHomeInputBlocked() ? 1 : 0, guiRetainedReleasing != NULL ? 1 : 0, RetainedUI_ViewCount(),
+		stock.Length() > 0 ? stock.c_str() : "-" );
 }

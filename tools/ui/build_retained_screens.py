@@ -1983,7 +1983,7 @@ def pause_document(strogg: bool = False) -> dict:
                                          "backdrop-saturate": number(SOFT_FOCUS_SATURATION)})
     doc.bind("scene-softfocus.display", "scene-softfocus", "display", {"op": "select", "args": [{"state": "soft_focus"}, "block", "none"]})
     doc.bind("scrim.display", "scrim", "display", {"op": "select", "args": [{"state": "soft_focus"}, "none", "block"]})
-    scrim = vector("scrim", {**FULL, "display": keyword("block")}, [
+    scrim = vector("scrim", {**FULL, "display": keyword("block"), "opacity": number(1)}, [
         path("dim", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})], fill=solid([0, 0, 0, 0.45])),
         path("lead", [(0, 0), (vx(413), 0), (vx(413), {"fraction": 1}), (0, {"fraction": 1})],
              fill=linear((vx(-107), 0), (vx(413), 0), [(0, [0, 0, 0, 0.7]), (0.55, [0, 0, 0, 0.35]), (1, [0, 0, 0, 0])])),
@@ -2005,9 +2005,10 @@ def pause_document(strogg: bool = False) -> dict:
         bands = framing_bands("band")
         prompt = prompt_bar(doc, prompts)
         carry = title_carry(doc, carries)
-    root = group("screen", {**FULL, "font-family": font("marine"), "font-size": length(16), "color": colour([1, 1, 1, 0.8])}, [
-        softened,
-        scrim,
+    # Everything but the softened view and its stand-in: returning to the
+    # game hides it at once (section 8), while the backdrop releases.
+    doc.state["pause.released"] = {"type": "boolean", "initial": False}
+    chrome = group("chrome", {**FULL, "display": keyword("block")}, [
         *field,
         objectives_bar,
         *bands,
@@ -2018,6 +2019,12 @@ def pause_document(strogg: bool = False) -> dict:
         quit_modal,
         exit_modal,
         group("fade", {**FULL, "background-color": colour([0, 0, 0, 0]), "pointer-events": keyword("none")}),
+    ])
+    doc.bind("chrome.display", "chrome", "display", {"op": "select", "args": [{"state": "pause.released"}, "none", "block"]})
+    root = group("screen", {**FULL, "font-family": font("marine"), "font-size": length(16), "color": colour([1, 1, 1, 0.8])}, [
+        softened,
+        scrim,
+        chrome,
     ])
     band_motion(doc, "band", "home", [], quick=("plinth",))
     # The softened view rests at modal.softfocus, so a page's return keeps it.
@@ -2034,9 +2041,31 @@ def pause_document(strogg: bool = False) -> dict:
         translation.finish(doc)
     # A pause can close without Back (a console load or disconnect); every
     # opening starts at home without the Objectives page, prompts showing.
-    opening["tracks"].append(track("prompts", "opacity", [(0, number(1)), (1, number(1)), (250, number(1))]))
-    reset = {"op": "setState", "values": {"objectives.visible": False, "objectives.leaving": False}}
+    opening["tracks"] += [track(node, "opacity", [(0, number(1)), (1, number(1)), (250, number(1))]) for node in ("prompts", "scrim")]
+    reset = {"op": "setState", "values": {"objectives.visible": False, "objectives.leaving": False, "pause.released": False}}
     doc.events["open"] = [reset, *doc.events.get("open", [{"op": "playTimeline", "timeline": "open"}])]
+    # Returning to the game closes the screen at once (section 8), but the
+    # softened view, or the scrim standing in for it, releases over 250 ms as
+    # the modal backdrop does (section 4); the session keeps drawing the
+    # closed screen over the running game until then.
+    doc.timelines.add("release", 250, [
+        track("scene-softfocus", "backdrop-blur", [(0, length(SOFT_FOCUS_BLUR)), (250, length(0))]),
+        track("scene-softfocus", "backdrop-saturate", [(0, number(SOFT_FOCUS_SATURATION)), (250, number(1))]),
+        track("scrim", "opacity", [(0, number(1)), (250, number(0))]),
+    ])
+    doc.events["release"] = [{"op": "setState", "values": {"pause.released": True}}, {"op": "playTimeline", "timeline": "release"}]
+    # The pause can come back through returnHome as well as open: a page left
+    # with Back before the legacy menu reached home. Every activation after a
+    # release shows the screen again and ramps the softened view back in;
+    # when open follows, its own play of the same properties takes over.
+    doc.timelines.add("unrelease", 250, [
+        track("scene-softfocus", "backdrop-blur", [(0, length(0)), (1, length(0)), (250, length(SOFT_FOCUS_BLUR))]),
+        track("scene-softfocus", "backdrop-saturate", [(0, number(1)), (1, number(1)), (250, number(SOFT_FOCUS_SATURATION))]),
+        track("scrim", "opacity", [(0, number(1)), (1, number(1)), (250, number(1))]),
+    ])
+    doc.events["onActivate"] = [{"op": "if", "condition": {"state": "pause.released"},
+                                 "then": [{"op": "setState", "values": {"pause.released": False}},
+                                          {"op": "playTimeline", "timeline": "unrelease"}]}]
     return doc.build(root)
 
 

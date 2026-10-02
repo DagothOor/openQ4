@@ -116,7 +116,15 @@ after editing the script; `--check` fails when an output is stale.
   it takes `modal.softfocus` (a 7.5 dp blur at 0.80 saturation), ramping in
   over 250 ms with the screen's fade from black. With the opaque-backing
   option, or on a renderer that cannot soften the view, a darkening scrim and
-  vignette stand in. Back resumes the game.
+  vignette stand in. Back resumes the game. RESUME closes the screen at once
+  (section 8), but the softened view, or the scrim standing in for it,
+  releases over 250 ms as the modal backdrop does (section 4): the session
+  keeps drawing the closed screen over the running game for those 250 ms,
+  with no input and no cursor. Pausing again during the release reopens the
+  screen at once, and a disconnect or level load ends the release. Every
+  activation after a release shows the screen again and ramps the softened
+  view back in, including a return through a page's Back; like the first
+  pause, it opens with no action focused.
 - **Objectives page** (sections 13.7 and 14.11). OBJECTIVES opens the
   objectives display in its Remastered form as a page of the pause:
   - **Hand-off.** Choosing it docks the bands as a page hand-off does and
@@ -355,8 +363,9 @@ loads on demand and reports it once.
 
 `ui_retainedStatus` prints one `OPENQ4_RETAINED` line: the gate, the SYSTEM
 opt-in, the presented home screen, which home documents are loaded, whether a
-hand-off is in progress, the number of live retained views (0 while the gate
-is off) and, after `stock=`, the documents that fell back to their stock
+hand-off is in progress, whether a closed pause screen is releasing the
+softened view, the number of live retained views (0 while the gate is off)
+and, after `stock=`, the documents that fell back to their stock
 screens this session (`-` when none). `ui_retainedTrace 1` also logs each
 session request with whether the adapter accepted it, and each loading phase as
 `RETAINED_LOADING_PHASE`. With `developer 1` the log also names the reason for
@@ -411,7 +420,11 @@ controller or the mouse switches the prompt.
 - `tools/tests/ui_retained_gate.py` qualifies the gate as described above,
   including the startup preload, the level-load precache, the loading phase
   line and the published pointer, and pins the frame pump order that lets
-  RESUME retire the pause screen. It covers the Strogg pause's selection: the
+  RESUME retire the pause screen. It covers the release after RESUME: the
+  closed screen kept for 250 ms and then let go, a new pause, a disconnect
+  or a level load ending it, and nothing released when the pause hands over
+  to another screen or the title closes; it pins the release's draw over the
+  game and its 250 ms against the documents' timeline. It covers the Strogg pause's selection: the
   game asked once a level and again after each level load, the title never
   asking, and the Marine pause standing in for a Strogg pause that is not
   installed or stopped drawing. It pins the game's `retainedPauseFamily`
@@ -610,6 +623,16 @@ tests pass. Evidence:
 `.tmp/ui/retained-pause-objectives-page/validation-evidence.json`, SHA-256
 `f700445cf82cb8e6e7e01ba64b30bdbe8e55adcb22fbb0237e23d9976f0577c6`.
 
+The release after RESUME was captured over airdefense1 and game/recomp on
+OpenGL and Vulkan at 1280x720: about 100 ms after RESUME the screen is gone
+and the running game, HUD included, is still softened (a quarter of the
+resumed view's sharpness on both renderers), and the status line reports
+the release; 800 ms after it the view is sharp and the release has ended.
+With `ui_retained 0` nothing retained loaded and nothing was released. All
+runs exited cleanly with no errors, and all 109 Meson tests pass. Evidence:
+`.tmp/ui/retained-pause-release/validation-evidence.json`, SHA-256
+`f7e0da538649ac0ccb7f21133ffd74133909e3bf25dc342bad0d57a48ef8f957`.
+
 ## Known limitations
 
 - The completed objectives are kept per map and not saved, so after loading a
@@ -622,9 +645,10 @@ tests pass. Evidence:
   not drift. Its translation is the menu's short form: the full credits
   translation, with its 2000 ms rune fade-in and 250 ms line stagger, is not
   built.
-- Resuming, or leaving the pause any other way, drops the softened view at
-  once instead of releasing it over 250 ms, and the HUD's crosshair still
-  shows through the darkening fallback.
+- Only RESUME releases the softened view over 250 ms: a disconnect, a level
+  load or a hand-over to another screen drops it at once, as each replaces
+  the view behind it. The HUD's crosshair still shows through the darkening
+  fallback.
 - Soft focus covers the confirmations, the pause screen and the SYSTEM
   page's two dialogs. The SYSTEM dialogs have no enter or leave motion, so
   their soft focus switches with their visibility. The opaque-backing option

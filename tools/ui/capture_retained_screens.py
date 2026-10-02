@@ -54,8 +54,10 @@ SCENARIOS = {
         'openq4_retainedGui event quitModalShow', 'waitMsec 500', 'screenshot "screenshots/pause-quit.tga"',
         # The modal holds focus until its 300 ms leave completes.
         'openq4_retainedGui event quitModalHide', 'waitMsec 600',
+        # RESUME closes the screen at once; the softened view releases over 250 ms.
         'openq4_retainedGui focus nav_resume', 'openq4_retainedGui menu accept 1', 'openq4_retainedGui menu accept 0',
-        'waitMsec 800', 'ui_retainedStatus', 'screenshot "screenshots/pause-resumed.tga"',
+        'waitMsec 100', 'ui_retainedStatus', 'screenshot "screenshots/pause-releasing.tga"',
+        'waitMsec 700', 'ui_retainedStatus', 'screenshot "screenshots/pause-resumed.tga"',
     ]),
     # The level block's open objectives: airdefense1's first two objective
     # entities fire before the pause menu opens (trigger works in single player).
@@ -75,7 +77,8 @@ SCENARIOS = {
         'openq4_retainedGui event quitModalShow', 'waitMsec 500', 'screenshot "screenshots/pause-strogg-quit.tga"',
         'openq4_retainedGui event quitModalHide', 'waitMsec 600',
         'openq4_retainedGui focus nav_resume', 'openq4_retainedGui menu accept 1', 'openq4_retainedGui menu accept 0',
-        'waitMsec 800', 'ui_retainedStatus', 'screenshot "screenshots/pause-strogg-resumed.tga"',
+        'waitMsec 100', 'ui_retainedStatus', 'screenshot "screenshots/pause-strogg-releasing.tga"',
+        'waitMsec 700', 'ui_retainedStatus', 'screenshot "screenshots/pause-strogg-resumed.tga"',
     ]),
     # The OBJECTIVES page: airdefense1's first objective completed and two
     # more held, so the page lists two plates and one completed row.

@@ -531,6 +531,69 @@ int main(int argc, char** argv) {
 			runtime.Frame(viewport,5.125);
 			const auto again = runtime.PresentedValue("scene-softfocus","backdrop-blur");
 			Check(again && Near(static_cast<float>(again->data[0]),3.75f,.05f),"each pause ramps the softening in from nothing");
+			// Returning to the game hides the screen at once (section 8) and
+			// releases the softened view over 250 ms, as the modal backdrop
+			// does (section 4).
+			runtime.Frame(viewport,5.5);
+			Runtime::EventEffects release;
+			Check(runtime.RunEvent("release",5.6,release,error),"the game resumes");
+			host.softened.clear();
+			runtime.Frame(viewport,5.6);
+			const auto closed = runtime.PresentedValue("chrome","display");
+			Check(closed && closed->text == "none" && host.softened.size() == 1 && Near(host.softened[0].sigma,7.5f,.01f) &&
+				runtime.Statistics().backdropComposites == 1,"the screen closes at once over the still-softened view");
+			runtime.Frame(viewport,5.725);
+			const auto releasing = runtime.PresentedValue("scene-softfocus","backdrop-blur");
+			const auto resaturating = runtime.PresentedValue("scene-softfocus","backdrop-saturate");
+			Check(releasing && Near(static_cast<float>(releasing->data[0]),3.75f,.05f) && resaturating &&
+				Near(static_cast<float>(resaturating->data[0]),.9f,.005f),"the softened view releases over 250 ms");
+			runtime.Frame(viewport,5.9);
+			const auto clear = runtime.PresentedValue("scene-softfocus","backdrop-blur");
+			const auto saturated = runtime.PresentedValue("scene-softfocus","backdrop-saturate");
+			Check(clear && Near(static_cast<float>(clear->data[0]),0,.001f) && saturated && Near(static_cast<float>(saturated->data[0]),1,.001f),
+				"and is clear by 250 ms");
+			// Without soft focus the scrim standing in for it fades out instead,
+			// and each pause opens with its screen and scrim again.
+			host.softFocus = false;
+			Check(runtime.RunEvent("open",6,release,error),"the game pauses again");
+			runtime.Frame(viewport,6.01);
+			const auto reopened = runtime.PresentedValue("chrome","display");
+			const auto scrimBack = runtime.PresentedValue("scrim","opacity");
+			Check(reopened && reopened->text == "block" && scrimBack && Near(static_cast<float>(scrimBack->data[0]),1,.001f),
+				"every pause opens with its screen");
+			Check(runtime.RunEvent("release",6.5,release,error),"the game resumes without soft focus");
+			runtime.Frame(viewport,6.625);
+			const auto fading = runtime.PresentedValue("scrim","opacity");
+			Check(fading && Near(static_cast<float>(fading->data[0]),.5f,.01f),"the scrim fades out over 250 ms");
+			runtime.Frame(viewport,6.8);
+			const auto gone = runtime.PresentedValue("scrim","opacity");
+			Check(gone && Near(static_cast<float>(gone->data[0]),0,.001f),"and is gone by 250 ms");
+			Check(runtime.RunEvent("open",7,release,error),"the game pauses once more");
+			runtime.Frame(viewport,7.3);
+			const auto restored = runtime.PresentedValue("scrim","opacity");
+			const auto screen = runtime.PresentedValue("chrome","display");
+			Check(restored && Near(static_cast<float>(restored->data[0]),1,.001f) && screen && screen->text == "block",
+				"the scrim and screen return with the pause");
+			// The pause also comes back through returnHome (a page left with Back
+			// before the legacy menu reached home): activation shows the screen
+			// and ramps the softened view back in.
+			host.softFocus = true;
+			Check(runtime.RunEvent("release",7.5,release,error),"the game resumes from a page's return");
+			runtime.Frame(viewport,7.8);
+			Check(runtime.RunEvent("onActivate",8,release,error) && runtime.PlayTimeline("returnHome",8),"the pause returns through returnHome");
+			runtime.Frame(viewport,8.01);
+			const auto back = runtime.PresentedValue("chrome","display");
+			const auto backScrim = runtime.PresentedValue("scrim","opacity");
+			Check(back && back->text == "block" && backScrim && Near(static_cast<float>(backScrim->data[0]),1,.001f),
+				"a pause activated after a release shows its screen");
+			runtime.Frame(viewport,8.3);
+			const auto resoftened = runtime.PresentedValue("scene-softfocus","backdrop-blur");
+			Check(resoftened && Near(static_cast<float>(resoftened->data[0]),7.5f,.01f),"and softens the view again");
+			// An activation that follows no release changes nothing.
+			Check(runtime.RunEvent("onActivate",8.4,release,error),"the pause activates again");
+			runtime.Frame(viewport,8.5);
+			const auto steady = runtime.PresentedValue("scene-softfocus","backdrop-blur");
+			Check(steady && Near(static_cast<float>(steady->data[0]),7.5f,.01f),"without a release the softened view stays");
 			host.softFocus = false;
 		}
 		// OBJECTIVES (sections 13.7 and 14.11) is a page of the pause: it docks

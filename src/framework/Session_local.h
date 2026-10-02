@@ -429,6 +429,8 @@ public:
 	idUserInterface *	guiRetainedPauseStrogg;	// the Strogg family's pause
 	int					retainedPauseStrogg;	// this level's player is Strogg (-1: not asked yet)
 	ID_TIME_T			retainedNewestSave;		// when the newest save was written (0: none)
+	idUserInterface *	guiRetainedReleasing;	// a closed pause screen releasing the softened view
+	int					retainedReleaseUntil;	// presentation time the release ends
 	bool				retainedHomeReturning;
 	// Retained documents that fell back to their stock screens this session.
 	idStrList			retainedStock;

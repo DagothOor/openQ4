@@ -3797,6 +3797,8 @@ void idSessionLocal::Clear() {
 	guiRetainedHome = guiRetainedTitle = guiRetainedPause = guiRetainedPauseStrogg = NULL;
 	retainedPauseStrogg = -1;
 	retainedNewestSave = 0;
+	guiRetainedReleasing = NULL;
+	retainedReleaseUntil = 0;
 	retainedHomeReturning = false;
 	retainedStock.Clear();
 	retainedHandoffUntil = 0;
@@ -8030,6 +8032,10 @@ void idSessionLocal::Draw() {
 		// save off the 2D drawing from the game
 		if ( writeDemo ) {
 			renderSystem->WriteDemoPics();
+		}
+		// A pause screen that just closed releases the softened view.
+		if ( guiRetainedReleasing != NULL ) {
+			guiRetainedReleasing->Redraw( presentationTime );
 		}
 	} else {
 #if ID_CONSOLE_LOCK

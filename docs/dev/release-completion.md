@@ -508,7 +508,9 @@
   the screen, the dialog softly blurs and slightly desaturates what is behind
   it on OpenGL and Vulkan; `ui_retainedOpaqueBacking 1` restores the stock
   dark backing, which the GLES renderer always uses. The pause menu sits over
-  a softly blurred view of the game instead of a darkened one.
+  a softly blurred view of the game instead of a darkened one, and on
+  RESUME the menu closes at once while the game eases back into focus over
+  a quarter of a second.
   While a level loads, its picture drifts slowly closer, the bar shows what is
   loading and how far along it is, the finished load reports how long it took,
   and the continue prompt shows your controller's button once you use one.
