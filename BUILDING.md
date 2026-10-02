@@ -440,6 +440,30 @@ below when you genuinely want an unoptimized client.
 
 Use **Full Build and Stage openQ4 (Meson Optimized)** when you intentionally need the full configure + compile + `meson install --no-rebuild --skip-subprojects` path. If you add or remove files under `content/baseoq4/pak0/` or `content/baseoq4/pak1/`, run **Configure openQ4 (Meson Optimized)** once so Meson refreshes the pack dependency list; edits to existing content files are picked up by the fast build.
 
+### VS Code Launch Configurations
+
+The Run and Debug list puts a separator between its groups: main menus, main
+menu variants (the stock interface for comparison, and Vulkan validation
+layers), the Quake 4 campaign, campaign test variants, the Awakening campaign,
+multiplayer by game mode, the Community Map Pack and the Awakening's
+multiplayer maps. Every launch comes as a GL and a Vulkan pair. It runs the
+client the build task stages into `.install/` and keeps its configuration,
+saves and logs in `.home/`; the Awakening's launches expect its content in
+`.home/q4xbase/`.
+
+Each launch pins the archived CVars that decide what it exercises, so a value
+saved in `.home/<game>/openQ4Config.cfg` cannot change it: `r_renderApi`,
+`ui_retained 1` for the retained (RmlUi) interface, windowed mode,
+`g_autoSkipCinematics 0` in single player and `ui_autoJoin 0` in multiplayer.
+Only the **Stock UI** entries set `ui_retained 0`. No launch sets
+`fs_basepath`: the engine finds the installed Quake 4 through Steam or GOG, and
+`OPENQ4_QUAKE4_PATH` points it at any other install.
+
+`.vscode/launch.json` is generated. Edit the tables in
+`tools/debug/generate_vscode_launch.py` and rerun it;
+`tools/tests/vscode_fast_build.py` fails while the file differs from its
+output.
+
 ### Debug Build
 
 ```powershell

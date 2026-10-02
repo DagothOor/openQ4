@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Regression checks for the VS Code fast default build path."""
+"""Regression checks for the VS Code fast default build path and launch configurations."""
 
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 
@@ -60,6 +61,10 @@ def validate_tasks() -> None:
         if label not in full_build.get("dependsOn", []):
             raise AssertionError(f"Full build task is missing dependency {label!r}")
 
+    for task in tasks:
+        if "fs_basepath" in task.get("args", []):
+            raise AssertionError(f"VS Code task {task.get('label')!r} must leave fs_basepath to the engine's install discovery")
+
 
 def validate_wrapper() -> None:
     wrapper = read(".vscode/meson-task.ps1")
@@ -111,28 +116,62 @@ def validate_wrapper() -> None:
     )
 
 
+def set_values(args: list[object], key: str) -> list[str]:
+    return [
+        str(args[index + 2])
+        for index, token in enumerate(args[:-2])
+        if token in ("+set", "+seta") and args[index + 1] == key
+    ]
+
+
 def validate_launch_configs() -> None:
     launch = json.loads(read(".vscode/launch.json"))
     mp_configs = []
+    previous = ("", 0)
     for config in launch.get("configurations", []):
+        name = str(config.get("name", ""))
+        args = config.get("args", [])
         if "preLaunchTask" in config:
-            raise AssertionError(f"Launch config {config.get('name')!r} must not define preLaunchTask")
-        if "(MP)" in str(config.get("name", "")):
+            raise AssertionError(f"Launch config {name!r} must not define preLaunchTask")
+        # r_renderApi is archived, so each launch pins its own renderer and says
+        # which one it is, rather than running whatever .home last saved.
+        render_api = set_values(args, "r_renderApi")
+        suffix = {"gl": " \u2014 GL", "vulkan": " \u2014 Vulkan"}.get(render_api[0]) if len(render_api) == 1 else None
+        if suffix is None or not name.endswith(suffix):
+            raise AssertionError(f"Launch config {name!r} must set r_renderApi exactly once and end with its renderer")
+        # Launches run the retained (RmlUi) interface whatever the archived
+        # ui_retained holds; one that compares against the stock GUIs says so.
+        retained = "0" if " - Stock UI " in name else "1"
+        if set_values(args, "ui_retained") != [retained]:
+            raise AssertionError(f"Launch config {name!r} must set ui_retained exactly once to {retained}")
+        if set_values(args, "fs_basepath"):
+            raise AssertionError(f"Launch config {name!r} must leave fs_basepath to the engine's install discovery")
+        # Groups put separators in the Run and Debug list, which VS Code sorts by
+        # group name and then order; the file lists them the same way.
+        presentation = config.get("presentation")
+        group = presentation.get("group") if isinstance(presentation, dict) else None
+        order = presentation.get("order") if isinstance(presentation, dict) else None
+        if not isinstance(group, str) or not group or not isinstance(order, int):
+            raise AssertionError(f"Launch config {name!r} must have a presentation group and order")
+        if (group, order) <= previous:
+            raise AssertionError(f"Launch config {name!r} is listed out of its Run and Debug order")
+        previous = (group, order)
+        if "(MP)" in name:
             mp_configs.append(config)
-            args = config.get("args", [])
-            values = [
-                str(args[index + 2])
-                for index, token in enumerate(args[:-2])
-                if token in ("+set", "+seta") and args[index + 1] == "ui_autoJoin"
-            ]
             # The interactive configurations start at the join screen, which is the
             # shipped default; the automated MP profiles below still pin it to 1.
-            if values != ["0"]:
-                raise AssertionError(
-                    f"MP launch config {config.get('name')!r} must set ui_autoJoin exactly once to 0"
-                )
+            if set_values(args, "ui_autoJoin") != ["0"]:
+                raise AssertionError(f"MP launch config {name!r} must set ui_autoJoin exactly once to 0")
     if not mp_configs:
         raise AssertionError("Expected at least one VS Code MP launch configuration")
+
+    sys.path.insert(0, str(ROOT / "tools" / "debug"))
+    import generate_vscode_launch
+
+    if launch != generate_vscode_launch.build():
+        raise AssertionError(
+            ".vscode/launch.json is generated; edit tools/debug/generate_vscode_launch.py and rerun it"
+        )
 
 
 def validate_mp_autojoin_policy() -> None:

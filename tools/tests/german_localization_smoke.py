@@ -90,7 +90,7 @@ def main() -> None:
         (profile / "mainmenu-fixture.gui").write_text(fixture, encoding="utf-8")
 
     launches = json.loads((ROOT / ".vscode/launch.json").read_text(encoding="utf-8"))
-    launch = next(c for c in launches["configurations"] if c["name"] == f"({mode}) — {backend}")
+    launch = next(c for c in launches["configurations"] if c["name"] == f"({mode}) Main menu — {backend}")
     args = [a.replace("${workspaceFolder}", str(ROOT)) for a in launch["args"]]
     settings = {
         "sys_lang": "german", "in_mouse": "0", "in_joystick": "0",

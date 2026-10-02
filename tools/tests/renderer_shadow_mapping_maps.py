@@ -160,7 +160,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path,
                         default=ROOT / ".tmp" / ("shadow-maps-" + datetime.now().strftime("%Y%m%d-%H%M%S")))
     parser.add_argument("--binary", type=Path, default=ROOT / ".install/openQ4-client_x64.exe")
-    parser.add_argument("--basepath", type=Path, help="Installed Quake 4 assets; overrides the launch profile's fs_basepath")
+    parser.add_argument("--basepath", type=Path, help="Installed Quake 4 assets (default: the engine's Steam/GOG install discovery)")
     parser.add_argument("--hidden", action="store_true", help="Use an engine-owned hidden window for unattended captures")
     parser.add_argument("--terrain-check", action="store_true", help="Check q4dm2/Air Defense 1 terrain against stencil and shadows-off controls")
     parser.add_argument("--extra-cfg", type=Path, help="Additional engine commands before the three captures")

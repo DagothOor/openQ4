@@ -3,6 +3,7 @@
   "tasks": [
     {
       "label": "Configure openQ4 (Meson Optimized)",
+      "detail": "Configure builddir-perf as debugoptimized, reconfiguring it in place when it exists.",
       "type": "shell",
       "command": "powershell",
       "args": [
@@ -17,6 +18,7 @@
     },
     {
       "label": "Compile openQ4 (Meson Optimized)",
+      "detail": "Compile builddir-perf without staging anything.",
       "type": "shell",
       "command": "powershell",
       "args": [
@@ -33,6 +35,7 @@
     },
     {
       "label": "Stage openQ4 Install Tree (Meson Optimized)",
+      "detail": "Install builddir-perf into .install with meson install (no rebuild, no subprojects).",
       "type": "shell",
       "command": "powershell",
       "args": [
@@ -47,6 +50,7 @@
     },
     {
       "label": "Build openQ4 (Meson Optimized)",
+      "detail": "Compile builddir-perf, then copy changed runtime files into .install for the launch configurations.",
       "type": "shell",
       "command": "powershell",
       "args": [
@@ -67,6 +71,7 @@
     },
     {
       "label": "Full Build and Stage openQ4 (Meson Optimized)",
+      "detail": "Configure, compile and fully install builddir-perf into .install.",
       "dependsOrder": "sequence",
       "dependsOn": [
         "Configure openQ4 (Meson Optimized)",
@@ -77,6 +82,7 @@
     },
     {
       "label": "Bake Light Grids (All MP)",
+      "detail": "Full build and stage, then bake the light grids of every stock multiplayer map in a hidden client.",
       "type": "shell",
       "command": "${workspaceFolder}\\.install\\openQ4-client_x64.exe",
       "args": [
@@ -98,9 +104,6 @@
         "+set",
         "r_fullscreen",
         "0",
-        "+set",
-        "fs_basepath",
-        "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Quake 4",
         "+set",
         "fs_savepath",
         "${workspaceFolder}\\.home",
