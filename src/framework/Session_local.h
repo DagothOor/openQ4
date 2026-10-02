@@ -249,6 +249,8 @@ public:
 	void				SetRetainedLoadingPhase( int phase, const char *count = NULL );
 	void				PublishRetainedLoadingCount();
 	void				PublishRetainedLoadingDevice();
+	// The multiplayer arsenal: the index'th kind of item to spawn, by its icon.
+	void				PublishRetainedLoadingIcon( int index, const char *icon );
 
 	virtual const char *MessageBox( msgBoxType_t type, const char *message, const char *title = NULL, bool wait = false, const char *fire_yes = NULL, const char *fire_no = NULL, bool network = false  );
 	virtual void		StopBox( void );

@@ -515,6 +515,9 @@
   While a level loads, its picture drifts slowly closer, the bar shows what is
   loading and how far along it is, the finished load reports how long it took,
   and the continue prompt shows your controller's button once you use one.
+  Hosting a multiplayer match, the loading screen fills in the map's arsenal:
+  each kind of weapon, ammunition and armor appears in its color as it
+  spawns.
   The modern title screen now uses well under half as much CPU per frame, with
   no visible change, and holds its frame rate better, most of all on Vulkan.
   Multiplayer loads show the server's name, address, mode and limits on a card

@@ -490,5 +490,7 @@ void idNetworkSystem::AddLoadingIcon( const char *icon ) {
 	sessLocal.guiLoading->SetStateInt( va( "load_icon_%d", numIcons ), 1 );
 	sessLocal.guiLoading->SetStateString( va( "load_icon_img_%d", numIcons ), icon );
 	sessLocal.guiLoading->StateChanged( common->GetPresentationTime() );
+	// The retained loading screen draws it in the arsenal as an image and tint.
+	sessLocal.PublishRetainedLoadingIcon( numIcons, icon );
 #endif
 }

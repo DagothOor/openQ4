@@ -5839,6 +5839,79 @@ void idSessionLocal::PublishRetainedLoadingDevice() {
 	guiLoading->StateChanged( common->GetPresentationTime() );
 }
 
+// The multiplayer arsenal holds this many kinds of item, as the stock row does.
+static const int RETAINED_ARSENAL_ICONS = 20;
+
+// The item icons are colour-coded materials (hud.mtr's icon guides): one stage
+// drawing the icon image tinted by constant red, green and blue. The retained
+// screen draws images, not materials, so it takes the stage's image and tint;
+// anything else is drawn by its own name, untinted.
+static void Session_ResolveTintedIcon( const char *icon, idStr &image, float tint[3] ) {
+	image = icon;
+	image.StripFileExtension();
+	tint[0] = tint[1] = tint[2] = 1.0f;
+	const idMaterial *material = declManager->FindMaterial( icon, false );
+	if ( material == NULL || material->GetState() == DS_DEFAULTED || material->GetTextLength() <= 0 ) {
+		return;
+	}
+	const int length = material->GetTextLength();
+	idTempArray<char> text( length + 1 );
+	material->GetText( text.Ptr() );
+	idLexer src( text.Ptr(), static_cast<int>( strlen( text.Ptr() ) ), icon,
+		LEXFL_NOFATALERRORS | LEXFL_NOSTRINGCONCAT | LEXFL_NOSTRINGESCAPECHARS | LEXFL_ALLOWPATHNAMES | LEXFL_NOWARNINGS );
+	idToken token;
+	idStr map;
+	float colour[3] = { 1.0f, 1.0f, 1.0f };
+	int depth = 0;
+	int stages = 0;
+	while ( src.ReadToken( &token ) ) {
+		if ( token == "{" ) {
+			stages += ++depth == 2 ? 1 : 0;
+		} else if ( token == "}" ) {
+			--depth;
+		} else if ( depth == 2 && ( !token.Icmp( "map" ) ) ) {
+			if ( src.ReadTokenOnLine( &token ) ) {
+				map = token;
+			}
+		} else if ( depth == 2 && ( !token.Icmp( "red" ) || !token.Icmp( "green" ) || !token.Icmp( "blue" ) ) ) {
+			const int channel = !token.Icmp( "red" ) ? 0 : !token.Icmp( "green" ) ? 1 : 2;
+			idToken value;
+			if ( src.ReadTokenOnLine( &value ) && value.type == TT_NUMBER ) {
+				colour[channel] = idMath::ClampFloat( 0.0f, 1.0f, value.GetFloatValue() );
+			}
+		}
+	}
+	if ( stages != 1 || map.Length() == 0 || !UI_RetainedImageSource( map.c_str() ) ) {
+		return;
+	}
+	image = map;
+	image.StripFileExtension();
+	tint[0] = colour[0];
+	tint[1] = colour[1];
+	tint[2] = colour[2];
+}
+
+void idSessionLocal::PublishRetainedLoadingIcon( int index, const char *icon ) {
+	// The multiplayer arsenal (section 14.17): each kind of item as it spawns,
+	// fading in over 150 ms in its color code.
+	if ( !retainedLoadingActive || guiLoading == NULL || icon == NULL || icon[0] == '\0' || index < 1 ||
+			index > RETAINED_ARSENAL_ICONS ) {
+		return;
+	}
+	idStr image;
+	float tint[3];
+	Session_ResolveTintedIcon( icon, image, tint );
+	guiLoading->SetStateString( va( "load_icon_src_%d", index ), UI_RetainedImageSource( image.c_str() ) ? image.c_str() : "" );
+	guiLoading->SetStateFloat( va( "load_icon_r_%d", index ), tint[0] );
+	guiLoading->SetStateFloat( va( "load_icon_g_%d", index ), tint[1] );
+	guiLoading->SetStateFloat( va( "load_icon_b_%d", index ), tint[2] );
+	guiLoading->StateChanged( common->GetPresentationTime() );
+	guiLoading->HandleNamedEvent( va( "arsenal%d", index ) );
+	if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+		common->Printf( "RETAINED_LOADING_ARSENAL %d %s %.2f %.2f %.2f\n", index, image.c_str(), tint[0], tint[1], tint[2] );
+	}
+}
+
 /*
 ===============
 idSessionLocal::LoadLoadingGui

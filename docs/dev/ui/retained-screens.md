@@ -223,7 +223,14 @@ after editing the script; `--check` fails when an output is stale.
   Multiplayer keeps the band low: a card on the leading side holds the
   server's name in its header, then its address, mode and limits, and a
   finished multiplayer load reads JOINING, since multiplayer never waits for
-  a click. The name strip darkens the message line so it reads over any
+  a click. The arsenal fills the thick band's leading part, from its riser to
+  the bar: two rows of ten 16 u icons on a 17 u pitch, one for each kind of
+  item as it spawns (the stock row's twenty), each fading in over 150 ms in
+  its color code (Appendix B.4). The stock icons are colour-coded materials,
+  one stage tinting the icon image; the session reads the image and the tint
+  from the material's definition and publishes them with the icon
+  (`load_icon_src_N` and `load_icon_r/g/b_N`), then plays its fade
+  (`arsenalN`). The name strip darkens the message line so it reads over any
   levelshot.
 - **Confirmations** (section 6, the 480 dp confirmation width). EXIT and both
   pause quits ask in the stock confirmation dialog. The screen beneath stays
@@ -393,7 +400,8 @@ controller or the mouse switches the prompt.
   state. It checks the schema additions, the additive and multiplied draws,
   the transformed clip, the emblem glint and its reduced-motion rule, the
   levelshot drift, the phase line, the percentage and the controller prompt,
-  the multiplayer server card and JOINING, the title carry on both menus, the
+  the multiplayer server card and JOINING, the arsenal's fade, tint and two
+  rows, the title carry on both menus, the
   depth lean and its reduced-motion hold, the exit confirmation's lit margin,
   title placement, body placement and single 0.85 outline composite, its
   enter and leave timing with the contents and focus waiting for the
@@ -646,6 +654,14 @@ loading screen without the mod. Evidence:
 `.tmp/ui/retained-mod-loading/validation-evidence.json`, SHA-256
 `a5bf27df44fef680527d2358f64eac706d3bbac6a0f2f1a97a9a1ddaa11bf874`.
 
+A listen server loading mp/q4dm1 published its eleven kinds of item to the
+arsenal, each with the image and tint read from its colour-coded material
+(the lightning gun 1, 1, 0.73, the railgun 0, 1, 0, the large armor red),
+and the loading scenario's arsenal, published the same way, draws tinted in
+the thick band on OpenGL and Vulkan at 1280x720, identically on both.
+Evidence: `.tmp/ui/retained-loading-arsenal/validation-evidence.json`,
+SHA-256 `a2bd70225491d8ea1ff802bcb3b046b68ac7ca17136e49d46680faf92ceee094`.
+
 ## Known limitations
 
 - The completed objectives are kept per map and not saved, so after loading a
@@ -675,6 +691,6 @@ loading screen without the mod. Evidence:
   video quality and light-grid preload.
 - The loading screen has no tips and no touch prompt (touch counts as desktop
   input). The multiplayer server card lacks the players by team and the
-  server's message, the arsenal does not fill in (the game publishes no item
-  spawns to the loading screen), and JOINING does not yet hand over to a
-  Welcome menu.
+  server's message, and JOINING does not yet hand over to a Welcome menu. The
+  arsenal fills in only where the map spawns its items: a listen server's
+  own load, not a client joining another server.

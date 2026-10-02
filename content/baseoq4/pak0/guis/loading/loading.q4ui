@@ -23,7 +23,107 @@
   "motion_reduced": {"type": "boolean", "initial": false, "cvar": "ui_retainedReducedMotion"},
   "loading_phase": {"type": "string", "initial": ""},
   "loading_count": {"type": "string", "initial": ""},
-  "loading_controller": {"type": "boolean", "initial": false}
+  "loading_controller": {"type": "boolean", "initial": false},
+  "load_icon_1": {"type": "number", "initial": 0},
+  "load_icon_2": {"type": "number", "initial": 0},
+  "load_icon_3": {"type": "number", "initial": 0},
+  "load_icon_4": {"type": "number", "initial": 0},
+  "load_icon_5": {"type": "number", "initial": 0},
+  "load_icon_6": {"type": "number", "initial": 0},
+  "load_icon_7": {"type": "number", "initial": 0},
+  "load_icon_8": {"type": "number", "initial": 0},
+  "load_icon_9": {"type": "number", "initial": 0},
+  "load_icon_10": {"type": "number", "initial": 0},
+  "load_icon_11": {"type": "number", "initial": 0},
+  "load_icon_12": {"type": "number", "initial": 0},
+  "load_icon_13": {"type": "number", "initial": 0},
+  "load_icon_14": {"type": "number", "initial": 0},
+  "load_icon_15": {"type": "number", "initial": 0},
+  "load_icon_16": {"type": "number", "initial": 0},
+  "load_icon_17": {"type": "number", "initial": 0},
+  "load_icon_18": {"type": "number", "initial": 0},
+  "load_icon_19": {"type": "number", "initial": 0},
+  "load_icon_20": {"type": "number", "initial": 0},
+  "load_icon_src_1": {"type": "string", "initial": ""},
+  "load_icon_src_2": {"type": "string", "initial": ""},
+  "load_icon_src_3": {"type": "string", "initial": ""},
+  "load_icon_src_4": {"type": "string", "initial": ""},
+  "load_icon_src_5": {"type": "string", "initial": ""},
+  "load_icon_src_6": {"type": "string", "initial": ""},
+  "load_icon_src_7": {"type": "string", "initial": ""},
+  "load_icon_src_8": {"type": "string", "initial": ""},
+  "load_icon_src_9": {"type": "string", "initial": ""},
+  "load_icon_src_10": {"type": "string", "initial": ""},
+  "load_icon_src_11": {"type": "string", "initial": ""},
+  "load_icon_src_12": {"type": "string", "initial": ""},
+  "load_icon_src_13": {"type": "string", "initial": ""},
+  "load_icon_src_14": {"type": "string", "initial": ""},
+  "load_icon_src_15": {"type": "string", "initial": ""},
+  "load_icon_src_16": {"type": "string", "initial": ""},
+  "load_icon_src_17": {"type": "string", "initial": ""},
+  "load_icon_src_18": {"type": "string", "initial": ""},
+  "load_icon_src_19": {"type": "string", "initial": ""},
+  "load_icon_src_20": {"type": "string", "initial": ""},
+  "load_icon_r_1": {"type": "number", "initial": 1},
+  "load_icon_g_1": {"type": "number", "initial": 1},
+  "load_icon_b_1": {"type": "number", "initial": 1},
+  "load_icon_r_2": {"type": "number", "initial": 1},
+  "load_icon_g_2": {"type": "number", "initial": 1},
+  "load_icon_b_2": {"type": "number", "initial": 1},
+  "load_icon_r_3": {"type": "number", "initial": 1},
+  "load_icon_g_3": {"type": "number", "initial": 1},
+  "load_icon_b_3": {"type": "number", "initial": 1},
+  "load_icon_r_4": {"type": "number", "initial": 1},
+  "load_icon_g_4": {"type": "number", "initial": 1},
+  "load_icon_b_4": {"type": "number", "initial": 1},
+  "load_icon_r_5": {"type": "number", "initial": 1},
+  "load_icon_g_5": {"type": "number", "initial": 1},
+  "load_icon_b_5": {"type": "number", "initial": 1},
+  "load_icon_r_6": {"type": "number", "initial": 1},
+  "load_icon_g_6": {"type": "number", "initial": 1},
+  "load_icon_b_6": {"type": "number", "initial": 1},
+  "load_icon_r_7": {"type": "number", "initial": 1},
+  "load_icon_g_7": {"type": "number", "initial": 1},
+  "load_icon_b_7": {"type": "number", "initial": 1},
+  "load_icon_r_8": {"type": "number", "initial": 1},
+  "load_icon_g_8": {"type": "number", "initial": 1},
+  "load_icon_b_8": {"type": "number", "initial": 1},
+  "load_icon_r_9": {"type": "number", "initial": 1},
+  "load_icon_g_9": {"type": "number", "initial": 1},
+  "load_icon_b_9": {"type": "number", "initial": 1},
+  "load_icon_r_10": {"type": "number", "initial": 1},
+  "load_icon_g_10": {"type": "number", "initial": 1},
+  "load_icon_b_10": {"type": "number", "initial": 1},
+  "load_icon_r_11": {"type": "number", "initial": 1},
+  "load_icon_g_11": {"type": "number", "initial": 1},
+  "load_icon_b_11": {"type": "number", "initial": 1},
+  "load_icon_r_12": {"type": "number", "initial": 1},
+  "load_icon_g_12": {"type": "number", "initial": 1},
+  "load_icon_b_12": {"type": "number", "initial": 1},
+  "load_icon_r_13": {"type": "number", "initial": 1},
+  "load_icon_g_13": {"type": "number", "initial": 1},
+  "load_icon_b_13": {"type": "number", "initial": 1},
+  "load_icon_r_14": {"type": "number", "initial": 1},
+  "load_icon_g_14": {"type": "number", "initial": 1},
+  "load_icon_b_14": {"type": "number", "initial": 1},
+  "load_icon_r_15": {"type": "number", "initial": 1},
+  "load_icon_g_15": {"type": "number", "initial": 1},
+  "load_icon_b_15": {"type": "number", "initial": 1},
+  "load_icon_r_16": {"type": "number", "initial": 1},
+  "load_icon_g_16": {"type": "number", "initial": 1},
+  "load_icon_b_16": {"type": "number", "initial": 1},
+  "load_icon_r_17": {"type": "number", "initial": 1},
+  "load_icon_g_17": {"type": "number", "initial": 1},
+  "load_icon_b_17": {"type": "number", "initial": 1},
+  "load_icon_r_18": {"type": "number", "initial": 1},
+  "load_icon_g_18": {"type": "number", "initial": 1},
+  "load_icon_b_18": {"type": "number", "initial": 1},
+  "load_icon_r_19": {"type": "number", "initial": 1},
+  "load_icon_g_19": {"type": "number", "initial": 1},
+  "load_icon_b_19": {"type": "number", "initial": 1},
+  "load_icon_r_20": {"type": "number", "initial": 1},
+  "load_icon_g_20": {"type": "number", "initial": 1},
+  "load_icon_b_20": {"type": "number", "initial": 1}
  },
  "events": {
   "FinishedLoading": [{"op": "setState", "values": {"loading_ready": true}}, {"op": "playTimeline", "timeline": "continuePulse"}]
@@ -204,6 +304,532 @@
      }
     ]
    }
+  },
+  {
+   "id": "arsenal-1.display",
+   "node": "arsenal-1",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_1"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_1"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-1.image", "node": "arsenal-1", "property": "image", "value": {"state": "load_icon_src_1"}},
+  {
+   "id": "arsenal-1.image-color",
+   "node": "arsenal-1",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_1"}, {"state": "load_icon_g_1"}, {"state": "load_icon_b_1"}, 1]
+  },
+  {
+   "id": "arsenal-2.display",
+   "node": "arsenal-2",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_2"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_2"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-2.image", "node": "arsenal-2", "property": "image", "value": {"state": "load_icon_src_2"}},
+  {
+   "id": "arsenal-2.image-color",
+   "node": "arsenal-2",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_2"}, {"state": "load_icon_g_2"}, {"state": "load_icon_b_2"}, 1]
+  },
+  {
+   "id": "arsenal-3.display",
+   "node": "arsenal-3",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_3"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_3"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-3.image", "node": "arsenal-3", "property": "image", "value": {"state": "load_icon_src_3"}},
+  {
+   "id": "arsenal-3.image-color",
+   "node": "arsenal-3",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_3"}, {"state": "load_icon_g_3"}, {"state": "load_icon_b_3"}, 1]
+  },
+  {
+   "id": "arsenal-4.display",
+   "node": "arsenal-4",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_4"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_4"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-4.image", "node": "arsenal-4", "property": "image", "value": {"state": "load_icon_src_4"}},
+  {
+   "id": "arsenal-4.image-color",
+   "node": "arsenal-4",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_4"}, {"state": "load_icon_g_4"}, {"state": "load_icon_b_4"}, 1]
+  },
+  {
+   "id": "arsenal-5.display",
+   "node": "arsenal-5",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_5"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_5"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-5.image", "node": "arsenal-5", "property": "image", "value": {"state": "load_icon_src_5"}},
+  {
+   "id": "arsenal-5.image-color",
+   "node": "arsenal-5",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_5"}, {"state": "load_icon_g_5"}, {"state": "load_icon_b_5"}, 1]
+  },
+  {
+   "id": "arsenal-6.display",
+   "node": "arsenal-6",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_6"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_6"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-6.image", "node": "arsenal-6", "property": "image", "value": {"state": "load_icon_src_6"}},
+  {
+   "id": "arsenal-6.image-color",
+   "node": "arsenal-6",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_6"}, {"state": "load_icon_g_6"}, {"state": "load_icon_b_6"}, 1]
+  },
+  {
+   "id": "arsenal-7.display",
+   "node": "arsenal-7",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_7"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_7"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-7.image", "node": "arsenal-7", "property": "image", "value": {"state": "load_icon_src_7"}},
+  {
+   "id": "arsenal-7.image-color",
+   "node": "arsenal-7",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_7"}, {"state": "load_icon_g_7"}, {"state": "load_icon_b_7"}, 1]
+  },
+  {
+   "id": "arsenal-8.display",
+   "node": "arsenal-8",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_8"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_8"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-8.image", "node": "arsenal-8", "property": "image", "value": {"state": "load_icon_src_8"}},
+  {
+   "id": "arsenal-8.image-color",
+   "node": "arsenal-8",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_8"}, {"state": "load_icon_g_8"}, {"state": "load_icon_b_8"}, 1]
+  },
+  {
+   "id": "arsenal-9.display",
+   "node": "arsenal-9",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_9"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_9"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-9.image", "node": "arsenal-9", "property": "image", "value": {"state": "load_icon_src_9"}},
+  {
+   "id": "arsenal-9.image-color",
+   "node": "arsenal-9",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_9"}, {"state": "load_icon_g_9"}, {"state": "load_icon_b_9"}, 1]
+  },
+  {
+   "id": "arsenal-10.display",
+   "node": "arsenal-10",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_10"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_10"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-10.image", "node": "arsenal-10", "property": "image", "value": {"state": "load_icon_src_10"}},
+  {
+   "id": "arsenal-10.image-color",
+   "node": "arsenal-10",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_10"}, {"state": "load_icon_g_10"}, {"state": "load_icon_b_10"}, 1]
+  },
+  {
+   "id": "arsenal-11.display",
+   "node": "arsenal-11",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_11"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_11"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-11.image", "node": "arsenal-11", "property": "image", "value": {"state": "load_icon_src_11"}},
+  {
+   "id": "arsenal-11.image-color",
+   "node": "arsenal-11",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_11"}, {"state": "load_icon_g_11"}, {"state": "load_icon_b_11"}, 1]
+  },
+  {
+   "id": "arsenal-12.display",
+   "node": "arsenal-12",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_12"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_12"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-12.image", "node": "arsenal-12", "property": "image", "value": {"state": "load_icon_src_12"}},
+  {
+   "id": "arsenal-12.image-color",
+   "node": "arsenal-12",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_12"}, {"state": "load_icon_g_12"}, {"state": "load_icon_b_12"}, 1]
+  },
+  {
+   "id": "arsenal-13.display",
+   "node": "arsenal-13",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_13"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_13"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-13.image", "node": "arsenal-13", "property": "image", "value": {"state": "load_icon_src_13"}},
+  {
+   "id": "arsenal-13.image-color",
+   "node": "arsenal-13",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_13"}, {"state": "load_icon_g_13"}, {"state": "load_icon_b_13"}, 1]
+  },
+  {
+   "id": "arsenal-14.display",
+   "node": "arsenal-14",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_14"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_14"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-14.image", "node": "arsenal-14", "property": "image", "value": {"state": "load_icon_src_14"}},
+  {
+   "id": "arsenal-14.image-color",
+   "node": "arsenal-14",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_14"}, {"state": "load_icon_g_14"}, {"state": "load_icon_b_14"}, 1]
+  },
+  {
+   "id": "arsenal-15.display",
+   "node": "arsenal-15",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_15"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_15"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-15.image", "node": "arsenal-15", "property": "image", "value": {"state": "load_icon_src_15"}},
+  {
+   "id": "arsenal-15.image-color",
+   "node": "arsenal-15",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_15"}, {"state": "load_icon_g_15"}, {"state": "load_icon_b_15"}, 1]
+  },
+  {
+   "id": "arsenal-16.display",
+   "node": "arsenal-16",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_16"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_16"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-16.image", "node": "arsenal-16", "property": "image", "value": {"state": "load_icon_src_16"}},
+  {
+   "id": "arsenal-16.image-color",
+   "node": "arsenal-16",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_16"}, {"state": "load_icon_g_16"}, {"state": "load_icon_b_16"}, 1]
+  },
+  {
+   "id": "arsenal-17.display",
+   "node": "arsenal-17",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_17"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_17"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-17.image", "node": "arsenal-17", "property": "image", "value": {"state": "load_icon_src_17"}},
+  {
+   "id": "arsenal-17.image-color",
+   "node": "arsenal-17",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_17"}, {"state": "load_icon_g_17"}, {"state": "load_icon_b_17"}, 1]
+  },
+  {
+   "id": "arsenal-18.display",
+   "node": "arsenal-18",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_18"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_18"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-18.image", "node": "arsenal-18", "property": "image", "value": {"state": "load_icon_src_18"}},
+  {
+   "id": "arsenal-18.image-color",
+   "node": "arsenal-18",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_18"}, {"state": "load_icon_g_18"}, {"state": "load_icon_b_18"}, 1]
+  },
+  {
+   "id": "arsenal-19.display",
+   "node": "arsenal-19",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_19"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_19"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-19.image", "node": "arsenal-19", "property": "image", "value": {"state": "load_icon_src_19"}},
+  {
+   "id": "arsenal-19.image-color",
+   "node": "arsenal-19",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_19"}, {"state": "load_icon_g_19"}, {"state": "load_icon_b_19"}, 1]
+  },
+  {
+   "id": "arsenal-20.display",
+   "node": "arsenal-20",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">=", "args": [{"state": "load_icon_20"}, 1]},
+       {"op": "!=", "args": [{"state": "load_icon_src_20"}, ""]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "arsenal-20.image", "node": "arsenal-20", "property": "image", "value": {"state": "load_icon_src_20"}},
+  {
+   "id": "arsenal-20.image-color",
+   "node": "arsenal-20",
+   "property": "image-color",
+   "value": [{"state": "load_icon_r_20"}, {"state": "load_icon_g_20"}, {"state": "load_icon_b_20"}, 1]
+  },
+  {
+   "id": "arsenal.display",
+   "node": "arsenal",
+   "property": "display",
+   "value": {"op": "select", "args": [{"state": "loading_mp"}, "block", "none"]}
   }
  ],
  "timelines": [
@@ -222,6 +848,306 @@
     }
    ],
    "iterations": 0
+  },
+  {
+   "id": "arsenal1",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-1",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal2",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-2",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal3",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-3",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal4",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-4",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal5",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-5",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal6",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-6",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal7",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-7",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal8",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-8",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal9",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-9",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal10",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-10",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal11",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-11",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal12",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-12",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal13",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-13",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal14",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-14",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal15",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-15",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal16",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-16",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal17",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-17",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal18",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-18",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal19",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-19",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arsenal20",
+   "durationMs": 150,
+   "tracks": [
+    {
+     "node": "arsenal-20",
+     "property": "opacity",
+     "keys": [
+      {"atMs": 0, "value": {"type": "number", "value": 0}},
+      {"atMs": 1, "value": {"type": "number", "value": 0}},
+      {"atMs": 150, "value": {"type": "number", "value": 1}}
+     ]
+    }
+   ]
   }
  ],
  "root": {
@@ -3876,6 +4802,341 @@
         }
        }
       ]
+     }
+    ]
+   },
+   {
+    "id": "arsenal",
+    "type": "group",
+    "properties": {
+     "display": {"type": "keyword", "value": "block"},
+     "position": {"type": "keyword", "value": "absolute"},
+     "top": {"type": "length", "value": 639.0, "unit": "dp"},
+     "width": {"type": "length", "value": 960.0, "unit": "dp"},
+     "height": {"type": "length", "value": 81.0, "unit": "dp"},
+     "left": {"type": "length", "value": 50, "unit": "%"},
+     "margin-left": {"type": "length", "value": -480.0, "unit": "dp"}
+    },
+    "children": [
+     {
+      "id": "arsenal-1",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 324.0, "unit": "dp"},
+       "top": {"type": "length", "value": 15.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-2",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 349.5, "unit": "dp"},
+       "top": {"type": "length", "value": 15.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-3",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 375.0, "unit": "dp"},
+       "top": {"type": "length", "value": 15.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-4",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 400.5, "unit": "dp"},
+       "top": {"type": "length", "value": 15.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-5",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 426.0, "unit": "dp"},
+       "top": {"type": "length", "value": 15.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-6",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 451.5, "unit": "dp"},
+       "top": {"type": "length", "value": 15.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-7",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 477.0, "unit": "dp"},
+       "top": {"type": "length", "value": 15.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-8",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 502.5, "unit": "dp"},
+       "top": {"type": "length", "value": 15.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-9",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 528.0, "unit": "dp"},
+       "top": {"type": "length", "value": 15.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-10",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 553.5, "unit": "dp"},
+       "top": {"type": "length", "value": 15.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-11",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 324.0, "unit": "dp"},
+       "top": {"type": "length", "value": 42.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-12",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 349.5, "unit": "dp"},
+       "top": {"type": "length", "value": 42.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-13",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 375.0, "unit": "dp"},
+       "top": {"type": "length", "value": 42.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-14",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 400.5, "unit": "dp"},
+       "top": {"type": "length", "value": 42.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-15",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 426.0, "unit": "dp"},
+       "top": {"type": "length", "value": 42.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-16",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 451.5, "unit": "dp"},
+       "top": {"type": "length", "value": 42.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-17",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 477.0, "unit": "dp"},
+       "top": {"type": "length", "value": 42.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-18",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 502.5, "unit": "dp"},
+       "top": {"type": "length", "value": 42.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-19",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 528.0, "unit": "dp"},
+       "top": {"type": "length", "value": 42.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+     },
+     {
+      "id": "arsenal-20",
+      "type": "image",
+      "properties": {
+       "image": {"type": "image", "value": ""},
+       "image-fit": {"type": "keyword", "value": "contain"},
+       "position": {"type": "keyword", "value": "absolute"},
+       "left": {"type": "length", "value": 553.5, "unit": "dp"},
+       "top": {"type": "length", "value": 42.0, "unit": "dp"},
+       "width": {"type": "length", "value": 24.0, "unit": "dp"},
+       "height": {"type": "length", "value": 24.0, "unit": "dp"},
+       "display": {"type": "keyword", "value": "none"},
+       "opacity": {"type": "number", "value": 0},
+       "image-color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
      }
     ]
    },

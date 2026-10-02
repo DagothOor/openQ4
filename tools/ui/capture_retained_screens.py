@@ -114,6 +114,15 @@ SCENARIOS = {
         'openq4_retainedGui pending loading_levelshot gfx/guis/loadscreens/q4dm1',
         'openq4_retainedGui pending loading_levelname "Bloodwork"', 'openq4_retainedGui pending loading_ready 0',
         'openq4_retainedGui state loading_mp 1', 'waitMsec 600', 'screenshot "screenshots/loading-mp.tga"',
+        # The arsenal as the session publishes it: each kind's image and tint,
+        # then its fade (hud.mtr's codes for the railgun, rockets and mega health).
+        'openq4_retainedGui state load_icon_src_1 gfx/guis/hud/icons/item_railgun', 'openq4_retainedGui state load_icon_r_1 0',
+        'openq4_retainedGui state load_icon_b_1 0', 'openq4_retainedGui state load_icon_1 1', 'openq4_retainedGui event arsenal1',
+        'openq4_retainedGui state load_icon_src_2 gfx/guis/hud/icons/item_rocket', 'openq4_retainedGui state load_icon_g_2 0.2',
+        'openq4_retainedGui state load_icon_b_2 0', 'openq4_retainedGui state load_icon_2 1', 'openq4_retainedGui event arsenal2',
+        'openq4_retainedGui state load_icon_src_3 gfx/guis/hud/icons/item_health', 'openq4_retainedGui state load_icon_r_3 0',
+        'openq4_retainedGui state load_icon_g_3 0.5', 'openq4_retainedGui state load_icon_3 1', 'openq4_retainedGui event arsenal3',
+        'waitMsec 400', 'screenshot "screenshots/loading-mp-arsenal.tga"',
         'testGUI', 'waitMsec 300',
     ]),
     # A title document that cannot load: the stock title presents.

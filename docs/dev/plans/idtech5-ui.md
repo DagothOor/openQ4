@@ -120,9 +120,9 @@ releases the pause's softening over 250 ms as the game runs. After
 Kane's stroggification the pause menu takes the Strogg family, and its labels
 translate from runes as it opens. The pause menu's OBJECTIVES opens the
 objectives display as a page of the pause, with every objective, its
-screenshot and description, and the ones completed on the level. Loading tips,
-the multiplayer arsenal and the Escape and Welcome menus remain. No gate
-closes.
+screenshot and description, and the ones completed on the level. A
+multiplayer load fills the arsenal with each kind of item as it spawns.
+Loading tips and the Escape and Welcome menus remain. No gate closes.
 
 ## Objective and immutable completion scope
 

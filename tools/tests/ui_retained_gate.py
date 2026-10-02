@@ -820,6 +820,21 @@ def main() -> int:
         reset = document['events']['onActivate'][0]
         assert reset['op'] == 'if' and reset['condition'] == {'state': 'pause.released'}, name
         assert {'op': 'setState', 'values': {'pause.released': False}} in reset['then'], name
+    # The arsenal: the network system hands each spawned kind of item to the
+    # retained loading screen, which shows as many as the stock row.
+    network = (ROOT / 'src/framework/async/NetworkSystem.cpp').read_text(encoding='utf-8', errors='replace')
+    icon_body = function_body(network, 'void idNetworkSystem::AddLoadingIcon(')
+    assert icon_body.index('SetStateString( va( "load_icon_img_%d", numIcons ), icon );') < \
+        icon_body.index('sessLocal.PublishRetainedLoadingIcon( numIcons, icon );')
+    arsenal_count = int(re.search(r'static const int RETAINED_ARSENAL_ICONS = (\d+);', session).group(1))
+    assert arsenal_count == 20 and 'if ( numIcons >= 20 ) {' in icon_body
+    publish = function_body(session, 'void idSessionLocal::PublishRetainedLoadingIcon(')
+    assert 'guiLoading->HandleNamedEvent( va( "arsenal%d", index ) );' in publish and '!retainedLoadingActive' in publish
+    loading_text = (ROOT / 'content/baseoq4/pak0/guis/loading/loading.q4ui').read_text(encoding='utf-8')
+    loading_doc = json.loads(re.sub(r'^\s*//.*$', '', loading_text, flags=re.M))
+    fades = [item for item in loading_doc['timelines'] if item['id'].startswith('arsenal')]
+    assert sorted(item['id'] for item in fades) == sorted(f'arsenal{index}' for index in range(1, arsenal_count + 1))
+    assert all(item['durationMs'] == 150 for item in fades)
     saving = function_body(session, 'bool idSessionLocal::SaveGame(')
     assert saving.index('operationGuard.Complete();') < saving.index('retainedNewestSave = time( NULL );') < saving.index('return true;', saving.index('operationGuard.Complete();'))
 

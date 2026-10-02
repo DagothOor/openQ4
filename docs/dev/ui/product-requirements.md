@@ -211,6 +211,8 @@ On engine `3c367e0fdbc4ca211da9ade81ba1a81701e95a93` RESUME closes the retained 
 
 On engine `e4583498dba9e7e67b2b15f757880c75c68631ee` a mod's own copy of a stock loading screen presents instead of the retained loading screen: the session keeps a stock-named loading GUI that the mod's own game directory supplies, file by file, while openQ4's, the stock game's and the Awakening's stock screens are still replaced. Engine runs on OpenGL and Vulkan as a private mod load game/airdefense2 under the mod's screen. `RUN-004` gains partial evidence without a status change. Evidence: `.tmp/ui/retained-mod-loading/validation-evidence.json`, SHA-256 `a5bf27df44fef680527d2358f64eac706d3bbac6a0f2f1a97a9a1ddaa11bf874`.
 
+On engine `779a2bc91ede808813f80c541daff9943abac840` a multiplayer load fills the retained loading screen's arsenal: each kind of item appears as it spawns, fading in over 150 ms in its color code, which the session reads from the item's colour-coded material. A listen server's mp/q4dm1 load publishes its eleven kinds with their Appendix B.4 tints, and captures on OpenGL and Vulkan at 1280x720 show the arsenal in the thick band. `FLOW-047` gains partial evidence without a status change. Evidence: `.tmp/ui/retained-loading-arsenal/validation-evidence.json`, SHA-256 `a2bd70225491d8ea1ff802bcb3b046b68ac7ca17136e49d46680faf92ceee094`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial

@@ -937,6 +937,33 @@ int main(int argc, char** argv) {
 		Check(runtime.GetBounds("server-card",cardBox) && Near(cardBox.x,160+27) && cardBox.y+cardBox.height <= 582,
 			"the card stands on the leading side above the bracket and the band");
 		Check(runtime.GetBounds("progress-prompt-text",labelMp) && Near(labelSp.y,labelMp.y),"the band and the bar stay low");
+		// The arsenal: each kind of item fades in over 150 ms in its color code,
+		// two rows of ten in the thick band's leading part.
+		host.materials.clear();
+		Check(runtime.SetState({{"load_icon_1",1.0},{"load_icon_src_1",std::string("gfx/guis/hud/icons/item_railgun")},
+			{"load_icon_r_1",0.0},{"load_icon_g_1",1.0},{"load_icon_b_1",0.0},
+			{"load_icon_11",1.0},{"load_icon_src_11",std::string("gfx/guis/hud/icons/item_armorlarge")}},error,4),"two items spawn");
+		Check(runtime.PlayTimeline("arsenal1",4) && runtime.PlayTimeline("arsenal11",4),"their icons fade in");
+		runtime.Frame(viewport,4.075);
+		const auto half = runtime.PresentedValue("arsenal-1","opacity");
+		const auto tint = runtime.PresentedValue("arsenal-1","image-color");
+		const auto unspawned = runtime.PresentedValue("arsenal-2","display");
+		Check(half && Near(static_cast<float>(half->data[0]),.5f,.02f) && tint && Near(static_cast<float>(tint->data[0]),0,.001f) &&
+			Near(static_cast<float>(tint->data[1]),1,.001f) && unspawned && unspawned->text == "none",
+			"an icon is half in at 75 ms, tinted in the item's color code; an unspawned kind shows nothing");
+		runtime.Frame(viewport,4.2);
+		const auto full = runtime.PresentedValue("arsenal-11","opacity");
+		Bounds first, eleventh;
+		Check(full && Near(static_cast<float>(full->data[0]),1,.001f) && runtime.GetBounds("arsenal-1",first) &&
+			runtime.GetBounds("arsenal-11",eleventh) && Near(first.x,160+216*1.5f,1) && Near(eleventh.x,first.x,1) &&
+			Near(eleventh.y-first.y,18*1.5f,1) && Near(first.width,24,1) && first.y >= 426*1.5f,
+			"the second row starts under the first, inside the thick band");
+		Check(std::find(host.materials.begin(),host.materials.end(),"gfx/guis/hud/icons/item_railgun") != host.materials.end(),
+			"the icon draws its image");
+		Check(runtime.SetState({{"loading_mp",false}},error,4.3),"single player again");
+		runtime.Frame(viewport,4.3);
+		const auto spArsenal = runtime.PresentedValue("arsenal","display");
+		Check(spArsenal && spArsenal->text == "none","single player has no arsenal");
 	}
 	Check(host.errors == 0,"no retained diagnostics");
 	std::printf("retained screens: %d checks passed\n",checks);

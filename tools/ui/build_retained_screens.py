@@ -2087,6 +2087,10 @@ def corner_bracket(ident: str, left_u: float, top_u: float, flip_x: bool, flip_y
     return vector(ident, absolute(left=U * left_u, top=U * top_u, width=size, height=size), [halo, core, white])
 
 
+# The multiplayer arsenal's kinds of item (RETAINED_ARSENAL_ICONS in Session.cpp).
+ARSENAL_ICONS = 20
+
+
 def loading_document() -> dict:
     """Section 14.17: the stock loading screens in their Remastered form: the
     drifting levelshot, the detail line, the progress with the loader's phase,
@@ -2110,6 +2114,10 @@ def loading_document() -> dict:
         "loading_phase": {"type": "string", "initial": ""},
         "loading_count": {"type": "string", "initial": ""},
         "loading_controller": {"type": "boolean", "initial": False},
+        **{f"load_icon_{index}": {"type": "number", "initial": 0} for index in range(1, ARSENAL_ICONS + 1)},
+        **{f"load_icon_src_{index}": {"type": "string", "initial": ""} for index in range(1, ARSENAL_ICONS + 1)},
+        **{f"load_icon_{channel}_{index}": {"type": "number", "initial": 1}
+           for index in range(1, ARSENAL_ICONS + 1) for channel in ("r", "g", "b")},
     })
     doc.events["FinishedLoading"] = [{"op": "setState", "values": {"loading_ready": True}},
                                      {"op": "playTimeline", "timeline": "continuePulse"}]
@@ -2300,11 +2308,33 @@ def loading_document() -> dict:
     doc.timelines.add("continuePulse", 700, [
         track("progress-prompt-text", "color", [(0, colour([1, 1, 1, 1])), (500, colour([1, 1, 1, 0.5])), (700, colour([1, 1, 1, 1]))])],
         iterations=0)
+    # The multiplayer arsenal (section 14.17): the thick band's leading part,
+    # from its riser to the bar, holds the map's items, two rows of ten 16 u
+    # icons on a 17 u pitch. Each kind fades in over 150 ms in its color code
+    # as it spawns; the session publishes its image and tint and plays its
+    # timeline. The 1 ms key restarts a fade a previous load completed.
+    icons = []
+    for index in range(1, ARSENAL_ICONS + 1):
+        column, row = (index - 1) % 10, (index - 1) // 10
+        ident = f"arsenal-{index}"
+        icons.append(picture(ident, "", {**absolute(left=U * (216 + 17 * column), top=U * (10 + 18 * row), width=U * 16, height=U * 16),
+                                         "display": keyword("none"), "opacity": number(0), "image-color": colour([1, 1, 1, 1])},
+                             fit="contain"))
+        doc.bind(f"{ident}.display", ident, "display", {"op": "select", "args": [
+            {"op": "&&", "args": [{"op": ">=", "args": [{"state": f"load_icon_{index}"}, 1]},
+                                  {"op": "!=", "args": [{"state": f"load_icon_src_{index}"}, ""]}]}, "block", "none"]})
+        doc.bind(f"{ident}.image", ident, "image", {"state": f"load_icon_src_{index}"})
+        doc.bind(f"{ident}.image-color", ident, "image-color",
+                 [{"state": f"load_icon_r_{index}"}, {"state": f"load_icon_g_{index}"}, {"state": f"load_icon_b_{index}"}, 1])
+        doc.timelines.add(f"arsenal{index}", 150, [track(ident, "opacity", [(0, number(0)), (1, number(0)), (150, number(1))])])
+    arsenal = group("arsenal", {"display": keyword("block"), **absolute(top=U * 426, width=CANVAS_W, height=U * 54),
+                                "left": length(50, "%"), "margin-left": length(-CANVAS_W / 2)}, icons)
+    doc.bind("arsenal.display", "arsenal", "display", {"op": "select", "args": [{"state": "loading_mp"}, "block", "none"]})
     root = group("screen", {**FULL, "background-color": colour([0, 0, 0, 1]), "font-family": font("marine"),
                             "font-size": length(16), "color": colour([1, 1, 1, 0.8])}, [
         shot,
         vector("load-grid", dict(FULL), [grid_path()]),
-        top_band, bottom_band, brackets, dot_matrix, identity, objectives, server, progress,
+        top_band, bottom_band, brackets, dot_matrix, identity, objectives, server, arsenal, progress,
     ])
     return doc.build(root)
 
