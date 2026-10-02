@@ -464,6 +464,25 @@ Only the **Stock UI** entries set `ui_retained 0`. No launch sets
 `tools/tests/vscode_fast_build.py` fails while the file differs from its
 output.
 
+### Codex App Actions
+
+On Windows, `.codex/environments/openq4.toml` offers the same entries as
+actions in the Codex app: every VS Code task, plus the main menus and their
+variants and the first level or map of each campaign and stock multiplayer
+mode, each on both renderers. A new Codex worktree runs **Configure openQ4
+(Meson Optimized)** as its setup script.
+
+Each action passes a task label or launch configuration name to
+`.codex/scripts/run-vscode-entry.ps1`, so regenerating `launch.json` cannot
+move it onto another entry, and `tools/tests/vscode_fast_build.py` fails when
+an action names one that no longer exists. A launch action lasts until the
+game exits. The script runs any other entry from a terminal too; give the name
+exactly, with the em dash before the renderer:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .codex\scripts\run-vscode-entry.ps1 launch "(SP) storage1 first 'DATA STORAGE TERMINAL' — GL"
+```
+
 ### Debug Build
 
 ```powershell

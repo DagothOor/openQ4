@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
-"""Regression checks for the VS Code fast default build path and launch configurations."""
+"""Regression checks for the VS Code fast default build path, launch configurations and the Codex actions that run them."""
 
 from __future__ import annotations
 
 import json
+import re
 import sys
+import tomllib
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+CODEX_RUNNER = ".codex/scripts/run-vscode-entry.ps1"
+# How the Codex setup script and every action run a VS Code entry. Inside the
+# double quotes, $ and ` would expand in PowerShell and % in cmd.
+CODEX_COMMAND = re.compile(
+    r'powershell -NoProfile -ExecutionPolicy Bypass -File \.codex\\scripts\\run-vscode-entry\.ps1 (task|launch) "([^"$`%]+)"'
+)
 
 
 def read(relative_path: str) -> str:
@@ -174,6 +182,50 @@ def validate_launch_configs() -> None:
         )
 
 
+def validate_codex_actions() -> None:
+    # The actions once ran entries by position, and regrouping launch.json moved
+    # them all onto other entries. Each now names its entry, which has to exist.
+    entries = {
+        "task": [task.get("label") for task in json.loads(read(".vscode/tasks.json"))["tasks"]],
+        "launch": [config.get("name") for config in json.loads(read(".vscode/launch.json"))["configurations"]],
+    }
+
+    def resolve(command: object, context: str) -> tuple[str, str]:
+        match = CODEX_COMMAND.fullmatch(command) if isinstance(command, str) else None
+        if match is None:
+            raise AssertionError(f"{context} must run one quoted entry through {CODEX_RUNNER}, not {command!r}")
+        kind, entry = match.groups()
+        if entry.isdigit():
+            raise AssertionError(f"{context} must name its {kind} rather than give its position")
+        if entries[kind].count(entry) != 1:
+            raise AssertionError(f"{context} runs {kind} {entry!r}, which .vscode does not define exactly once")
+        return kind, entry
+
+    environment = tomllib.loads(read(".codex/environments/openq4.toml"))
+    if resolve(environment["setup"]["win32"]["script"], "Codex setup script")[0] != "task":
+        raise AssertionError("Codex setup script must run a task")
+    names = []
+    for action in environment.get("actions", []):
+        name = action.get("name")
+        context = f"Codex action {name!r}"
+        if resolve(action.get("command"), context)[1] != name:
+            raise AssertionError(f"{context} must run the entry it is named after")
+        # The commands are Windows command lines. The Codex app reads platform and
+        # drops any other key, such as platforms, then offers the action on every OS.
+        if action.get("platform") != "win32":
+            raise AssertionError(f'{context} must set platform = "win32"')
+        names.append(name)
+    if not names or len(set(names)) != len(names):
+        raise AssertionError("Codex actions must exist and have distinct names")
+
+    # Windows PowerShell reads a file without a byte order mark as ANSI, so the
+    # runner has to stay ASCII and read launch.json as UTF-8 for an em dash to match.
+    runner = read(CODEX_RUNNER)
+    if not runner.isascii():
+        raise AssertionError(f"{CODEX_RUNNER} must stay ASCII")
+    require(runner, "Get-Content -LiteralPath $Path -Raw -Encoding UTF8", "Codex runner JSON reads")
+
+
 def validate_mp_autojoin_policy() -> None:
     listen_script = read("tools/debug/start_listen_server_client.ps1")
     if listen_script.count('"+set", "ui_autoJoin", "1"') != 2:
@@ -232,6 +284,7 @@ def main() -> None:
     validate_tasks()
     validate_wrapper()
     validate_launch_configs()
+    validate_codex_actions()
     validate_mp_autojoin_policy()
     validate_validation_coverage()
     print("vscode_fast_build: ok")
