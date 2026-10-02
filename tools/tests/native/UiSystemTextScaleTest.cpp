@@ -147,7 +147,7 @@ static void CheckPage(View& v,int width,int height,float density,float textScale
 int main(int argc,char** argv) {
     Check(argc==3 || argc==4,"page, locale directory and optional single-locale arguments");
     const auto source=Read(argv[1]);const std::string directory=argv[2];
-    for(auto* locale:{"english","spanish","polish","russian","french","italian"}) {
+    for(auto* locale:{"english","spanish","polish","russian","french","italian","german"}) {
         if(argc==4 && std::string(argv[3])!=locale)continue;
         for(float expansion:{1.f,1.4f}) {
         std::fprintf(stderr,"Text scale locale=%s glyph expansion=%g\n",locale,expansion);

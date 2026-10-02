@@ -196,8 +196,10 @@ language whose letters the retail atlases do not carry.
 7. Run the SYSTEM page's native fit tests (`tools/tests/native/UiSystem*Test.cpp`
    and `UiPopupPlacementRuntimeTest.cpp`) for it. They lay the retained page out
    with its real tables at every UI scale and fail on any label that does not
-   fit. CI runs a six-locale sample to keep its time down, so add the language
-   to their lists locally, rebuild, and pass it as the last argument.
+   fit. CI runs a seven-locale sample (English, Spanish, Polish, Russian,
+   French, Italian and German, which has the longest labels) to keep its time
+   down, so add the language to their lists locally, rebuild, and pass it as
+   the last argument.
 
 `tools/tests/lang_table_encoding.py` checks the tables against English (keys,
 order, printf arguments, `^` escapes, layout escapes, semicolons), the chooser

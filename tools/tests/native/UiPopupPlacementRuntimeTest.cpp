@@ -224,7 +224,7 @@ static void RenderedTextWidth() {
 }
 static void ProductionPopup(const std::string& source,const std::string& locales) {
     Document model;std::vector<Diagnostic> modelErrors;Check(model.Load(source,modelErrors),"production source parses independently");
-    for(const char* locale:{"english","french","russian","italian","spanish","polish"})for(float expansion:{1.f,1.4f}) {
+    for(const char* locale:{"english","french","russian","italian","spanish","polish","german"})for(float expansion:{1.f,1.4f}) {
         std::fprintf(stderr,"popup locale=%s glyph-width=%g\n",locale,expansion);
         PopupPageHost host;host.Locale(locales+"/"+locale+"_openq4.lang");host.Locale(locales+"/"+locale+"_guis.lang");host.expansion=expansion;Runtime runtime(host);std::vector<Diagnostic> diagnostics;
         const bool loaded=runtime.LoadDocument(source,"guis/menu/settings/system.q4ui",diagnostics);

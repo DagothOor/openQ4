@@ -95,7 +95,7 @@ static void Run(const std::string& source,const std::string& directory,const cha
 }
 int main(int argc,char** argv) {
  Check(argc==3||argc==4,"page, language folder and optional locale");const auto source=Read(argv[1]);
- for(const char* locale:{"english","spanish","polish","russian","french","italian"}) {
+ for(const char* locale:{"english","spanish","polish","russian","french","italian","german"}) {
   if(argc==4&&std::string(argv[3])!=locale)continue;
   for(float expansion:{1.f,1.4f})Run(source,argv[2],locale,expansion);
  }
