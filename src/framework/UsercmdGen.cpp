@@ -1257,6 +1257,17 @@ void idUsercmdGenLocal::MakeCurrent( void ) {
 		} else if ( oldAngles[PITCH] - viewangles[PITCH] > 90 ) {
 			viewangles[PITCH] = oldAngles[PITCH] - 90;
 		} 
+
+		// openQ4 VR: the tracked aim pose owns the angles while a headset
+		// session has input focus
+		vrUsercmdInput_t vrInput;
+		if ( vrSystem != NULL && vrSystem->GetUsercmdInput( viewangles[YAW] - oldAngles[YAW], oldAngles[YAW], vrInput ) ) {
+			viewangles[YAW] = vrInput.aimYaw;
+			viewangles[PITCH] = vrInput.aimPitch;
+			viewangles[ROLL] = 0.0f;
+			cmd.forwardmove = idMath::ClampChar( cmd.forwardmove + idMath::FtoiFast( vrInput.forward * 127.0f ) );
+			cmd.rightmove = idMath::ClampChar( cmd.rightmove + idMath::FtoiFast( vrInput.right * 127.0f ) );
+		}
 	} else {
 		mouseDx = 0;
 		mouseDy = 0;

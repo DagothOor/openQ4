@@ -733,6 +733,8 @@ def validate_validation_wiring() -> None:
         "campaign_selection_runtime.py",
         "renderer_milestone_d_acceptance.py",
         "renderer_milestone_d_fixture.py",
+        # Needs a staged OpenXR client, the built test runtime and retail assets.
+        "openxr_vr_smoke.py",
         # Imported by the UI harnesses that compile wrap sources; the workflows
         # py_compile it, and it is exercised through those harnesses.
         "wrap_sources.py",

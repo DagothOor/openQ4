@@ -1,0 +1,157 @@
+# Virtual reality (OpenXR)
+
+openQ4 can play Quake 4 on a PC VR headset through OpenXR, the cross-vendor
+VR standard. You see the game in stereo at your headset's resolution, look
+around with your head and aim with a motion controller. The HUD floats in
+front of you, and menus, loading screens and cinematics appear on a floating
+screen.
+
+VR mode is **experimental**. It works with the single-player campaign and
+multiplayer, and needs no extra content beyond your Quake 4 install.
+
+## What you need
+
+- A PC VR headset and an **OpenXR runtime that supports OpenGL**, set as the
+  system's active OpenXR runtime:
+  - **SteamVR** (Valve Index, HTC Vive, Pimax, Bigscreen and many others);
+  - the **Meta Quest Link** PC app for Quest headsets over Link or Air Link;
+  - **Monado** on Linux.
+
+  Windows Mixed Reality's own runtime does not support OpenGL. On a WMR
+  headset, run the game through SteamVR instead.
+- The **OpenGL renderer**, which is the default. VR does not start while
+  `r_renderApi` is `vulkan`.
+- On Linux, a GLX context: on an X11 desktop this is automatic; on a Wayland
+  desktop, start openQ4 with the environment variable `OPENQ4_FORCE_X11=1` so
+  it runs through XWayland.
+
+## Turning VR on
+
+1. Start your headset and its OpenXR runtime (for example SteamVR).
+2. In openQ4, open the console and enter:
+
+   ```
+   vr_enable 1
+   vr_restart
+   ```
+
+   The setting is saved, so the next launch starts in VR on its own. You can
+   also launch with `+set vr_enable 1`.
+
+When VR is on, the desktop window shows what your left eye sees. To turn VR
+off again, enter `vr_enable 0` and `vr_restart`.
+
+If the headset isn't connected yet, openQ4 waits for it and starts VR as soon
+as it appears.
+
+If you quit SteamVR, or the runtime closes VR some other way, the game carries
+on in its desktop window. Enter `vr_restart` to go back into VR; `vr_enable`
+stays on, so the next launch starts in VR as usual.
+
+## Controls
+
+Controllers act like a gamepad, so the default gamepad bindings apply and you
+can rebind them in the controls menu like any gamepad button.
+
+| Control | Gameplay | Menus |
+| --- | --- | --- |
+| Weapon-hand trigger | Fire | Click where you point |
+| Off-hand trigger | Zoom | - |
+| Off-hand stick | Move | Navigate |
+| Weapon-hand stick left/right | Turn | Navigate |
+| Weapon-hand stick up/down | Next / previous weapon | Navigate |
+| A | Jump | Select |
+| B | Crouch | Back |
+| X | Reload | - |
+| Y | Flashlight | - |
+| Off-hand grip | Weapon wheel | - |
+| Weapon-hand grip | Last weapon | - |
+| Off-hand stick click | Run / walk | - |
+| Menu button | Menu | Close menu |
+
+The weapon hand is the right hand. Set `vr_leftHanded 1` to hold the weapon
+in your left hand; the triggers, grips and sticks swap with it.
+
+Menus open on a floating screen in front of you, and the game world stays
+around you while the game is paused. Point your weapon-hand controller at the
+screen: a dot shows where it points, and the trigger clicks there like a
+mouse. The sticks and the A and B buttons also work in menus.
+
+You aim with the controller in your weapon hand, and the gun follows it. Set
+`vr_aimMode 0` to aim with your head instead. The HUD crosshair only shows
+when you aim with your head.
+
+## Comfort
+
+openQ4 avoids moving your view in ways your body doesn't feel:
+
+- there is no view bob, weapon kick or screen shake in VR;
+- turning is done in steps (snap turn) by default;
+- in-game cinematics play on the floating screen instead of moving your view.
+
+You can change these settings:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `vr_turnMode` | 0 | 0 snap turn, 1 smooth turn |
+| `vr_snapTurnAngle` | 45 | degrees per snap turn |
+| `vr_smoothTurnSpeed` | 120 | smooth turn speed, degrees per second |
+| `vr_moveDirection` | 0 | 0 walk where you look, 1 walk where the off-hand controller points |
+| `vr_stickDeadzone` | 0.2 | thumbstick deadzone |
+| `vr_headOffsetLimit` | 16 | how far you can lean from your body before the view stops (game units) |
+
+Use `vr_recenter` to make your current position and direction the front. It
+helps to bind it to a key, for example `bind F12 vr_recenter`.
+
+## Display
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `vr_renderScale` | 1.0 | multiplies the headset's recommended resolution (0.5-2.0; apply with `vr_restart`) |
+| `vr_worldScale` | 39.37 | game units per metre; lower makes the world feel bigger |
+| `vr_hudDistance` | 1.4 | HUD distance in metres |
+| `vr_hudWidth` | 1.2 | HUD width in metres |
+| `vr_hudHeightOffset` | -0.1 | HUD height relative to your eyes, in metres, when you aim with the controller (head aiming centres the HUD so its crosshair lines up) |
+| `vr_screenDistance` | 2.5 | menu and cinematic screen distance in metres |
+| `vr_screenWidth` | 3.0 | menu and cinematic screen width in metres |
+| `vr_mirror` | 1 | desktop window: 0 black, 1 left eye, 2 the floating screen |
+
+The floating screen and the HUD take the shape of the game window, so menus
+look the same as on your monitor.
+
+Temporal anti-aliasing and dynamic resolution switch themselves off in VR.
+Use MSAA (`r_multiSamples`) or SMAA instead.
+
+## Weapon position
+
+If the gun doesn't sit naturally in your hand, adjust where it is drawn
+relative to the controller:
+
+| Setting | Default | Direction |
+| --- | --- | --- |
+| `vr_weaponOffsetX` | -5 | along the controller's aim, in game units |
+| `vr_weaponOffsetY` | 0 | to the controller's left |
+| `vr_weaponOffsetZ` | -3 | above the controller |
+| `vr_weaponPitch` | 0 | tilt in degrees; positive tilts down |
+
+## Multiplayer
+
+VR players can join any openQ4 server. Your aim reaches the server the same
+way a mouse's does, so servers need no changes. In multiplayer, shots leave
+from your eyes along your controller's aim; in single player they leave from
+the gun in your hand.
+
+## Troubleshooting
+
+Enter `vr_status` in the console to see the runtime, headset, session state
+and resolution openQ4 is using. `vr_debug 1` logs session events.
+
+- **"no runtime is available"**: no OpenXR runtime is installed or active.
+  Set one as active in its own settings, for example in SteamVR under
+  Settings > OpenXR.
+- **"does not support OpenGL"**: the active runtime can't render OpenGL games.
+  Switch to SteamVR or Meta Quest Link.
+- **"VR needs the OpenGL renderer"**: set `r_renderApi gl` and restart. On a
+  Linux Wayland desktop, also start openQ4 with `OPENQ4_FORCE_X11=1`.
+- **The image looks washed out**: the runtime didn't offer an sRGB image
+  format. Report your headset and runtime.

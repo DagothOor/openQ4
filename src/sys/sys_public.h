@@ -470,6 +470,16 @@ int				Sys_ReturnJoystickInputEvent( const int n, int &axis, int &value );
 void			Sys_EndJoystickInputEvents( void );
 bool			Sys_GetJoystickAxisState( int axis, int &value );
 bool			Sys_SetJoystickRumble( float lowFrequency, float highFrequency, int durationMsec );
+// openQ4 VR: delivers a tracked-controller button exactly like a gamepad
+// button, to the event queue (menus, console) and the key poll queue (usercmd
+// bindings); mouse buttons are the menu pointer's clicks and take the mouse's
+// route instead. Main thread only; implemented by the SDL3 client backend, the
+// only one that builds OpenXR.
+void			Sys_PostVRControllerKey( int key, bool down );
+// openQ4 VR: the controller points at the virtual screen at (u, v), 0..1 left
+// to right and top to bottom, or has left it. Moves the open menu's cursor the
+// way the mouse would; returns false when no menu takes a pointer.
+bool			Sys_PostVRPointer( bool onScreen, float u, float v );
 
 // when the console is down, or the game is about to perform a lengthy
 // operation like map loading, the system can release the mouse cursor

@@ -156,4 +156,10 @@ void	R_RendererModule_PublishLightGridLoadReceipt( const renderLightGridLoadRece
 bool	R_RendererModule_QueryRendererSelection( renderRendererSelection_t &selection, uint64_t &serial, uint64_t &epoch );
 bool	R_RendererModule_QueryLightGridLoad( renderLightGridLoadReceipt_t &receipt, uint64_t &serial, uint64_t &epoch );
 
+// OpenXR (render API 21): the renderer reports RENDER_DEVICE_READY after every
+// device start and RENDER_DEVICE_STOPPING before every device teardown. The
+// engine hands them to its VR system; module builds forward them through the
+// services table.
+void	R_RendererModule_RendererDeviceEvent( int event );
+
 #endif /* !__RENDERERMODULE_H__ */

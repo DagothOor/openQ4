@@ -1425,6 +1425,9 @@ void idRenderSystemLocal::BeginFrame( int windowWidth, int windowHeight ) {
 		windowHeight = tiledViewport[1];
 	}
 
+	// openQ4 VR: a headset frame's output is the virtual screen (RenderSystem_vr.cpp)
+	const bool vrPresenting = BeginVRFrame( windowWidth, windowHeight );
+
 	glConfig.vidWidth = windowWidth;
 	glConfig.vidHeight = windowHeight;
 	{
@@ -1500,7 +1503,8 @@ void idRenderSystemLocal::BeginFrame( int windowWidth, int windowHeight ) {
 	resolutionScaleWidth = 0;
 	resolutionScaleHeight = 0;
 	const int screenFraction = idMath::ClampInt( 10, 200, r_screenFraction.GetInteger() );
-	if ( !R_TemporalPresentation_DynamicResolutionRequested()
+	if ( !vrPresenting
+			&& !R_TemporalPresentation_DynamicResolutionRequested()
 			&& !R_TemporalPresentation_TemporalAARequested()
 			&& !R_TemporalPresentation_ScreenSpaceEffectsRequested()
 			&& screenFraction < 100 && r_resolutionScaleMode.GetInteger() == 0 ) {
@@ -1546,6 +1550,11 @@ void idRenderSystemLocal::BeginFrame( int windowWidth, int windowHeight ) {
 	if ( R_ScenePackets_FrontEndCaptureRequired() ) {
 		R_ScenePackets_AddCommandOnly();
 	}
+
+	// the backend moves onto the virtual screen before anything is drawn
+	if ( vrPresenting ) {
+		SetVRRenderTarget( -1 );
+	}
 }
 
 void idRenderSystemLocal::WriteDemoPics() {
@@ -1580,6 +1589,9 @@ void idRenderSystemLocal::EndFrame( int *frontEndMsec, int *backEndMsec ) {
 	// close any gui drawing
 	FlushGui();
 
+	// a VR frame ends on its virtual screen, which presents last
+	EndVRFrame();
+
 	// check for dynamic changes that require some initialization
 	R_CheckCvars();
 
@@ -1595,6 +1607,7 @@ void idRenderSystemLocal::EndFrame( int *frontEndMsec, int *backEndMsec ) {
 
 	// start the back end up again with the new command list
 	R_IssueRenderCommands();
+	FinishVRFrame();
 	ProcessPendingRenderTextureDeletes();
 
 	// save out timing information after the backend has consumed the frame.

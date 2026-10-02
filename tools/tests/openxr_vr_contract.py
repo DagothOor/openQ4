@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Source contract for OpenXR virtual reality (docs/dev/plans/2026-10-02-openxr-vr.md).
+
+Pins what keeps VR safe to ship without a headset in CI:
+- the Khronos loader is pinned, built statically and only into the SDL3 client
+  on Windows and Linux; dedicated servers and the test runtime never install it;
+- the renderer and game ABIs grew append-only (render API 21, game API 50)
+  and renderView_t's off-axis fields default to a symmetric view;
+- engines without OpenXR, and dedicated servers, run the null VR system;
+- controller input enters through the gamepad key path, never synthesised OS
+  input, and every action name the runtime shows is localised;
+- the user guide, developer plan, licence notice and runtime smoke exist.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+import re
+import sys
+
+ROOT = Path(__file__).resolve().parents[2]
+LANGUAGES = (
+    "english", "spanish", "french", "italian", "polish", "russian", "german",
+    "brazilian", "czech", "hungarian", "turkish", "ukrainian",
+)
+ACTION_STRINGS = [f"#str_{n}" for n in range(230100, 230111)]
+
+
+def read(relative: str) -> str:
+    return (ROOT / relative).read_text(encoding="utf-8", errors="replace")
+
+
+def require(text: str, token: str, label: str) -> None:
+    if token not in text:
+        raise AssertionError(f"{label}: missing {token!r}")
+
+
+def check_build() -> None:
+    wrap = read("subprojects/openxr.wrap")
+    require(wrap, "directory = OpenXR-SDK-release-1.1.63", "openxr.wrap pins the SDK release")
+    if not re.search(r"source_hash = [0-9a-f]{64}", wrap):
+        raise AssertionError("openxr.wrap must pin the tarball hash")
+    loader = read("subprojects/packagefiles/openxr/meson.build")
+    require(loader, "static_library('openxr_loader'", "the loader builds statically")
+    require(loader, "dependency('jsoncpp')", "the loader shares the project's jsoncpp")
+    require(loader, "install: false", "the loader is never installed beside the executable")
+
+    options = read("meson_options.txt")
+    require(options, "'openxr',\n  type: 'feature',", "meson_options.txt declares the openxr feature")
+
+    meson = read("meson.build")
+    require(meson, "build_openxr = build_engine and use_sdl3_backend and not openxr_option.disabled() \\\n"
+                   "  and (host_system == 'windows' or host_system == 'linux')",
+            "OpenXR is limited to the SDL3 client on Windows and Linux")
+    snapshot = meson.index("openq4_dedicated_sources = openq4_engine_sources")
+    client_sources = meson.index("openq4_engine_sources += files('src/sys/openxr/OpenXRSystem.cpp')")
+    if client_sources < snapshot:
+        raise AssertionError("OpenXR sources must join the client after the dedicated-server snapshot")
+    require(meson, "client_engine_cpp_args += ['-DOPENQ4_OPENXR=1']", "only the client defines OPENQ4_OPENXR")
+    require(meson, "client_deps += openxr_loader_dep", "only the client links the loader")
+    runtime = meson[meson.index("shared_module(\n    'openq4-xr-test-runtime'"):]
+    require(runtime[:600], "install: false", "the OpenXR test runtime is a test fixture")
+    require(meson, "test('openq4-vr-math-core', openq4_vr_math_core_test", "the VR math core has a native test")
+    if "src/sys/openxr" in read("tools/build/meson_sources.py"):
+        raise AssertionError("src/sys/openxr must stay outside the engine source globs")
+
+
+def check_abi() -> None:
+    api = read("src/renderer/RenderModuleAPI.h")
+    require(api, "#define RENDER_API_VERSION\t\t\t21", "renderer module ABI v21")
+    require(api, "void\t\t\t( *RendererDeviceEvent )( int event );\t// renderDeviceEvent_t\n} renderModuleServices_t;",
+            "the device lifetime service is the last services slot")
+
+    render_system = read("src/renderer/RenderSystem.h")
+    anchor = "virtual void ResetRetainedFontCache() = 0;"
+    tail = render_system[render_system.index(anchor) + len(anchor):]
+    slots = re.findall(r"virtual \w+\s+(\w+)\(", tail)
+    if slots != ["GetVRGraphicsBinding", "SetVRFrame", "SetVRRenderTarget", "GetVRFrameResult"]:
+        raise AssertionError(f"the VR slots must close idRenderSystem's vtable, found {slots}")
+
+    # game modules call through idVRSystem too: its slots only ever grow at the end
+    vr_system = read("src/framework/VRSystem.h")
+    interface = vr_system[vr_system.index("class idVRSystem {"):vr_system.index("extern idVRSystem *")]
+    vr_slots = re.findall(r"virtual \w+\s+(\w+)\(", interface)
+    if vr_slots != ["Init", "Shutdown", "RendererStarted", "RendererStopping", "BeginFrame", "EndFrame",
+                    "IsPacing", "IsActive", "GetFrameState", "GetUsercmdInput", "DrawMenuPointer"]:
+        raise AssertionError(f"idVRSystem's slots changed order: {vr_slots}")
+
+    render_world = read("src/renderer/RenderWorld.h")
+    for field in ("bool					asymmetricFov = false;", "float					fovTanLeft = 0.0f;",
+                  "float					fovTanRight = 0.0f;", "float					fovTanUp = 0.0f;",
+                  "float					fovTanDown = 0.0f;"):
+        require(render_world, field, "renderView_t keeps existing views symmetric")
+
+    game = read("src/game/Game.h")
+    require(game, "const int GAME_API_VERSION\t\t= 50;", "game module ABI v50")
+    import_block = game[game.index("struct gameImport_t {"):game.index("struct gameExport_t {")]
+    if not import_block.rstrip().rstrip("};").rstrip().endswith("idVRSystem *				vrSystem;				// tracked head/controller poses (never NULL)"):
+        raise AssertionError("gameImport_t must end with vrSystem")
+    for module in ("src/game/Game_local.cpp", "src/mpgame/Game_local.cpp"):
+        require(read(module), "vrSystem\t\t\t\t\t= import->vrSystem;", f"{module} binds the VR system")
+    require(read("src/framework/Common.cpp"), "gameImport.vrSystem\t\t\t\t\t= ::vrSystem;", "the engine exports its VR system")
+
+
+def check_engine() -> None:
+    system = read("src/framework/VRSystem.cpp")
+    require(system, "#if defined( OPENQ4_OPENXR )\nidVRSystem *vrSystem = VR_GetOpenXRSystem();",
+            "OpenXR builds run the OpenXR system")
+    require(system, "static idVRSystemNull vrSystemNull;\nidVRSystem *vrSystem = &vrSystemNull;",
+            "other builds run the null system")
+    require(system, 'idCVar vr_enable( "vr_enable", "0",', "VR is off by default")
+
+    openxr = read("src/sys/openxr/OpenXRSystem.cpp")
+    for banned in ("SendInput", "keybd_event", "mouse_event", "XTest"):
+        if banned in openxr:
+            raise AssertionError(f"OpenXR input must not synthesise OS input ({banned})")
+    require(openxr, "Sys_PostVRControllerKey( key, down );", "controller buttons take the gamepad key path")
+    require(openxr, "createInfo.applicationInfo.apiVersion = XR_API_VERSION_1_0;", "the instance asks for OpenXR 1.0")
+    require(openxr, "XR_KHR_OPENGL_ENABLE_EXTENSION_NAME", "the session binds OpenGL")
+    for token in vrActionTokens():
+        require(openxr, token, "OpenXR action names are localised")
+
+    session = read("src/framework/Session.cpp")
+    begin = session.index("\tvrSystem->BeginFrame();\n\trenderSystem->BeginFrame(")
+    end = session.index("\tvrSystem->EndFrame();\n\n\tinsideUpdateScreen = false;")
+    if not begin < end:
+        raise AssertionError("an XR frame must bracket one UpdateScreen")
+    require(read("src/renderer/RenderSystem_init.cpp"), "R_RendererModule_RendererDeviceEvent( RENDER_DEVICE_STOPPING );",
+            "the session closes before the renderer destroys its context")
+    require(session, "\tDraw();\n\tvrSystem->DrawMenuPointer();\n",
+            "the menu pointer draws over every other 2D element of the frame")
+    backend = read("src/sys/sdl3/sdl3_backend.cpp")
+    require(backend, "#ifndef ID_DEDICATED\nvoid Sys_PostVRControllerKey(int key, bool down) {",
+            "only the client posts VR controller keys")
+    require(backend, "SDL3_QueueMouseButtonEvent(key, down, eventTime, false);",
+            "pointer clicks reach menus like mouse buttons and never the usercmd poll")
+    require(backend, "bool Sys_PostVRPointer(bool onScreen, float u, float v) {",
+            "the menu pointer takes the mouse's route into menus")
+
+
+def vrActionTokens() -> list[str]:
+    return [f'"{key}"' for key in ACTION_STRINGS]
+
+
+def check_strings() -> None:
+    for language in LANGUAGES:
+        table = read(f"content/baseoq4/pak0/strings/{language}_openq4.lang")
+        for key in ACTION_STRINGS:
+            if not re.search(rf'"{key}"\t"[^"]+"', table):
+                raise AssertionError(f"{language}_openq4.lang lacks {key}")
+
+
+def check_documents() -> None:
+    for relative in ("docs/user/vr.md", "docs/dev/plans/2026-10-02-openxr-vr.md", "docs/licenses/openxr-sdk.txt",
+                     "tools/tests/openxr_vr_smoke.py", "tools/tests/openxr/OpenXRTestRuntime.cpp",
+                     "tools/tests/native/VRMathCoreTest.cpp"):
+        if not (ROOT / relative).is_file():
+            raise AssertionError(f"missing {relative}")
+    guide = read("docs/user/vr.md")
+    for cvar in ("vr_enable", "vr_aimMode", "vr_turnMode", "vr_recenter", "vr_restart"):
+        require(guide, cvar, "the VR guide documents the settings players use")
+
+
+def main() -> int:
+    check_build()
+    check_abi()
+    check_engine()
+    check_strings()
+    check_documents()
+    print("openxr_vr_contract: ok")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

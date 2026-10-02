@@ -1361,7 +1361,10 @@ void rvWeapon::ApplyPresentationViewModelTransform( void ) {
 
 	idVec3 presentationWeaponOrigin;
 	idMat3 presentationWeaponAxis;
-	GetPresentationViewModelTransform( presentationWeaponOrigin, presentationWeaponAxis );
+	// openQ4 VR: drawn at the weapon hand from this frame's tracked pose
+	if ( !owner->GetVRWeaponTransform( presentationWeaponOrigin, presentationWeaponAxis, true ) ) {
+		GetPresentationViewModelTransform( presentationWeaponOrigin, presentationWeaponAxis );
+	}
 	viewModel->GetPhysics()->SetOrigin( presentationWeaponOrigin );
 	viewModel->GetPhysics()->SetAxis( presentationWeaponAxis );
 
@@ -1448,6 +1451,9 @@ void rvWeapon::Think ( void ) {
 		playerViewOrigin = owner->firstPersonViewOrigin;
 		playerViewAxis = owner->firstPersonViewAxis;
 		CalculateViewModelTransform( playerViewOrigin, playerViewAxis, viewModelOrigin, viewModelAxis );
+		// openQ4 VR: the view model hangs at the weapon hand; shots still
+		// leave the eye, which is what the server simulates
+		owner->GetVRWeaponTransform( viewModelOrigin, viewModelAxis, false );
 		UpdatePresentationViewModelState( playerViewOrigin, playerViewAxis, viewModelOrigin, viewModelAxis );
 	}
 

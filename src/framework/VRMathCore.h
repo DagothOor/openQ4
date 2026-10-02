@@ -1,0 +1,383 @@
+// Copyright (C) 2026 DarkMatter Productions
+#ifndef __VR_MATH_CORE_H__
+#define __VR_MATH_CORE_H__
+
+#include <cmath>
+
+/*
+===============================================================================
+
+	Dependency-light head-mounted display math shared by the OpenXR layer, the
+	renderer and the game modules.
+
+	OpenXR reports poses in a right-handed space with +X right, +Y up and -Z
+	forward, in metres. The engine works in a right-handed space with +X
+	forward, +Y left and +Z up, in game units. The two bases are related by a
+	proper rotation, so a direction converts by permuting its components, an
+	orientation by permuting its quaternion's vector part, and a position by
+	the permutation plus the world scale.
+
+	Engine angles follow idAngles: yaw turns counter-clockwise seen from above
+	(towards +Y, the player's left), and a positive pitch looks down.
+
+===============================================================================
+*/
+
+struct vrVec3_t {
+	float x, y, z;
+};
+
+struct vrQuat_t {
+	float x, y, z, w;
+};
+
+// A frustum as the four half-angle tangents measured from the view axis. A
+// frustum containing its own axis has negative left and down tangents, which
+// is what an OpenXR XrFovf converts to; the eyes of most headsets are not
+// symmetric about their axis.
+struct vrFovTangents_t {
+	float left, right, up, down;
+};
+
+const float VR_PI = 3.14159265358979323846f;
+const float VR_DEG2RAD = VR_PI / 180.0f;
+const float VR_RAD2DEG = 180.0f / VR_PI;
+
+inline vrVec3_t VR_Vec3( float x, float y, float z ) {
+	vrVec3_t v = { x, y, z };
+	return v;
+}
+
+inline vrVec3_t VR_Add( const vrVec3_t &a, const vrVec3_t &b ) {
+	return VR_Vec3( a.x + b.x, a.y + b.y, a.z + b.z );
+}
+
+inline vrVec3_t VR_Sub( const vrVec3_t &a, const vrVec3_t &b ) {
+	return VR_Vec3( a.x - b.x, a.y - b.y, a.z - b.z );
+}
+
+inline vrVec3_t VR_Scale( const vrVec3_t &v, float s ) {
+	return VR_Vec3( v.x * s, v.y * s, v.z * s );
+}
+
+inline float VR_Dot( const vrVec3_t &a, const vrVec3_t &b ) {
+	return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+inline vrVec3_t VR_Cross( const vrVec3_t &a, const vrVec3_t &b ) {
+	return VR_Vec3( a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x );
+}
+
+inline float VR_Length( const vrVec3_t &v ) {
+	return std::sqrt( VR_Dot( v, v ) );
+}
+
+inline bool VR_IsFinite( const vrVec3_t &v ) {
+	return std::isfinite( v.x ) && std::isfinite( v.y ) && std::isfinite( v.z );
+}
+
+inline bool VR_IsFinite( const vrQuat_t &q ) {
+	return std::isfinite( q.x ) && std::isfinite( q.y ) && std::isfinite( q.z ) && std::isfinite( q.w );
+}
+
+inline vrQuat_t VR_QuatIdentity( void ) {
+	vrQuat_t q = { 0.0f, 0.0f, 0.0f, 1.0f };
+	return q;
+}
+
+// Returns identity for a zero or non-finite quaternion, so a runtime that
+// reports garbage for a lost device never poisons the view.
+inline vrQuat_t VR_QuatNormalize( const vrQuat_t &q ) {
+	const float lengthSq = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+	if ( !std::isfinite( lengthSq ) || lengthSq < 1e-12f ) {
+		return VR_QuatIdentity();
+	}
+	const float inv = 1.0f / std::sqrt( lengthSq );
+	vrQuat_t n = { q.x * inv, q.y * inv, q.z * inv, q.w * inv };
+	return n;
+}
+
+// a * b applies b first, then a
+inline vrQuat_t VR_QuatMultiply( const vrQuat_t &a, const vrQuat_t &b ) {
+	vrQuat_t r;
+	r.x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y;
+	r.y = a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x;
+	r.z = a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w;
+	r.w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z;
+	return r;
+}
+
+inline vrQuat_t VR_QuatConjugate( const vrQuat_t &q ) {
+	vrQuat_t c = { -q.x, -q.y, -q.z, q.w };
+	return c;
+}
+
+inline vrVec3_t VR_RotateVector( const vrQuat_t &q, const vrVec3_t &v ) {
+	const vrVec3_t u = VR_Vec3( q.x, q.y, q.z );
+	const vrVec3_t t = VR_Scale( VR_Cross( u, v ), 2.0f );
+	return VR_Add( VR_Add( v, VR_Scale( t, q.w ) ), VR_Cross( u, t ) );
+}
+
+// rotation about the engine's +Z (up) axis; positive yaw turns left
+inline vrQuat_t VR_YawQuat( float yawDegrees ) {
+	const float half = yawDegrees * VR_DEG2RAD * 0.5f;
+	vrQuat_t q = { 0.0f, 0.0f, std::sin( half ), std::cos( half ) };
+	return q;
+}
+
+/*
+====================
+OpenXR to engine conversion
+
+The engine basis expressed in OpenXR axes: forward = -Z, left = -X, up = +Y.
+====================
+*/
+inline vrVec3_t VR_XrToEngineDirection( const vrVec3_t &xr ) {
+	return VR_Vec3( -xr.z, -xr.x, xr.y );
+}
+
+inline vrVec3_t VR_EngineToXrDirection( const vrVec3_t &engine ) {
+	return VR_Vec3( -engine.y, engine.z, -engine.x );
+}
+
+inline vrVec3_t VR_XrToEnginePosition( const vrVec3_t &xrMetres, float unitsPerMetre ) {
+	return VR_Scale( VR_XrToEngineDirection( xrMetres ), unitsPerMetre );
+}
+
+// The same rotation about the converted axis, so only the vector part moves.
+inline vrQuat_t VR_XrToEngineOrientation( const vrQuat_t &xr ) {
+	const vrQuat_t n = VR_QuatNormalize( xr );
+	vrQuat_t q = { -n.z, -n.x, n.y, n.w };
+	return q;
+}
+
+inline vrQuat_t VR_EngineToXrOrientation( const vrQuat_t &engine ) {
+	const vrQuat_t n = VR_QuatNormalize( engine );
+	vrQuat_t q = { -n.y, n.z, -n.x, n.w };
+	return q;
+}
+
+// Rows of an idMat3 view axis: forward, left, up.
+inline void VR_QuatToAxis( const vrQuat_t &q, vrVec3_t axis[3] ) {
+	axis[0] = VR_RotateVector( q, VR_Vec3( 1.0f, 0.0f, 0.0f ) );
+	axis[1] = VR_RotateVector( q, VR_Vec3( 0.0f, 1.0f, 0.0f ) );
+	axis[2] = VR_RotateVector( q, VR_Vec3( 0.0f, 0.0f, 1.0f ) );
+}
+
+inline float VR_YawDegrees( const vrVec3_t &forward ) {
+	if ( forward.x == 0.0f && forward.y == 0.0f ) {
+		return 0.0f;
+	}
+	return std::atan2( forward.y, forward.x ) * VR_RAD2DEG;
+}
+
+// Engine convention: positive pitch looks down.
+inline float VR_PitchDegrees( const vrVec3_t &forward ) {
+	const float horizontal = std::sqrt( forward.x * forward.x + forward.y * forward.y );
+	return -std::atan2( forward.z, horizontal ) * VR_RAD2DEG;
+}
+
+// Yaw of the direction an orientation faces, in engine degrees.
+inline float VR_QuatYawDegrees( const vrQuat_t &engineOrientation ) {
+	return VR_YawDegrees( VR_RotateVector( engineOrientation, VR_Vec3( 1.0f, 0.0f, 0.0f ) ) );
+}
+
+// Wraps an angle into [-180, 180).
+inline float VR_NormalizeDegrees180( float degrees ) {
+	if ( !std::isfinite( degrees ) ) {
+		return 0.0f;
+	}
+	degrees = std::fmod( degrees + 180.0f, 360.0f );
+	if ( degrees < 0.0f ) {
+		degrees += 360.0f;
+	}
+	return degrees - 180.0f;
+}
+
+/*
+====================
+Projection
+
+OpenXR XrFovf angles are radians from the view axis, negative to the left
+and downwards. The renderer builds its projection from near-plane extents;
+the horizontal extent maps to clip-space +X (screen right), which is the
+engine's -Y, and the vertical extent to clip-space +Y (screen up).
+====================
+*/
+inline vrFovTangents_t VR_FovTangentsFromAngles( float angleLeft, float angleRight, float angleUp, float angleDown ) {
+	vrFovTangents_t fov;
+	fov.left = std::tan( angleLeft );
+	fov.right = std::tan( angleRight );
+	fov.up = std::tan( angleUp );
+	fov.down = std::tan( angleDown );
+	return fov;
+}
+
+// Tangents beyond about 88 degrees off axis would make the projection
+// degenerate; a runtime never reports them for a real display.
+inline bool VR_FovTangentsValid( const vrFovTangents_t &fov ) {
+	const float limit = 30.0f;
+	if ( !std::isfinite( fov.left ) || !std::isfinite( fov.right ) || !std::isfinite( fov.up ) || !std::isfinite( fov.down ) ) {
+		return false;
+	}
+	if ( std::fabs( fov.left ) > limit || std::fabs( fov.right ) > limit || std::fabs( fov.up ) > limit || std::fabs( fov.down ) > limit ) {
+		return false;
+	}
+	return fov.left < fov.right && fov.down < fov.up;
+}
+
+// The symmetric field of view, in degrees, that encloses an off-axis one.
+// Consumers that only estimate (LOD, effects, the light grid) keep working
+// from fov_x/fov_y while culling and projection use the exact tangents.
+inline void VR_EnclosingFovDegrees( const vrFovTangents_t &fov, float &fovX, float &fovY ) {
+	const float halfX = std::fabs( fov.left ) > std::fabs( fov.right ) ? std::fabs( fov.left ) : std::fabs( fov.right );
+	const float halfY = std::fabs( fov.down ) > std::fabs( fov.up ) ? std::fabs( fov.down ) : std::fabs( fov.up );
+	fovX = 2.0f * std::atan( halfX ) * VR_RAD2DEG;
+	fovY = 2.0f * std::atan( halfY ) * VR_RAD2DEG;
+}
+
+inline void VR_ProjectionExtents( const vrFovTangents_t &fov, float zNear, float &xmin, float &xmax, float &ymin, float &ymax ) {
+	xmin = zNear * fov.left;
+	xmax = zNear * fov.right;
+	ymin = zNear * fov.down;
+	ymax = zNear * fov.up;
+}
+
+/*
+====================
+Turning
+
+A snap turn fires once when the stick passes the press threshold and re-arms
+only after it falls back below the release threshold, so holding the stick
+turns exactly once. Pushing the stick right (positive X) turns right, which
+is a negative engine yaw.
+====================
+*/
+struct vrSnapTurnState_t {
+	bool latched;
+};
+
+inline float VR_SnapTurn( vrSnapTurnState_t &state, float stickX, float stepDegrees,
+		float pressThreshold = 0.75f, float releaseThreshold = 0.35f ) {
+	if ( !std::isfinite( stickX ) ) {
+		return 0.0f;
+	}
+	const float magnitude = std::fabs( stickX );
+	if ( state.latched ) {
+		if ( magnitude < releaseThreshold ) {
+			state.latched = false;
+		}
+		return 0.0f;
+	}
+	if ( magnitude < pressThreshold ) {
+		return 0.0f;
+	}
+	state.latched = true;
+	return stickX > 0.0f ? -stepDegrees : stepDegrees;
+}
+
+inline float VR_ApplyDeadzone( float value, float deadzone ) {
+	if ( !std::isfinite( value ) ) {
+		return 0.0f;
+	}
+	const float magnitude = std::fabs( value );
+	if ( magnitude <= deadzone || deadzone >= 1.0f ) {
+		return 0.0f;
+	}
+	const float scaled = ( magnitude - deadzone ) / ( 1.0f - deadzone );
+	const float clamped = scaled > 1.0f ? 1.0f : scaled;
+	return value < 0.0f ? -clamped : clamped;
+}
+
+inline float VR_SmoothTurn( float stickX, float degreesPerSecond, float deltaSeconds, float deadzone ) {
+	if ( !std::isfinite( deltaSeconds ) || deltaSeconds <= 0.0f ) {
+		return 0.0f;
+	}
+	return -VR_ApplyDeadzone( stickX, deadzone ) * degreesPerSecond * deltaSeconds;
+}
+
+/*
+====================
+Head offset
+
+Limits how far the tracked head may move horizontally away from the
+player's collision centre, in engine units; vertical motion (leaning,
+crouching in place) is kept.
+====================
+*/
+inline vrVec3_t VR_ClampHorizontalOffset( const vrVec3_t &offset, float maxRadius ) {
+	if ( !VR_IsFinite( offset ) ) {
+		return VR_Vec3( 0.0f, 0.0f, 0.0f );
+	}
+	const float radius = std::sqrt( offset.x * offset.x + offset.y * offset.y );
+	if ( maxRadius < 0.0f || radius <= maxRadius || radius <= 0.0f ) {
+		return offset;
+	}
+	const float scale = maxRadius / radius;
+	return VR_Vec3( offset.x * scale, offset.y * scale, offset.z );
+}
+
+/*
+====================
+Eye composition
+
+Places a tracked pose (engine axes and units, relative to the tracking
+origin) in the world, given the world position of the tracking origin and
+the yaw of the player's body.
+====================
+*/
+inline void VR_ComposeWorldPose( const vrVec3_t &originWorld, float bodyYawDegrees,
+		const vrVec3_t &poseOffset, const vrQuat_t &poseOrientation,
+		vrVec3_t &outPosition, vrQuat_t &outOrientation ) {
+	const vrQuat_t body = VR_YawQuat( bodyYawDegrees );
+	outPosition = VR_Add( originWorld, VR_RotateVector( body, poseOffset ) );
+	outOrientation = VR_QuatNormalize( VR_QuatMultiply( body, poseOrientation ) );
+}
+
+/*
+====================
+Quad intersection
+
+Intersects a ray with a quad layer, both in the same space (OpenXR axes).
+The quad faces its local +Z; u runs left to right and v top to bottom, which
+is the 640x480 GUI convention.
+====================
+*/
+struct vrQuadHit_t {
+	bool	hit;
+	float	u, v;
+	float	distance;
+};
+
+inline vrQuadHit_t VR_RayQuadIntersect( const vrVec3_t &rayOrigin, const vrVec3_t &rayDirection,
+		const vrVec3_t &quadCenter, const vrQuat_t &quadOrientation, float width, float height ) {
+	vrQuadHit_t result = { false, 0.0f, 0.0f, 0.0f };
+	if ( !VR_IsFinite( rayOrigin ) || !VR_IsFinite( rayDirection ) || width <= 0.0f || height <= 0.0f ) {
+		return result;
+	}
+	const vrQuat_t orientation = VR_QuatNormalize( quadOrientation );
+	const vrVec3_t normal = VR_RotateVector( orientation, VR_Vec3( 0.0f, 0.0f, 1.0f ) );
+	const float denominator = VR_Dot( rayDirection, normal );
+	// only rays travelling into the visible face count
+	if ( denominator > -1e-6f ) {
+		return result;
+	}
+	const float t = VR_Dot( VR_Sub( quadCenter, rayOrigin ), normal ) / denominator;
+	if ( !std::isfinite( t ) || t < 0.0f ) {
+		return result;
+	}
+	const vrVec3_t point = VR_Add( rayOrigin, VR_Scale( rayDirection, t ) );
+	const vrVec3_t local = VR_RotateVector( VR_QuatConjugate( orientation ), VR_Sub( point, quadCenter ) );
+	const float u = local.x / width + 0.5f;
+	const float v = 0.5f - local.y / height;
+	if ( u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f ) {
+		return result;
+	}
+	result.hit = true;
+	result.u = u;
+	result.v = v;
+	result.distance = t;
+	return result;
+}
+
+#endif /* !__VR_MATH_CORE_H__ */

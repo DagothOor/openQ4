@@ -284,8 +284,9 @@ void R_GetDepthHackProjectionMatrix( const viewDef_t *viewDef, bool weaponDepthH
 		return;
 	}
 
+	// a VR eye's off-axis projection is the eye's; a symmetric gun FOV would tear it
 	const float weaponFovOverride = cl_gunfov.GetFloat();
-	if ( weaponFovOverride > 0.0f ) {
+	if ( weaponFovOverride > 0.0f && !viewDef->renderView.asymmetricFov ) {
 		const float viewportWidth = static_cast<float>( Max( 1, viewDef->viewport.x2 - viewDef->viewport.x1 + 1 ) );
 		const float viewportHeight = static_cast<float>( Max( 1, viewDef->viewport.y2 - viewDef->viewport.y1 + 1 ) );
 

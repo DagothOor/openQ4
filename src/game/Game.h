@@ -706,7 +706,9 @@ extern rvGameLog *				gameLog;
 //     retained UI composition targets; engine and game modules must match.
 // 48: idUserInterface presentation value and text-input queries replace the
 //     public desktop window pointer; rebuild engine and both game modules.
-const int GAME_API_VERSION		= 49;
+// 50: OpenXR: gameImport_t carries the engine's idVRSystem, renderView_t an
+//     off-axis frustum, and idRenderSystem appends the VR presentation slots.
+const int GAME_API_VERSION		= 50;
 
 struct gameImport_t {
 
@@ -734,9 +736,11 @@ struct gameImport_t {
 // dluetscher: added the following members to exchange memory system data
 #ifdef _RV_MEM_SYS_SUPPORT
 	rvHeapArena *				heapArena;								// main heap arena that all other heaps use
-	rvHeap *					systemHeapArray[MAX_SYSTEM_HEAPS];		// array of pointers to rvHeaps that are common to idLib, Game, and executable 
+	rvHeap *					systemHeapArray[MAX_SYSTEM_HEAPS];		// array of pointers to rvHeaps that are common to idLib, Game, and executable
 #endif
 // RAVEN END
+
+	idVRSystem *				vrSystem;				// tracked head/controller poses (never NULL)
 };
 
 struct gameExport_t {

@@ -91,6 +91,13 @@ option(
 )
 
 option(
+  'openxr',
+  type: 'feature',
+  value: 'auto',
+  description: 'OpenXR virtual reality in the client (vr_enable). Links the Khronos OpenXR loader statically into the SDL3 client on Windows and Linux; macOS, Android and dedicated servers never build it. See docs/dev/plans/2026-10-02-openxr-vr.md.',
+)
+
+option(
   'platform_backend',
   type: 'combo',
   choices: ['sdl3', 'legacy_win32', 'native'],

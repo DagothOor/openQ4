@@ -40,6 +40,10 @@ static int failure=0, inputStarts=0;
 static bool nestRestart=false;
 static bool contextCurrent=true;
 static bool R_RendererModule_ResetApiAfterDeviceFailure(){return true;}
+// the device-lifetime notice the VR system follows (RenderModuleAPI.h)
+enum { RENDER_DEVICE_READY = 1, RENDER_DEVICE_STOPPING = 2 };
+static void R_RendererModule_RendererDeviceEvent(int){}
+static void R_VR_DestroyTargets(){}
 static int pendingGLError=0;
 static bool r_recoverableRendererRestart=false,r_forceWindowRendererRestart=false,r_recoverableRendererRestore=false;
 static bool r_initialRendererDevicePending=false;

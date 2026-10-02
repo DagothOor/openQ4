@@ -220,6 +220,7 @@ Menu behavior:
 - Holding the D-pad, movement stick, or shoulder buttons repeats navigation for long lists.
 - Steam Deck packages enable the `steamdeck` platform profile, which applies `openq4_profile_steamdeck.cfg` on top of the normal defaults.
 - `JOY23` through `JOY28`, `JOY29` through `JOY32`, and generic `AUX1` through `AUX16` are bindable for extra device buttons but are intentionally unbound by default.
+- VR motion controllers press these same `JOY` buttons, so their binds change here too; see [Virtual Reality](vr.md) for which controller button is which.
 
 ## Useful Console Commands
 

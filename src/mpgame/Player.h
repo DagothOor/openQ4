@@ -581,6 +581,16 @@ public:
  	float					CalcFov( bool honorZoom );
 	void					CalculateViewWeaponPos( idVec3 &origin, idMat3 &axis, const idVec3 *viewOriginOverride = NULL, const idMat3 *viewAxisOverride = NULL );
 	void					GetViewPos( idVec3 &origin, idMat3 &axis ) const;
+
+	// openQ4 VR (src/framework/VRSystem.h). True when this is the local
+	// player's first-person view and a headset presents it; trackingYaw
+	// places the tracking space in the world.
+	bool					GetVRView( vrFrameState_t &frame, float &trackingYaw ) const;
+	// True while the view weapon follows the weapon-hand controller.
+	bool					IsVRHandAiming( void ) const;
+	// The view weapon at the weapon hand: from the interpolated eye for
+	// drawing, from the simulated eye for the tic. False outside hand aim.
+	bool					GetVRWeaponTransform( idVec3 &origin, idMat3 &axis, bool presentation ) const;
 	void					UpdateEyeHeight( bool snap );
  	void					OffsetThirdPersonView( float angle, float range, float height, bool clip );
 	void					OffsetThirdPersonVehicleView( bool clip );

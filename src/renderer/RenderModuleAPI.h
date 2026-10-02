@@ -73,7 +73,10 @@
 // 20 - Settings reports: the renderer publishes how it resolved r_renderer and
 //      what each level load did with its light grids, and pulls the committed
 //      light-grid preload policy from the settings service.
-#define RENDER_API_VERSION			20
+// 21 - OpenXR presentation: renderView_t carries an off-axis frustum and the
+//      idRenderSystem vtable appends GetVRGraphicsBinding, SetVRFrame,
+//      SetVRRenderTarget and GetVRFrameResult.
+#define RENDER_API_VERSION			21
 #define RENDER_API_ENTRY_POINT		"GetRenderAPI"
 
 class idSys;
@@ -135,7 +138,17 @@ typedef struct renderModuleServices_s {
 	void			( *PublishRendererSelection )( const renderRendererSelection_t *selection );
 	bool			( *GetLightGridLoadPolicy )( bool *preload, uint64_t *token );
 	void			( *PublishLightGridLoadReceipt )( const renderLightGridLoadReceipt_t *receipt );
+
+	// --- version 21: OpenXR. The renderer announces its device's lifetime so
+	// the engine opens its XR session on the live context and closes it before
+	// the context goes away (vid_restart, recoverable restarts, shutdown) ---
+	void			( *RendererDeviceEvent )( int event );	// renderDeviceEvent_t
 } renderModuleServices_t;
+
+typedef enum {
+	RENDER_DEVICE_READY = 1,		// a device and its context are live and current
+	RENDER_DEVICE_STOPPING = 2		// the device and its context are about to be destroyed
+} renderDeviceEvent_t;
 
 // native window/surface handoff; zeroed until the engine has created a window
 typedef struct renderModuleWindowInfo_s {

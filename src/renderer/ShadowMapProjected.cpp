@@ -147,6 +147,14 @@ static void R_ShadowMapGetViewExtents( const viewDef_t *viewDef, float &zNear, f
 	const renderView_t &renderView = viewDef->renderView;
 
 	zNear = R_ShadowMapViewNear( viewDef );
+	if ( renderView.asymmetricFov ) {
+		// a VR eye: cascades fit the eye's own off-axis frustum
+		xmin = zNear * renderView.fovTanLeft;
+		xmax = zNear * renderView.fovTanRight;
+		ymin = zNear * renderView.fovTanDown;
+		ymax = zNear * renderView.fovTanUp;
+		return;
+	}
 	ymax = zNear * tan( renderView.fov_y * idMath::PI / 360.0f );
 	ymin = -ymax;
 

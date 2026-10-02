@@ -489,8 +489,14 @@ def test_parity_stays_unpromoted_and_follow_ons_have_separate_gates() -> None:
         )
     require(
         temporal,
-        "AdvancedScreenSpaceCore_Build(\n\t\tr_rendererModernQuality.GetBool()",
+        "AdvancedScreenSpaceCore_Build(\n\t\tallowed && r_rendererModernQuality.GetBool()",
         "Milestone F master admission",
+    )
+    # VR eyes share one history per frame, so the history-backed effects stand down
+    require(
+        temporal,
+        "const bool allowed = !R_TemporalPresentation_VRFrame();",
+        "advanced screen space stands down while a VR frame presents",
     )
 
     core = read("src/renderer/AdvancedScreenSpaceCore.h")

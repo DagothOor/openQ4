@@ -483,13 +483,28 @@ idCVar r_swapInterval( "r_swapInterval", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVA
 idCVar r_disableVSyncDuringLevelLoad( "r_disableVSyncDuringLevelLoad", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "temporarily disable VSync for loading-screen presents during blocking level loads" );
 
 static bool r_loadingScreenSwapIntervalBypass = false;
+// openQ4 VR: the headset paces VR frames, so the desktop mirror never waits
+// for the monitor's refresh
+static bool r_vrSwapIntervalBypass = false;
 
 static int R_GetEffectiveSwapIntervalForState( bool loadingScreenBypassActive ) {
 	const int configuredInterval = r_swapInterval.GetInteger();
+	if ( r_vrSwapIntervalBypass && configuredInterval != 0 ) {
+		return 0;
+	}
 	if ( loadingScreenBypassActive && r_disableVSyncDuringLevelLoad.GetBool() && configuredInterval != 0 ) {
 		return 0;
 	}
 	return configuredInterval;
+}
+
+void R_SetVRSwapIntervalBypass( bool active ) {
+	const int oldInterval = R_GetEffectiveSwapIntervalForState( r_loadingScreenSwapIntervalBypass );
+	r_vrSwapIntervalBypass = active;
+	const int newInterval = R_GetEffectiveSwapIntervalForState( r_loadingScreenSwapIntervalBypass );
+	if ( oldInterval != newInterval ) {
+		r_swapInterval.SetModified();
+	}
 }
 
 void R_SetLoadingScreenSwapIntervalBypass( bool active ) {
@@ -5236,6 +5251,10 @@ static void R_ClearActiveRenderTextures( void ) {
 }
 
 static void R_ShutdownRenderTargetsBeforeImagePurge( void ) {
+	// an OpenXR session shares this context's images; it closes first
+	if ( glConfig.isInitialized ) {
+		R_RendererModule_RendererDeviceEvent( RENDER_DEVICE_STOPPING );
+	}
 	R_ClearActiveRenderTextures();
 	if ( glConfig.isInitialized ) {
 		idRenderTexture::BindNull();
@@ -5247,6 +5266,7 @@ static void R_ShutdownRenderTargetsBeforeImagePurge( void ) {
 	tr.ShutdownSpecialEffects();
 	RB_ShutdownScenePostProcess();
 	RB_ShutdownShadowMapResources();
+	R_VR_DestroyTargets();
 	tr.ProcessPendingRenderTextureDeletes();
 	R_ClearActiveRenderTextures();
 }
@@ -5861,6 +5881,13 @@ void idRenderSystemLocal::Clear( void ) {
 	portalSkyCaptureViewCallback = NULL;
 	suppressLevelshotViewModels = false;
 	disableLevelshotEntityCulling = false;
+	memset( &vrFrame, 0, sizeof( vrFrame ) );
+	memset( &vrFrameResult, 0, sizeof( vrFrameResult ) );
+	vrFrontEndTarget = -1;
+	vrWindowWidth = 0;
+	vrWindowHeight = 0;
+	memset( vrSavedUIViewport, 0, sizeof( vrSavedUIViewport ) );
+	memset( vrTargets, 0, sizeof( vrTargets ) );
 	memset( gammaTable, 0, sizeof( gammaTable ) );
 	takingScreenshot = false;
 }
@@ -6109,6 +6136,9 @@ static bool R_InitRendererDevice( bool legacyPolicy, bool forceWindow, char *err
 #endif
 	}
 	r_initialRendererDevicePending = false;
+	if ( glConfig.isInitialized ) {
+		R_RendererModule_RendererDeviceEvent( RENDER_DEVICE_READY );
+	}
 	return true;
 }
 

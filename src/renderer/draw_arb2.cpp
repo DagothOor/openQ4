@@ -8178,8 +8178,7 @@ static bool RB_RenderShadowMap( const drawSurf_t *primaryCasters, const drawSurf
 			backEnd.renderTexture->MakeCurrent();
 		} else {
 			idRenderTexture::BindNull();
-			glDrawBuffer( GL_BACK );
-			glReadBuffer( GL_BACK );
+			R_SetDefaultDrawAndReadBuffers();
 		}
 		return false;
 	}
@@ -8271,8 +8270,7 @@ static bool RB_RenderShadowMap( const drawSurf_t *primaryCasters, const drawSurf
 		backEnd.renderTexture->MakeCurrent();
 	} else {
 		idRenderTexture::BindNull();
-		glDrawBuffer( GL_BACK );
-		glReadBuffer( GL_BACK );
+		R_SetDefaultDrawAndReadBuffers();
 	}
 
 	glViewport( backEnd.viewDef->viewport.x1, backEnd.viewDef->viewport.y1,
@@ -8370,8 +8368,7 @@ static bool RB_RenderPointShadowMap( const drawSurf_t *primaryCasters, const dra
 			backEnd.renderTexture->MakeCurrent();
 		} else {
 			idRenderTexture::BindNull();
-			glDrawBuffer( GL_BACK );
-			glReadBuffer( GL_BACK );
+			R_SetDefaultDrawAndReadBuffers();
 		}
 		return false;
 	}
@@ -8451,8 +8448,7 @@ static bool RB_RenderPointShadowMap( const drawSurf_t *primaryCasters, const dra
 		backEnd.renderTexture->MakeCurrent();
 	} else {
 		idRenderTexture::BindNull();
-		glDrawBuffer( GL_BACK );
-		glReadBuffer( GL_BACK );
+		R_SetDefaultDrawAndReadBuffers();
 	}
 
 	glViewport( backEnd.viewDef->viewport.x1, backEnd.viewDef->viewport.y1,
@@ -8815,8 +8811,7 @@ static bool RB_RenderTranslucentShadowMap( const drawSurf_t *primaryCasters, con
 		backEnd.renderTexture->MakeCurrent();
 	} else {
 		idRenderTexture::BindNull();
-		glDrawBuffer( GL_BACK );
-		glReadBuffer( GL_BACK );
+		R_SetDefaultDrawAndReadBuffers();
 	}
 
 	glViewport( backEnd.viewDef->viewport.x1, backEnd.viewDef->viewport.y1,
@@ -8959,8 +8954,7 @@ static bool RB_RenderPointTranslucentShadowMap( const drawSurf_t *primaryCasters
 		backEnd.renderTexture->MakeCurrent();
 	} else {
 		idRenderTexture::BindNull();
-		glDrawBuffer( GL_BACK );
-		glReadBuffer( GL_BACK );
+		R_SetDefaultDrawAndReadBuffers();
 	}
 
 	glViewport( backEnd.viewDef->viewport.x1, backEnd.viewDef->viewport.y1,
@@ -13272,8 +13266,7 @@ static void RB_SharedWorldInteractionGLAbortMapTransaction(
 		backEnd.renderTexture->MakeCurrent();
 	} else {
 		idRenderTexture::BindNull();
-		glDrawBuffer( GL_BACK );
-		glReadBuffer( GL_BACK );
+		R_SetDefaultDrawAndReadBuffers();
 	}
 	if ( viewDef != NULL ) {
 		glViewport( viewDef->viewport.x1, viewDef->viewport.y1,

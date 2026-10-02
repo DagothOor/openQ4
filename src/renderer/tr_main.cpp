@@ -207,10 +207,29 @@ idScreenRect R_ScreenRectFromViewFrustumBounds( const idBounds &bounds ) {
 	const int height = tr.viewDef->viewport.y2 - tr.viewDef->viewport.y1;
 	bool clamped = false;
 
-	screenRect.x1 = R_ClampedScreenCoord( 0.5f * ( 1.0f - bounds[1].y ) * width, width, clamped );
-	screenRect.x2 = R_ClampedScreenCoord( 0.5f * ( 1.0f - bounds[0].y ) * width, width, clamped );
-	screenRect.y1 = R_ClampedScreenCoord( 0.5f * ( 1.0f + bounds[0].z ) * height, height, clamped );
-	screenRect.y2 = R_ClampedScreenCoord( 0.5f * ( 1.0f + bounds[1].z ) * height, height, clamped );
+	// The bounds are normalized to the culling frustum's half extents. For a
+	// symmetric view that is the screen; a VR eye's culling frustum encloses
+	// its off-axis projection, so map the tangents through the real extents.
+	float xBias = 0.5f, xScale = 0.5f, yBias = 0.5f, yScale = 0.5f;
+	const renderView_t &renderView = tr.viewDef->renderView;
+	if ( renderView.asymmetricFov && tr.viewDef->viewFrustum.GetFarDistance() > 0.0f ) {
+		const float invFar = 1.0f / tr.viewDef->viewFrustum.GetFarDistance();
+		const float tanX = tr.viewDef->viewFrustum.GetLeft() * invFar;
+		const float tanY = tr.viewDef->viewFrustum.GetUp() * invFar;
+		const float spanX = renderView.fovTanRight - renderView.fovTanLeft;
+		const float spanY = renderView.fovTanUp - renderView.fovTanDown;
+		if ( spanX > 0.0f && spanY > 0.0f ) {
+			xBias = -renderView.fovTanLeft / spanX;
+			xScale = tanX / spanX;
+			yBias = -renderView.fovTanDown / spanY;
+			yScale = tanY / spanY;
+		}
+	}
+
+	screenRect.x1 = R_ClampedScreenCoord( ( xBias - xScale * bounds[1].y ) * width, width, clamped );
+	screenRect.x2 = R_ClampedScreenCoord( ( xBias - xScale * bounds[0].y ) * width, width, clamped );
+	screenRect.y1 = R_ClampedScreenCoord( ( yBias + yScale * bounds[0].z ) * height, height, clamped );
+	screenRect.y2 = R_ClampedScreenCoord( ( yBias + yScale * bounds[1].z ) * height, height, clamped );
 
 	// Loud and self-limiting. Bounds this far out are a real anomaly, and the
 	// whole reason this survived so long is that it was silent: the value
@@ -892,6 +911,39 @@ levelshotDepthCapture_t tr_levelshotDepthCapture = { NULL, 0, 0, false };
 
 /*
 =================
+R_ViewFovTangentsValid
+
+An off-axis (head-mounted display) frustum: finite tangents with left < right
+and down < up, short of 88 degrees off axis. See VRMathCore.h.
+=================
+*/
+bool R_ViewFovTangentsValid( const renderView_t &renderView ) {
+	const float limit = 30.0f;
+	const float tangents[4] = { renderView.fovTanLeft, renderView.fovTanRight, renderView.fovTanUp, renderView.fovTanDown };
+	for ( int i = 0; i < 4; i++ ) {
+		if ( FLOAT_IS_NAN( tangents[i] ) || idMath::Fabs( tangents[i] ) > limit ) {
+			return false;
+		}
+	}
+	return renderView.fovTanLeft < renderView.fovTanRight && renderView.fovTanDown < renderView.fovTanUp;
+}
+
+/*
+=================
+R_ViewUsesOffAxisFrustum
+
+Levelshot tiles and VR eyes both build their projection and culling planes
+from near-plane extents instead of the symmetric fov_x/fov_y.
+=================
+*/
+static bool R_ViewUsesOffAxisFrustum( void ) {
+	return tr_levelshotProjectionShiftActive || tr.viewDef->renderView.asymmetricFov;
+}
+
+static void R_GetViewFrustumExtents( float &zNear, float &xmin, float &xmax, float &ymin, float &ymax );
+
+/*
+=================
 R_SetViewMatrix
 
 Sets up the world to view matrix for a given viewParm
@@ -982,28 +1034,10 @@ void R_SetupProjection( void ) {
 	//
 	// set up projection matrix
 	//
-	zNear	= r_znear.GetFloat();
-	if ( tr.viewDef->renderView.cramZNear ) {
-		zNear *= 0.25;
-	}
-
-	ymax = zNear * tan( tr.viewDef->renderView.fov_y * idMath::PI / 360.0f );
-	ymin = -ymax;
-
-	xmax = zNear * tan( tr.viewDef->renderView.fov_x * idMath::PI / 360.0f );
-	xmin = -xmax;
+	R_GetViewFrustumExtents( zNear, xmin, xmax, ymin, ymax );
 
 	width = xmax - xmin;
 	height = ymax - ymin;
-
-	if ( tr_levelshotProjectionShiftActive ) {
-		const float xShift = 0.5f * width * tr_levelshotProjectionShiftX;
-		const float yShift = 0.5f * height * tr_levelshotProjectionShiftY;
-		xmin += xShift;
-		xmax += xShift;
-		ymin += yShift;
-		ymax += yShift;
-	}
 
 	jitterx = jitterx * width / ( tr.viewDef->viewport.x2 - tr.viewDef->viewport.x1 + 1 );
 	xmin += jitterx;
@@ -1044,6 +1078,15 @@ static void R_GetViewFrustumExtents( float &zNear, float &xmin, float &xmax, flo
 		zNear *= 0.25f;
 	}
 
+	if ( tr.viewDef->renderView.asymmetricFov ) {
+		// a VR eye: the runtime's tangents are the frustum (validated in RenderScene)
+		xmin = zNear * tr.viewDef->renderView.fovTanLeft;
+		xmax = zNear * tr.viewDef->renderView.fovTanRight;
+		ymin = zNear * tr.viewDef->renderView.fovTanDown;
+		ymax = zNear * tr.viewDef->renderView.fovTanUp;
+		return;
+	}
+
 	ymax = zNear * tan( tr.viewDef->renderView.fov_y * idMath::PI / 360.0f );
 	ymin = -ymax;
 
@@ -1077,16 +1120,17 @@ static void R_SetupViewFrustum( void ) {
 	float	xs, xc;
 	float	ang;
 
-	if ( tr_levelshotProjectionShiftActive ) {
+	const bool offAxis = R_ViewUsesOffAxisFrustum();
+	if ( offAxis ) {
 		const idVec3 &forward = tr.viewDef->renderView.viewaxis[0];
 		const idVec3 &horizontal = tr.viewDef->renderView.viewaxis[1];
 		const idVec3 &vertical = tr.viewDef->renderView.viewaxis[2];
 
 		R_GetViewFrustumExtents( zNear, xmin, xmax, ymin, ymax );
 
-		// Off-axis levelshot tiles need frustum planes that match the shifted
-		// projection. Keep this branch isolated so ordinary gameplay stays on the
-		// stock frustum setup. The horizontal pair carries the s_flipMatrix sign
+		// Off-axis levelshot tiles and VR eyes need frustum planes that match
+		// their projection. Keep this branch isolated so ordinary gameplay stays
+		// on the stock frustum setup. The horizontal pair carries the s_flipMatrix sign
 		// flip (engine left -> GL -x); the vertical axis maps to GL +y unflipped,
 		// so its planes take the opposite extents.
 		tr.viewDef->frustum[0] = xmax * forward + zNear * horizontal;
@@ -1128,7 +1172,9 @@ static void R_SetupViewFrustum( void ) {
 		dNear *= 0.25f;
 	}
 	dFar = MAX_WORLD_SIZE;
-	if ( tr_levelshotProjectionShiftActive ) {
+	if ( offAxis ) {
+		// the culling volume encloses the off-axis frustum symmetrically;
+		// R_ScreenRectFromViewFrustumBounds maps it back through the real extents
 		dLeft = dFar * Max( idMath::Fabs( xmin ), idMath::Fabs( xmax ) ) / Max( dNear, idMath::FLOAT_EPSILON );
 		dUp = dFar * Max( idMath::Fabs( ymin ), idMath::Fabs( ymax ) ) / Max( dNear, idMath::FLOAT_EPSILON );
 	} else {

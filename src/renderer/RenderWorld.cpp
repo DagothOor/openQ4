@@ -985,6 +985,12 @@ void idRenderWorldLocal::RenderScene( const renderView_t *renderView, int render
 	parms->renderView = *renderView;
 	parms->renderFlags = renderFlags;
 
+	// an off-axis eye frustum must enclose its axis with finite, ordered
+	// tangents; anything else renders through the symmetric fov_x/fov_y
+	if ( parms->renderView.asymmetricFov && !R_ViewFovTangentsValid( parms->renderView ) ) {
+		parms->renderView.asymmetricFov = false;
+	}
+
 	if ( tr.takingScreenshot ) {
 		parms->renderView.forceUpdate = true;
 	}

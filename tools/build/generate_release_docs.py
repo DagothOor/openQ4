@@ -1315,6 +1315,7 @@ def generate_release_docs_site(
     # offline documentation. These are authored fixtures, not extracted art.
     for relative in (
         "docs/licenses/RmlUi.txt", "docs/licenses/JsonCpp.txt", "docs/licenses/libtess2.txt",
+        "docs/licenses/openxr-sdk.txt", "subprojects/openxr.wrap",
         "docs/dev/ui/migration-manifest.json",
         "docs/dev/ui/product-requirements.json",
         "subprojects/rmlui.wrap", "subprojects/packagefiles/libtess2/double-precision.patch",

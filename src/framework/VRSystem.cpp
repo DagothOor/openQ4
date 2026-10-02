@@ -1,0 +1,103 @@
+// Copyright (C) 2026 DarkMatter Productions. GPL-3.0-or-later.
+//
+
+/*
+===============================================================================
+
+	VR settings and the null VR system.
+
+	Every engine target registers the vr_* settings so configs stay portable
+	between builds. Clients built with OpenXR (OPENQ4_OPENXR) run the
+	implementation in src/sys/openxr; everything else, dedicated servers
+	included, runs the null system, which never activates.
+	See docs/dev/plans/2026-10-02-openxr-vr.md.
+
+===============================================================================
+*/
+
+#include "../idlib/precompiled.h"
+#pragma hdrstop
+
+#include "VRSystemLocal.h"
+
+idCVar vr_enable( "vr_enable", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL,
+	"play in virtual reality through the system's OpenXR runtime (OpenGL renderer); applies on vr_restart" );
+idCVar vr_renderScale( "vr_renderScale", "1.0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"multiplier on the headset's recommended per-eye resolution; applies on vr_restart", 0.5f, 2.0f );
+idCVar vr_worldScale( "vr_worldScale", "39.37", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"game units per real-world metre", 20.0f, 80.0f );
+idCVar vr_aimMode( "vr_aimMode", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_INTEGER,
+	"0 = aim with the head, 1 = aim with the weapon-hand controller", 0, 1, idCmdSystem::ArgCompletion_Integer<0,1> );
+idCVar vr_leftHanded( "vr_leftHanded", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL,
+	"hold the weapon in the left hand and move with the right stick" );
+idCVar vr_moveDirection( "vr_moveDirection", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_INTEGER,
+	"0 = the movement stick is relative to the head, 1 = relative to the off-hand controller", 0, 1, idCmdSystem::ArgCompletion_Integer<0,1> );
+idCVar vr_turnMode( "vr_turnMode", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_INTEGER,
+	"0 = snap turn, 1 = smooth turn with the weapon-hand stick", 0, 1, idCmdSystem::ArgCompletion_Integer<0,1> );
+idCVar vr_snapTurnAngle( "vr_snapTurnAngle", "45", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"degrees per snap turn", 10.0f, 90.0f );
+idCVar vr_smoothTurnSpeed( "vr_smoothTurnSpeed", "120", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"smooth turn speed in degrees per second", 30.0f, 360.0f );
+idCVar vr_stickDeadzone( "vr_stickDeadzone", "0.2", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"thumbstick deadzone for movement and smooth turning", 0.0f, 0.9f );
+idCVar vr_headOffsetLimit( "vr_headOffsetLimit", "16", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"how far the tracked head may move horizontally away from the player's body, in game units", 0.0f, 64.0f );
+idCVar vr_hudDistance( "vr_hudDistance", "1.4", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"distance of the head-locked HUD in metres", 0.5f, 5.0f );
+idCVar vr_hudWidth( "vr_hudWidth", "1.2", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"width of the head-locked HUD in metres", 0.3f, 4.0f );
+idCVar vr_hudHeightOffset( "vr_hudHeightOffset", "-0.1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"vertical offset of the head-locked HUD from eye level in metres", -1.0f, 1.0f );
+idCVar vr_screenDistance( "vr_screenDistance", "2.5", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"distance of the virtual screen for menus, loading and cinematics in metres", 0.8f, 10.0f );
+idCVar vr_screenWidth( "vr_screenWidth", "3.0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"width of the virtual screen in metres", 0.5f, 12.0f );
+idCVar vr_mirror( "vr_mirror", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_INTEGER,
+	"desktop window while in VR: 0 = black, 1 = left eye, 2 = virtual screen", 0, 2, idCmdSystem::ArgCompletion_Integer<0,2> );
+idCVar vr_weaponOffsetX( "vr_weaponOffsetX", "-5", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"view weapon offset along the controller's aim, in game units" );
+idCVar vr_weaponOffsetY( "vr_weaponOffsetY", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"view weapon offset to the controller's left, in game units" );
+idCVar vr_weaponOffsetZ( "vr_weaponOffsetZ", "-3", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"view weapon offset above the controller, in game units" );
+idCVar vr_weaponPitch( "vr_weaponPitch", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"view weapon pitch relative to the controller's aim, in degrees (positive tilts down)", -60.0f, 60.0f );
+idCVar vr_debug( "vr_debug", "0", CVAR_SYSTEM | CVAR_INTEGER,
+	"1 = log OpenXR session and frame events, 2 = also log every submitted frame", 0, 2, idCmdSystem::ArgCompletion_Integer<0,2> );
+
+/*
+===============================================================================
+
+	idVRSystemNull
+
+===============================================================================
+*/
+
+class idVRSystemNull : public idVRSystem {
+public:
+	virtual void			Init( void ) {}
+	virtual void			Shutdown( void ) {}
+	virtual void			RendererStarted( void ) {}
+	virtual void			RendererStopping( void ) {}
+	virtual void			BeginFrame( void ) {}
+	virtual void			EndFrame( void ) {}
+	virtual bool			IsPacing( void ) const { return false; }
+	virtual bool			IsActive( void ) const { return false; }
+	virtual void			GetFrameState( vrFrameState_t &state ) const {
+		memset( &state, 0, sizeof( state ) );
+	}
+	virtual bool			GetUsercmdInput( float otherYawDelta, float currentYaw, vrUsercmdInput_t &input ) {
+		(void)otherYawDelta;
+		(void)currentYaw;
+		memset( &input, 0, sizeof( input ) );
+		return false;
+	}
+	virtual void			DrawMenuPointer( void ) {}
+};
+
+#if defined( OPENQ4_OPENXR )
+idVRSystem *vrSystem = VR_GetOpenXRSystem();
+#else
+static idVRSystemNull vrSystemNull;
+idVRSystem *vrSystem = &vrSystemNull;
+#endif

@@ -378,6 +378,14 @@ if get_option('build_native_tests')
   )
   test('openq4-hdr-exposure-core', openq4_hdr_exposure_core_test, timeout: 30)
 
+  openq4_vr_math_core_test = executable(
+    'openq4-vr-math-core-test',
+    files('tools/tests/native/VRMathCoreTest.cpp'),
+    include_directories: root_include_dir,
+    install: false,
+  )
+  test('openq4-vr-math-core', openq4_vr_math_core_test, timeout: 30)
+
   openq4_temporal_presentation_core_test = executable(
     'openq4-temporal-presentation-core-test',
     files('tools/tests/native/TemporalPresentationCoreTest.cpp'),
@@ -1760,6 +1768,29 @@ if build_engine
   endif
 endif
 
+# OpenXR virtual reality (docs/dev/plans/2026-10-02-openxr-vr.md). The Khronos
+# loader links statically into the SDL3 client on Windows and Linux, built from
+# the pinned SDK against the jsoncpp subproject above; nothing ships beside the
+# executable and dedicated servers never see it.
+openxr_option = get_option('openxr')
+build_openxr = build_engine and use_sdl3_backend and not openxr_option.disabled() \
+  and (host_system == 'windows' or host_system == 'linux')
+if openxr_option.enabled() and not build_openxr
+  error('openxr requires the SDL3 client on Windows or Linux.')
+endif
+openxr_loader_dep = disabler()
+openxr_headers_dep = disabler()
+if build_openxr
+  openxr_project = subproject('openxr', required: openxr_option)
+  if openxr_project.found()
+    openxr_loader_dep = openxr_project.get_variable('openxr_loader_dep')
+    openxr_headers_dep = openxr_project.get_variable('openxr_headers_dep')
+    client_deps += openxr_loader_dep
+  else
+    build_openxr = false
+  endif
+endif
+
 # Native-record translation is separate from the portable runtime and engine
 # PCH. A checked package capability, not SDL's version, enables the importer.
 if build_engine or get_option('build_native_tests')
@@ -2186,6 +2217,13 @@ if build_engine
       'src/sys/sdl3/NativeInputEmissionInventory.cpp',
       'src/sys/sdl3/NativeInputTransfers.cpp',
       'src/sys/sdl3/NativeInputDriver.cpp')
+  endif
+
+  # The OpenXR session, input and frame loop are client-only for the same
+  # reason: the dedicated snapshot above never contains them.
+  if build_openxr
+    openq4_engine_sources += files('src/sys/openxr/OpenXRSystem.cpp')
+    client_engine_cpp_args += ['-DOPENQ4_OPENXR=1']
   endif
 
   bse_library = static_library(
@@ -2949,6 +2987,10 @@ install_data('LICENSES/KHRONOS-GLES-MIT.txt', install_dir: install_root_dir / 'l
 install_data('docs/licenses/RmlUi.txt', install_dir: install_root_dir / 'licenses')
 install_data('docs/licenses/JsonCpp.txt', install_dir: install_root_dir / 'licenses')
 install_data('docs/licenses/libtess2.txt', install_dir: install_root_dir / 'licenses')
+if build_openxr
+  # the client links the Khronos OpenXR loader statically
+  install_data('docs/licenses/openxr-sdk.txt', install_dir: install_root_dir / 'licenses')
+endif
 
 install_data(
   'assets/icons/quake4.icns',
@@ -3026,6 +3068,29 @@ if host_system == 'linux'
   endforeach
 endif
 
+# OpenXR test runtime: a simulated headset the VR smoke runs the client against
+# through XR_RUNTIME_JSON, so no system runtime registration is touched. It is a
+# test fixture, never installed or packaged.
+if build_openxr
+  openxr_test_runtime_gl_deps = host_system == 'windows' \
+    ? [cc.find_library('opengl32', required: true)] : [dependency('gl', required: true)]
+  openxr_test_runtime = shared_module(
+    'openq4-xr-test-runtime',
+    files('tools/tests/openxr/OpenXRTestRuntime.cpp'),
+    dependencies: [openxr_headers_dep] + openxr_test_runtime_gl_deps,
+    name_prefix: '',
+    gnu_symbol_visibility: 'hidden',
+    install: false,
+  )
+  openxr_test_runtime_manifest = configuration_data()
+  openxr_test_runtime_manifest.set('LIBRARY', 'openq4-xr-test-runtime.' + (host_system == 'windows' ? 'dll' : 'so'))
+  configure_file(
+    input: 'tools/tests/openxr/openq4_xr_test_runtime.json.in',
+    output: 'openq4_xr_test_runtime.json',
+    configuration: openxr_test_runtime_manifest,
+  )
+endif
+
 version_iteration_summary = version_iteration
 if version_iteration_summary == ''
   version_iteration_summary = 'none'
@@ -3084,6 +3149,7 @@ summary(
     'Precompiled headers': get_option('use_pch'),
     'Dedicated server target': build_engine and host_system != 'android',
     'GLES renderer module': build_renderer_gles,
+    'OpenXR VR (client)': build_openxr,
     'Sigma Touch host adapter': build_sigmatouch,
     'Linux dedicated headless link split': build_engine and host_system == 'linux',
     'Install root': install_root_dir,

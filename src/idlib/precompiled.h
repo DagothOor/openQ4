@@ -389,6 +389,7 @@ const float MAX_BOUND_SIZE = 65536.0f;
 #include "../renderer/ModelManager.h"
 #include "../renderer/RenderSystem.h"
 #include "../renderer/RenderWorld.h"
+#include "../framework/VRSystem.h"
 
 // sound engine
 #include "../sound/sound.h"

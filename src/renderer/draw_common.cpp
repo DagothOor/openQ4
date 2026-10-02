@@ -2152,6 +2152,39 @@ static void RB_EndFullscreenPostProcessPass( void ) {
 	GL_Cull( CT_FRONT_SIDED );
 }
 
+/*
+====================
+RB_VR_DrawImageRect
+
+openQ4 VR desktop mirror: draws texture coordinates [s0,t0]-[s1,t1] of an
+image into a pixel rectangle of the bound framebuffer. The window may be
+multisampled, which rules out a blit.
+====================
+*/
+void RB_VR_DrawImageRect( idImage *image, int x, int y, int width, int height, float s0, float t0, float s1, float t1 ) {
+	if ( image == NULL || width <= 0 || height <= 0 ) {
+		return;
+	}
+	glViewport( x, y, width, height );
+	RB_BeginFullscreenPostProcessPass( x, y, width, height );
+	GL_SelectTexture( 0 );
+	image->Bind();
+	GL_TexEnv( GL_MODULATE );
+	glColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
+	glBegin( GL_QUADS );
+	glTexCoord2f( s0, t0 );
+	glVertex2f( 0.0f, 0.0f );
+	glTexCoord2f( s0, t1 );
+	glVertex2f( 0.0f, 1.0f );
+	glTexCoord2f( s1, t1 );
+	glVertex2f( 1.0f, 1.0f );
+	glTexCoord2f( s1, t0 );
+	glVertex2f( 1.0f, 0.0f );
+	glEnd();
+	globalImages->BindNull();
+	RB_EndFullscreenPostProcessPass();
+}
+
 struct rbBuiltinUniformDef_t {
 	const char *name;
 	int components;
@@ -3766,8 +3799,7 @@ static void RB_RestorePostProcessTarget( idRenderTexture *renderTexture, int vie
 		renderTexture->MakeCurrent();
 	} else {
 		idRenderTexture::BindNull();
-		glDrawBuffer( GL_BACK );
-		glReadBuffer( GL_BACK );
+		R_SetDefaultDrawAndReadBuffers();
 	}
 
 	glViewport(
@@ -4865,8 +4897,7 @@ static void RB_PresentSceneRenderTargetToBackBuffer( const rbSceneScaleState_t &
 
 	idRenderTexture::BindNull();
 	backEnd.renderTexture = NULL;
-	glDrawBuffer( GL_BACK );
-	glReadBuffer( GL_BACK );
+	R_SetDefaultDrawAndReadBuffers();
 	glViewport(
 		tr.viewportOffset[0] + targetViewport.x1,
 		tr.viewportOffset[1] + targetViewport.y1,
@@ -5069,8 +5100,7 @@ static bool RB_BindTemporalDestination( idRenderTexture *target, int width, int 
 	} else {
 		idRenderTexture::BindNull();
 		backEnd.renderTexture = NULL;
-		glDrawBuffer( GL_BACK );
-		glReadBuffer( GL_BACK );
+		R_SetDefaultDrawAndReadBuffers();
 	}
 	backEnd.feedbackRenderTexture = NULL;
 	glViewport( 0, 0, width, height );
@@ -6109,8 +6139,7 @@ void RB_ApplyCRTToBackBuffer( void ) {
 
 	idRenderTexture::BindNull();
 	backEnd.renderTexture = NULL;
-	glDrawBuffer( GL_BACK );
-	glReadBuffer( GL_BACK );
+	R_SetDefaultDrawAndReadBuffers();
 	glViewport( 0, 0, viewportWidth, viewportHeight );
 	glScissor( 0, 0, viewportWidth, viewportHeight );
 
@@ -6342,8 +6371,7 @@ void RB_ApplyColorMappingsToBackBuffer( void ) {
 
 	idRenderTexture::BindNull();
 	backEnd.renderTexture = NULL;
-	glDrawBuffer( GL_BACK );
-	glReadBuffer( GL_BACK );
+	R_SetDefaultDrawAndReadBuffers();
 	glViewport( 0, 0, viewportWidth, viewportHeight );
 	glScissor( 0, 0, viewportWidth, viewportHeight );
 

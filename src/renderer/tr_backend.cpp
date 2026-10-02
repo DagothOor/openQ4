@@ -387,6 +387,18 @@ void GL_State( int stateBits ) {
 		}
 
 		if (stateBits & GLS_ALPHA_COVERAGE) glBlendFuncSeparate(srcFactor,dstFactor,GL_ONE,GL_ONE_MINUS_SRC_ALPHA);
+		else if ( R_PremultipliedDefaultTargetBound() ) {
+			// openQ4 VR virtual screen: the layer is composited with premultiplied
+			// alpha. "Over" blends accumulate coverage; every other blend (additive
+			// glows, modulation) leaves coverage alone, so it lights or tints the
+			// world behind the layer instead of covering it.
+			const bool over = dstFactor == GL_ONE_MINUS_SRC_ALPHA
+				&& ( srcFactor == GL_SRC_ALPHA || srcFactor == GL_ONE );
+			const bool opaque = srcFactor == GL_ONE && dstFactor == GL_ZERO;
+			glBlendFuncSeparate( srcFactor, dstFactor,
+				over || opaque ? GL_ONE : GL_ZERO,
+				over ? GL_ONE_MINUS_SRC_ALPHA : ( opaque ? GL_ZERO : GL_ONE ) );
+		}
 		else glBlendFunc(srcFactor,dstFactor);
 	}
 
@@ -663,9 +675,13 @@ const void	RB_SwapBuffers( const void *data ) {
 
 	if ( !r_frontBuffer.GetBool() ) {
 		const unsigned long long begin = R_RendererMetrics_CpuClock();
-		RB_ApplyResolutionScaleToBackBuffer();
-		RB_ApplyCRTToBackBuffer();
-		RB_ApplyColorMappingsToBackBuffer();
+		// a VR frame finishes its own targets, copies them into the headset's
+		// swapchain images and leaves only the mirror in the window
+		if ( !RB_VR_PresentFrame() ) {
+			RB_ApplyResolutionScaleToBackBuffer();
+			RB_ApplyCRTToBackBuffer();
+			RB_ApplyColorMappingsToBackBuffer();
+		}
 		R_RendererMetrics_EndPresentPhase( RENDERER_PRESENT_FINAL_POST, begin );
 	}
 
@@ -1152,6 +1168,7 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 	backEnd.resolutionScaleHeight = tr.resolutionScaleHeight;
 	backEnd.postProcessSourceColorSpace = tr.postProcessSourceColorSpace;
 	backEnd.postProcessSMAAQuality = tr.postProcessSMAAQuality;
+	RB_VR_BeginBackEnd();
 	idRenderTexture::BindNull();
 	const classicSubviewDomainView_t *pendingSharedSubview = NULL;
 
@@ -1290,6 +1307,12 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 			RB_SetBuffer( cmds );
 			R_RendererMetrics_EndGpuTimer();
 			c_setBuffers++;
+			break;
+		case RC_VR_TARGET:
+			R_RendererMetrics_BeginGpuTimer( RENDERER_GPU_TIMER_RENDER_TARGET );
+			RB_VR_SetTarget( cmds );
+			R_RendererMetrics_EndGpuTimer();
+			c_renderTargetOps++;
 			break;
 		case RC_SWAP_BUFFERS: {
 			R_ModernGLExecutor_ComposeVisibleFrame();

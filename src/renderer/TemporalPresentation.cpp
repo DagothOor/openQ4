@@ -113,12 +113,19 @@ static int rg_temporalScaleHistoryCursor = 0;
 static unsigned int rg_temporalHistoryGeneration = 1;
 static idStr rg_temporalHistoryResetReason = "renderer initialization";
 
+// openQ4 VR: two eyes per frame would alternate one history, so every
+// history-backed feature stands down while a VR frame presents.
+static bool R_TemporalPresentation_VRFrame( void ) {
+	return tr.vrFrame.active;
+}
+
 static advancedScreenSpaceConfig_t R_TemporalPresentation_BuildAdvancedScreenSpaceConfig( void ) {
+	const bool allowed = !R_TemporalPresentation_VRFrame();
 	return AdvancedScreenSpaceCore_Build(
-		r_rendererModernQuality.GetBool(),
-		r_rendererFroxelVolumetrics.GetBool(),
-		r_rendererSSR.GetBool(),
-		r_rendererSSGI.GetBool(),
+		allowed && r_rendererModernQuality.GetBool(),
+		allowed && r_rendererFroxelVolumetrics.GetBool(),
+		allowed && r_rendererSSR.GetBool(),
+		allowed && r_rendererSSGI.GetBool(),
 		r_froxelVolumetricDensity.GetFloat(),
 		r_froxelVolumetricMaxDistance.GetFloat(),
 		r_froxelVolumetricSlices.GetInteger(),
@@ -585,8 +592,10 @@ void R_TemporalPresentation_BeginFrame( int nativeWidth, int nativeHeight,
 		rg_videoRestartCount = tr.videoRestartCount;
 	}
 
-	const bool dynamicResolutionRequested = r_rendererDynamicResolution.GetBool();
-	const bool temporalAARequested = r_temporalAA.GetBool();
+	const bool dynamicResolutionRequested = r_rendererDynamicResolution.GetBool()
+		&& !R_TemporalPresentation_VRFrame();
+	const bool temporalAARequested = r_temporalAA.GetBool()
+		&& !R_TemporalPresentation_VRFrame();
 	if ( dynamicResolutionRequested != rg_dynamicResolutionEnabledLastFrame ) {
 		R_RendererMetrics_ResetGpuFrameTiming( dynamicResolutionRequested
 			? "dynamic resolution enabled" : "dynamic resolution disabled" );
@@ -617,8 +626,9 @@ void R_TemporalPresentation_BeginFrame( int nativeWidth, int nativeHeight,
 	renderGpuFrameTiming_t gpuTiming;
 	R_RendererMetrics_GetGpuFrameTiming( gpuTiming );
 
-	const int manualScalePercent = idMath::ClampInt(
-		10, 200, r_screenFraction.GetInteger() );
+	// a VR frame's eye resolution already carries vr_renderScale
+	const int manualScalePercent = R_TemporalPresentation_VRFrame() ? 100
+		: idMath::ClampInt( 10, 200, r_screenFraction.GetInteger() );
 	int maximumScalePercent = idMath::ClampInt(
 		10, 100, r_dynamicResolutionMaxScale.GetInteger() );
 	if ( manualScalePercent < 100 ) {
@@ -730,11 +740,23 @@ int R_TemporalPresentation_EffectiveScreenFraction( void ) {
 }
 
 bool R_TemporalPresentation_DynamicResolutionRequested( void ) {
-	return r_rendererDynamicResolution.GetBool();
+	return r_rendererDynamicResolution.GetBool() && !R_TemporalPresentation_VRFrame();
 }
 
 bool R_TemporalPresentation_TemporalAARequested( void ) {
-	return r_temporalAA.GetBool();
+	return r_temporalAA.GetBool() && !R_TemporalPresentation_VRFrame();
+}
+
+void R_TemporalPresentation_SetVRExtent( int width, int height ) {
+	rg_temporalFrameState.nativeWidth = Max( 1, width );
+	rg_temporalFrameState.nativeHeight = Max( 1, height );
+	rg_temporalFrameState.sceneWidth = rg_temporalFrameState.nativeWidth;
+	rg_temporalFrameState.sceneHeight = rg_temporalFrameState.nativeHeight;
+	rg_temporalFrameState.manualScalePercent = 100;
+	rg_temporalFrameState.effectiveScalePercent = 100;
+	rg_temporalFrameState.dynamicResolutionRequested = false;
+	rg_temporalFrameState.dynamicResolutionActive = false;
+	rg_temporalFrameState.temporalAARequested = false;
 }
 
 bool R_TemporalPresentation_ScreenSpaceEffectsRequested( void ) {

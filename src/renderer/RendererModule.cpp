@@ -214,6 +214,10 @@ static void RM_Services_PublishLightGridLoadReceipt( const renderLightGridLoadRe
 	R_RendererModule_PublishLightGridLoadReceipt( receipt );
 }
 
+static void RM_Services_RendererDeviceEvent( int event ) {
+	R_RendererModule_RendererDeviceEvent( event );
+}
+
 static const renderModuleServices_t rm_services = {
 	RM_Services_Printf,
 	RM_Services_Warning,
@@ -232,6 +236,7 @@ static const renderModuleServices_t rm_services = {
 	RM_Services_PublishRendererSelection,
 	RM_Services_GetLightGridLoadPolicy,
 	RM_Services_PublishLightGridLoadReceipt,
+	RM_Services_RendererDeviceEvent,
 };
 
 /*
@@ -1062,6 +1067,24 @@ bool R_RendererModule_GetLightGridLoadPolicy( bool *preload, uint64_t *token ) {
 		return false;
 	}
 	return UI_SettingsLevelLoadPolicy( *preload, *token );
+}
+
+/*
+====================
+R_RendererModule_RendererDeviceEvent
+
+The engine's VR system binds its OpenXR session to the renderer's context.
+====================
+*/
+void R_RendererModule_RendererDeviceEvent( int event ) {
+	if ( vrSystem == NULL ) {
+		return;
+	}
+	if ( event == RENDER_DEVICE_READY ) {
+		vrSystem->RendererStarted();
+	} else if ( event == RENDER_DEVICE_STOPPING ) {
+		vrSystem->RendererStopping();
+	}
 }
 
 void R_RendererModule_PublishLightGridLoadReceipt( const renderLightGridLoadReceipt_t *receipt ) {

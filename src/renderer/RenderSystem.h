@@ -387,6 +387,64 @@ typedef struct renderPresentationState_s {
 	bool				captureForcedNative;
 } renderPresentationState_t;
 
+/*
+===============================================================================
+
+	OpenXR presentation.
+
+	The engine owns the XR session (src/sys/openxr). The renderer reports the
+	native handles of its rendering context for the session's graphics
+	binding, and each presented frame it is handed the swapchain images to
+	present into. While a VR frame is open the frame's output is the virtual
+	screen (menus, HUD, console, cinematics); the game moves its first-person
+	3D pass to an eye with SetVRRenderTarget. Swapchain images are only blit
+	destinations, so the runtime's formats never reach the render pipeline.
+	See docs/dev/plans/2026-10-02-openxr-vr.md.
+
+===============================================================================
+*/
+
+typedef enum {
+	RENDER_VR_BINDING_NONE = 0,
+	RENDER_VR_BINDING_WGL,			// wglDC/wglContext
+	RENDER_VR_BINDING_GLX			// glx* (Xlib)
+} renderVRBindingKind_t;
+
+typedef struct renderVRGraphicsBinding_s {
+	int						kind;				// renderVRBindingKind_t
+	int						glMajor, glMinor;	// version of the current context
+	void *					wglDC;				// HDC
+	void *					wglContext;			// HGLRC
+	void *					glxDisplay;			// Display *
+	unsigned long			glxDrawable;		// GLXDrawable
+	void *					glxContext;			// GLXContext
+	void *					glxFBConfig;		// GLXFBConfig
+	unsigned int			glxVisualId;
+} renderVRGraphicsBinding_t;
+
+// Mirror shown in the desktop window while a VR frame presents.
+typedef enum {
+	RENDER_VR_MIRROR_NONE = 0,
+	RENDER_VR_MIRROR_EYE,			// the left eye, falling back to the virtual screen
+	RENDER_VR_MIRROR_SCREEN			// the virtual screen
+} renderVRMirror_t;
+
+typedef struct renderVRFrame_s {
+	bool					active;				// present this frame through the VR targets
+	bool					stereo;				// eye images were acquired: the game may render per eye
+	int						eyeWidth, eyeHeight;
+	unsigned int			eyeImages[2];		// GL names of this frame's eye swapchain images
+	int						screenWidth, screenHeight;
+	unsigned int			screenImage;		// GL name of this frame's virtual-screen swapchain image
+	int						mirror;				// renderVRMirror_t
+} renderVRFrame_t;
+
+typedef struct renderVRFrameResult_s {
+	int						frameNumber;		// renderer frame the result belongs to
+	bool					presented;			// the frame went through the VR targets
+	bool					eyeRendered[2];		// the game rendered into that eye this frame
+} renderVRFrameResult_t;
+
 class idRenderWorld;
 
 
@@ -718,6 +776,25 @@ public:
 	virtual bool GetRetainedFontMetrics(const char* face, int pixels, renderFontMetrics_t& out) = 0;
 	virtual bool GetRetainedFontGlyph(const char* face, int pixels, unsigned int scalar, renderFontGlyph_t& out) = 0;
 	virtual void ResetRetainedFontCache() = 0;
+
+	// --- OpenXR presentation (appended slots; render API 21, game API 50) ---
+
+	// Native handles of the current rendering context for an XR graphics
+	// binding. False when the backend cannot present to OpenXR (Vulkan, GLES,
+	// or no context).
+	virtual bool			GetVRGraphicsBinding( renderVRGraphicsBinding_t &binding ) = 0;
+
+	// Presentation targets for the next BeginFrame..EndFrame only; NULL or an
+	// inactive frame presents to the window as usual.
+	virtual void			SetVRFrame( const renderVRFrame_t *frame ) = 0;
+
+	// Routes following rendering to eye 0 or 1, or back to the virtual screen
+	// with -1. Front-end sizes (crop, 2D viewport, presentation state) follow
+	// the target. False when no VR frame is presenting or the eye is unavailable.
+	virtual bool			SetVRRenderTarget( int eye ) = 0;
+
+	// What the last VR frame actually rendered, for layer submission.
+	virtual void			GetVRFrameResult( renderVRFrameResult_t &result ) const = 0;
 };
 
 extern idRenderSystem *		renderSystem;

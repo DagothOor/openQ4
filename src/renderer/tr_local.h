@@ -498,8 +498,9 @@ typedef enum {
 	RC_SET_POSTPROCESS_SOURCE_SIZE,
 	RC_SET_POSTPROCESS_SOURCE_COLOR_SPACE,
 	RC_SET_POSTPROCESS_SMAA_QUALITY,
-	RC_SWAP_BUFFERS		// can't just assume swap at end of list because
+	RC_SWAP_BUFFERS,	// can't just assume swap at end of list because
 						// of forced list submission before syncs
+	RC_VR_TARGET		// openQ4: switch the frame's default target (VR eye / virtual screen)
 } renderCommand_t;
 
 typedef struct {
@@ -516,6 +517,14 @@ typedef struct {
 	renderCommand_t		commandId, *next;
 	viewDef_t	*viewDef;
 } drawSurfsCommand_t;
+
+// openQ4 VR: from here on the frame's default target ("the back buffer") is
+// eye 0/1, or the virtual screen for -1, at width x height.
+typedef struct {
+	renderCommand_t		commandId, *next;
+	int		target;
+	int		width, height;
+} vrTargetCommand_t;
 
 typedef struct {
 	renderCommand_t		commandId, *next;
@@ -904,6 +913,10 @@ public:
 		idRenderTexture *sceneDepthTarget,
 		idRenderTexture *historyReadTarget,
 		idRenderTexture *historyWriteTarget );
+	virtual bool			GetVRGraphicsBinding( renderVRGraphicsBinding_t &binding );
+	virtual void			SetVRFrame( const renderVRFrame_t *frame );
+	virtual bool			SetVRRenderTarget( int eye );
+	virtual void			GetVRFrameResult( renderVRFrameResult_t &result ) const;
 public:
 	// internal functions
 							idRenderSystemLocal( void );
@@ -1027,8 +1040,39 @@ public:
 	bool					suppressLevelshotViewModels;
 	bool					disableLevelshotEntityCulling;
 
+	// openQ4 VR presentation (RenderSystem_vr.cpp, OpenGL/gl_VRPresentation.cpp).
+	// The engine hands vrFrame over for one BeginFrame..EndFrame. While it is
+	// active the frame's output is the virtual screen and SetVRRenderTarget
+	// moves the front end between it and the eyes; the backend presents from
+	// vrTargets (index 0 virtual screen, 1 and 2 the eyes).
+	renderVRFrame_t			vrFrame;
+	renderVRFrameResult_t	vrFrameResult;
+	int						vrFrontEndTarget;		// -1 virtual screen, 0/1 eye
+	int						vrWindowWidth;			// the real window, for the desktop mirror
+	int						vrWindowHeight;
+	int						vrSavedUIViewport[4];
+	idRenderTexture *		vrTargets[3];
+
+	bool					BeginVRFrame( int &windowWidth, int &windowHeight );
+	void					EndVRFrame( void );
+	void					FinishVRFrame( void );
+	void					ApplyVRTargetExtent( int width, int height );
+
 	unsigned short			gammaTable[256];	// brightness / gamma modify this
 };
+
+// OpenXR presentation backend. OpenGL/gl_VRPresentation.cpp implements it for
+// the desktop GL module; every other build reports that it cannot present.
+bool	R_VR_BackendCanPresent( void );
+bool	R_VR_QueryGraphicsBinding( renderVRGraphicsBinding_t &binding );
+void	RB_VR_BeginBackEnd( void );
+void	RB_VR_SetTarget( const void *data );
+bool	RB_VR_PresentFrame( void );
+void	R_VR_ShutdownTargets( void );
+// front end (RenderSystem_vr.cpp): destroys the VR targets before an image purge
+void	R_VR_DestroyTargets( void );
+// RenderSystem_init.cpp: VR frames present the window without waiting for vsync
+void	R_SetVRSwapIntervalBypass( bool active );
 
 extern backEndState_t		backEnd;
 
@@ -1038,6 +1082,8 @@ bool RB_ClassicFogBlend_DrawLinearView( const viewDef_t *viewDef, GLuint vertexP
 extern idRenderSystemLocal	tr;
 extern glconfig_t			glConfig;		// outside of TR since it shouldn't be cleared during ref re-init
 extern bool					tr_levelshotProjectionShiftActive;
+// true when renderView's off-axis (VR eye) tangents describe a usable frustum
+bool R_ViewFovTangentsValid( const renderView_t &renderView );
 extern float				tr_levelshotProjectionShiftX;
 extern float				tr_levelshotProjectionShiftY;
 
@@ -1993,6 +2039,8 @@ bool RB_DrawSharedAuthoredPostView( const viewDef_t *viewDef,
 void RB_DrawSpecialEffects( const void *data );
 void RB_ApplyResolutionScaleToBackBuffer( void );
 void RB_ApplyCRTToBackBuffer( void );
+// openQ4 VR desktop mirror (draw_common.cpp)
+void RB_VR_DrawImageRect( idImage *image, int x, int y, int width, int height, float s0, float t0, float s1, float t1 );
 bool RB_UnderwaterViewAvailable( void );
 
 void RB_DetermineLightScale( void );

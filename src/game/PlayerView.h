@@ -82,6 +82,8 @@ private:
 // RAVEN BEGIN
 // AReis: Modified SingleView() signature to include renderFlags variable.
 	void				SingleView( idUserInterface *hud, const renderView_t *view, int renderFlags = RF_NORMAL );
+	// openQ4 VR: the 3D pass once per headset eye, the HUD on the virtual screen
+	void				VRView( idUserInterface *hud, const renderView_t *view, const vrFrameState_t &vrFrame, float trackingYaw );
 // RAVEN END
 	void				DoubleVision( idUserInterface *hud, const renderView_t *view, int offset );
 	void				BerserkVision( idUserInterface *hud, const renderView_t *view );

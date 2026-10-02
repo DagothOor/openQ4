@@ -1527,8 +1527,8 @@ bool idImage::CopyFramebuffer( int x, int y, int imageWidth, int imageHeight,
 			glBindFramebuffer( GL_READ_FRAMEBUFFER, backEnd.renderTexture->GetDeviceHandle() );
 			glReadBuffer( readAttachment );
 		} else {
-			glBindFramebuffer( GL_READ_FRAMEBUFFER, 0 );
-			glReadBuffer( GL_BACK );
+			glBindFramebuffer( GL_READ_FRAMEBUFFER, R_DefaultFramebufferHandle() );
+			glReadBuffer( R_DefaultColorBuffer() );
 		}
 
 		const GLboolean scissorWasEnabled = glIsEnabled( GL_SCISSOR_TEST );
@@ -1663,8 +1663,8 @@ bool idImage::CopyDepthbuffer( int x, int y, int imageWidth, int imageHeight,
 		if ( readingFromRenderTexture ) {
 			glBindFramebuffer( GL_READ_FRAMEBUFFER, backEnd.renderTexture->GetDeviceHandle() );
 		} else {
-			glBindFramebuffer( GL_READ_FRAMEBUFFER, 0 );
-			glReadBuffer( GL_BACK );
+			glBindFramebuffer( GL_READ_FRAMEBUFFER, R_DefaultFramebufferHandle() );
+			glReadBuffer( R_DefaultColorBuffer() );
 		}
 
 		glBindFramebuffer( GL_DRAW_FRAMEBUFFER, copyDepthFbo );
@@ -1719,8 +1719,8 @@ bool idImage::CopyDepthbuffer( int x, int y, int imageWidth, int imageHeight,
 		if ( readingFromRenderTexture ) {
 			glBindFramebuffer( GL_READ_FRAMEBUFFER, backEnd.renderTexture->GetDeviceHandle() );
 		} else {
-			glBindFramebuffer( GL_READ_FRAMEBUFFER, 0 );
-			glReadBuffer( GL_BACK );
+			glBindFramebuffer( GL_READ_FRAMEBUFFER, R_DefaultFramebufferHandle() );
+			glReadBuffer( R_DefaultColorBuffer() );
 		}
 
 		const GLboolean scissorWasEnabled = glIsEnabled( GL_SCISSOR_TEST );
@@ -1773,7 +1773,7 @@ bool idImage::CopyDepthbuffer( int x, int y, int imageWidth, int imageHeight,
 		if ( readingFromRenderTexture ) {
 			glBindFramebuffer( GL_READ_FRAMEBUFFER, backEnd.renderTexture->GetDeviceHandle() );
 		} else {
-			glBindFramebuffer( GL_READ_FRAMEBUFFER, 0 );
+			glBindFramebuffer( GL_READ_FRAMEBUFFER, R_DefaultFramebufferHandle() );
 		}
 
 		const GLboolean scissorWasEnabled = glIsEnabled( GL_SCISSOR_TEST );

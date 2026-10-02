@@ -2705,6 +2705,10 @@ static bool Session_IsLoadingContinueChar( int ch ) {
 }
 
 static bool Session_ShouldSilenceAudioWhenUnfocused() {
+	// in a headset the desktop window is rarely focused
+	if ( vrSystem != NULL && vrSystem->IsActive() ) {
+		return false;
+	}
 #if defined( USE_SDL3 )
 	return s_muteUnfocused.GetBool() && !Sys_SDL_IsGameWindowFocused();
 #elif defined( _WIN32 )
@@ -8436,10 +8440,14 @@ void idSessionLocal::UpdateScreen( bool outOfSequence ) {
 	renderSystem->SetLoadingScreenSwapIntervalBypass( insideExecuteMapChange );
 
 	UI_SettingsRenderFrame settingsFrame;
+	// a running VR session paces this update on the headset and hands the
+	// renderer this frame's swapchain images
+	vrSystem->BeginFrame();
 	renderSystem->BeginFrame( renderSystem->GetScreenWidth(), renderSystem->GetScreenHeight() );
 
 	// draw everything
 	Draw();
+	vrSystem->DrawMenuPointer();
 
 	settingsFrame.Submitting();
 	if ( com_speeds.GetBool() ) {
@@ -8449,6 +8457,7 @@ void idSessionLocal::UpdateScreen( bool outOfSequence ) {
 	}
 	settingsFrame.Presented();
 	RetainedUI_FrameSubmitted();
+	vrSystem->EndFrame();
 
 	insideUpdateScreen = false;
 }

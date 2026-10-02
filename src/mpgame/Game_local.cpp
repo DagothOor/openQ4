@@ -46,6 +46,7 @@ idCollisionModelManager *	collisionModelManager = NULL;
 // jscott: game interface to the fx system
 rvBSEManager *				bse = NULL;
 // RAVEN END
+idVRSystem *				vrSystem = NULL;
 
 idCVar *					idCVar::staticVars = NULL;
 
@@ -171,6 +172,7 @@ extern "C" gameExport_t *GetGameAPI( gameImport_t *import ) {
 // jscott: import the fx system
 		bse							= import->bse;
 // RAVEN END
+		vrSystem					= import->vrSystem;
 
 // RAVEN BEGIN
 // dluetscher: import the memory system variables

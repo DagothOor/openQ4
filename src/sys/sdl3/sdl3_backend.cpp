@@ -6205,6 +6205,59 @@ bool Sys_SetJoystickRumble(float lowFrequency, float highFrequency, int duration
 	return true;
 }
 
+#ifndef ID_DEDICATED
+void Sys_PostVRControllerKey(int key, bool down) {
+	const int eventTime = Sys_Milliseconds();
+	if (key >= K_MOUSE1 && key <= K_MOUSE8) {
+		// the menu pointer clicks like the mouse, never through the usercmd poll
+		SDL3_QueueMouseButtonEvent(key, down, eventTime, false);
+		return;
+	}
+	SDL3_PostControllerKeyEvent(key, down, eventTime);
+}
+
+// The virtual screen shows the window's whole 2D viewport, which menus lay out
+// for, so the pointer becomes the window position the mouse would have there.
+bool Sys_PostVRPointer(bool onScreen, float u, float v) {
+	const int eventTime = Sys_Milliseconds();
+	if (console != NULL && console->Active()) {
+		return false;
+	}
+	if (!onScreen || !std::isfinite(u) || !std::isfinite(v)) {
+		if (RetainedUI_IsOpen()) {
+			retainedUIInput_t leave;
+			leave.kind = retainedUIInput_t::POINTER_LEAVE;
+			RetainedUI_QueueInput(leave, eventTime);
+		}
+		return false;
+	}
+	sdl3GuiMouseTransform_t transform;
+	if (!SDL3_BuildGuiMouseTransform(transform)) {
+		return false;
+	}
+	const float windowX = (transform.drawAreaX + idMath::ClampFloat(0.0f, 1.0f, u) * transform.drawAreaWidth) * transform.pixelToWindowX;
+	const float windowY = (transform.drawAreaY + idMath::ClampFloat(0.0f, 1.0f, v) * transform.drawAreaHeight) * transform.pixelToWindowY;
+	if (RetainedUI_IsOpen()) {
+		SDL3_QueueRetainedPointer(windowX, windowY, eventTime);
+		return true;
+	}
+	idUserInterface *activeGui = SDL3_GetActiveMenuGui();
+	float cursorX = 0.0f;
+	float cursorY = 0.0f;
+	if (activeGui == NULL || !SDL3_MapWindowMouseToGuiCursor(windowX, windowY, cursorX, cursorY)) {
+		return false;
+	}
+	// a desktop mouse moved later starts from wherever the pointer left the cursor
+	SDL3_ResetMenuMouseTracking();
+	const int dx = static_cast<int>(roundf(cursorX - activeGui->CursorX()));
+	const int dy = static_cast<int>(roundf(cursorY - activeGui->CursorY()));
+	if (dx != 0 || dy != 0) {
+		Sys_QueEvent(eventTime, SE_MOUSE, dx, dy, 0, NULL);
+	}
+	return true;
+}
+#endif
+
 
 
 

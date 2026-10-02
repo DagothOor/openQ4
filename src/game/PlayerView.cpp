@@ -969,6 +969,46 @@ void idPlayerView::InfluenceVision( idUserInterface *hud, const renderView_t *vi
 
 /*
 ===================
+idPlayerView::VRView
+
+The world once per headset eye, each from its tracked pose with its own
+off-axis frustum; full-screen effects that tint the world (fades, the liquid
+wash) go into the eyes, while the HUD, screen blobs and objectives go to the
+virtual screen, which the headset composites as a layer in front of them.
+Double vision and influence effects are flat-screen effects and stand down.
+===================
+*/
+void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const vrFrameState_t &vrFrame, float trackingYaw ) {
+	idVec3 eyeOrigin;
+	idMat3 eyeAxis;
+	player->GetPresentationViewPos( eyeOrigin, eyeAxis );
+
+	// the listener follows the tracked head
+	if ( vrFrame.head.valid ) {
+		idVec3 headOrigin;
+		idMat3 headAxis;
+		vrPose_t head = vrFrame.head;
+		head.origin += VR_HeadOffsetCorrection( vrFrame );
+		VR_PoseToWorld( head, eyeOrigin, trackingYaw, headOrigin, headAxis );
+		soundSystem->PlaceListener( headOrigin, headAxis, player->entityNumber + 1, gameLocal.time, "Undefined" );
+	}
+
+	for ( int eye = 0; eye < VR_NUM_EYES; eye++ ) {
+		if ( !renderSystem->SetVRRenderTarget( eye ) ) {
+			break;
+		}
+		renderView_t eyeView = *view;
+		VR_BuildEyeView( vrFrame, eye, eyeOrigin, trackingYaw, eyeView );
+		SingleView( hud, &eyeView, RF_NO_GUI | RF_PRIMARY_VIEW );
+		ScreenFade();
+	}
+	renderSystem->SetVRRenderTarget( -1 );
+
+	SingleView( hud, view, RF_GUI_ONLY );
+}
+
+/*
+===================
 idPlayerView::RenderPlayerView
 ===================
 */
@@ -1004,6 +1044,15 @@ void idPlayerView::RenderPlayerView( idUserInterface *hud ) {
 
 // openQ4 BEGIN
 	const int eyeLiquidContents = LiquidAtEye( view );
+
+	// a headset presents first-person gameplay in stereo
+	vrFrameState_t vrFrame;
+	float vrTrackingYaw = 0.0f;
+	if ( player->GetVRView( vrFrame, vrTrackingYaw ) && vrFrame.stereo ) {
+		LiquidOverlay( eyeLiquidContents );
+		VRView( hud, view, vrFrame, vrTrackingYaw );
+		return;
+	}
 // openQ4 END
 
 	if ( g_skipViewEffects.GetBool() ) {

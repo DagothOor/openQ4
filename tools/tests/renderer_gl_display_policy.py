@@ -52,6 +52,9 @@ static void *s_glWindow=(void*)1,*s_glContext=(void*)1;
 static const char* R_GLVideoError(){return "injected";}
 static bool SDL3_EnsureGLContextCurrent(const char*){return contextOkay;}
 using GLenum=unsigned;using GLuint=unsigned;using GLint=int;using GLboolean=bool;
+// no VR frame: the window is the default framebuffer (RenderTexture.h); 0x0405 is GL_BACK
+static GLuint R_DefaultFramebufferHandle(){return 0;}
+static GLenum R_DefaultColorBuffer(){return 0x0405u;}
 GL_CONSTANTS
 enum {TT_2D,TT_CUBIC,FMT_DEPTH,FMT_DEPTH_STENCIL,FMT_RGBA16F,TF_LINEAR,TF_NEAREST,TR_CLAMP,TD_DEFAULT,TD_DEPTH};
 static bool GLEW_EXT_framebuffer_blit=true,GLEW_ARB_framebuffer_object=false,GLEW_VERSION_3_0=false,GLEW_EXT_framebuffer_object=false;

@@ -1307,7 +1307,10 @@ void rvWeapon::ApplyPresentationViewModelTransform( void ) {
 
 	idVec3 presentationWeaponOrigin;
 	idMat3 presentationWeaponAxis;
-	GetPresentationViewModelTransform( presentationWeaponOrigin, presentationWeaponAxis );
+	// openQ4 VR: drawn at the weapon hand from this frame's tracked pose
+	if ( !owner->GetVRWeaponTransform( presentationWeaponOrigin, presentationWeaponAxis, true ) ) {
+		GetPresentationViewModelTransform( presentationWeaponOrigin, presentationWeaponAxis );
+	}
 	viewModel->GetPhysics()->SetOrigin( presentationWeaponOrigin );
 	viewModel->GetPhysics()->SetAxis( presentationWeaponAxis );
 
@@ -1393,7 +1396,11 @@ void rvWeapon::Think ( void ) {
 	if ( gameLocal.isNewFrame || presentationViewModelTime < 0 ) {
 		playerViewOrigin = owner->firstPersonViewOrigin;
 		playerViewAxis = owner->firstPersonViewAxis;
+		// openQ4 VR: shots leave the tracked weapon hand along its aim, which
+		// the usercmd angles already carry
+		owner->GetVRAimOrigin( playerViewOrigin );
 		CalculateViewModelTransform( playerViewOrigin, playerViewAxis, viewModelOrigin, viewModelAxis );
+		owner->GetVRWeaponTransform( viewModelOrigin, viewModelAxis, false );
 		UpdatePresentationViewModelState( playerViewOrigin, playerViewAxis, viewModelOrigin, viewModelAxis );
 	}
 

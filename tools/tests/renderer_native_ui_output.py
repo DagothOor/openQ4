@@ -117,6 +117,9 @@ static void RB_CaptureCurrentRenderImage(int w,int h){copyImage.opts.width=w;cop
 static void RB_CaptureCurrentDepthImage(int,int){}
 constexpr int GL_BACK=0,GL_MODULATE=1,GL_TEXTURE_2D=2,GL_TEXTURE_COMPARE_MODE=3,GL_NONE=4,GL_DEPTH_TEXTURE_MODE=5,GL_LUMINANCE=6;
 static void glDrawBuffer(int){} static void glReadBuffer(int){} static void glScissor(int,int,int,int){}
+// no VR frame: the window's back buffer is the default target (RenderTexture.h)
+static void R_SetDefaultDrawAndReadBuffers(){glDrawBuffer(GL_BACK);glReadBuffer(GL_BACK);}
+static bool RB_VR_PresentFrame(){return false;}
 static void glViewport(int x,int y,int w,int h){viewport={x,y,w,h};}
 static void GL_SelectTexture(int){} static void GL_TexEnv(int){} static void glTexParameteri(int,int,int){}
 static void RB_SetFramebufferSRGBEnabled(bool){}

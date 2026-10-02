@@ -54,6 +54,7 @@ It is for players who want the original Quake 4 experience on today's hardware.
 - **Real liquids.** Wade, swim and drown in water, take damage in slime and lava, with underwater visuals and audio. Retail Quake 4 has no liquids, so they appear in maps built for them; see the [Liquids guide](docs/user/liquids.md).
 - **Reliable audio** through OpenAL. macOS packages bundle their own, so there is nothing extra to install.
 - **Controller support and quality-of-life fixes**, including a better console and modern settings behaviour.
+- **Play in VR** (experimental). With a PC VR headset, play the campaign or multiplayer in stereo: look around with your head, aim with a motion controller, and get menus and cinematics on a floating screen. See the [VR guide](docs/user/vr.md).
 - **Play in your language.** Menus and game text in English, French, German, Italian, Spanish, Brazilian Portuguese, Czech, Hungarian, Turkish and Ukrainian, plus Polish and Russian menus. Choose one in Settings > Game Options > Language; see the [languages guide](docs/user/languages.md).
 - **More single-player.** Alongside the original campaign there is an experimental [Arena Campaign](docs/user/arena-campaign.md): bot matches across five tiers of the stock maps, with boss matches and saved progress. **The Awakening** campaign is available too if you supply its content.
 - **Better multiplayer** (experimental): a server browser with sorting, filters and favourites, bots with team objectives and personalities, readable chat with history, Duel queues and spectator match controls.
@@ -134,6 +135,7 @@ When upgrading, replace the whole openQ4 package rather than individual files.
 - [Gameplay Settings](docs/user/gameplay-settings.md) - gameplay and audio options
 - [Arena Campaign](docs/user/arena-campaign.md) (experimental) - tiers, unlocks, maps, game types, and bots
 - [Steam Deck](docs/user/steam-deck.md) - launcher, controls, and handheld notes
+- [Virtual Reality](docs/user/vr.md) (experimental) - headsets, controller layout, comfort settings, and troubleshooting
 - [Multiplayer Networking](docs/user/multiplayer-networking.md) (experimental) - connection tuning and lag compensation
 - [Multiplayer Chat](docs/user/multiplayer-chat.md) - chat controls, history, and layout
 - [Competitive Matches](docs/user/competitive-matches.md) (experimental) - match rules, voting, readiness, rounds, and One Flag
@@ -194,6 +196,7 @@ Developers can also find advanced configuration and file layout in [TECHNICAL.md
 - **Raven Software** and **Ritual Entertainment** - Quake 4: The Awakening, the unreleased expansion whose single-player campaign openQ4 can run
 - **Chris Robinson and the [OpenAL Soft](https://openal-soft.org/) contributors** - cross-platform OpenAL runtime bundled in macOS packages
 - **The Khronos Group and [glslang contributors](https://github.com/KhronosGroup/glslang/tree/15.1.0)** - GLSL-to-SPIR-V compiler used by the Vulkan renderer; its complete licence ships under `licenses/`
+- **[The Khronos Group, Valve Corporation and LunarG](https://github.com/KhronosGroup/OpenXR-SDK/tree/release-1.1.63)** - Apache-2.0 OpenXR loader and headers behind [VR mode](docs/user/vr.md); [licence notice](docs/licenses/openxr-sdk.txt)
 - **[The Khronos Group](https://github.com/KhronosGroup/OpenGL-Registry)** - MIT-licensed OpenGL ES API headers, with their original notices retained
 - **akacross** (Discord user) - Thorough playtesting on Linux and Windows, a huge help moving the project forward!
 

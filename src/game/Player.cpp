@@ -4900,7 +4900,8 @@ void idPlayer::DrawHUD( idUserInterface *_hud ) {
 // RAVEN BEGIN
 // mekberg: removed check for weapon->ShowCrosshair.
 //			we want to show the crosshair regardless for NPC tags
-			if ( cursor && health > 0 ) {		
+			// openQ4 VR: the weapon hand aims, so a screen-centre crosshair would lie
+			if ( cursor && health > 0 && !IsVRHandAiming() ) {
 				// Pass the current weapon to the cursor gui for custom crosshairs
 // mekberg: adjustable crosshair size.
 				int crossSize = cvarSystem->GetCVarInteger( "g_crosshairSize" );
@@ -13191,6 +13192,12 @@ void idPlayer::GetViewPos( idVec3 &origin, idMat3 &axis ) const {
 
   		origin += shakeOffset;
   		axis = (shakeAngleOffset + playerView.AngleOffset()).ToMat3() * axis;
+	} else if ( vrSystem != NULL && vrSystem->IsActive() && gameLocal.GetLocalPlayer() == this
+			&& !pm_thirdPerson.GetBool() && privateCameraView == NULL ) {
+		// openQ4 VR: the tracked head moves and turns the camera, so there is
+		// no bob, shake or kick to add, and no nodal offset to fake a neck
+		origin = GetEyePosition();
+		axis = viewAngles.ToMat3() * physicsObj.GetGravityAxis();
 	} else {
   		idVec3		shakeOffset;
   		idAngles	shakeAngleOffset;
@@ -13205,6 +13212,87 @@ void idPlayer::GetViewPos( idVec3 &origin, idMat3 &axis ) const {
 		origin += physicsObj.GetGravityNormal() * g_viewNodalZ.GetFloat();
 		origin += axis[0] * g_viewNodalX.GetFloat() + axis[2] * g_viewNodalZ.GetFloat();
 	}
+}
+
+/*
+===============
+idPlayer::GetVRView
+===============
+*/
+bool idPlayer::GetVRView( vrFrameState_t &frame, float &trackingYaw ) const {
+	if ( vrSystem == NULL || !vrSystem->IsActive() || gameLocal.GetLocalPlayer() != this ) {
+		return false;
+	}
+	// cinematics, cameras, third person and vehicles play flat on the virtual screen
+	if ( gameLocal.inCinematic || gameLocal.GetCamera() != NULL || privateCameraView != NULL
+			|| pm_thirdPerson.GetBool() || IsInVehicle() ) {
+		return false;
+	}
+	vrSystem->GetFrameState( frame );
+	if ( !frame.active ) {
+		return false;
+	}
+	trackingYaw = frame.bodyYaw + deltaViewAngles.yaw;
+	return true;
+}
+
+/*
+===============
+idPlayer::IsVRHandAiming
+===============
+*/
+bool idPlayer::IsVRHandAiming( void ) const {
+	vrFrameState_t frame;
+	float trackingYaw;
+	return health > 0 && GetVRView( frame, trackingYaw ) && frame.aimMode == VR_AIM_HAND
+		&& frame.aim[ frame.weaponHand == VR_HAND_LEFT ? VR_HAND_LEFT : VR_HAND_RIGHT ].valid;
+}
+
+/*
+===============
+idPlayer::GetVRWeaponTransform
+===============
+*/
+bool idPlayer::GetVRWeaponTransform( idVec3 &origin, idMat3 &axis, bool presentation ) const {
+	vrFrameState_t frame;
+	float trackingYaw;
+	if ( health <= 0 || !GetVRView( frame, trackingYaw ) || frame.aimMode != VR_AIM_HAND ) {
+		return false;
+	}
+	idVec3 eyeOrigin = firstPersonViewOrigin;
+	if ( presentation ) {
+		idMat3 eyeAxis;
+		GetPresentationViewPos( eyeOrigin, eyeAxis );
+	}
+	return VR_WeaponTransform( frame, eyeOrigin, trackingYaw, origin, axis );
+}
+
+/*
+===============
+idPlayer::GetVRAimOrigin
+===============
+*/
+bool idPlayer::GetVRAimOrigin( idVec3 &origin ) const {
+	vrFrameState_t frame;
+	float trackingYaw;
+	if ( health <= 0 || !GetVRView( frame, trackingYaw ) || frame.aimMode != VR_AIM_HAND ) {
+		return false;
+	}
+	const vrPose_t &aim = frame.aim[ frame.weaponHand == VR_HAND_LEFT ? VR_HAND_LEFT : VR_HAND_RIGHT ];
+	if ( !aim.valid ) {
+		return false;
+	}
+	vrPose_t pose = aim;
+	pose.origin += VR_HeadOffsetCorrection( frame );
+	idVec3 handOrigin;
+	idMat3 handAxis;
+	VR_PoseToWorld( pose, firstPersonViewOrigin, trackingYaw, handOrigin, handAxis );
+
+	// a hand reaching through a wall must not fire from behind it
+	trace_t trace;
+	gameLocal.TracePoint( this, trace, firstPersonViewOrigin, handOrigin, MASK_SHOT_RENDERMODEL, this );
+	origin = trace.fraction < 1.0f ? firstPersonViewOrigin + ( trace.endpos - firstPersonViewOrigin ) * 0.9f : handOrigin;
+	return true;
 }
 
 /*

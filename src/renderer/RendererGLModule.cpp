@@ -427,6 +427,13 @@ void R_RendererModule_PublishLightGridLoadReceipt( const renderLightGridLoadRece
 	}
 }
 
+// OpenXR (render API 21): the engine's VR system follows the device's lifetime.
+void R_RendererModule_RendererDeviceEvent( int event ) {
+	if ( rgm_services != NULL && rgm_services->RendererDeviceEvent != NULL ) {
+		rgm_services->RendererDeviceEvent( event );
+	}
+}
+
 #if defined( OPENQ4_RENDERER_GL_MODULE ) || defined( OPENQ4_RENDERER_GLES_MODULE )
 /*
 ====================

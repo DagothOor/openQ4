@@ -2,6 +2,19 @@
 
 ## 0.13.2 release candidate
 
+- [ ] Add an experimental OpenXR VR mode for the OpenGL client on Windows and
+  Linux: a statically built Khronos loader, off-axis per-eye rendering through
+  a redirected default framebuffer (render API 21, game API 50), the HUD as a
+  head-locked overlay, menus and cinematics on a world-locked screen with a
+  controller pointer, and controller buttons through the gamepad bindings.
+  The VR math core passes natively and under ASan/UBSan on Linux; the source
+  contract and `openxr_vr_smoke.py` pass against the in-tree OpenXR test
+  runtime on Air Defense 1 (stereo parallax, head tracking, HUD alpha, snap
+  turn, trigger binding, pause menu pointer and click, localised action names,
+  ending VR from the runtime); the Linux sources and
+  loader compile under GCC. A run on real headset hardware is still open. See
+  the [plan](plans/2026-10-02-openxr-vr.md) and [VR guide](../user/vr.md).
+
 - [x] Suppress startup splash windows for hidden-window, renderer-disabled and dedicated launches across Windows, Linux and macOS.
 
 - [x] Consolidate SDK game sources and Awakening SP into the engine checkout;

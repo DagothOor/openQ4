@@ -282,6 +282,11 @@ static double Common_GetPresentationClockUnitsPerSecond( void ) {
 }
 
 static int Common_GetRequestedPresentationCap( void ) {
+	// a headset session paces every frame through xrWaitFrame
+	if ( vrSystem != NULL && vrSystem->IsPacing() ) {
+		return 0;
+	}
+
 	int cap = Max( 0, com_maxfps.GetInteger() );
 
 #if defined( _WIN32 )
@@ -6448,6 +6453,7 @@ void idCommonLocal::LoadGameDLL( void ) {
 	gameImport.AASFileManager			= ::AASFileManager;
 	gameImport.collisionModelManager	= ::collisionModelManager;
 	gameImport.bse						= ::bse;
+	gameImport.vrSystem					= ::vrSystem;
 
 	Com_SetGameModuleLoadPhase( GAME_MODULE_PHASE_CALL_GET_GAME_API );
 	const gameExport_t *gameExportPtr = GetGameAPI( &gameImport );
@@ -6846,6 +6852,9 @@ void idCommonLocal::Shutdown( void ) {
 	idAsyncNetwork::server.Kill();
 	idAsyncNetwork::client.Shutdown();
 
+	// the OpenXR session shares the renderer's context: close it while that lives
+	vrSystem->Shutdown();
+
 	// game specific shut down
 	ShutdownGame( false );
 
@@ -6944,6 +6953,9 @@ void idCommonLocal::InitGame( void ) {
 
 	// initialize the renderSystem data structures, but don't start OpenGL yet
 	renderSystem->Init();
+
+	// VR commands; its session opens once the renderer has a device
+	vrSystem->Init();
 
 	// The render-geometry library is linked independently into module-only
 	// renderers and the engine. Initialize the engine copy for dmap and the

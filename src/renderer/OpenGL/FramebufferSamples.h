@@ -5,6 +5,8 @@
 // Include after tr_local.h. Returns -1 when the context is unavailable. A
 // render texture's samples belong to that image and must be queried separately.
 inline int R_DefaultFramebufferSamples() {
+	// A VR frame's stand-in for the window (RenderTexture.h) is single-sample.
+	if ( R_DefaultFramebufferHandle() != 0 ) return 0;
 #if defined(USE_SDL3)
 	renderDisplayPresentation_t display = {};
 	R_GetDisplayPresentation( &display );
