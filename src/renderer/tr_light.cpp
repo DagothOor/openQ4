@@ -2686,6 +2686,20 @@ static bool R_ShouldRefreshCulledLoopService( const rvRenderEffectLocal *def ) {
 	return ( ( tr.frameCount + def->index ) & 7 ) == 0;
 }
 
+// Effects are submitted farthest first, so overlapping translucent effects with an
+// equal material sort composite back to front, as in Quake 4.
+struct effectSubmit_t {
+	rvRenderEffectLocal *	def;
+	viewEntity_t *			space;
+	float					distSqr;
+};
+
+static int R_CompareEffectSubmitDistance( const void *a, const void *b ) {
+	const float da = static_cast<const effectSubmit_t *>( a )->distSqr;
+	const float db = static_cast<const effectSubmit_t *>( b )->distSqr;
+	return ( da < db ) - ( da > db );
+}
+
 /*
 ===============
 R_AddEffectSurfaces
@@ -2727,6 +2741,9 @@ void R_AddEffectSurfaces(void) {
 	int dropClearedBounds = 0;
 	int dropFrustumCull = 0;
 	int dropScissor = 0;
+
+	effectSubmit_t *pending = (effectSubmit_t *)R_FrameAlloc( Max( 1, world->effectsDef.Num() ) * sizeof( effectSubmit_t ) );
+	int numPending = 0;
 
 	for (int i = 0; i < world->effectsDef.Num(); i++) {
 		rvRenderEffectLocal* def = world->effectsDef[i];
@@ -2898,6 +2915,18 @@ void R_AddEffectSurfaces(void) {
 			++dropScissor;
 			continue;
 		}
+
+		effectSubmit_t &submit = pending[numPending++];
+		submit.def = def;
+		submit.space = vEffect;
+		submit.distSqr = ( def->parms.origin - tr.viewDef->renderView.vieworg ).LengthSqr();
+	}
+
+	qsort( pending, numPending, sizeof( pending[0] ), R_CompareEffectSubmitDistance );
+	for ( int p = 0; p < numPending; ++p ) {
+		rvRenderEffectLocal* def = pending[p].def;
+		viewEntity_t* vEffect = pending[p].space;
+		idRenderModel* model = def->dynamicModel;
 
 		renderEntity_t renderParms;
 		memset(&renderParms, 0, sizeof(renderParms));

@@ -366,7 +366,6 @@ void rvSegment::InitTime(rvBSE* effect, rvSegmentTemplate* st, float time) {
 	SetExpired(false);
 	mSegStartTime = rvRandom::flrand(st->mLocalStartTime.x, st->mLocalStartTime.y) + time;
 	mSegEndTime = rvRandom::flrand(st->mLocalDuration.x, st->mLocalDuration.y) + mSegStartTime;
-	mLastTime = mSegStartTime;
 	if (!st->GetIgnoreDuration() || (!effect->GetLooping() && !st->GetSoundLooping())) {
 		effect->SetDuration(mSegEndTime - time);
 	}
@@ -377,8 +376,10 @@ float rvSegment::AttenuateDuration(rvBSE* effect, rvSegmentTemplate* st) {
 }
 
 float rvSegment::AttenuateInterval(rvBSE* effect, rvSegmentTemplate* st) {
+	// mSecondsPerParticle holds (slowest, fastest) intervals; full scalability emits
+	// at the fastest authored rate.
 	const float scale = idMath::ClampFloat(0.0f, 1.0f, bse_scale.GetFloat());
-	float interval = idMath::Lerp(mSecondsPerParticle.y, mSecondsPerParticle.x, scale);
+	float interval = idMath::Lerp(mSecondsPerParticle.x, mSecondsPerParticle.y, scale);
 	interval = idMath::ClampFloat(mSecondsPerParticle.y, mSecondsPerParticle.x, interval);
 	if (!st->GetAttenuateEmitter()) {
 		return interval;
@@ -443,22 +444,32 @@ void rvSegment::Init(rvBSE* effect, const rvDeclEffect* effectDecl, int segmentT
 	}
 
 	mParticleType = st->mParticleTemplate.GetType();
-	InitTime(effect, const_cast<rvSegmentTemplate*>(st), time);
+	// Segment timing runs from when the effect was started, which can precede its
+	// first service (a late network event, a restored save).
+	InitTime(effect, const_cast<rvSegmentTemplate*>(st), effect->GetStartTime());
 	GetSecondsPerParticle(effect, const_cast<rvSegmentTemplate*>(st), const_cast<rvParticleTemplate*>(&st->mParticleTemplate));
+}
+
+// Pre-warming helpers (see rvBSE::UpdateSegments): move the start, and the spawn
+// clock with it, a whole effect duration on, or two back for a segment that spans
+// the effect.  The end time stays where it is.
+void rvSegment::Advance(rvBSE* effect) {
+	mSegStartTime += effect->GetDuration();
+	mLastTime = mSegStartTime;
+}
+
+void rvSegment::Rewind(rvBSE* effect) {
+	if (effect->GetDuration() == mSegEndTime - mSegStartTime) {
+		mSegStartTime -= 2.0f * effect->GetDuration();
+		mLastTime = mSegStartTime;
+	}
 }
 
 void rvSegment::ResetTime(rvBSE* effect, float time) {
 	rvSegmentTemplate* st = (rvSegmentTemplate*)mEffectDecl->GetSegmentTemplate(mSegmentTemplateHandle);
 	if (st && !st->GetInfiniteDuration()) {
 		InitTime(effect, st, time);
-
-		// Loop resets must allow one-shot sound segments to fire again on the
-		// next cycle. Keep looping sound segments latched.
-		if (st->GetType() == SEG_SOUND && !st->GetSoundLooping()) {
-			SetSoundPlaying(false);
-		}
 	}
-
 }
 
 void rvSegment::InitParticles(rvBSE* effect) {
@@ -471,21 +482,21 @@ void rvSegment::InitParticles(rvBSE* effect) {
 }
 
 bool rvSegment::Check(rvBSE* effect, float time, float offset) {
-	rvSegmentTemplate* st = (rvSegmentTemplate*)mEffectDecl->GetSegmentTemplate(mSegmentTemplateHandle);
-	if (!st || !st->GetEnabled()) {
-		return false;
-	}
-	if (st->DetailCull()) {
-		return false;
-	}
+	// Every service moves the clock on, even before the segment starts, so emitters
+	// keep their spawn phase through a delayed start and across loop resets.
+	const float lastTime = mLastTime;
+	mLastTime = time;
+
 	if (GetExpired() || effect->GetStopped()) {
 		return true;
 	}
 	if (time < mSegStartTime) {
 		return false;
 	}
-
-	const bool infinite = st->GetInfiniteDuration() || st->GetSoundLooping();
+	rvSegmentTemplate* st = (rvSegmentTemplate*)mEffectDecl->GetSegmentTemplate(mSegmentTemplateHandle);
+	if (!st || !st->GetEnabled() || st->DetailCull()) {
+		return true;
+	}
 
 	switch (st->mSegType) {
 	case SEG_EMITTER: {
@@ -494,112 +505,92 @@ bool rvSegment::Check(rvBSE* effect, float time, float offset) {
 			return true;
 		}
 		if (!effect->CanInterpolate()) {
-			return true;
+			return GetExpired();
 		}
 
-		float spawnTime = mLastTime;
-		mLastTime = time;
-
+		// Spawn up to just past this frame; constant segments emit only during
+		// their window too, their particles then live on.
 		float spawnEnd = time + BSE_FUTURE;
-		if (!infinite && mSegEndTime - BSE_TIME_EPSILON <= spawnEnd) {
+		if (mSegEndTime - BSE_TIME_EPSILON <= spawnEnd) {
 			spawnEnd = mSegEndTime;
+		}
+
+		const float interval = AttenuateInterval(effect, st);
+		float spawnTime = lastTime;
+		if (spawnTime < mSegStartTime && interval > 0.0f) {
+			// skip the spawn times that fell before the segment started
+			spawnTime += idMath::Ceil((mSegStartTime - spawnTime) / interval) * interval;
 		}
 
 		int spawned = 0;
 		const int maxSpawnPerService = GetSegmentParticleCap();
-		if (spawnTime < spawnEnd) {
-			while (spawnTime < spawnEnd && spawned < maxSpawnPerService) {
-				if (spawnTime >= mSegStartTime) {
-					SpawnParticle(effect, st, spawnTime, vec3_origin, mat3_identity);
-				}
-
-				const float interval = Max(BSE_TIME_EPSILON, AttenuateInterval(effect, st));
-				spawnTime += interval;
-				++spawned;
-			}
+		while (spawnTime < spawnEnd && spawned < maxSpawnPerService) {
+			SpawnParticle(effect, st, spawnTime, vec3_origin, mat3_identity);
+			spawnTime += interval;
+			++spawned;
 		}
-
-		if (!infinite && mSegEndTime - BSE_TIME_EPSILON <= spawnEnd) {
-			SetExpired(true);
-		}
-		mLastTime = spawnTime;
 		if (spawned >= maxSpawnPerService && spawnTime < spawnEnd && bse_debug.GetInteger() > 0) {
 			common->Warning("^4BSE:^1 spawn service cap hit for '%s' segment %d", effect->GetDeclName(), mSegmentTemplateHandle);
 		}
-		return true;
+
+		if (mSegEndTime - BSE_TIME_EPSILON <= spawnEnd) {
+			SetExpired(true);
+		}
+		mLastTime = spawnTime;
+		return GetExpired();
 	}
 	case SEG_TRAIL:
+	case SEG_DELAY:
 		SetExpired(true);
 		return true;
-	case SEG_SPAWNER:
-		if (!GetExpired()) {
-			const rvParticleTemplate* pt = st->GetParticleTemplate();
-			if (pt && pt->GetType() != PTYPE_NONE) {
-				const int particleCap = GetSegmentParticleCap();
-				const int count = idMath::ClampInt(
-					0,
-					particleCap,
-					static_cast<int>(idMath::Ceil(AttenuateCount(effect, st, mCount.x, mCount.y))));
-				if (count > 0) {
-					SpawnParticles(effect, st, mSegStartTime, count);
-				}
-			}
-			SetExpired(true);
+	case SEG_SPAWNER: {
+		const rvParticleTemplate* pt = st->GetParticleTemplate();
+		if (pt && pt->GetType() != PTYPE_NONE) {
+			// Truncated, so a count range of a,b yields a to b-1 particles.
+			const int count = static_cast<int>(AttenuateCount(effect, st, mCount.x, mCount.y));
+			SpawnParticles(effect, st, mSegStartTime, idMath::ClampInt(0, GetSegmentParticleCap(), count));
 		}
+		SetExpired(true);
 		return true;
+	}
 	case SEG_EFFECT:
-		if (!GetExpired() && st->mNumEffects > 0 && game) {
-			const int index = rvRandom::irand(0, st->mNumEffects - 1);
-			const rvDeclEffect* nested = st->mEffects[index];
-			if (nested) {
-				game->PlayEffect(
-					nested,
-					effect->GetCurrentOrigin(),
-					effect->GetCurrentAxis(),
-					false,
-					effect->GetHasEndOrigin() ? effect->GetCurrentEndOrigin() : vec3_origin,
-					false,
-					false,
-					EC_IGNORE,
-					vec4_one);
-			}
-			SetExpired(true);
-		}
+		PlayEffect(effect, st, 0.0f);
+		SetExpired(true);
 		return true;
-	case SEG_SOUND:
-		if (effect->GetReferenceSound() && st->mSoundShader) {
-			if (!GetSoundPlaying()) {
-				// random diversity so multi-sample shaders (bullet impacts, ricochets)
-				// don't always play their first entry
-				effect->GetReferenceSound()->StartSound(
-					st->mSoundShader,
-					static_cast<s_channelType>(mSegmentTemplateHandle + SCHANNEL_ONE),
-					rvRandom::flrand(0.0f, 1.0f),
-					0,
-					false);
-				SetSoundPlaying(true);
-			}
+	case SEG_SOUND: {
+		idSoundEmitter* emitter = effect->GetReferenceSound();
+		if (emitter && st->mSoundShader) {
+			// The emitter takes the segment's volume and pitch before the sound
+			// starts, so the channel picks them up.
 			mSoundVolume = st->GetSoundVolume();
 			mFreqShift = st->GetFreqShift();
 			effect->UpdateSoundEmitter(st, this);
+
+			// Random diversity so multi-sample shaders (bullet impacts,
+			// ricochets) don't always play their first entry.  A looping sound
+			// starts once and survives loop resets; a one-shot replays each loop.
+			const s_channelType channel = static_cast<s_channelType>(mSegmentTemplateHandle + SCHANNEL_ONE);
+			if (!st->GetSoundLooping()) {
+				emitter->StartSound(st->mSoundShader, channel, rvRandom::flrand(0.0f, 1.0f), 0, false);
+			}
+			else if (!GetSoundPlaying()) {
+				SetSoundPlaying(true);
+				emitter->StartSound(st->mSoundShader, channel, rvRandom::flrand(0.0f, 1.0f), SSF_LOOPING, false);
+			}
 		}
 		SetExpired(true);
 		return true;
+	}
 	case SEG_DECAL:
-		if (!GetExpired()) {
-			if (BSE_DecalsEnabled()) {
-				CreateDecal(effect, mSegStartTime);
-			}
-			SetExpired(true);
+		if (BSE_DecalsEnabled()) {
+			CreateDecal(effect, mSegStartTime);
 		}
-		return true;
-	case SEG_DELAY:
 		SetExpired(true);
 		return true;
 	case SEG_SHAKE:
 	case SEG_TUNNEL:
 	case SEG_DOUBLEVISION:
-		if (!GetExpired() && game) {
+		if (game) {
 			int viewEffect = VIEWEFFECT_SHAKE;
 			if (st->mSegType == SEG_TUNNEL) {
 				viewEffect = VIEWEFFECT_TUNNEL;
@@ -610,17 +601,15 @@ bool rvSegment::Check(rvBSE* effect, float time, float offset) {
 			const float finishTime = mSegStartTime + AttenuateDuration(effect, st);
 			const float scale = Max(0.0f, effect->GetOriginAttenuation(st));
 			game->StartViewEffect(viewEffect, finishTime, scale);
-			SetExpired(true);
 		}
+		SetExpired(true);
 		return true;
 	case SEG_LIGHT:
-		if (!GetExpired() && st->GetEnabled()) {
-			InitLight(effect, st, mSegStartTime);
-			SetExpired(true);
-		}
+		InitLight(effect, st, mSegStartTime);
+		SetExpired(true);
 		return true;
 	default:
-		return true;
+		return GetExpired();
 	}
 }
 
@@ -632,7 +621,10 @@ bool rvSegment::UpdateParticles(rvBSE* effect, float time) {
 
 	Handle(effect, time);
 
-	if (st->GetInfiniteDuration() || st->GetSmoker() || st->GetHasPhysics() || st->mParticleTemplate.GetNumTimeoutEffects() > 0) {
+	// Finish marks every segment that needs per-particle work as complex: constant,
+	// smoke-trail, impact or timeout particles, lights and electricity.  A stopped
+	// effect also takes this path so its non-persistent particles are removed.
+	if (effect->GetStopped() || st->GetComplexParticle()) {
 		UpdateGenericParticles(effect, st, time);
 	}
 	else {
@@ -643,10 +635,15 @@ bool rvSegment::UpdateParticles(rvBSE* effect, float time) {
 }
 
 void rvSegment::CalcCounts(rvBSE* effect, float time) {
+	rvSegmentTemplate* st = (rvSegmentTemplate*)mEffectDecl->GetSegmentTemplate(mSegmentTemplateHandle);
+	// A trail segment's budget comes from the segments that emit into it
+	// (CalcTrailCounts), whichever order they are declared in.
+	if (st && st->mSegType == SEG_TRAIL) {
+		return;
+	}
+
 	mParticleCount = 0;
 	mLoopParticleCount = 0;
-
-	rvSegmentTemplate* st = (rvSegmentTemplate*)mEffectDecl->GetSegmentTemplate(mSegmentTemplateHandle);
 	if (!st) {
 		return;
 	}
@@ -671,7 +668,8 @@ void rvSegment::CalcCounts(rvBSE* effect, float time) {
 			count = 1;
 			loopCount = 1;
 		}
-		else if (mSecondsPerParticle.y > BSE_TIME_EPSILON) {
+		else {
+			// ValidateSpawnRates keeps the interval at 0.002s or more
 			const float baseDuration = Min(particleMaxDuration, st->mLocalDuration.y) + BSE_FUTURE;
 			trailDuration = baseDuration;
 			count = static_cast<int>(idMath::Ceil(baseDuration / mSecondsPerParticle.y)) + 1;
@@ -842,20 +840,16 @@ void rvSegment::CreateDecal(rvBSE* effect, float time) {
 	axis[2] = normal;
 	axis[2].NormalVectors(tangent[0], tangent[1]);
 
-	const float rotateRad = (idMath::Fabs(rotate.z) > BSE_TIME_EPSILON) ? rotate.z : rotate.x;
 	float s = 0.0f;
 	float c = 1.0f;
-	idMath::SinCos16(rotateRad, s, c);
+	idMath::SinCos16(rotate.x, s, c);
 	axis[0] = tangent[0] * c + tangent[1] * -s;
 	axis[1] = tangent[0] * -s + tangent[1] * -c;
 
-	// Keep Quake 4 decal projection volume shallow; tying depth to authored
-	// scorch size over-projects onto unrelated nearby surfaces.
-	float decalSize = idMath::Fabs(size.z);
-	if (decalSize <= BSE_TIME_EPSILON) {
-		decalSize = Max(idMath::Fabs(size.x), idMath::Fabs(size.y));
-	}
-	decalSize = Max(1.0f, decalSize);
+	// The decal's half-width is the sampled size's x; the projection volume stays a
+	// shallow 8 units whatever the size, so large scorches don't reach unrelated
+	// nearby surfaces.
+	const float decalSize = size.x;
 	const float projectionDepth = 8.0f;
 
 	const idVec3 windingOrigin = origin + normal * projectionDepth;
@@ -917,12 +911,12 @@ bool rvSegment::Active() {
 }
 
 void rvSegment::InitLight(rvBSE* effect, rvSegmentTemplate* st, float time) {
-	if (!effect || !st || !st->GetHasParticles()) {
+	// Only a freshly spawned light is set up; initialising a live one again would
+	// orphan its render light.
+	if (!effect || !st || mUsedHead) {
 		return;
 	}
-	if (!mUsedHead) {
-		SpawnParticle(effect, st, time);
-	}
+	SpawnParticle(effect, st, time);
 	if (mUsedHead) {
 		mUsedHead->InitLight(effect, st, time);
 		mActiveCount = 1;
@@ -1011,6 +1005,25 @@ void rvSegment::Render(rvBSE* effect, const renderEffect_s* owner, idRenderModel
 	srfTriangles_t* tri = model->Surface(mSurfaceIndex)->geometry;
 	if (!tri) {
 		return;
+	}
+
+	// Electricity spends the per-particle budget once per bolt, so its surface grows to the
+	// live bolt total (retail sizes it from this every frame, up to a megabyte of vertices).
+	if (pt->GetType() == PTYPE_ELECTRICITY) {
+		int bolts = 0;
+		for (rvParticle* p = mUsedHead; p; p = p->GetNext()) {
+			bolts += static_cast<rvElectricityParticle*>(p)->GetNumBolts();
+		}
+		const int verts = BSE_ClampGeometryCapacity(4, 16384, static_cast<int64_t>(bolts) * pt->GetVertexCount());
+		const int indexes = BSE_ClampGeometryCapacity(6, 3 * 16384, static_cast<int64_t>(bolts) * pt->GetIndexCount());
+		if (verts > tri->numAllocedVerts || indexes > tri->numAllocedIndices) {
+			srfTriangles_t* grown = model->AllocSurfaceTriangles(Max(verts, tri->numAllocedVerts), Max(indexes, tri->numAllocedIndices));
+			if (grown) {
+				model->FreeSurfaceTriangles(tri);
+				const_cast<modelSurface_t*>(model->Surface(mSurfaceIndex))->geometry = grown;
+				tri = grown;
+			}
+		}
 	}
 
 	const int maxVerts = tri->numAllocedVerts > 0 ? tri->numAllocedVerts : 0;
@@ -1120,6 +1133,5 @@ void rvSegment::Render(rvBSE* effect, const renderEffect_s* owner, idRenderModel
 	}
 	BSE_BoundTriSurf(tri);
 	BSE_AddRendered(rendered);
-	mActiveCount = rendered;
 }
 

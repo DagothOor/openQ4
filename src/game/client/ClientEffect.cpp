@@ -61,8 +61,9 @@ rvClientEffect::~rvClientEffect
 */
 rvClientEffect::~rvClientEffect( void ) {
 	FreeEffectDef( );
-	// FreeEffectDef() tears down the BSE instance, and retail BSE owns the matching
-	// reference sound emitter release. Do not free the same handle a second time here.
+	// The client effect allocates the reference sound emitter and keeps it across effect
+	// restarts, so it frees it here; BSE never does.
+	soundSystem->FreeSoundEmitter( SOUNDWORLD_GAME, renderEffect.referenceSoundHandle, true );
 	renderEffect.referenceSoundHandle = -1;
 }
 
@@ -379,7 +380,8 @@ rvClientEffect::Restore
 void rvClientEffect::Restore( idRestoreGame *savefile ) {
 	savefile->ReadRenderEffect( renderEffect );
 	effectDefHandle = -1;
-	renderEffect.referenceSoundHandle = -1;
+	// Keep the saved emitter: the sound world restores it at the same index, and the
+	// restarted effect replaces its restored loops instead of doubling them.
 	savefile->ReadJoint( endOriginJoint );
 }
 

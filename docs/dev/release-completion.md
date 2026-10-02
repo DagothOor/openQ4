@@ -472,6 +472,20 @@
   its first step. The actions cover every task, plus the main menus and their
   variants and the first level or map of each campaign and stock multiplayer mode,
   on both renderers; a launch action lasts until the game exits.
+- [x] Bring BSE effects into line with the retail 1.4.2 executable after an audit of
+  spawn domains, segment timing, particle simulation and rendering, envelopes,
+  lights, sounds and effect ordering against its disassembly. Electric arcs regain
+  their forked look, looping map effects start in full flow, long-lived envelopes
+  keep their speed, and missing tables run at full strength again. Looping effect
+  sounds no longer stack after each savegame load: the client effect owns its
+  emitter again, as in SDK 1.4.2. `bseStats` and `bseLog` are back. Retail quirks
+  kept on purpose, divergences kept and the evidence are in the
+  [BSE audit](quake4-bse-research-and-implementation-plan.md#retail-parity-audit-2026-10-02);
+  `bse_retail_parity.py` pins the corrections. Evidence:
+  - fixed-pose captures, before and after;
+  - a save/load voice count (1, 2, 3 before; 1, 1, 1 after);
+  - a six-bot multiplayer match;
+  - the related contract tests.
 
 ## Unreleased — Quake 4: The Awakening (`q4xbase`)
 

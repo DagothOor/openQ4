@@ -113,6 +113,8 @@ public:
 	void					PlayEffect(rvBSE* effect, rvSegmentTemplate* st, float depthOffset);
 	void					InitTime(rvBSE* effect, rvSegmentTemplate* st, float time);
 	void					ResetTime(rvBSE* effect, float time);
+	void					Advance(rvBSE* effect);
+	void					Rewind(rvBSE* effect);
 	void					Init(rvBSE* effect, const rvDeclEffect* decl, int segmentTemplateHandle, float time);
 	void					InitParticles(rvBSE* effect);
 	void					RefreshParticles(rvBSE* effect, rvSegmentTemplate* st);
@@ -433,10 +435,9 @@ enum {
 	EFLAG_ENDORIGINCHANGED = BITT< 2 >::VALUE,
 	EFLAG_STOPPED = BITT< 3 >::VALUE,
 	EFLAG_ORIENTATE_IDENTITY = BITT< 4 >::VALUE,
-	EFLAG_AMBIENT = BITT< 5 >::VALUE,
+	EFLAG_AMBIENT = BITT< 5 >::VALUE,				// Latched at Init: a looping map effect, pre-warmed
+	EFLAG_IN_CONNECTED_AREA = BITT< 6 >::VALUE,	// Owner is in an area connected to the player
 };
-
-const int LIGHTID_EFFECT_LIGHT = 300;
 
 class rvBSE
 {
@@ -454,6 +455,8 @@ public:
 	bool					GetEndOriginChanged(void) const { return(!!(mFlags & EFLAG_ENDORIGINCHANGED)); }
 	bool					GetStopped(void) const { return(!!(mFlags & EFLAG_STOPPED)); }
 	bool					GetOrientateIdentity(void) const { return(!!(mFlags & EFLAG_ORIENTATE_IDENTITY)); }
+	bool					GetAmbient(void) const { return(!!(mFlags & EFLAG_AMBIENT)); }
+	bool					GetInConnectedArea(void) const { return(!!(mFlags & EFLAG_IN_CONNECTED_AREA)); }
 
 	void					SetLooping(bool looping) { SetFlag(looping, EFLAG_LOOPING); }
 	void					SetHasEndOrigin(bool hasEndOrigin) { SetFlag(hasEndOrigin, EFLAG_HASENDORIGIN); }
@@ -478,11 +481,8 @@ public:
 	float					GetBlue(void) const { return(mTint[2]); }
 	float					GetAlpha(void) const { return(mTint[3]); }
 
-	int						GetSuppressLightsInViewID(void) const { return mSuppressLightsInViewID; }
-
 	float					GetBrightness(void) const { return(mBrightness); }
 	void					SetBrightness(float bright) { mBrightness = bright; }
-	const idVec2& GetSpriteSize(void) const { return mSpriteSize; }
 	const float* GetShaderParms(void) const { return mShaderParms; }
 
 	bool					CanInterpolate(void) { return(mCurrentTime - mLastTime > BSE_TIME_EPSILON); }
@@ -549,13 +549,11 @@ private:
 
 	// Dynamically altered
 	int						mFlags;
-	int						mSuppressLightsInViewID;
 	float					mAttenuation;				// Forced attenuation settable in code
 	float					mOriginDistanceToCamera;	// Distance from effect origin to view origin
 	float					mShortestDistanceToCamera;	// Closest point on effects bounds to view origin
 	idVec4					mTint;						// Overridable tint
 	float					mBrightness;				// Overall brightness of effect
-	idVec2					mSpriteSize;				// Optional sprite size override from shader parms
 	float					mShaderParms[MAX_ENTITY_SHADER_PARMS];	// Owner shader parms for light/material control
 	float					mCost;						// Best guess at how expensive the effect is
 
@@ -619,10 +617,7 @@ public:
 	virtual void						FreeTraceModel(int index);
 private:
 	static		idBlockAlloc<rvBSE, 256, 0>	effects;
-	static		idVec3						mCubeNormals[6];
-	static		idMat3						mModelToBSE;
 	static		idList<idTraceModel*>		mTraceModels;
-	static		const char* mSegmentNames[SEG_COUNT];
 	static		int							mPerfCounters[NUM_PERF_COUNTERS];
 	static		float						mEffectRates[EC_MAX];
 	static		int							mEffectRateTime;	// ms stamp the rate buckets were last drained at

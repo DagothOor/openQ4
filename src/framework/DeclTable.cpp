@@ -44,8 +44,11 @@ float idDeclTable::TableLookup( float index ) const {
 	
 	int domain = values.Num() - 1;
 
+	// A single-value table (Parse appends a wrap copy, so two entries) evaluates
+	// to 1, as in Quake 4. That includes the "{ { 0 } }" default for a missing
+	// table, so an envelope or material naming one runs at full strength.
 	if ( domain <= 1 ) {
-		return values.Num() > 0 ? values[0] : 1.0f;
+		return 1.0f;
 	}
 
 	if ( clamp ) {

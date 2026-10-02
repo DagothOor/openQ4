@@ -9,6 +9,11 @@ Primary references:
 - openQ4 source tree (`src/bse`, `src/game`, `src/renderer`, `src/framework`)
 - Reverse-engineered BSE project: `E:\_SOURCE\_CODE\Quake4BSE-master`
 
+Status (2026-10-02): the gap analysis and plan below are historical. The
+[retail parity audit](#retail-parity-audit-2026-10-02) at the end records the
+current state, measured against the retail 1.4.2 executable, and supersedes the
+snapshot entries it names.
+
 ## What BSE Is
 
 BSE is Raven's data-driven effects runtime used by Quake 4 for particles, trails, lights, decals, sounds, and camera/view effects (shake/tunnel). Compared with Doom 3 style FX, BSE is a full runtime system with:
@@ -516,3 +521,160 @@ This order minimizes hidden coupling: parse/template correctness first, then run
 - `src/bse/BSE_Manager.cpp` <-> `E:\_SOURCE\_CODE\Quake4BSE-master\bse\BSE_Manager.cpp`
 
 Use this mapping as a behavior reference, not a blind copy source. Keep openQ4 interfaces and build layout intact, and preserve Quake 4 compatibility requirements first.
+
+## Retail Parity Audit (2026-10-02)
+
+Eight months into the reconstruction, every BSE area was compared with the
+retail Quake 4 1.4.2 executable (`Quake4.exe`, BSE linked in): x87 disassembly,
+RTTI vtables and the spawn function table. Neither reference tree is reliable
+on its own. Quake4Decompiled comes from a pre-1.1 build and has
+reconstruction errors (its segment enum and `EffectDuration` fallback are
+wrong). Quake4BSE-master derives from Enemy Territory: Quake Wars, so its
+`sdModelInfo`, oriented-linked particles and extra virtual arguments are not
+Quake 4 behavior. Where they disagreed with the binary, the binary won.
+`tools/tests/bse_retail_parity.py` pins the corrections most likely to drift
+back.
+
+### Corrections
+
+Spawn domains (`BSE_SpawnDomains.cpp`):
+
+- The samplers follow the retail spawn table: sphere, cylinder and cone volumes
+  and surfaces, cylinder surface normals with taper, box faces in retail's
+  cube-face order, rectangle outlines, spirals with zero range, and the stub
+  domain as a no-op.
+- Model domains pick a random surface and triangle, use the face normal, map
+  model axes onto effect axes as retail does, and fit the sample into the
+  domain box. They reference the model directly instead of ETQW
+  `sdModelInfo` copies.
+- `GetMinsMaxs` and the `SurfaceBox1` endpoint choice keep retail's literal
+  behavior.
+
+Templates and parsing (`BSE_ParseParticle2.cpp`, `BSE_SegmentTemplate.cpp`):
+
+- Segment costs use retail's base-cost table.
+- Segment bounds come from retail's per-type formula.
+- Spawn volume, maximum parameter value and furthest distance (including
+  gravity) are literal ports.
+- The particle duration is clamped to 60 s, and trail counts truncate.
+- Model particles trace as points.
+- Debris entity definitions precache their media.
+- The openQ4-only `drip_ring` to `drip_splash` substitution is gone: a missing
+  child effect plays nothing, as in retail.
+
+Segments (`BSE_Segment.cpp`, `BSE_SegmentRuntime.cpp`):
+
+- `rvSegment::Check` matches retail's timing. It records the service time on
+  entry, fast-forwards emitters to the segment start, stops constant emitters
+  at the end of their window, truncates spawner counts, and expires trail,
+  delay, decal, light and view segments after their single action.
+- Sound segments set volume, frequency shift and emitter position before
+  starting. One-shot sounds play once per loop; looping sounds latch with
+  `SSF_LOOPING`.
+- Child effect segments play only when the owner is in a connected area, and
+  pass no end origin.
+- The spawn look-ahead is 0.016 s. Interval attenuation interpolates in
+  retail's direction, and lights initialise only when freshly spawned.
+- Decals size from `size.x` and rotate from `rotate.x`.
+- Electricity segments size their surface from the live bolt total every
+  frame.
+
+Effects (`BSE_Effect.cpp`):
+
+- Loop and ambient flags are latched when the effect starts, and the
+  connected-area flag is read on every owner update.
+- A looping ambient effect starts with two loops of history, so map effects
+  are already in full flow when first seen.
+- The `bse_debug 2` cost overlay costs each segment by its own template.
+- The sprite-size overrides (`shaderParms[8]`/`[9]`) and light-suppression
+  hooks added in February are removed; retail never reads them.
+
+Particles (`BSE_Particle.cpp`):
+
+- Spawning follows retail order. Velocity, acceleration and friction are
+  sampled first, then the orientation comes from the spawn normal, a generated
+  normal rotates velocity and length, and acceleration and friction rotate by
+  their motion normals.
+- Friction is a vector with retail's exponential terms.
+- End-origin particles resample their domains from a copy of the parameters.
+- Line, linked and debris particles use their retail overrides. Debris hands
+  off to a client moveable at birth.
+- Bounces store the current frame and come to rest below retail's speed limit.
+  Physics traces include render models, and impact and timeout effects respect
+  the connected-area flag.
+- Envelopes run at the rate fixed at spawn. Infinite segments extend `mEndTime`
+  every frame, which used to slow their envelopes down.
+- Vertex colours pack the retail way. Additive particles fade through RGB and
+  stay opaque without reading the owner's alpha, and channel bytes wrap rather
+  than clamp.
+- Faded particles still draw, and generated lines collapse when they have no
+  velocity.
+- Electricity uses retail's bend points, ribbon winding and fork width.
+- Light particles take the raw tint and an unsigned radius clamp, use the
+  default light shader when no material is set, and are never re-added once
+  registration fails.
+
+Engine, renderer and game:
+
+- `idDeclTable::TableLookup` returns 1.0 for single-value tables again, as Doom 3
+  and Quake 4 do. A missing table defaults to `{ { 0 } }`, and returning
+  `values[0]` had frozen envelopes and material stages that name one (the grunt
+  blood burst stayed half size).
+- `R_AddEffectSurfaces` submits effects farthest first, so equal-sort
+  translucent effects overlap in retail order.
+- `rvClientEffect` owns its reference sound emitter (SDK 1.4.2). It frees the
+  emitter in its destructor, keeps it across effect restarts, and keeps the
+  saved handle on restore. `rvBSE::Destroy` no longer stops or frees it.
+  - Supersedes the February `Restore` reset and the July move of the free into
+    BSE.
+  - Now that emitter slots are stable, the reset orphaned the restored emitter,
+    so each load stacked another copy of every looping effect sound.
+- Manager: `bseStats` and `bseLog` are restored, `bse_showBounds` is an integer
+  as in retail, and `bse_scale` is archived.
+
+### Retail quirks kept deliberately
+
+- Emitters and trails pass the absolute birth time as the spawn fraction; only
+  spawners pass `i / count`. Retail's linear sampler uses that fraction raw, so
+  `linearSpacing` domains in single-spawn segments extrapolate far along their
+  line. For example, the `column_fire` emitters in
+  `weapons/napalmgun/impact.fx` land well away from the impact, as in retail.
+- Colour bytes wrap. `levels/waste/wastesplash.fx` authors a fade of 100.
+
+### Deliberate divergences kept
+
+- The time-based rate limiter, the owner/presentation clock split, per-view
+  model rebuilds with portal scissors, the culling and service-budget cvars,
+  soft particles and the debug counters.
+- `EffectDuration`'s fallback, one-second zero-length sound segments, parser
+  recovery and extra keywords, and demo state serialization.
+- The white fallback for fully zero owner tints, which protects openQ4 callers
+  that leave shader parameters unset.
+- Defensive electricity limits:
+  - a fallback bolt count;
+  - point and step caps;
+  - a surface clamp where retail would skip a segment beyond 1 MB of
+    vertices.
+- Rejection of negative burn-trail times.
+- Two unverified details stay as they were:
+  - The first `InitLight` places the light with the current effect transform
+    rather than the spawn transform (`PresentLight` corrects it a frame later).
+  - Model-particle normals and tangents are still rotated.
+
+### Validation
+
+- **Build and tests:** the Windows debugoptimized build is clean.
+  `bse_retail_parity.py` passes, and a mutation run confirmed that it fails for
+  each of nine reverted pins. The BSE, renderer, savegame and UI contract tests
+  that read these files pass.
+- **Fixed-pose captures:** hangar1 captures used looping `func_fx` entities and
+  no input, comparing a pre-change baseline with the candidate.
+  - Electric arcs regain their bright forked look.
+  - The steam jet is fully developed at 0.3 s.
+  - Cylinder-domain smoke forms its intended wall.
+- **Save/load:** a looping `effects_arc_loop` probe on OpenAL Soft's null
+  backend counted one voice before saving.
+  - Before the fix, it counted two voices after one load and three after two.
+  - After the fix, it counts one after each load.
+- **Multiplayer:** a 60 s six-bot `mp/q4dm1` listen-server match completed
+  without failures or BSE warnings.

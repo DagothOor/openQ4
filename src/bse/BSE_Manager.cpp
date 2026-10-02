@@ -22,13 +22,13 @@ idCVar bse_speeds("bse_speeds", "0", CVAR_INTEGER, "print bse frame statistics")
 idCVar bse_enabled("bse_enabled", "1", CVAR_BOOL, "set to false to disable all effects");
 idCVar bse_render("bse_render", "1", CVAR_BOOL, "disable effect rendering");
 idCVar bse_debug("bse_debug", "0", CVAR_INTEGER, "BSE debug level (0=off, 1=log, 2=log+onscreen)");
-idCVar bse_showBounds("bse_showbounds", "0", CVAR_BOOL, "display debug bounding boxes effect");
+idCVar bse_showBounds("bse_showBounds", "0", CVAR_INTEGER, "display debug bounding boxes effect");
 idCVar bse_physics("bse_physics", "1", CVAR_BOOL, "disable effect physics");
 idCVar bse_debris("bse_debris", "1", CVAR_BOOL, "disable effect debris");
 idCVar bse_singleEffect("bse_singleEffect", "", 0, "set to the name of the effect that is only played");
 idCVar bse_rateLimit("bse_rateLimit", "6", CVAR_FLOAT, "rate limit for spawned effects");
 idCVar bse_rateCost("bse_rateCost", "1", CVAR_FLOAT, "rate cost multiplier for spawned effects");
-idCVar bse_scale("bse_scale", "1", CVAR_FLOAT, "global BSE scaling for spawn/detail");
+idCVar bse_scale("bse_scale", "1", CVAR_FLOAT | CVAR_ARCHIVE, "effect scalability amount");
 idCVar bse_maxParticles("bse_maxParticles", "2048", CVAR_INTEGER, "maximum per-segment particle allocation");
 
 int bse_frameSpawned = 0;
@@ -84,13 +84,82 @@ float effectCosts[EC_MAX] = { 0.0f, 0.1f, 0.1f };
 static const float BSE_RATE_DECAY_PER_SEC = 25.0f;
 
 idBlockAlloc<rvBSE, 256, 0>	rvBSEManagerLocal::effects;
-idVec3						rvBSEManagerLocal::mCubeNormals[6];
-idMat3						rvBSEManagerLocal::mModelToBSE;
 idList<idTraceModel*>		rvBSEManagerLocal::mTraceModels;
-const char* rvBSEManagerLocal::mSegmentNames[SEG_COUNT];
 int							rvBSEManagerLocal::mPerfCounters[NUM_PERF_COUNTERS];
 float						rvBSEManagerLocal::mEffectRates[EC_MAX];
 int							rvBSEManagerLocal::mEffectRateTime = 0;
+
+/*
+====================
+BSE_Stats_f
+
+Summarises the effect decls: how many are loaded, their segments, and how many of
+those segments emit particles.  "all" parses every registered effect first.  As in
+retail, decl 0 (_default) is skipped and the totals start at one so the averages
+never divide by zero.
+====================
+*/
+static void BSE_Stats_f(const idCmdArgs& args) {
+	const bool parseAll = !idStr::Icmp(args.Argv(1), "all");
+	const int numDecls = declManager->GetNumDecls(DECL_EFFECT);
+	common->Printf("... processing %d registered effects\n", numDecls);
+
+	int loaded = 1;
+	int unreferenced = 0;
+	int segments = 1;
+	int particleSegments = 1;
+	int particles = 1;
+	for (int i = 1; i < numDecls; ++i) {
+		const rvDeclEffect* effect = static_cast<const rvDeclEffect*>(declManager->DeclByIndex(DECL_EFFECT, i, parseAll));
+		if (effect == NULL) {
+			continue;
+		}
+		if (effect->GetState() != DS_PARSED) {
+			if (!effect->EverReferenced()) {
+				++unreferenced;
+			}
+			continue;
+		}
+		++loaded;
+		for (int j = 0; j < effect->GetNumSegmentTemplates(); ++j) {
+			const rvSegmentTemplate* st = effect->GetSegmentTemplate(j);
+			if (st->GetHasParticles()) {
+				particles += static_cast<int>(st->GetMaxCount());
+				++particleSegments;
+			}
+		}
+		segments += effect->GetNumSegmentTemplates();
+	}
+
+	common->Printf("%d segments in %d loaded effects (%d never referenced)\n", segments, loaded, unreferenced);
+	common->Printf("%.2f segments per effect\n", (float)segments / (float)loaded);
+	common->Printf("%.2f of segments have particles\n", (float)particleSegments / (float)segments);
+	common->Printf("%.2f particles per segment with particles\n", (float)particles / (float)particleSegments);
+}
+
+/*
+====================
+BSE_Log_f
+
+Lists every effect played or looped since the game started.
+====================
+*/
+static void BSE_Log_f(const idCmdArgs& args) {
+	const int numDecls = declManager->GetNumDecls(DECL_EFFECT);
+	common->Printf("Processing %d effect decls....\n", numDecls);
+
+	int active = 0;
+	for (int i = 1; i < numDecls; ++i) {
+		const rvDeclEffect* effect = static_cast<const rvDeclEffect*>(declManager->DeclByIndex(DECL_EFFECT, i, false));
+		if (effect == NULL || (!effect->GetPlayCount() && !effect->GetLoopCount())) {
+			continue;
+		}
+		common->Printf("%d plays (%d loops): '%s'\n", effect->GetPlayCount(), effect->GetLoopCount(), effect->GetName());
+		++active;
+	}
+	common->Printf("%d effects played or looped out of %d\n", active, numDecls);
+}
+
 /*
 ====================
 rvBSEManagerLocal::Init
@@ -106,6 +175,9 @@ bool rvBSEManagerLocal::Init(void) {
 	renderModelManager->FindModel("_default");
 	pauseTime = -1.0f;
 
+	cmdSystem->AddCommand("bseStats", BSE_Stats_f, CMD_FL_SYSTEM, "Dumps the stats of every registered effect - use all to force parse every effect");
+	cmdSystem->AddCommand("bseLog", BSE_Log_f, CMD_FL_SYSTEM, "Dumps the number of times an effect has been played since game start");
+
 	common->Printf("--------- BSE Created Successfully ----------\n");
 	return true;
 }
@@ -117,6 +189,9 @@ rvBSEManagerLocal::Shutdown
 */
 bool rvBSEManagerLocal::Shutdown(void) {
 	common->Printf("--------------- BSE Shutdown ----------------\n");
+
+	cmdSystem->RemoveCommand("bseStats");
+	cmdSystem->RemoveCommand("bseLog");
 
 	for (int i = 0; i < mTraceModels.Num(); ++i) {
 		delete mTraceModels[i];

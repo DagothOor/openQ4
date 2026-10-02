@@ -25,7 +25,9 @@ rvParticleParms rvParticleTemplate::sSPF_NONE_1;
 rvParticleParms rvParticleTemplate::sSPF_NONE_3;
 bool rvParticleTemplate::sInited = false;
 
-float rvSegmentTemplate::mSegmentBaseCosts[SEG_COUNT];
+// Per segment type: none, effect, emitter, spawner, trail, sound, decal, light, delay,
+// doubleVision, shake, tunnel.
+float rvSegmentTemplate::mSegmentBaseCosts[SEG_COUNT] = { 0.0f, 5.0f, 20.0f, 20.0f, 5.0f, 50.0f, 20.0f, 100.0f, 1.0f, 50.0f, 5.0f, 50.0f };
 
 namespace {
 static rvParticleParms* BSE_DuplicateParm(rvParticleParms* source) {
@@ -104,16 +106,6 @@ static void BSE_DeleteOwnedEnv(rvEnvParms*& value, rvEnvParms** seen, int& seenC
 namespace {
 static const char* BSE_DEFAULT_TRAIL_MATERIAL = "gfx/effects/particles_shapes/motionblur";
 
-ID_INLINE const char* BSE_ResolveEffectCompatAlias(const char* effectName) {
-	// Stock splash FX reference "effects/ambient/drip_ring", but the shipped
-	// data only provides "effects/ambient/drip_splash". Remap at parse-time to
-	// preserve vanilla secondary splash behavior without shipping replacement data.
-	if (!idStr::Icmp(effectName, "effects/ambient/drip_ring")) {
-		return "effects/ambient/drip_splash";
-	}
-	return effectName;
-}
-
 ID_INLINE const idMaterial* BSE_ResolveTrailMaterialByName(const idStr& materialName, bool allowDefaultFallback) {
 	if (materialName.IsEmpty()) {
 		return allowDefaultFallback ? declManager->FindMaterial("_default") : NULL;
@@ -179,42 +171,32 @@ float rvParticleTemplate::GetSpawnVolume(rvBSE* effect) {
 		xExtent = mpSpawnPosition->mMaxs.x - mpSpawnPosition->mMins.x;
 	}
 
+	// A signed sum of the extents; GetSecondsPerParticle clamps the result.
 	const float yExtent = mpSpawnPosition->mMaxs.y - mpSpawnPosition->mMins.y;
 	const float zExtent = mpSpawnPosition->mMaxs.z - mpSpawnPosition->mMins.z;
-	const float volume = (idMath::Fabs(xExtent) + idMath::Fabs(yExtent) + idMath::Fabs(zExtent)) * 0.01f;
-	return Max(0.0f, volume);
+	return (xExtent + yExtent + zExtent) * 0.01f;
 }
 
 float rvParticleTemplate::GetMaxParmValue(rvParticleParms& spawn, rvParticleParms& death, rvEnvParms& envelope) {
-	idVec3 spawnMins;
-	idVec3 spawnMaxs;
-	idVec3 deathMins;
-	idVec3 deathMaxs;
-	spawn.GetMinsMaxs(spawnMins, spawnMaxs);
-	death.GetMinsMaxs(deathMins, deathMaxs);
+	idVec3 lo;
+	idVec3 hi;
+	spawn.GetMinsMaxs(lo, hi);
 
-	idBounds bounds;
-	bounds.Clear();
-
+	// Without an envelope the value never leaves its spawn range. With one, the
+	// envelope's lowest value scales the lower bounds and its highest the upper.
 	float envMin = 0.0f;
 	float envMax = 0.0f;
 	if (envelope.GetMinMax(envMin, envMax)) {
-		const idVec3 samples[] = {
-			spawnMins * envMin, spawnMaxs * envMin, spawnMins * envMax, spawnMaxs * envMax,
-			deathMins * envMin, deathMaxs * envMin, deathMins * envMax, deathMaxs * envMax
-		};
-		for (int i = 0; i < 8; ++i) {
-			bounds.AddPoint(samples[i]);
+		idVec3 deathMins;
+		idVec3 deathMaxs;
+		death.GetMinsMaxs(deathMins, deathMaxs);
+		for (int i = 0; i < 3; ++i) {
+			lo[i] = Min(lo[i] * envMin, deathMins[i] * envMin);
+			hi[i] = Max(hi[i] * envMax, deathMaxs[i] * envMax);
 		}
 	}
-	else {
-		bounds.AddPoint(spawnMins);
-		bounds.AddPoint(spawnMaxs);
-		bounds.AddPoint(deathMins);
-		bounds.AddPoint(deathMaxs);
-	}
 
-	return Max(bounds[0].Length(), bounds[1].Length());
+	return Max(lo.Length(), hi.Length());
 }
 
 float rvParticleTemplate::GetMaxSize(void) {
@@ -278,18 +260,20 @@ float rvParticleTemplate::GetFurthestDistance(void) {
 	mpSpawnAcceleration->GetMinsMaxs(minAccel, maxAccel);
 	mpSpawnFriction->GetMinsMaxs(minFriction, maxFriction);
 
+	// Gravity enters as in Quake 4: the lower acceleration bound takes the
+	// smallest gravity scale and the upper bound the largest, both with a sign
+	// that pulls the bounds together rather than apart.
 	const bool multiplayer = (game != NULL) ? game->IsMultiplayer() : false;
-	const float gravityMagnitude = cvarSystem->GetCVarFloat(multiplayer ? "g_mp_gravity" : "g_gravity");
-	const float gravityScale = Max(idMath::Fabs(mGravity.x), idMath::Fabs(mGravity.y));
-	const idVec3 gravityVec(0.0f, 0.0f, -gravityMagnitude * gravityScale);
-	minAccel -= gravityVec;
-	maxAccel -= gravityVec;
+	const idVec3 gravity(0.0f, 0.0f, -cvarSystem->GetCVarFloat(multiplayer ? "g_mp_gravity" : "g_gravity"));
+	minAccel -= gravity * mGravity.x;
+	maxAccel += gravity * mGravity.y;
 
 	const float duration = Max(BSE_TIME_EPSILON, mDuration.y);
 	const float step = duration * 0.125f;
 
-	idVec3 overallMins(1.0e30f, 1.0e30f, 1.0e30f);
-	idVec3 overallMaxs(-1.0e30f, -1.0e30f, -1.0e30f);
+	// The bounds always include the spawn origin.
+	idVec3 overallMins(vec3_origin);
+	idVec3 overallMaxs(vec3_origin);
 	idVec3 pos;
 
 	for (int i = 0; i < 8; ++i) {
@@ -453,7 +437,7 @@ bool rvParticleTemplate::ParseImpact(rvDeclEffect* effect, idParser* src)
 			//	v6,
 			//	1);
 
-			v4->mImpactEffects[v4->mNumImpactEffects++] = declManager->FindEffect(BSE_ResolveEffectCompatAlias(token));
+			v4->mImpactEffects[v4->mNumImpactEffects++] = declManager->FindEffect(token);
 		}
 	LABEL_29:
 		if (!src->ReadToken(&token))
@@ -1050,8 +1034,7 @@ rvParticleParms* rvParticleTemplate::ParseSpawnParms(rvDeclEffect* effect, idPar
 			model = renderModelManager->FindModel("_default");
 		}
 
-		v8->mModelInfo = new sdModelInfo();
-		v8->mModelInfo->model = model;
+		v8->mModel = model;
 
 		src->ExpectTokenString(",");
 		src->Parse1DMatrix(count, v8->mMins.ToFloatPtr(), true);
@@ -1314,7 +1297,11 @@ bool rvParticleTemplate::Parse(rvDeclEffect* effect, idParser* src) {
 				return false;
 			}
 			mEntityDefName = token;
-			declManager->FindType(DECL_ENTITYDEF, mEntityDefName, false);
+			// Load the debris entity's media with the effect, not on its first impact.
+			const idDeclEntityDef* debrisDef = static_cast<const idDeclEntityDef*>(declManager->FindType(DECL_ENTITYDEF, mEntityDefName, false));
+			if (debrisDef && game) {
+				game->CacheDictionaryMedia(&debrisDef->dict);
+			}
 		}
 		else if (!token.Icmp("material")) {
 			if (!src->ReadToken(&token)) {
@@ -1415,29 +1402,10 @@ bool rvParticleTemplate::Parse(rvDeclEffect* effect, idParser* src) {
 			mGravity.y = src->ParseFloat();
 		}
 		else if (!token.Icmp("duration")) {
-			float srcb = src->ParseFloat();
-			float v8 = 0.0020000001;
-			if (srcb >= 0.0020000001)
-			{
-				v8 = srcb;
-				if (srcb > 300.0)
-					v8 = 300.0;
-			}
-			float srcg = v8;
-			mDuration.x = srcg;
+			// Particle lifetimes are clamped to [0.002, 60] seconds.
+			mDuration.x = idMath::ClampFloat(BSE_TIME_EPSILON, 60.0f, src->ParseFloat());
 			src->ExpectTokenString(",");
-
-			float srcc = src->ParseFloat();
-			float v9 = 0.0020000001;
-			if (srcc < 0.0020000001 || (v9 = srcc, srcc <= 300.0))
-			{
-				float srch = v9;
-				mDuration.y = srch;
-			}
-			else
-			{
-				mDuration.y = 300.0;
-			}
+			mDuration.y = idMath::ClampFloat(BSE_TIME_EPSILON, 60.0f, src->ParseFloat());
 		}
 		else if (!token.Icmp("parentvelocity")) {
 			mFlags |= 0x2000000u;
@@ -1581,9 +1549,6 @@ void  rvParticleTemplate::Finish()
 	rvTrailInfo* v4; // eax
 	float* v5; // eax
 	const modelSurface_t* v6; // eax
-	const modelSurface_t* v7; // ebp
-	idTraceModel* v8; // eax
-	idTraceModel* v9; // edi
 	rvTrailInfo* v11; // ecx
 	rvElectricityInfo* v12; // eax
 	float v13; // ST10_4
@@ -1601,7 +1566,6 @@ void  rvParticleTemplate::Finish()
 	float v25; // ST20_4
 	float v26; // ST24_4
 	float v27; // ST28_4
-	signed int retaddr; // [esp+2Ch] [ebp+0h]
 
 	v2 = 0.0;
 	v3 = this;
@@ -1644,44 +1608,14 @@ void  rvParticleTemplate::Finish()
 		this->mIndexCount = 6;
 		break;
 	case 5:
-	{
-		idBounds modelBounds;
-		bool hasValidBounds = false;
-
+		// Model particles draw the model's first surface. They collide as points:
+		// Quake 4 never gives them a trace model.
 		v6 = ( this->mModel != NULL ) ? this->mModel->Surface( 0 ) : NULL;
-		v7 = v6;
 		if ( v6 != NULL && v6->geometry != NULL ) {
 			v3->mVertexCount = v6->geometry->numVerts;
 			v3->mIndexCount = v6->geometry->numIndexes;
 			v3->mMaterial = v6->shader;
-			modelBounds = v6->geometry->bounds;
-			hasValidBounds = !modelBounds.IsCleared();
-		} else if ( this->mModel != NULL ) {
-			modelBounds = this->mModel->Bounds();
-			hasValidBounds = !modelBounds.IsCleared();
 		}
-
-		// Corrupt/missing model bounds can come from partially loaded surfaces.
-		// Fall back to a small cube so trace model creation remains safe.
-		if ( !hasValidBounds ||
-			idMath::Fabs( modelBounds[0].x ) > 1000000.0f || idMath::Fabs( modelBounds[0].y ) > 1000000.0f || idMath::Fabs( modelBounds[0].z ) > 1000000.0f ||
-			idMath::Fabs( modelBounds[1].x ) > 1000000.0f || idMath::Fabs( modelBounds[1].y ) > 1000000.0f || idMath::Fabs( modelBounds[1].z ) > 1000000.0f ) {
-			modelBounds[0].Set( -8.0f, -8.0f, -8.0f );
-			modelBounds[1].Set( 8.0f, 8.0f, 8.0f );
-		}
-
-		v3->PurgeTraceModel();
-		v8 = new idTraceModel();
-		v9 = v8;
-		retaddr = 0;
-		if ( v8 ) {
-			v8->InitBox();
-			v9->SetupBox( modelBounds );
-		}
-		retaddr = -1;
-		v2 = 0.0;
-		v3->mTraceModelIndex = bse->AddTraceModel( v8 );
-	}
 		break;
 	case 7:
 		v12 = this->mElecInfo;
@@ -1821,7 +1755,7 @@ void rvParticleTemplate::InitStatic()
 		rvParticleTemplate::sSPF_ONE_1.mMins.y = 0.0;
 		rvParticleTemplate::sSPF_ONE_1.mFlags = 0;
 		rvParticleTemplate::sSPF_ONE_1.mMins.x = 0.0;
-		rvParticleTemplate::sSPF_ONE_1.mModelInfo = 0;
+		rvParticleTemplate::sSPF_ONE_1.mModel = NULL;
 		rvParticleTemplate::sSPF_ONE_1.mMaxs.z = 0.0;
 		rvParticleTemplate::sSPF_ONE_1.mStatic = 1;
 		rvParticleTemplate::sSPF_ONE_1.mMaxs.y = 0.0;
@@ -1829,7 +1763,7 @@ void rvParticleTemplate::InitStatic()
 		rvParticleTemplate::sSPF_ONE_1.mMaxs.x = 0.0;
 		rvParticleTemplate::sSPF_ONE_2.mFlags = 0;
 		rvParticleTemplate::sSPF_ONE_2.mRange = 0.0;
-		rvParticleTemplate::sSPF_ONE_2.mModelInfo = 0;
+		rvParticleTemplate::sSPF_ONE_2.mModel = NULL;
 		rvParticleTemplate::sSPF_ONE_2.mMins.z = 0.0;
 		rvParticleTemplate::sSPF_ONE_2.mStatic = 1;
 		rvParticleTemplate::sSPF_ONE_2.mMins.y = 0.0;
@@ -1841,7 +1775,7 @@ void rvParticleTemplate::InitStatic()
 		rvParticleTemplate::sSPF_ONE_2.mMaxs.x = 0.0;
 		rvParticleTemplate::sSPF_ONE_3.mRange = 0.0;
 		rvParticleTemplate::sSPF_ONE_3.mMins.z = 0.0;
-		rvParticleTemplate::sSPF_ONE_3.mModelInfo = 0;
+		rvParticleTemplate::sSPF_ONE_3.mModel = NULL;
 		rvParticleTemplate::sSPF_ONE_3.mMins.y = 0.0;
 		rvParticleTemplate::sSPF_ONE_3.mStatic = 1;
 		rvParticleTemplate::sSPF_ONE_3.mMins.x = 0.0;
@@ -1849,7 +1783,7 @@ void rvParticleTemplate::InitStatic()
 		rvParticleTemplate::sSPF_ONE_3.mMaxs.z = 0.0;
 		rvParticleTemplate::sSPF_NONE_0.mFlags = 0;
 		rvParticleTemplate::sSPF_ONE_3.mMaxs.y = 0.0;
-		rvParticleTemplate::sSPF_NONE_0.mModelInfo = 0;
+		rvParticleTemplate::sSPF_NONE_0.mModel = NULL;
 		rvParticleTemplate::sSPF_ONE_3.mMaxs.x = 0.0;
 		rvParticleTemplate::sSPF_NONE_0.mStatic = 1;
 		rvParticleTemplate::sSPF_NONE_0.mRange = 0.0;
@@ -1857,7 +1791,7 @@ void rvParticleTemplate::InitStatic()
 		rvParticleTemplate::sSPF_NONE_0.mMins.z = 0.0;
 		rvParticleTemplate::sSPF_NONE_1.mFlags = 0;
 		rvParticleTemplate::sSPF_NONE_0.mMins.y = 0.0;
-		rvParticleTemplate::sSPF_NONE_1.mModelInfo = 0;
+		rvParticleTemplate::sSPF_NONE_1.mModel = NULL;
 		rvParticleTemplate::sSPF_NONE_0.mMins.x = 0.0;
 		rvParticleTemplate::sSPF_NONE_1.mStatic = 1;
 		rvParticleTemplate::sSPF_NONE_0.mMaxs.z = 0.0;
@@ -1865,7 +1799,7 @@ void rvParticleTemplate::InitStatic()
 		rvParticleTemplate::sSPF_NONE_0.mMaxs.y = 0.0;
 		rvParticleTemplate::sSPF_NONE_3.mFlags = 0;
 		rvParticleTemplate::sSPF_NONE_0.mMaxs.x = 0.0;
-		rvParticleTemplate::sSPF_NONE_3.mModelInfo = 0;
+		rvParticleTemplate::sSPF_NONE_3.mModel = NULL;
 		rvParticleTemplate::sSPF_NONE_1.mRange = 0.0;
 		rvParticleTemplate::sSPF_NONE_3.mStatic = 1;
 		rvParticleTemplate::sSPF_NONE_1.mMins.z = 0.0;
@@ -2177,14 +2111,10 @@ idTraceModel* rvParticleTemplate::GetTraceModel(void) const {
 }
 
 int rvParticleTemplate::GetTrailCount(void) const {
-	const float count = rvRandom::flrand(mTrailInfo->mTrailCount.x, mTrailInfo->mTrailCount.y);
-	if (!(count > 0.0f)) {
-		return 0;
-	}
-	if (count >= static_cast<float>(BSE_MAX_TRAIL_COUNT)) {
-		return BSE_MAX_TRAIL_COUNT;
-	}
-	return idMath::FtoiFast(count);
+	// Truncated on every platform, so a range of a,b yields a to b-1 segments; the
+	// upper bound only protects the trail surface budget.
+	const int count = static_cast<int>(rvRandom::flrand(mTrailInfo->mTrailCount.x, mTrailInfo->mTrailCount.y));
+	return idMath::ClampInt(0, BSE_MAX_TRAIL_COUNT, count);
 }
 
 bool rvParticleTemplate::Compare(const rvParticleTemplate& a) const {

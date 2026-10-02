@@ -53,11 +53,13 @@ bool rvSegmentTemplate::DetailCull() const
 
 float rvSegmentTemplate::CalculateBounds(void)
 {
+	// As in retail, trail and sound segments claim the same nominal 8 units as the
+	// control segments; only emitters, spawners, lights and decals measure themselves.
 	switch (mSegType)
 	{
 	case SEG_EMITTER:
 	case SEG_SPAWNER:
-	case SEG_TRAIL: {
+	case SEG_LIGHT: {
 		const float maxSize = mParticleTemplate.GetMaxSize();
 		const float maxDist = mParticleTemplate.GetFurthestDistance();
 		float maxLength = 0.0f;
@@ -67,7 +69,7 @@ float rvSegmentTemplate::CalculateBounds(void)
 		}
 		return maxSize + maxDist + maxLength + mParticleTemplate.GetMaxOffset();
 	}
-	case SEG_LIGHT:
+	case SEG_DECAL:
 		return mParticleTemplate.GetMaxSize();
 	default:
 		return 8.0f;
@@ -348,9 +350,6 @@ bool rvSegmentTemplate::Finish(rvDeclEffect* effect)
 		mParticleTemplate.mFlags |= 0x80000u;
 	LABEL_25:
 		v5 = mParticleTemplate.mType;
-		if (v5 != PTYPE_NONE) {
-			mFlags |= STFLAG_HASPARTICLES;
-		}
 		if (v5 == 10)
 			mFlags = mFlags & 0xFFFFFFFB | 0x100;
 		if ((mFlags & 0x20) != 0
