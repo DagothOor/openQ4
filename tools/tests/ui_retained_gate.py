@@ -38,6 +38,7 @@ from lang_table_encoding import font_code_points
 ROOT = Path(__file__).resolve().parents[2]
 
 SUPPORT = r'''
+#include <algorithm>
 #include <cassert>
 #include <cctype>
 #include <cstdarg>
