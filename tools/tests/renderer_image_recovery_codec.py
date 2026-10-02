@@ -9,7 +9,7 @@ import argparse,hashlib,json,os,shutil,subprocess,tempfile
 ROOT=Path(__file__).resolve().parents[2]
 FILES=['tools/tests/native/RendererImageRecoveryTest.cpp']+['src/'+p for p in (
  'renderer/RendererImageRecovery.h','renderer/RendererImageRecovery.cpp','renderer/RendererConsumedPolicy.h',
- 'renderer/RendererResourceSettings.h','renderer/RenderModuleAPI.h','renderer/DisplayPresentation.h','renderer/ImageOpts.h',
+ 'renderer/RendererResourceSettings.h','renderer/RenderModuleAPI.h','renderer/RendererSettingsReports.h','renderer/DisplayPresentation.h','renderer/ImageOpts.h',
  'imagetools/ImageRecoveryEnvelope.h','imagetools/ImageContentIdentity.h','imagetools/ImageContentIdentity.cpp','idlib/CryptoHash.h','idlib/CryptoHash.cpp')]
 def main():
  p=argparse.ArgumentParser();p.add_argument('--compiler',default=shutil.which('clang++') or 'g++');p.add_argument('--sanitize',action='store_true');p.add_argument('--mutations',action='store_true');a=p.parse_args()

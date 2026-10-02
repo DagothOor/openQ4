@@ -5,6 +5,8 @@
 #define __RENDERMODULEAPI_H__
 #include <stdint.h>
 
+#include "RendererSettingsReports.h"
+
 /*
 ===============================================================================
 
@@ -68,7 +70,10 @@
 // 18 - Append-only retained output-size font metrics/glyph/reset services.
 // 19 - Merge startup-device preparation/fallback and current renderer contracts
 //      with retained UI services; both parent branches have incompatible layouts.
-#define RENDER_API_VERSION			19
+// 20 - Settings reports: the renderer publishes how it resolved r_renderer and
+//      what each level load did with its light grids, and pulls the committed
+//      light-grid preload policy from the settings service.
+#define RENDER_API_VERSION			20
 #define RENDER_API_ENTRY_POINT		"GetRenderAPI"
 
 class idSys;
@@ -120,6 +125,16 @@ typedef struct renderModuleServices_s {
 	// to select gl for the next launch. Initial startup uses the recoverable
 	// version-13 export below. Returns true when the saved config selects gl ---
 	bool			( *ResetRenderApiAfterDeviceFailure )( void );
+
+	// --- version 20: the SYSTEM page's renderer and light-grid settings. The
+	// renderer reports how it resolved r_renderer each time it selects a back
+	// end. Each level load asks once for the light-grid preload policy, which
+	// is the settings service's committed choice and never a draft that could
+	// still be undone, and reports what the load did. False from the policy
+	// service leaves the load on r_lightGridPreload ---
+	void			( *PublishRendererSelection )( const renderRendererSelection_t *selection );
+	bool			( *GetLightGridLoadPolicy )( bool *preload, uint64_t *token );
+	void			( *PublishLightGridLoadReceipt )( const renderLightGridLoadReceipt_t *receipt );
 } renderModuleServices_t;
 
 // native window/surface handoff; zeroed until the engine has created a window

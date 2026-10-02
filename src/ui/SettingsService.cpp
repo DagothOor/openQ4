@@ -14,6 +14,8 @@ bool UI_SettingsStartup(std::string&) { return true; }
 bool UI_SettingsInitializeDisplay(std::string&) { return true; }
 bool UI_SettingsStartupActive() { return false; }
 void UI_SettingsShutdown() {}
+bool UI_SettingsLevelLoadPolicy(bool&, std::uint64_t&) { return false; }
+void UI_SettingsLevelUnloaded() {}
 UI_SettingsRenderFrame::UI_SettingsRenderFrame() {}
 UI_SettingsRenderFrame::~UI_SettingsRenderFrame() {}
 void UI_SettingsRenderFrame::Submitting() {}
@@ -50,6 +52,9 @@ struct Service {
 std::unique_ptr<Service>& Instance() { static std::unique_ptr<Service> service; return service; }
 Service& Settings() { auto& service=Instance(); if (!service) service=std::make_unique<Service>(); return *service; }
 std::uint64_t nextOwner = 1; // Survives game/renderer/service shutdown, never reused.
+// Level-load policy tokens survive the service too, so a receipt from an
+// earlier service can never match a later request.
+std::uint64_t levelLoadToken = 0, levelUnloads = 0;
 struct RenderFrame {
     unsigned depth = 0;
     bool valid = false, drawn = false, submitting = false;
@@ -264,6 +269,23 @@ bool UI_SettingsBlocksConfigWrite() {
         phase == SettingsPhase::RecoveryRequired || phase==SettingsPhase::Applying || phase==SettingsPhase::Restoring;
 }
 bool UI_SettingsStartup(std::string& error) { return Settings().device.Startup(error); }
+bool UI_SettingsLevelLoadPolicy(bool& preload, std::uint64_t& token) {
+    auto& service = Settings();
+    StateValue value; std::string error;
+    if (service.display.Active() && !service.display.Approved()) {
+        // The attempt could still be undone: its baseline is the committed choice.
+        const auto found = service.transaction.Baseline().find("r_lightGridPreload");
+        if (found == service.transaction.Baseline().end()) return false;
+        value = found->second;
+    } else if (!service.host.ReadValue("r_lightGridPreload",value,error)) return false;
+    const auto* flag = std::get_if<bool>(&value);
+    if (!flag || levelLoadToken == (std::numeric_limits<std::uint64_t>::max)()) return false;
+    preload = *flag; token = ++levelLoadToken;
+    return true;
+}
+void UI_SettingsLevelUnloaded() {
+    if (levelUnloads != (std::numeric_limits<std::uint64_t>::max)()) ++levelUnloads;
+}
 bool UI_SettingsInitializeDisplay(std::string& error) { return Settings().device.InitializeDisplay(error); }
 bool UI_SettingsStartupActive() { return Settings().device.StartupActive(); }
 void UI_SettingsShutdown() {

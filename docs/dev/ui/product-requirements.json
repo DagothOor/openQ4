@@ -4,7 +4,7 @@
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "353d8a55d33677b3bbdb6a0f602ac8f7634edb07",
+    "engine_revision": "2c1f988a7ac1c15453cd81159bcde95a17013390",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -373,7 +373,7 @@
     "settings-effect-foundations": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/settings-effect-execution.md",
-      "sha256": "9495df08627b70b5521ccb023a980df3a7f3064b4c4abf109bcb4925dfab8872",
+      "sha256": "a3995da2e67c59c37146578f6a301122a28eeeedd1744451cf60aba4e96a91c1",
       "baseline_engine_revision": "efcfdb0ffe6eaffa11dbf2ced026495539156478",
       "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
       "scope": "Automatic completion waits for real effect readiness and a fresh present; owner close during commit preparation restores before persistence. Checked OpenAL leases gain untouched cancellation and non-releasing finalization. Schema2 adds strict versioned effect-plan envelopes and immutable decoding while the production host remains schema1. Full mixed execution, portable renderer/audio reconstruction and live recovery remain required.",
@@ -403,7 +403,7 @@
     "renderer-image-recovery": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/settings-effect-execution.md",
-      "sha256": "9495df08627b70b5521ccb023a980df3a7f3064b4c4abf109bcb4925dfab8872",
+      "sha256": "a3995da2e67c59c37146578f6a301122a28eeeedd1744451cf60aba4e96a91c1",
       "baseline_engine_revision": "d6abeabc7e2e348ea11ce50a7671b830e77a15b1",
       "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
       "scope": "Checked coalesced image/material restart, original failed-recovery inventory, monotonic resource instance IDs and metadata mutation invalidation. Full engine/modules and49 UI suites pass. Four render-target images after SP/OpenGL125% and MP/Vulkan200% gameplay/ordinary restart qualify compatibility only. Actual checked-policy Apply, portable consumed-policy/content reconstruction, complete settings/editor/migration remain unaccepted.",
@@ -423,7 +423,7 @@
     "consumed-settings-recovery": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/settings-effect-execution.md",
-      "sha256": "9495df08627b70b5521ccb023a980df3a7f3064b4c4abf109bcb4925dfab8872",
+      "sha256": "a3995da2e67c59c37146578f6a301122a28eeeedd1744451cf60aba4e96a91c1",
       "baseline_engine_revision": "b2cb00dfb87cc8663cd8e895dcccce37d9c1faa1",
       "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
       "scope": "Portable no-effect audio requested/observed state and captured renderer policy/output completion records. Full build and56 UI suites pass; four reviewed render-target images after windowed gameplay and ordinary video restart qualify compatibility only. Content identity, DDS/cube exact reduction, cold recovery, full EFX and mixed settings Apply remain unaccepted.",
@@ -443,7 +443,7 @@
     "checked-image-reduction": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/settings-effect-execution.md",
-      "sha256": "9495df08627b70b5521ccb023a980df3a7f3064b4c4abf109bcb4925dfab8872",
+      "sha256": "a3995da2e67c59c37146578f6a301122a28eeeedd1744451cf60aba4e96a91c1",
       "baseline_engine_revision": "5e0d3ebf20234415815a72c914fe788953e4367b",
       "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
       "scope": "DDS mip reachability resolves once from the original source; decoded cube reduction is atomic across six faces, resampling is exact or refused, and binary 2D/cube assembly checks every allocation/caller. Full build and ordinary windowed GL/Vulkan gameplay/restart qualify compatibility. Content identity, portable reconstruction, checked driver failure and mixed SYSTEM Apply remain unaccepted.",
@@ -453,7 +453,7 @@
     "checked-upload-storage": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/settings-effect-execution.md",
-      "sha256": "9495df08627b70b5521ccb023a980df3a7f3064b4c4abf109bcb4925dfab8872",
+      "sha256": "a3995da2e67c59c37146578f6a301122a28eeeedd1744451cf60aba4e96a91c1",
       "baseline_engine_revision": "5e0d3ebf20234415815a72c914fe788953e4367b",
       "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
       "scope": "Actual GL dynamic upload allocation metadata, partial cleanup and persistent-to-streaming fallback bookkeeping are qualified by production-method tests and ordinary gameplay. Queries preserve outputs on refusal and call no graphics getter. Upload completion, Vulkan allocation readback and complete renderer resource accounting remain required.",
@@ -773,6 +773,12 @@
       "path": "docs/dev/ui/value-controls.md",
       "scope": "Catalog lists for retained choices: state-sourced option labels and a state-bound option count, with hidden options ineligible, unmeasured and unreachable, the closed value naming a hidden selection, and an open list closing when its labels or length change. Qualified by native schema, readback, interaction and runtime tests.",
       "sha256": "801ed39becd7e3ea5c68964089609ff140509713c37a5bc555c074f7b448843d"
+    },
+    "renderer-settings-reports": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/settings-effect-execution.md",
+      "scope": "Render API 20 settings reports: the renderer's r_renderer resolution and each level load's light-grid outcome, with the committed preload policy pulled from the settings service once per load. Qualified by a contract test, the settings service harness and SP map loads on OpenGL and Vulkan.",
+      "sha256": "a3995da2e67c59c37146578f6a301122a28eeeedd1744451cf60aba4e96a91c1"
     }
   },
   "groups": {
@@ -2613,10 +2619,11 @@
         "image-owner-shutdown",
         "masked-input-review",
         "system-display-controls",
-        "system-dimensions"
+        "system-dimensions",
+        "renderer-settings-reports"
       ],
       "acceptance_evidence": [],
-      "remaining": "The typed settings service and asynchronous display confirmation retain their previously qualified scopes. Local numeric drafts guard Apply, Apply and Exit, Defaults, colliding sibling edits and dismissal; Discard requires completed service cancellation and an unchanged complete local editor inventory. Queued rollback, stale callbacks and recovery preserve unfinished text. Exact typed comparison and FTZ/DAZ-independent journal number serialization now cover transaction, display validation and startup recovery, preserving observed originals while signed zeros share the canonical zero representation. Shared profile and Auto-Detect draft expansion now preserve all unrelated edits with guarded atomic publication. Complete actual audio/resource/input effects, preset execution and persistence, all dependent production controls, Defaults and the full Apply/Cancel/discard-and-exit matrix. Qualify visible focus/window-placement/fullscreen/multi-monitor failures and timeout/restart recovery across supported platforms. CVar values alone never prove device success; counted recovery and synthetic startup evidence do not qualify a power loss, actual interrupted confirmation or every persistent recovery path. Exact DDS and previously observed cache CPU reconstruction now has source-byte and canonical output evidence; decoded/program/default images, material cohorts, durable content retention, native reconstruction and full mixed-effect recovery remain required. The 17 September audit repairs stale Ready, dirty, confirmation and error translation IDs, with every service status key checked against all shipped locales and bounded final SYSTEM gameplay captures. This repairs message presentation without accepting the remaining transaction or complete screen scope. The display-control increment adds fullscreen, borderless, fullscreen policy and MSAA to the owned draft/confirmation flow. Backend availability disables MSAA on the currently unsupported strict Vulkan display path and refuses changed nonzero requests before live writes; Vulkan scene MSAA remains separate. Complete dynamic catalogs, dependent-setting presentation, actual fullscreen/window-manager qualification and the full requirement remain open. The dimension-field increment adds window/custom fullscreen width and height with exact whole-pixel validation and dependent availability. Intrinsic draft validation permits intermediate pairs; Apply readiness, preparation and execution still require the complete current-capability request. Custom size and mode selection share one atomic patch. Complete dynamic display/resolution/refresh catalogs, visible fullscreen/platform behavior, native input, remaining effects and full screen/editor acceptance stay open."
+      "remaining": "The typed settings service and asynchronous display confirmation retain their previously qualified scopes. Local numeric drafts guard Apply, Apply and Exit, Defaults, colliding sibling edits and dismissal; Discard requires completed service cancellation and an unchanged complete local editor inventory. Queued rollback, stale callbacks and recovery preserve unfinished text. Exact typed comparison and FTZ/DAZ-independent journal number serialization now cover transaction, display validation and startup recovery, preserving observed originals while signed zeros share the canonical zero representation. Shared profile and Auto-Detect draft expansion now preserve all unrelated edits with guarded atomic publication. The renderer now reports how it resolved r_renderer and what each level load did with its light grids, and a load takes the committed light-grid policy, never a value an open attempt could still undo. Complete actual audio/resource/input effects, preset execution and persistence, all dependent production controls, Defaults and the full Apply/Cancel/discard-and-exit matrix. Qualify visible focus/window-placement/fullscreen/multi-monitor failures and timeout/restart recovery across supported platforms. CVar values alone never prove device success; counted recovery and synthetic startup evidence do not qualify a power loss, actual interrupted confirmation or every persistent recovery path. Exact DDS and previously observed cache CPU reconstruction now has source-byte and canonical output evidence; decoded/program/default images, material cohorts, durable content retention, native reconstruction and full mixed-effect recovery remain required. The 17 September audit repairs stale Ready, dirty, confirmation and error translation IDs, with every service status key checked against all shipped locales and bounded final SYSTEM gameplay captures. This repairs message presentation without accepting the remaining transaction or complete screen scope. The display-control increment adds fullscreen, borderless, fullscreen policy and MSAA to the owned draft/confirmation flow. Backend availability disables MSAA on the currently unsupported strict Vulkan display path and refuses changed nonzero requests before live writes; Vulkan scene MSAA remains separate. Complete dynamic catalogs, dependent-setting presentation, actual fullscreen/window-manager qualification and the full requirement remain open. The dimension-field increment adds window/custom fullscreen width and height with exact whole-pixel validation and dependent availability. Intrinsic draft validation permits intermediate pairs; Apply readiness, preparation and execution still require the complete current-capability request. Custom size and mode selection share one atomic patch. Complete dynamic display/resolution/refresh catalogs, visible fullscreen/platform behavior, native input, remaining effects and full screen/editor acceptance stay open."
     },
     {
       "id": "BEH-003",

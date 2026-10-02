@@ -505,6 +505,8 @@ The [editor file publication increment](editor-file-safety.md), based on engine 
 
 On engine `353d8a55d33677b3bbdb6a0f602ac8f7634edb07` retained choices gain catalog lists: option labels from application state and a state-bound option count, with hidden options ineligible, unmeasured and unreachable, a hidden selection still named, and an open list closing when its labels or length change. The native schema, readback, interaction and runtime tests qualify them. `WID-005` gains partial evidence without a status change. Evidence: `.tmp/ui/runtime-choice-lists/validation-evidence.json`, SHA-256 `a7942e4f9e15c32e1ce694164cff1ff856b69ee5cd27fa99f9343910b7208cd3`.
 
+On engine `2c1f988a7ac1c15453cd81159bcde95a17013390` render API 20 gives the settings service the renderer's own evidence: how it resolved `r_renderer` each time it selects a back end, and what each level load did with its light grids. A load pulls the committed preload policy, never a value an open attempt could still undo. A contract test, the settings service harness and SP map loads on OpenGL and Vulkan qualify them. `BEH-002` gains partial evidence without a status change. Evidence: `.tmp/ui/renderer-settings-reports/validation-evidence.json`, SHA-256 `240dffae83f06f6a459fdae2473ab1277718e2671ebf7a210a2fd05b3b9c7a74`.
+
 There are **87 partial, 252 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.

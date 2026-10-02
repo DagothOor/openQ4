@@ -5681,6 +5681,7 @@ Exits with mapSpawned = false
 void idSessionLocal::UnloadMap() {
 	RetainedUI_Close();
 	CloseSystemSettings();
+	UI_SettingsLevelUnloaded();
 	// A level-load generation owns worker-visible file handles and immutable
 	// staging buffers. Join it before any game, render-world, renderer-module,
 	// or filesystem state used by the outgoing map can be destroyed.

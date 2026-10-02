@@ -385,6 +385,16 @@ bool SystemSettingsHost::Read(StateValues& values, std::string& error) {
 	}
 	values = std::move(candidate); error.clear(); return true;
 }
+bool SystemSettingsHost::ReadValue(const std::string& key, StateValue& value, std::string& error) {
+	for (const auto& item : Catalog()) {
+		if (item.key != key) continue;
+		idCVar* variable = Registered(item, error);
+		StateValue candidate;
+		if (!variable || !Parse(item, variable->GetString(), candidate, error)) return false;
+		value = std::move(candidate); error.clear(); return true;
+	}
+	error = key + ": not a SYSTEM setting"; return false;
+}
 bool SystemSettingsHost::Defaults(StateValues& values, std::string& error) {
 	StateValues candidate;
 	for (const auto& item : Catalog()) {

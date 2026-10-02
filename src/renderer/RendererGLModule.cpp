@@ -407,6 +407,26 @@ bool R_RendererModule_ResetApiAfterDeviceFailure( void ) {
 	return false;
 }
 
+// Settings reports (render API 20): the engine keeps them for its settings service.
+void R_RendererModule_PublishRendererSelection( const renderRendererSelection_t *selection ) {
+	if ( rgm_services != NULL && rgm_services->PublishRendererSelection != NULL ) {
+		rgm_services->PublishRendererSelection( selection );
+	}
+}
+
+bool R_RendererModule_GetLightGridLoadPolicy( bool *preload, uint64_t *token ) {
+	if ( rgm_services != NULL && rgm_services->GetLightGridLoadPolicy != NULL ) {
+		return rgm_services->GetLightGridLoadPolicy( preload, token );
+	}
+	return false;
+}
+
+void R_RendererModule_PublishLightGridLoadReceipt( const renderLightGridLoadReceipt_t *receipt ) {
+	if ( rgm_services != NULL && rgm_services->PublishLightGridLoadReceipt != NULL ) {
+		rgm_services->PublishLightGridLoadReceipt( receipt );
+	}
+}
+
 #if defined( OPENQ4_RENDERER_GL_MODULE ) || defined( OPENQ4_RENDERER_GLES_MODULE )
 /*
 ====================

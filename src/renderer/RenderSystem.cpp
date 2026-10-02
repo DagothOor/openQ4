@@ -31,7 +31,9 @@ If you have questions concerning this license or the applicable additional terms
 #include "tr_local.h"
 #include "Model_local.h"
 #include "ModernGLExecutor.h"
+#include "RendererBootstrap.h"
 #include "RendererMetrics.h"
+#include "RendererModule.h"
 #include "RendererUpload.h"
 #include "ScenePackets.h"
 #include "TemporalPresentation.h"
@@ -1319,19 +1321,40 @@ void idRenderSystemLocal::SetBackEndRenderer() {
 
 	r_actualRenderer.SetString( R_GetBackEndRendererName( backEndRenderer ) );
 
+	// The settings service compares this report with what it asked for: the
+	// selected and automatic back ends, the fallback the warnings below name,
+	// and the upload storage the device allocated.
+	renderRendererSelection_t selection;
+	memset( &selection, 0, sizeof( selection ) );
+	idStr::Copynz( selection.requested, requestedRendererName != NULL ? requestedRendererName : "", sizeof( selection.requested ) );
+	selection.selected = backEndRenderer;
+	selection.automatic = R_PickBestBackEndRenderer();
+	selection.fallback = RENDER_SELECTION_REQUESTED;
+	selection.promotionActive = RendererBootstrap_ShouldAutoPromoteModernVisible();
+	rendererUploadStorage_t uploadStorage;
+	if ( R_RendererUpload_QueryStorage( uploadStorage ) ) {
+		selection.uploadObserved = true;
+		selection.uploadPath = uploadStorage.path;
+		selection.uploadPersistentFallback = uploadStorage.persistentFallback;
+	}
+
 	if ( requestedRendererName != NULL && requestedRendererName[0] != '\0' ) {
 		if ( R_IsLegacyBackEndRequest( requestedRendererName ) ) {
+			selection.fallback = RENDER_SELECTION_LEGACY;
 			common->Warning(
 				"r_renderer \"%s\" requested, but openQ4 only ships the ARB2 backend; using %s instead",
 				requestedRendererName,
 				r_actualRenderer.GetString() );
 		} else if ( idStr::Icmp( requestedRendererName, "best" ) != 0 && idStr::Icmp( requestedRendererName, r_actualRenderer.GetString() ) != 0 ) {
+			selection.fallback = RENDER_SELECTION_UNAVAILABLE;
 			common->Warning(
 				"r_renderer \"%s\" is unavailable on this renderer; using %s instead",
 				requestedRendererName,
 				r_actualRenderer.GetString() );
 		}
 	}
+
+	R_RendererModule_PublishRendererSelection( &selection );
 
 	// clear the vertex cache if we are changing between
 	// using vertex programs and not, because specular and

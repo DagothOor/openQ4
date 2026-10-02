@@ -146,4 +146,14 @@ bool	R_RendererModule_RunVulkanProbe( bool verbose );
 // forward this to the engine's loader through the services table.
 bool	R_RendererModule_ResetApiAfterDeviceFailure( void );
 
+// Settings reports (render API 20). The renderer calls the first three; module
+// builds forward them to the engine through the services table. The engine
+// keeps the latest report of each kind with a nonreused serial and the module
+// epoch it came from, and forgets them when the module changes.
+void	R_RendererModule_PublishRendererSelection( const renderRendererSelection_t *selection );
+bool	R_RendererModule_GetLightGridLoadPolicy( bool *preload, uint64_t *token );
+void	R_RendererModule_PublishLightGridLoadReceipt( const renderLightGridLoadReceipt_t *receipt );
+bool	R_RendererModule_QueryRendererSelection( renderRendererSelection_t &selection, uint64_t &serial, uint64_t &epoch );
+bool	R_RendererModule_QueryLightGridLoad( renderLightGridLoadReceipt_t &receipt, uint64_t &serial, uint64_t &epoch );
+
 #endif /* !__RENDERERMODULE_H__ */

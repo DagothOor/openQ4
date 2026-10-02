@@ -20,6 +20,7 @@ GNU General Public License for more details.
 */
 
 #include "tr_local.h"
+#include "RendererModule.h"
 #if !defined( _WIN32 )
 #include <unistd.h>
 #endif
@@ -2939,6 +2940,19 @@ idVec3 LightGrid::GetGridCoordDebugColor( const int gridCoord[3] ) const {
 
 void idRenderWorldLocal::SetupLightGrid() {
 	const int setupStart = Sys_Milliseconds();
+	// The preload policy this load uses, asked for once: the settings service's
+	// committed choice, never a draft it could still undo, or r_lightGridPreload
+	// where there is no service. The receipt says what the load did with it.
+	renderLightGridLoadReceipt_t receipt;
+	memset( &receipt, 0, sizeof( receipt ) );
+	bool policyPreload = false;
+	uint64_t policyToken = 0;
+	if ( R_RendererModule_GetLightGridLoadPolicy( &policyPreload, &policyToken ) ) {
+		receipt.preload = policyPreload;
+		receipt.token = policyToken;
+	} else {
+		receipt.preload = r_lightGridPreload.GetBool();
+	}
 	for ( int i = 0; i < numPortalAreas; i++ ) {
 		portalAreas[i].lightGrid.Clear();
 		portalAreas[i].lightGrid.area = i;
@@ -2951,8 +2965,9 @@ void idRenderWorldLocal::SetupLightGrid() {
 	idStr filename = mapName;
 	filename.SetFileExtension( "lightgridpack" );
 	if ( !LightGrid_LayeredBelowMap( filename, mapRank, mapName ) && LoadLightGridPackFile( filename ) ) {
-		PreloadLightGridImages();
+		PreloadLightGridImages( receipt );
 		common->DPrintf( "LightGrid setup for %s used packed data in %.3fs\n", mapName.c_str(), ( Sys_Milliseconds() - setupStart ) * 0.001f );
+		PublishLightGridLoadReceipt( receipt );
 		return;
 	}
 
@@ -2966,8 +2981,9 @@ void idRenderWorldLocal::SetupLightGrid() {
 
 	if ( !LightGrid_LayeredBelowMap( filename, mapRank, mapName ) && LoadLightGridFile( filename ) ) {
 		LoadLightGridImages();
-		PreloadLightGridImages();
+		PreloadLightGridImages( receipt );
 		common->DPrintf( "LightGrid setup for %s used loose metadata/images in %.3fs\n", mapName.c_str(), ( Sys_Milliseconds() - setupStart ) * 0.001f );
+		PublishLightGridLoadReceipt( receipt );
 		return;
 	}
 
@@ -2978,6 +2994,16 @@ void idRenderWorldLocal::SetupLightGrid() {
 	// empty and pay this cost only when the developer actually starts a bake.
 	lightGridAvailabilityFrame = -1;
 	common->DPrintf( "LightGrid setup for %s found no baked assets in %.3fs\n", mapName.c_str(), ( Sys_Milliseconds() - setupStart ) * 0.001f );
+	receipt.outcome = RENDER_LIGHTGRID_NO_ASSETS;
+	PublishLightGridLoadReceipt( receipt );
+}
+
+void idRenderWorldLocal::PublishLightGridLoadReceipt( const renderLightGridLoadReceipt_t &receipt ) const {
+	static const char *const outcomes[] = { "unknown", "no-assets", "renderer-stopped", "streamed", "preloaded", "preload-incomplete" };
+	const int outcome = receipt.outcome >= RENDER_LIGHTGRID_NO_ASSETS && receipt.outcome <= RENDER_LIGHTGRID_PRELOAD_INCOMPLETE ? receipt.outcome : 0;
+	common->DPrintf( "LightGrid load policy for %s: preload %d, token %llu, %s, %d/%d areas resident\n", mapName.c_str(),
+		receipt.preload ? 1 : 0, static_cast<unsigned long long>( receipt.token ), outcomes[ outcome ], receipt.areasResident, receipt.areasUsable );
+	R_RendererModule_PublishLightGridLoadReceipt( &receipt );
 }
 
 /*
@@ -3075,11 +3101,18 @@ static bool LightGrid_BackendStreamsAtlases() {
 	return r_useLightGrid.GetBool();
 }
 
-void idRenderWorldLocal::PreloadLightGridImages() {
+void idRenderWorldLocal::PreloadLightGridImages( renderLightGridLoadReceipt_t &receipt ) {
+	for ( int i = 0; i < numPortalAreas; i++ ) {
+		if ( portalAreas[i].lightGrid.IsUsable() ) {
+			receipt.areasUsable++;
+		}
+	}
 	if ( !tr.IsOpenGLRunning() ) {
+		receipt.outcome = RENDER_LIGHTGRID_RENDERER_STOPPED;
 		return;
 	}
-	if ( !r_lightGridPreload.GetBool() ) {
+	if ( !receipt.preload ) {
+		receipt.outcome = RENDER_LIGHTGRID_STREAMED;
 		// read the pack while the map loads, so the first area to stream in
 		// does not also pay for reading it
 		if ( LightGrid_BackendStreamsAtlases() ) {
@@ -3111,6 +3144,8 @@ void idRenderWorldLocal::PreloadLightGridImages() {
 	}
 
 	lightGridAvailabilityFrame = -1;
+	receipt.areasResident = areaCount - failedCount;
+	receipt.outcome = failedCount > 0 ? RENDER_LIGHTGRID_PRELOAD_INCOMPLETE : RENDER_LIGHTGRID_PRELOADED;
 	common->DPrintf(
 		"LightGrid preloaded %i/%i areas for %s in %.3fs\n",
 		areaCount - failedCount,

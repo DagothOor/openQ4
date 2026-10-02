@@ -47,11 +47,11 @@ static void Check(bool condition,const char* message) {
     if(!condition) { std::fprintf(stderr,"FAIL: %s\n",message);std::exit(1); }
 }
 static StateValues Initial() {
-    return {{"r_brightness",1.0},{"r_mode",0.0},{"r_multiSamples",0.0},{"r_renderer",std::string("best")},{"r_shadows",true}};
+    return {{"r_brightness",1.0},{"r_lightGridPreload",false},{"r_mode",0.0},{"r_multiSamples",0.0},{"r_renderer",std::string("best")},{"r_shadows",true}};
 }
 static struct HostData {
     StateValues live=Initial(),defaults=Initial();
-    int reads=0,defaultReads=0,validations=0,presetReads=0;
+    int reads=0,valueReads=0,defaultReads=0,validations=0,presetReads=0;
     std::function<void()> presetCallback;bool failPreset=false;
     std::vector<StateValues> writes;
     bool failRead=false,failDefaults=false,refuseWrite=false,partialWrite=false,confirm=false;
@@ -60,12 +60,17 @@ static struct HostData {
 } host;
 namespace openq4::ui {
 const std::map<std::string,size_t>& SystemSettingsHost::Schema() {
-    static const std::map<std::string,size_t> schema={{"r_brightness",0},{"r_mode",0},{"r_multiSamples",0},{"r_renderer",2},{"r_shadows",1}};
+    static const std::map<std::string,size_t> schema={{"r_brightness",0},{"r_lightGridPreload",1},{"r_mode",0},{"r_multiSamples",0},{"r_renderer",2},{"r_shadows",1}};
     return schema;
 }
 bool SystemSettingsHost::Read(StateValues& result,std::string& error) {
     ++host.reads;if(host.failRead) { error="bounded host read failed";return false; }
     result=host.live;return true;
+}
+bool SystemSettingsHost::ReadValue(const std::string& key,StateValue& value,std::string& error) {
+    ++host.valueReads;if(host.failRead) { error="bounded host read failed";return false; }
+    const auto found=host.live.find(key);if(found==host.live.end()) { error="not a setting";return false; }
+    value=found->second;return true;
 }
 bool SystemSettingsHost::BuildPreset(const std::string& name,StateValues& result,std::string& error) {
     ++host.presetReads;if(host.presetCallback)host.presetCallback();
@@ -119,7 +124,8 @@ bool SystemSettingsHost::RequiresDeviceWork(const StateValues& before,const Stat
 unsigned SystemSettingsHost::ChangedEffects(const StateValues& before,const StateValues& target) {
     if(before.empty() || target.empty())return 0;
     return (before.at("r_mode")!=target.at("r_mode") || before.at("r_multiSamples")!=target.at("r_multiSamples")?unsigned(SystemSettingDisplayRestart):0u) |
-        (before.at("r_renderer")!=target.at("r_renderer")?unsigned(SystemSettingRendererResources):0u);
+        (before.at("r_renderer")!=target.at("r_renderer")?unsigned(SystemSettingRendererResources):0u) |
+        (before.at("r_lightGridPreload")!=target.at("r_lightGridPreload")?unsigned(SystemSettingNextMap):0u);
 }
 bool SystemSettingsHost::ChangedRequiresDisplayRestart(const StateValues& before,const StateValues& target) {
     return (ChangedEffects(before,target)&SystemSettingDisplayRestart)!=0;
@@ -278,7 +284,7 @@ static std::uint64_t Pending() {
 }
 static void Validation() {
     const auto& schema=UI_SettingsStateSchema();
-    Check(schema.size()==23 && schema.at("settings.msaaAvailable")==1 && schema.at("settings.message")==2 && schema.at("settings.open")==1 &&
+    Check(schema.size()==25 && schema.at("settings.msaaAvailable")==1 && schema.at("settings.message")==2 && schema.at("settings.open")==1 &&
           schema.at("settings.phase")==0,"service status schema types");
     for(const auto& [key,type]:SystemSettingsHost::Schema())
         Check(schema.at("settings.draft."+key)==type && schema.at("settings.baseline."+key)==type,"typed snapshot schema");
@@ -688,6 +694,26 @@ static void DisplayDelivery(bool failPersistence) {
     Check(!UI_SettingsBlocksConfigWrite() && !deviceData.held && deviceData.finishes==1 && deviceData.restores==0,"qualified durable Keep releases once without reverting accepted values");
     Expect(owner,"phase",static_cast<double>(SettingsPhase::Editing));Expect(owner,"baseline.r_mode",1.0);Expect(owner,"request",std::string());
 }
+// The light-grid preload a level load uses (render API 20): the live choice
+// outside an attempt, the attempt's baseline while it could still be undone,
+// a fresh token for every load, and nothing when the setting cannot be read.
+static void LevelLoadPolicy() {
+    bool preload=true;std::uint64_t first=0,token=0;
+    Check(UI_SettingsLevelLoadPolicy(preload,first) && !preload && first!=0,"a load outside an attempt uses the live choice");
+    host.live.at("r_lightGridPreload")=true;
+    Check(UI_SettingsLevelLoadPolicy(preload,token) && preload && token>first,"each load gets a fresh token and the current choice");
+    host.live.at("r_lightGridPreload")=false;
+    const auto owner=Begin();AwaitDisplay(owner);
+    const auto issued=token;
+    host.live.at("r_lightGridPreload")=true; // as a write the attempt could still undo would leave it
+    Check(UI_SettingsLevelLoadPolicy(preload,token) && !preload && token>issued,"an open attempt's baseline is the committed choice a load uses");
+    host.live.at("r_lightGridPreload")=false;
+    UI_SettingsLevelUnloaded();
+}
+static void LevelLoadUnreadable() {
+    bool preload=true;std::uint64_t token=7;host.failRead=true;
+    Check(!UI_SettingsLevelLoadPolicy(preload,token) && preload && token==7,"an unreadable setting leaves the load on r_lightGridPreload");
+}
 static void DisplayClose(bool written) {
     const auto owner=Begin();
     if(written)AwaitDisplay(owner);
@@ -992,6 +1018,7 @@ int main(int argc,char** argv) {
     else if(name=="display_close_queued")DisplayClose(false);else if(name=="display_close_written")DisplayClose(true);
     else if(name=="startup_shutdown")StartupShutdown();else if(name=="stale_display_actions")StaleDisplayActions();
     else if(name=="frame_trace")FrameReceiptTrace();
+    else if(name=="level_load_policy")LevelLoadPolicy();else if(name=="level_load_unreadable")LevelLoadUnreadable();
     else if(name=="exit_immediate")ExitImmediate(false);else if(name=="exit_noop")ExitImmediate(true);
     else if(name.starts_with("exit_invalidate_"))ExitInvalidate(name.substr(16));
     else if(name.starts_with("exit_failure_"))ExitFailure(name.substr(13));
@@ -1014,7 +1041,7 @@ SCENARIOS = (
     'confirmation', 'abandon_editing', 'abandon_pending', 'orphan_refusal',
     'orphan_divergence', 'waiting_close', 'waiting_release', 'persistence',
     'timeout_frame', 'capability', 'msaa_capability', 'display_draft_preflight', 'display_keep', 'display_persist_failure',
-    'display_close_queued', 'display_close_written', 'startup_shutdown', 'stale_display_actions',
+    'display_close_queued', 'display_close_written', 'startup_shutdown', 'stale_display_actions', 'level_load_policy', 'level_load_unreadable',
     'frame_outside','frame_skipped','frame_submit_only','frame_present_only',
     'frame_readback_before_draw','frame_readback_after_draw','frame_readback_during_end',
     'frame_nested','frame_aborted','frame_begin_aborted','frame_wrong_request','frame_shutdown',

@@ -22,6 +22,15 @@ bool UI_SettingsStartup(std::string& error);
 bool UI_SettingsInitializeDisplay(std::string& error);
 bool UI_SettingsStartupActive();
 void UI_SettingsShutdown();
+// The light-grid preload a level load uses (render API 20): the committed
+// choice, which is the open attempt's baseline until that attempt persists,
+// so a load during an Apply never consumes a value that could still be
+// undone. Each call issues a fresh, never-reused token for the load's receipt.
+// False leaves the renderer on r_lightGridPreload.
+bool UI_SettingsLevelLoadPolicy(bool& preload, std::uint64_t& token);
+// The session unloaded its map; receipts from earlier loads no longer
+// describe the level on screen.
+void UI_SettingsLevelUnloaded();
 
 // Main/video-thread scope for one synchronous renderer BeginFrame/EndFrame.
 // Submitting brackets the exact EndFrame call; Presented follows its successful

@@ -29,6 +29,8 @@ If you have questions concerning this license or the applicable additional terms
 #ifndef __RENDERWORLDLOCAL_H__
 #define __RENDERWORLDLOCAL_H__
 
+#include "RendererSettingsReports.h"
+
 // assume any lightDef or entityDef index above this is an internal error
 const int LUDICROUS_INDEX	= 10000;
 
@@ -303,7 +305,10 @@ public:
 	bool					WriteMD5R( bool compressed );
 	void					SetupLightGrid();
 	void					LoadLightGridImages( bool forceReloadLoaded = false );
-	void					PreloadLightGridImages();
+	// Makes the map's light grids resident under the load's preload policy and
+	// fills in what it did; SetupLightGrid publishes the receipt (render API 20).
+	void					PreloadLightGridImages( renderLightGridLoadReceipt_t &receipt );
+	void					PublishLightGridLoadReceipt( const renderLightGridLoadReceipt_t &receipt ) const;
 	bool					EnsureLightGridAreaImages( int areaIndex );
 	idFile *				AcquireLightGridPack( const char *name );
 	void					ReleaseLightGridPack();

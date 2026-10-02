@@ -44,6 +44,8 @@ public:
  bool BuildPreset(const std::string& name,StateValues& patch,std::string& error);
  bool BuildDetectedPreset(StateValues& patch,std::string& error);
 	bool Read(StateValues& values, std::string& error) override;
+	// One catalog setting's live value, read and parsed as Read reads it.
+	bool ReadValue(const std::string& key, StateValue& value, std::string& error);
 	bool Defaults(StateValues& values, std::string& error) override;
 	bool Validate(const StateValues& baseline, const StateValues& candidate, std::string& error) override;
 	bool ValidateDraft(const StateValues& baseline, const StateValues& candidate, std::string& error) override;

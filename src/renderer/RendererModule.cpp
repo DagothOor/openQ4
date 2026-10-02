@@ -4,6 +4,7 @@
 #include "tr_local.h"
 #include "RenderModuleAPI.h"
 #include "RendererModule.h"
+#include "../ui/SettingsService.h"
 #include "../framework/RenderDoc.h"
 #include "../framework/CVarCompletionSnapshot.h"
 #include "../bse/BSEInterface.h"
@@ -104,6 +105,12 @@ static void RM_ReleaseDisplayVideoPin( void ) {
 		rm_displayVideoPin = NULL;
 	}
 }
+// The latest settings reports (render API 20), stamped with an engine serial
+// and the module epoch they came from; a later epoch's queries refuse them.
+static renderRendererSelection_t rm_rendererSelection;
+static renderLightGridLoadReceipt_t rm_lightGridReceipt;
+static uint64_t rm_rendererSelectionSerial = 0, rm_rendererSelectionEpoch = 0;
+static uint64_t rm_lightGridReceiptSerial = 0, rm_lightGridReceiptEpoch = 0;
 static void RM_AdvanceDisplayEpoch( void ) {
     rm_imageRecoveryLease={};
 	// Exhaustion permanently disables identity-dependent observations.
@@ -195,6 +202,18 @@ static bool RM_Services_ResetRenderApiAfterDeviceFailure( void ) {
 	return R_RendererModule_ResetApiAfterDeviceFailure();
 }
 
+static void RM_Services_PublishRendererSelection( const renderRendererSelection_t *selection ) {
+	R_RendererModule_PublishRendererSelection( selection );
+}
+
+static bool RM_Services_GetLightGridLoadPolicy( bool *preload, uint64_t *token ) {
+	return R_RendererModule_GetLightGridLoadPolicy( preload, token );
+}
+
+static void RM_Services_PublishLightGridLoadReceipt( const renderLightGridLoadReceipt_t *receipt ) {
+	R_RendererModule_PublishLightGridLoadReceipt( receipt );
+}
+
 static const renderModuleServices_t rm_services = {
 	RM_Services_Printf,
 	RM_Services_Warning,
@@ -210,6 +229,9 @@ static const renderModuleServices_t rm_services = {
 	RM_Services_IsRenderDocInjected,
 	RM_Services_PrintRendererApiStatus,
 	RM_Services_ResetRenderApiAfterDeviceFailure,
+	RM_Services_PublishRendererSelection,
+	RM_Services_GetLightGridLoadPolicy,
+	RM_Services_PublishLightGridLoadReceipt,
 };
 
 /*
@@ -1011,6 +1033,64 @@ void R_RendererModule_BootEarly( void ) {
 	common->StartupVariable( "r_renderApi", false );
 
 	R_RendererModule_Boot();
+}
+
+/*
+====================
+R_RendererModule_PublishRendererSelection
+
+The renderer resolved r_renderer. The settings service compares the report
+with what it asked for; the engine's serial proves the report is fresh.
+====================
+*/
+void R_RendererModule_PublishRendererSelection( const renderRendererSelection_t *selection ) {
+	if ( selection == NULL || rm_displayModuleEpoch == 0 || rm_rendererSelectionSerial == UINT64_MAX ) {
+		return;
+	}
+	rm_rendererSelection = *selection;
+	rm_rendererSelection.requested[ sizeof( rm_rendererSelection.requested ) - 1 ] = '\0';
+	rm_rendererSelectionSerial++;
+	rm_rendererSelectionEpoch = rm_displayModuleEpoch;
+	common->DPrintf( "renderer selection %llu: requested \"%s\", selected %d, automatic %d, fallback %d, promotion %d, upload %d/%u/%d\n",
+		static_cast<unsigned long long>( rm_rendererSelectionSerial ), rm_rendererSelection.requested, rm_rendererSelection.selected,
+		rm_rendererSelection.automatic, rm_rendererSelection.fallback, rm_rendererSelection.promotionActive ? 1 : 0,
+		rm_rendererSelection.uploadObserved ? 1 : 0, rm_rendererSelection.uploadPath, rm_rendererSelection.uploadPersistentFallback ? 1 : 0 );
+}
+
+bool R_RendererModule_GetLightGridLoadPolicy( bool *preload, uint64_t *token ) {
+	if ( preload == NULL || token == NULL ) {
+		return false;
+	}
+	return UI_SettingsLevelLoadPolicy( *preload, *token );
+}
+
+void R_RendererModule_PublishLightGridLoadReceipt( const renderLightGridLoadReceipt_t *receipt ) {
+	if ( receipt == NULL || rm_displayModuleEpoch == 0 || rm_lightGridReceiptSerial == UINT64_MAX ) {
+		return;
+	}
+	rm_lightGridReceipt = *receipt;
+	rm_lightGridReceiptSerial++;
+	rm_lightGridReceiptEpoch = rm_displayModuleEpoch;
+}
+
+bool R_RendererModule_QueryRendererSelection( renderRendererSelection_t &selection, uint64_t &serial, uint64_t &epoch ) {
+	if ( rm_rendererSelectionEpoch == 0 || rm_rendererSelectionEpoch != rm_displayModuleEpoch ) {
+		return false;
+	}
+	selection = rm_rendererSelection;
+	serial = rm_rendererSelectionSerial;
+	epoch = rm_rendererSelectionEpoch;
+	return true;
+}
+
+bool R_RendererModule_QueryLightGridLoad( renderLightGridLoadReceipt_t &receipt, uint64_t &serial, uint64_t &epoch ) {
+	if ( rm_lightGridReceiptEpoch == 0 || rm_lightGridReceiptEpoch != rm_displayModuleEpoch ) {
+		return false;
+	}
+	receipt = rm_lightGridReceipt;
+	serial = rm_lightGridReceiptSerial;
+	epoch = rm_lightGridReceiptEpoch;
+	return true;
 }
 
 /*

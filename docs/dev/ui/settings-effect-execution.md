@@ -353,6 +353,55 @@ portable reconstruction, native-driver qualification and mixed SYSTEM Apply
 remain separate requirements. The frozen handoff is
 `.tmp/ui-image-reduction-exact/.tmp/handoff.json`.
 
+## Renderer settings reports
+
+Render API 20 gives the settings service the renderer's own evidence for the
+two SYSTEM settings that are neither display modes nor immediate values. It
+changes nothing a player sees.
+
+- **Renderer selection.** Each time the renderer resolves `r_renderer` it
+  reports what it was asked for (cut to 31 bytes), the back end it selected,
+  the back end `best` picks on this device, and how a fallback arose. A
+  request is either met, unavailable with the automatic pick running, or a
+  retired legacy name with the automatic pick running. The report also says
+  whether the development auto-promotion of the modern path is active, and
+  what OpenGL upload storage the device allocated (path and persistent
+  fallback; Vulkan reports none). Device initialization always resolves the
+  back end, so every checked restart produces a fresh report. The
+  pre-capability placeholder in early initialization reports nothing.
+- **Light-grid loads.** A level load asks the settings service once for its
+  preload policy and a fresh, never-reused token. The service answers with the
+  committed choice: an open attempt's baseline until that attempt is
+  approved, otherwise the live catalog value. A load during an Apply
+  therefore never consumes a value that could still be undone. Without the
+  service, as on a dedicated server, the load uses `r_lightGridPreload`. The
+  preload itself no longer reads the CVar. Every exit of the light-grid setup
+  reports what the load did: no baked assets, no device, streamed, fully
+  preloaded or partly preloaded. It also reports the usable and resident area
+  counts, and the policy and token it used. The developer log gains one
+  receipt line, and the existing residency lines are unchanged.
+- **Engine stores.** The engine keeps the latest report of each kind, stamped
+  with its own serial and the module epoch it came from. Queries refuse a
+  report from an earlier module. Module builds forward the three calls
+  through the services table; static builds call the engine directly.
+- **Unload.** The session marks each map unload, after closing SYSTEM, so the
+  service can tell a receipt that describes the level on screen from an older
+  one.
+
+`tools/tests/renderer_settings_reports.py` pins the ABI, the services table
+and forwarders, the epochs, the report beside the existing fallback warnings,
+the single policy request with a receipt at every exit, and the provider rule.
+The settings service harness compiles the provider against its catalog double:
+the live choice outside an attempt, the baseline while one is open, fresh
+tokens, and no answer when the setting cannot be read. Nothing consumes the
+reports for Apply yet; the deferred and renderer executors below will.
+
+The reports were qualified by the contract test, the settings service harness
+and the full Meson suite, and by SP map loads on OpenGL and Vulkan that logged
+the selection report and the light-grid receipt beside unchanged residency
+lines. Evidence: `.tmp/ui/renderer-settings-reports/validation-evidence.json`,
+SHA-256 `240dffae83f06f6a459fdae2473ab1277718e2671ebf7a210a2fd05b3b9c7a74`.
+
 ## Qualification
 
 Extend the existing transaction, controller, journal, persistence, renderer and
