@@ -727,11 +727,15 @@ void Sys_InitScanTable( void ) {
 	} else if ( lang.Icmp( "italian" ) == 0 ) {
 		keyScanTable = s_scantokey_italian;
 		rightAltKey = K_RIGHT_ALT;
-	} else if ( lang.Icmp( "polish" ) == 0 ) {
+	} else if ( lang.Icmp( "polish" ) == 0 || lang.Icmp( "brazilian" ) == 0 || lang.Icmp( "czech" ) == 0 ||
+				lang.Icmp( "hungarian" ) == 0 || lang.Icmp( "turkish" ) == 0 || lang.Icmp( "ukrainian" ) == 0 ) {
 		// "Polish (Programmers)" is the layout essentially every Polish player
 		// uses, and it is the US layout with the alphabet's diacritics on the
 		// AltGr layer - so the scan codes are the English ones, but AltGr has to
-		// stay distinct from Alt or none of those letters can be typed.
+		// stay distinct from Alt or none of those letters can be typed. The
+		// Brazilian ABNT2, Czech, Hungarian, Turkish Q and Ukrainian layouts also
+		// put characters on AltGr (@, /, ? and the Ukrainian ghe), and they bind
+		// by key position like English rather than through a table of their own.
 		keyScanTable = s_scantokey;
 		rightAltKey = K_RIGHT_ALT;
 	} else {

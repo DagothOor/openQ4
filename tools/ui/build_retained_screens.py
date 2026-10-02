@@ -1065,7 +1065,8 @@ def crumb_transform(scale: float = CRUMB_SCALE) -> dict:
 
 
 STRINGS = ROOT / "content" / "baseoq4" / "pak0" / "strings"
-LANGUAGES = ("english", "french", "german", "italian", "polish", "russian", "spanish")
+LANGUAGES = ("english", "french", "german", "italian", "polish", "russian", "spanish",
+             "brazilian", "czech", "hungarian", "turkish", "ukrainian")
 
 
 def localized(key: str) -> dict:

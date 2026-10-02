@@ -73,7 +73,8 @@ class Presets(unittest.TestCase):
             if id.startswith(('settings_preset','settings_autodetect')):self.assertNotEqual(node['type'],'image')
     def test_all_locales_have_exact_six_labels(self):
         files=sorted((ROOT/'content/baseoq4/pak0/strings').glob('*_openq4.lang'))
-        self.assertEqual({f.stem for f in files},{n+'_openq4' for n in ('english','french','german','italian','spanish','polish','russian')})
+        self.assertEqual({f.stem for f in files},{n+'_openq4' for n in ('english','french','german','italian','spanish','polish','russian',
+            'brazilian','czech','hungarian','turkish','ukrainian')})
         for file in files:
             for id in ('229976','229977','229978','230010'):
                 values=re.findall(r'"#str_'+id+r'"\s+"([^"\r\n]+)"',file.read_text(encoding='utf-8'))

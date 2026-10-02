@@ -31,8 +31,10 @@ If you have questions concerning this license or the applicable additional terms
 #include "sys_local.h"
 
 const char * sysLanguageNames[] = {
-	"english", "spanish", "italian", "german", "french", "russian", 
-	"polish", "korean", "japanese", "chinese", NULL
+	"english", "spanish", "italian", "german", "french", "russian",
+	"polish", "korean", "japanese", "chinese",
+	// openQ4 additions, text only: no retail media archive exists for these.
+	"brazilian", "czech", "hungarian", "turkish", "ukrainian", NULL
 };
 
 idCVar sys_lang( "sys_lang", "english", CVAR_SYSTEM | CVAR_ARCHIVE,  "", sysLanguageNames, idCmdSystem::ArgCompletion_String<sysLanguageNames> );

@@ -2664,14 +2664,14 @@
 						cvar	sys_lang
 						choices	"#str_229908"
 						choiceType	1
-						values	"english;spanish;french;italian;polish;russian;german"
+						values	"english;spanish;french;italian;polish;russian;german;brazilian;czech;hungarian;turkish;ukrainian"
 
 						onAction {
 							set "cmd" "play main_menu_selection" ;
 						}
 
 						onActionRelease {
-							set "cmd" "reloadLanguage ; reloadGuis ; CVarStrcmp sys_lang curr_lang English Spanish French Italian Polish Russian German" ;
+							set "cmd" "reloadLanguage ; reloadGuis ; CVarStrcmp sys_lang curr_lang English Spanish French Italian Polish Russian German Brazilian Czech Hungarian Turkish Ukrainian" ;
 						}
 					}
 				}

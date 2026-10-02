@@ -185,7 +185,7 @@ def main() -> int:
     parser.add_argument('--output',type=Path,default=ROOT / '.tmp/game-consolidation/selection')
     parser.add_argument('--renderer',choices=('gl','vulkan'),default='gl')
     parser.add_argument('--size',default='1280x720')
-    parser.add_argument('--language',choices=('english','german','russian'),default='english')
+    parser.add_argument('--language',choices=('english','german','russian','brazilian','czech','hungarian','turkish','ukrainian'),default='english')
     parser.add_argument('--cases',nargs='+',choices=CASES,default=CASES)
     parser.add_argument('--timeout',type=int,default=300)
     args = parser.parse_args()

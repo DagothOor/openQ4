@@ -657,7 +657,8 @@ def main() -> int:
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--density',type=float,choices=(1.25,2.0))
     parser.add_argument('--text-scale',type=float,choices=(1.0,1.5,2.0),default=1.0)
-    parser.add_argument('--language',choices=('english','spanish','polish','russian','french','italian'),default='english')
+    parser.add_argument('--language',choices=('english','spanish','polish','russian','french','italian','german',
+        'brazilian','czech','hungarian','turkish','ukrainian'),default='english')
     parser.add_argument('--timeout',type=int,default=240,help='Maximum game-process duration in seconds')
     args = parser.parse_args()
     if args.timeout <= 0: parser.error('--timeout must be positive')

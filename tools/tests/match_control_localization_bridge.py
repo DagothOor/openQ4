@@ -31,6 +31,11 @@ LANGUAGE_FILES = (
     "french_openq4.lang",
     "italian_openq4.lang",
     "spanish_openq4.lang",
+    "brazilian_openq4.lang",
+    "czech_openq4.lang",
+    "hungarian_openq4.lang",
+    "turkish_openq4.lang",
+    "ukrainian_openq4.lang",
 )
 ENTRY_RE = re.compile(r'^\s*"(?P<id>#str_\d+)"\s+"(?P<value>.*)"\s*$')
 FIXED_RETURN_RE = re.compile(r"\breturn\s+([^;]+);")

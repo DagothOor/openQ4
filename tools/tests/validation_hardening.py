@@ -647,6 +647,7 @@ def validate_validation_wiring() -> None:
     # the argument-free lightweight suite; CI still checks their syntax.
     smoke_wiring_allowlist = {
         "german_localization_smoke.py",
+        "localization_smoke.py",
         "level_editor_runtime.py",
         "level_editor_workspace.py",
         "mp_bot_gameplay_smoke.py",

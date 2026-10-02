@@ -54,7 +54,7 @@ It is for players who want the original Quake 4 experience on today's hardware.
 - **Real liquids.** Wade, swim and drown in water, take damage in slime and lava, with underwater visuals and audio. Retail Quake 4 has no liquids, so they appear in maps built for them; see the [Liquids guide](docs/user/liquids.md).
 - **Reliable audio** through OpenAL. macOS packages bundle their own, so there is nothing extra to install.
 - **Controller support and quality-of-life fixes**, including a better console and modern settings behaviour.
-- **German menus and gameplay text.** Choose **Deutsch** in Settings > Game Options > Language. Campaign dialogue uses your installed retail language.
+- **Play in your language.** Menus and game text in English, French, German, Italian, Spanish, Brazilian Portuguese, Czech, Hungarian, Turkish and Ukrainian, plus Polish and Russian menus. Choose one in Settings > Game Options > Language; see the [languages guide](docs/user/languages.md).
 - **More single-player.** Alongside the original campaign there is an experimental [Arena Campaign](docs/user/arena-campaign.md): bot matches across five tiers of the stock maps, with boss matches and saved progress. **The Awakening** campaign is available too if you supply its content.
 - **Better multiplayer** (experimental): a server browser with sorting, filters and favourites, bots with team objectives and personalities, readable chat with history, Duel queues and spectator match controls.
 - **A demo library and player** with pause, speed, stepping, rewind and fast-forward, plus free-fly playback of full-match recordings.

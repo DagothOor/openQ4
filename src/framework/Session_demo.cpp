@@ -57,18 +57,50 @@ static bool DemoPathIsSafe( const idStr &path ) {
 		path[0] != '\\';
 }
 
+// Text lengths here count characters, not bytes. Demo names and the localized
+// labels are UTF-8, and cutting inside a multi-byte sequence leaves a dangling
+// lead byte that draws as a stray glyph ("Grabaci?..."), so every cut lands on
+// a character boundary.
+static int DemoCharacterBytes( const idStr &text, int offset ) {
+	unsigned int codePoint = 0;
+	return Max( 1, LangDict_NextCodePoint( text.c_str() + offset, text.Length() - offset, codePoint ) );
+}
+
+static int DemoCharacterCount( const idStr &text ) {
+	int count = 0;
+	for ( int i = 0; i < text.Length(); i += DemoCharacterBytes( text, i ) ) {
+		count++;
+	}
+	return count;
+}
+
+static void DemoCapCharacters( idStr &text, int maxCharacters ) {
+	int offset = 0;
+	for ( int count = 0; offset < text.Length() && count < maxCharacters; count++ ) {
+		offset += DemoCharacterBytes( text, offset );
+	}
+	text.CapLength( Min( offset, text.Length() ) );
+}
+
 static idStr DemoSanitizeText( const char *text, int maxLength = 96 ) {
 	idStr source = text ? text : "";
 	source.RemoveColors();
 
 	idStr result;
-	for ( int i = 0; i < source.Length() && result.Length() < maxLength; i++ ) {
+	int characters = 0;
+	for ( int i = 0; i < source.Length() && characters < maxLength; ) {
 		const unsigned char ch = static_cast<unsigned char>( source[i] );
+		const int bytes = DemoCharacterBytes( source, i );
 		if ( ch == '\t' || ch == '\r' || ch == '\n' ) {
 			result.Append( ' ' );
+			characters++;
 		} else if ( ch >= 32 && ch != 127 ) {
-			result.Append( static_cast<char>( ch ) );
+			for ( int k = 0; k < bytes; k++ ) {
+				result.Append( source[i + k] );
+			}
+			characters++;
 		}
+		i += bytes;
 	}
 	while ( result.Find( "  " ) >= 0 ) {
 		result.Replace( "  ", " " );
@@ -83,14 +115,14 @@ static idStr DemoSanitizeText( const char *text, int maxLength = 96 ) {
 // available in the detail card beneath the list.
 static idStr DemoEllipsizeText( const char *text, int maxLength ) {
 	idStr result = DemoSanitizeText( text, maxLength + 1 );
-	if ( result.Length() <= maxLength ) {
+	if ( DemoCharacterCount( result ) <= maxLength ) {
 		return result;
 	}
 	if ( maxLength <= 3 ) {
-		result.CapLength( maxLength );
+		DemoCapCharacters( result, maxLength );
 		return result;
 	}
-	result.CapLength( maxLength - 3 );
+	DemoCapCharacters( result, maxLength - 3 );
 	result += "...";
 	return result;
 }

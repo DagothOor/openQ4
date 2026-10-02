@@ -36,8 +36,48 @@ FONTS_DIR = ROOT / "content" / "baseoq4" / "pak0" / "fonts"
 CODEPAGE_LANGUAGES = {
     "polish": "cp1250",
     "czech": "cp1250",
+    "hungarian": "cp1250",
     "russian": "cp1251",
+    "ukrainian": "cp1251",
+    "turkish": "cp1254",
 }
+
+# Of those, the ones the retail bitmap atlases draw wrongly or not at all, so
+# LangDict_LanguageNeedsScalableFonts must override r_useTrueTypeFonts 0.  Only
+# Polish had a retail release with atlases for its own codepage.
+SCALABLE_ONLY_LANGUAGES = ("czech", "hungarian", "russian", "turkish", "ukrainian")
+
+# Languages whose five non-dialogue tables (code, guis, maps, mappack, openq4)
+# translate every English entry, with the endonym the language chooser shows
+# for each.  Campaign dialogue (lips) falls back to English or to retail media.
+FULL_TABLE_LANGUAGES = {
+    "german": "Deutsch",
+    "brazilian": "Português (Brasil)",
+    "czech": "Čeština",
+    "hungarian": "Magyar",
+    "turkish": "Türkçe",
+    "ukrainian": "Українська",
+}
+
+# Letters each of those languages is not written without.  They must turn up
+# in its tables - a table that never uses them is not in that language, or lost
+# its encoding - and every face that draws text must have art for them.
+SIGNATURE_LETTERS = {
+    "german": "ÄÖÜäöüß",
+    "brazilian": "ãçõáéíóúê",
+    "czech": "čěřšžůýá",
+    "hungarian": "őűöüáéí",
+    "turkish": "ğışçöüİ",
+    "ukrainian": "єіїщЄІ",
+}
+
+# The chooser appends languages, so an index never moves once shipped: the
+# Spanish/French layout fixes in mainmenu.gui and every player's archived
+# sys_lang depend on it.
+SHIPPED_LANGUAGE_ORDER = (
+    "english", "spanish", "french", "italian", "polish", "russian", "german",
+    "brazilian", "czech", "hungarian", "turkish", "ukrainian",
+)
 
 # Unicode blocks above U+00FF the font rasteriser always builds pages for.
 # Keep in step with Q4_TTF_UNIVERSAL_RANGES in src/renderer/tr_fontTTF.cpp.
@@ -269,6 +309,7 @@ def validate_transcode_contract() -> None:
         require(source, "LANGDICT_CP1252_HIGH", context)
         require(source, "LANGDICT_CP1250_HIGH", context)
         require(source, "LANGDICT_CP1251_HIGH", context)
+        require(source, "LANGDICT_CP1254_HIGH", context)
         require(source, "LANGDICT_GLYPH_FOLD", context)
         require(source, "LangDict_DecodeUtf8", context)
         require(source, "LangDict_EncodeUtf8", context)
@@ -301,9 +342,23 @@ def validate_transcode_contract() -> None:
         # CP1250 and CP1251 diverge from Latin-1 across the whole upper half.
         validate_codepage_table(source, "LANGDICT_CP1250_HIGH", "cp1250", 0x80, 128)
         validate_codepage_table(source, "LANGDICT_CP1251_HIGH", "cp1251", 0x80, 128)
+        validate_codepage_table(source, "LANGDICT_CP1254_HIGH", "cp1254", 0x80, 128)
 
         for language in CODEPAGE_LANGUAGES:
             require(source, f'"{language}"', f"{context} (codepage language list)")
+
+        # The bitmap policy names its languages; a codepage language missing
+        # from it would draw Windows-1252 art for its own letters.
+        scalable = source[source.index("bool LangDict_LanguageNeedsScalableFonts(") :]
+        scalable = scalable[: scalable.index("\n}\n")]
+        for language in SCALABLE_ONLY_LANGUAGES:
+            if CODEPAGE_LANGUAGES[language] != "cp1251":
+                require(scalable, f'"{language}"', f"{context} (LangDict_LanguageNeedsScalableFonts)")
+        if '"polish"' in scalable:
+            raise AssertionError(
+                f"{relative_path}: Polish had a retail release with its own Central "
+                "European atlases; LangDict_LanguageNeedsScalableFonts must not force it"
+            )
 
         declaration = source.index("idStr transcoded;")
         lexer = source.index("idLexer src(")
@@ -469,8 +524,34 @@ def validate_language_menu() -> None:
                 "fall back to English"
             )
 
+    # Common_AppendLanguagesWithStringTables only admits names the engine
+    # knows, so tables for a language missing from sysLanguageNames are never
+    # offered to the resolver and the language silently reverts to English.
+    # The OS-locale maps are what pick it on a player's first run.
+    sys_local = read("src/sys/sys_local.cpp")
+    names = sys_local[sys_local.index("sysLanguageNames[] = {") :]
+    known = set(re.findall(r'"([a-z]+)"', names[: names.index("};")]))
+    common = read("src/framework/Common.cpp")
+    locale_map = common[common.index("static const char *Common_MapLocaleLanguageCode(") :]
+    locale_map = locale_map[: locale_map.index("\n}\n")]
+    windows_map = common[common.index("static const char *Common_MapWindowsPrimaryLanguage(") :]
+    windows_map = windows_map[: windows_map.index("\n}\n")]
+    for language in offered:
+        if language not in known:
+            raise AssertionError(
+                f"The language menu offers '{language}' but src/sys/sys_local.cpp "
+                "sysLanguageNames does not list it, so its string tables are ignored"
+            )
+        if f'"{language}" }}' not in locale_map or f'return "{language}";' not in windows_map:
+            raise AssertionError(
+                f"src/framework/Common.cpp: '{language}' needs an OS-locale mapping in both "
+                "Common_MapLocaleLanguageCode and Common_MapWindowsPrimaryLanguage, or a "
+                "first run never selects it"
+            )
+
     # choiceDef lists are positional, so the names and the values must agree in
     # every language - a short list silently mismatches every entry after it.
+    lists = {}
     for path in sorted(STRINGS_DIR.glob("*.lang")):
         names = re.search(r'"#str_229908"\s+"([^"]+)"', path.read_text(encoding="utf-8"))
         if names is None:
@@ -481,58 +562,80 @@ def validate_language_menu() -> None:
                 f"{len(names.group(1).split(';'))} language names but the chooser offers "
                 f"{len(offered)} values; a choiceDef silently mismatches when they disagree"
             )
+        lists.setdefault(path.stem.split("_", 1)[0], set()).add(names.group(1))
+    # Both the guis and the openq4 table of a language define the list, and
+    # whichever loads last wins; they must not disagree.
+    for language, variants in sorted(lists.items()):
+        if len(variants) != 1:
+            raise AssertionError(f"{language}: the guis and openq4 tables carry different #str_229908 lists")
 
 
-def validate_german_tables() -> None:
-    """Catch English fallbacks, unsafe printf arguments and broken GUI lists."""
-    entry = re.compile(r'^\s*"(#str_\w+)"\s+"((?:\\.|[^"\\])*)"\s*$', re.MULTILINE)
+def validate_translated_tables() -> None:
+    """Every full-table language: complete, positionally safe and drawable.
+
+    Catches English fallbacks, unsafe printf arguments, broken choice lists
+    and a chooser whose indices moved."""
+    entry = re.compile(r'^\s*"(#str_\w+)"\s+"((?:\\.|[^"\\])*)"', re.MULTILINE)
+    # No space flag: "100% daily value" is prose, not a "% d" conversion.
     formats = re.compile(r'%(?:[-+0#]*\d*(?:\.\d+)?(?:hh|ll|[hljztL])?[diuoxXfFeEgGaAcsp]|%)')
-    icons = re.compile(r'\^(?:i[kI]?[0-9a-fA-F]{2}|[0-9])')
+    # idStr::IsEscape: ^0-^9, ^:, ^-, ^+ and ^r are two characters, ^nX three,
+    # ^cRGB and the ^iXYZ icons five.
+    escapes = re.compile(r'\^(?:[cCiI][^\0]{3}|[nN][^\0]|[0-9:+\-rR])')
     english = {}
-    german = {}
+    tables = {language: {} for language in FULL_TABLE_LANGUAGES}
+    defined = {language: {} for language in FULL_TABLE_LANGUAGES}
     for category in ("code", "guis", "maps", "mappack", "openq4"):
-        source_path = STRINGS_DIR / f"english_{category}.lang"
-        target_path = STRINGS_DIR / f"german_{category}.lang"
-        source = entry.findall(source_path.read_text(encoding="utf-8"))
-        target = entry.findall(target_path.read_text(encoding="utf-8"))
+        source = entry.findall((STRINGS_DIR / f"english_{category}.lang").read_text(encoding="utf-8"))
         source_keys = [key for key, _ in source]
-        target_keys = [key for key, _ in target]
-        assert source_keys and source_keys == target_keys, f"{target_path.name}: English key/order mismatch"
-        assert len(target_keys) == len(set(target_keys)), f"{target_path.name}: duplicate keys"
-        for (key, original), (_, translated) in zip(source, target):
-            label = f"{target_path.name}: {key}"
-            assert bool(original.strip()) == bool(translated.strip()), f"{label}: empty translation"
-            assert formats.findall(original) == formats.findall(translated), f"{label}: printf arguments changed"
-            assert icons.findall(original) == icons.findall(translated), f"{label}: GUI escapes changed"
-            assert re.findall(r'\\[nrt]', original) == re.findall(r'\\[nrt]', translated), f"{label}: layout escapes changed"
         english.update(source)
-        german.update(target)
+        for language in FULL_TABLE_LANGUAGES:
+            target_path = STRINGS_DIR / f"{language}_{category}.lang"
+            target = entry.findall(target_path.read_text(encoding="utf-8"))
+            target_keys = [key for key, _ in target]
+            assert source_keys and source_keys == target_keys, f"{target_path.name}: English key/order mismatch"
+            assert len(target_keys) == len(set(target_keys)), f"{target_path.name}: duplicate keys"
+            for (key, original), (_, translated) in zip(source, target):
+                label = f"{target_path.name}: {key}"
+                assert bool(original.strip()) == bool(translated.strip()), f"{label}: empty translation"
+                assert formats.findall(original) == formats.findall(translated), f"{label}: printf arguments changed"
+                assert escapes.findall(original) == escapes.findall(translated), f"{label}: GUI escapes changed"
+                assert re.findall(r'\\[nrt]', original) == re.findall(r'\\[nrt]', translated), f"{label}: layout escapes changed"
+                # Choice lists are positional wherever they are consumed - .gui
+                # choiceDefs, retained settings, code - so every value keeps the
+                # English count; a prose semicolon stays punctuation.
+                if key != "#str_229908":
+                    assert original.count(";") == translated.count(";"), f"{label}: semicolon count changed"
+                # A key in two tables shows only the later table's text, so a
+                # second translation is silently dead; the two must agree.
+                earlier = defined[language].setdefault(key, translated)
+                assert earlier == translated, f"{label}: differs from the same key in an earlier {language} table"
+            tables[language].update(target)
 
-    gui_root = ROOT / "content/baseoq4/pak0/guis"
-    for path in gui_root.rglob("*.gui"):
-        # Retail GUI comments can still be CP1252. These tokens are ASCII.
-        for token in re.findall(rb'\bchoices\s+"(#str_\w+)"', path.read_bytes()):
-            key = token.decode("ascii")
-            if key in english:
-                assert english[key].count(";") == german[key].count(";"), f"{key}: German choice count changed"
-
-    # Spanish/French layout fixes depend on the existing language indices.
+    # The chooser appends: Spanish/French layout fixes and every archived
+    # sys_lang depend on the existing indices.
     game_gui = read("content/baseoq4/pak0/guis/menu/settings/game.gui")
     chooser = game_gui[game_gui.index("choiceDef set_game_language_value"):]
     values = re.search(r'values\s+"([a-z;]+)"', chooser).group(1).split(";")
-    assert values[-1] == "german", "German must append without shifting existing language indices"
-    assert german["#str_229908"].split(";")[values.index("german")] == "Deutsch"
+    assert tuple(values) == SHIPPED_LANGUAGE_ORDER, \
+        f"chooser values {values} must be {list(SHIPPED_LANGUAGE_ORDER)}; append, never reorder"
+    for language, endonym in FULL_TABLE_LANGUAGES.items():
+        shown = tables[language]["#str_229908"].split(";")[values.index(language)]
+        assert shown == endonym, f"{language}: the chooser names its own language {shown!r}, expected {endonym!r}"
     for path in ("guis/mainmenu.gui", "guis/menu/settings/game.gui"):
         commands = re.findall(r'CVarStrcmp sys_lang curr_lang ([A-Za-z ]+)"', read("content/baseoq4/pak0/" + path))
         assert commands, f"{path}: missing language-index command"
         for command in commands:
             assert command.lower().split() == values, f"{path}: language indices differ from chooser"
 
-    # German needs the Latin-1 base glyphs, not an additional Unicode page.
-    assert set("ÄÖÜäöüß") <= set("".join(german.values()))
-    for font in FONTS_DIR.glob("*.ttf"):
-        if font.stem not in LATIN_ONLY_FACES:
-            assert set(map(ord, "ÄÖÜäöüß")) <= font_code_points(font), f"{font.name}: missing German glyphs"
+    # Each language's own letters, in its text and in every face that draws it.
+    # All of them are Latin-1, Latin Extended-A or Cyrillic, so they come from
+    # the base slots or pages the rasteriser always builds.
+    for language, letters in SIGNATURE_LETTERS.items():
+        missing = sorted(set(letters) - set("".join(tables[language].values())))
+        assert not missing, f"{language}: tables never use {''.join(missing)}; wrong language or lost encoding?"
+        for font in FONTS_DIR.glob("*.ttf"):
+            if font.stem not in LATIN_ONLY_FACES:
+                assert set(map(ord, letters)) <= font_code_points(font), f"{font.name}: missing {language} glyphs"
 
 
 def validate_ci_smoke() -> None:
@@ -556,7 +659,7 @@ def main() -> None:
     validate_bitmap_font_policy()
     validate_codepage_selection()
     validate_language_menu()
-    validate_german_tables()
+    validate_translated_tables()
     validate_ci_smoke()
     print("lang_table_encoding: ok")
 

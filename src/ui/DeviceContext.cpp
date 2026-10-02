@@ -1018,8 +1018,10 @@ static void openQ4_SetGuiSortForFont( fontInfoEx_t &font ) {
 }
 
 static void openQ4_NormalizeFontLanguage( idStr &language ) {
-	// Western European language packs share the English font artwork.
-	if ( language == "french" || language == "german" || language == "spanish" || language == "italian" ) {
+	// Western European language packs share the English font artwork, and so
+	// does Brazilian Portuguese, whose alphabet is all inside Windows-1252.
+	if ( language == "french" || language == "german" || language == "spanish" || language == "italian" ||
+			language == "brazilian" ) {
 		language = "english";
 	}
 }

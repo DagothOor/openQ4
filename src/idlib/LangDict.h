@@ -30,9 +30,10 @@
 ===============================================================================
 */
 typedef enum {
-	LANGCP_WESTERN = 0,			// Windows-1252: English, French, Italian, Spanish, German
-	LANGCP_CENTRAL_EUROPEAN,	// Windows-1250: Polish, Czech
-	LANGCP_CYRILLIC				// Windows-1251: Russian
+	LANGCP_WESTERN = 0,			// Windows-1252: English, French, Italian, Spanish, German, Brazilian Portuguese
+	LANGCP_CENTRAL_EUROPEAN,	// Windows-1250: Polish, Czech, Hungarian
+	LANGCP_CYRILLIC,			// Windows-1251: Russian, Ukrainian
+	LANGCP_TURKISH				// Windows-1254: Turkish
 } langCodePage_t;
 
 						// Longest UTF-8 encoding of a single code point, and the
@@ -99,9 +100,10 @@ const char *			LangDict_AsciiFoldForCodePoint( unsigned int codePoint );
 						// already covers the language.
 const unsigned int *	LangDict_ExtendedRangesForLanguage( const char *language );
 
-						// True when a language needs code points the 256-slot retail
-						// bitmap atlases cannot address, and therefore cannot be drawn by
-						// the legacy font path at all.
+						// True when the 256-slot retail bitmap atlases a language can find
+						// have no art for its alphabet - none at all for Cyrillic, and the
+						// wrong letters for a Central European or Turkish language with no
+						// retail release of its own - so the legacy font path cannot draw it.
 bool					LangDict_LanguageNeedsScalableFonts( const char *language );
 
 class idLangKeyValue {

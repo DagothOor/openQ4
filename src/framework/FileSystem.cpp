@@ -628,6 +628,11 @@ static const char *fsLanguagePackOrder[] = {
 	"korean",
 	"japanese",
 	"chinese",
+	"brazilian",
+	"czech",
+	"hungarian",
+	"turkish",
+	"ukrainian",
 	NULL
 };
 

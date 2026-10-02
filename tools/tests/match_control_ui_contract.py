@@ -29,6 +29,11 @@ LANGUAGES = (
     "french_openq4.lang",
     "italian_openq4.lang",
     "spanish_openq4.lang",
+    "brazilian_openq4.lang",
+    "czech_openq4.lang",
+    "hungarian_openq4.lang",
+    "turkish_openq4.lang",
+    "ukrainian_openq4.lang",
 )
 REQUIRED_DYNAMIC_LOCALIZATION_IDS = {
     "#str_41795",

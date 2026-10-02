@@ -1200,7 +1200,9 @@ most a byte-indexed font can express is one 8-bit codepage - and for Cyrillic
 not even that, because no shipped atlas has the glyphs whatever byte you index
 it with. Honouring r_useTrueTypeFonts 0 under Russian would produce a menu of
 question marks with nothing to explain it, so the language wins and says so
-once.
+once. Czech, Hungarian and Turkish have no retail release and so only find the
+English atlases, where their codepage bytes land on Windows-1252 art: c-caron
+would draw as e-grave. They take the scalable path for the same reason.
 
 The cvar is deliberately not written back. It is archived, and quietly
 rewriting a user's setting because they tried a language would leave the bitmap
@@ -1220,7 +1222,7 @@ static bool R_UseScalableFonts( void ) {
 	static idStr reportedLanguage;
 	if ( reportedLanguage.Icmp( language ) != 0 ) {
 		reportedLanguage = language;
-		common->Printf( "TTF font: '%s' needs code points the bitmap atlases cannot address; "
+		common->Printf( "TTF font: '%s' needs letters the bitmap atlases have no art for; "
 						"ignoring r_useTrueTypeFonts 0 for this language\n", language );
 	}
 	return true;

@@ -6118,6 +6118,18 @@ void idRenderSystemLocal::InitOpenGL( void ) {
 	char error[1024];
 	if ( !R_InitRendererDevice( true, false, error, sizeof( error ) ) ) common->FatalError( "%s", error );
 	r_recoverableRendererRestore = false;
+	// On the first device start, build the console sheet for the active
+	// language now rather than at the first font registration. The startup
+	// splash draws from it before the UI registers a font, and the retail
+	// sheet is Windows-1252 art, so Cyrillic, Czech or Turkish splash text
+	// would otherwise draw as the wrong letters. Restarts reach this through
+	// tr.InitOpenGL() too, but refresh the sheet themselves afterwards.
+	static bool startupConsoleSheetBuilt = false;
+	if ( !startupConsoleSheetBuilt && glConfig.isInitialized ) {
+		startupConsoleSheetBuilt = true;
+		R_InitFreeType();
+		R_RefreshConsoleFontAtlas();
+	}
 }
 
 /*

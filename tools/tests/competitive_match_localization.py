@@ -20,6 +20,11 @@ LANGUAGE_FILES = (
     "french_openq4.lang",
     "italian_openq4.lang",
     "spanish_openq4.lang",
+    "brazilian_openq4.lang",
+    "czech_openq4.lang",
+    "hungarian_openq4.lang",
+    "turkish_openq4.lang",
+    "ukrainian_openq4.lang",
 )
 # 41693-41698 are the three built-in match-series profiles (label, description)
 # consumed by seriesProfileDescriptors in mp/match/MatchSeries.cpp.

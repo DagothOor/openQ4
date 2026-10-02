@@ -142,36 +142,69 @@ localized text actually lives, has no such limit.
 keeping: it is the fallback when a mod ships its own `.fontdat`, and
 `uiFontParitySelfTest` pins it to assert retail parity.
 
-But it is **ignored for languages the atlases cannot draw at all**. A retail
-atlas has 256 slots of Latin art; Windows-1251 exists, but no shipped `.fontdat`
-has Cyrillic glyphs, so every byte would land on a blank slot and Russian would
-render as a menu of question marks with nothing to explain it.
-`R_UseScalableFonts` therefore lets the language win, and says so once on the
-console. The cvar is deliberately not written back: it is archived, and quietly
-rewriting a user's setting because they tried a language would leave the bitmap
-path off after they switched away again.
+But it is **ignored for languages the atlases cannot draw**. A retail atlas has
+256 slots of Latin art; Windows-1251 exists, but no shipped `.fontdat` has
+Cyrillic glyphs, so every byte would land on a blank slot and Russian or
+Ukrainian would render as a menu of question marks with nothing to explain it.
+Czech, Hungarian and Turkish are subtler and worse: they have no retail release,
+so the only atlases they find are the English ones, which are Windows-1252 art.
+Their own codepage bytes then index the wrong letters - c-caron (0xE8 in
+Windows-1250) draws as e-grave, and s-cedilla (0xFE in Windows-1254) as thorn.
+Polish keeps the bitmap path, because the retail Polish release shipped its own
+Central European atlases. `R_UseScalableFonts` therefore lets the language win,
+and says so once on the console. The cvar is deliberately not written back: it
+is archived, and quietly rewriting a user's setting because they tried a
+language would leave the bitmap path off after they switched away again.
 
 `LangDict_LanguageNeedsScalableFonts` is the predicate. Add to it when adding a
-language whose script the retail atlases do not carry.
+language whose letters the retail atlases do not carry.
 
 ## Adding a language
 
-1. Author `strings/<language>_openq4.lang` and `strings/<language>_guis.lang` in
-   UTF-8, no BOM, with the **same keys in the same order** as the English files.
-   `choiceDef` lists are positional, so a dropped `;` silently mismatches every
-   entry after it.
+1. Author `strings/<language>_{code,guis,maps,mappack,openq4}.lang` in UTF-8, no
+   BOM, with the **same keys in the same order** as the English files.
+   `choiceDef` and other choice lists are positional, so every value keeps the
+   English number of `;` - a dropped one silently mismatches every entry after
+   it. The name before the first `_` is the `sys_lang` value, so it cannot
+   contain an underscore.
 2. Add the name to `sysLanguageNames` (`src/sys/sys_local.cpp`) and
    `fsLanguagePackOrder` (`src/framework/FileSystem.cpp`) if it is not already
    there, and map its OS locale in `Common_MapLocaleLanguageCode` and
-   `Common_MapWindowsPrimaryLanguage`.
-3. Add it to the chooser's `values` list in
-   `guis/menu/settings/game.gui`, and append its name to `#str_229908` in
-   **every** language's tables — the lists are positional.
-4. If the script is not Latin, add its Unicode block to
-   `LangDict_ExtendedRangesForLanguage`, and add the language to
-   `LangDict_CodePageForLanguage` and `LangDict_LanguageNeedsScalableFonts`.
-5. Run `tools/tests/lang_table_encoding.py`, which checks all of the above plus
-   that every code point used is one the fonts actually have art for.
+   `Common_MapWindowsPrimaryLanguage`. String tables for a name missing from
+   `sysLanguageNames` are ignored.
+3. **Append** it to the chooser's `values` list in
+   `guis/menu/settings/game.gui` and to both `CVarStrcmp sys_lang curr_lang`
+   commands (`game.gui`, `mainmenu.gui`), and append its name to `#str_229908`
+   in **every** language's `guis` and `openq4` tables. The lists are positional,
+   and appending keeps every shipped index - and every archived `sys_lang` -
+   where it was.
+4. Choose its legacy codepage in `LangDict_CodePageForLanguage`; that also picks
+   the console's 256 cells. If the script is not Latin, add its Unicode block to
+   `LangDict_ExtendedRangesForLanguage`. If the retail atlases cannot draw it,
+   add it to `LangDict_LanguageNeedsScalableFonts`. If its keyboard layouts put
+   characters on AltGr, add it to the right-Alt lists in `Sys_InitScanTable`
+   (`src/sys/sdl3/sdl3_backend.cpp` and `src/sys/win32/win_input.cpp`, which is
+   an 8-bit file: edit it byte-wise).
+5. Add it to `LANGUAGES` in `tools/ui/build_retained_screens.py` and rerun the
+   generator, so the retained screens fit its text; the retained gate then
+   checks every loading tip fits two lines in it.
+6. Add it to `FULL_TABLE_LANGUAGES`, `SIGNATURE_LETTERS` and
+   `SHIPPED_LANGUAGE_ORDER` in `tools/tests/lang_table_encoding.py`, and to the
+   language lists of the contract tests that check per-language keys
+   (competitive and Match Control localization, server browser, difficulty
+   restart, SYSTEM presets). Then run them.
+7. Run the SYSTEM page's native fit tests (`tools/tests/native/UiSystem*Test.cpp`
+   and `UiPopupPlacementRuntimeTest.cpp`) for it. They lay the retained page out
+   with its real tables at every UI scale and fail on any label that does not
+   fit. CI runs a six-locale sample to keep its time down, so add the language
+   to their lists locally, rebuild, and pass it as the last argument.
+
+`tools/tests/lang_table_encoding.py` checks the tables against English (keys,
+order, printf arguments, `^` escapes, layout escapes, semicolons), the chooser
+lists and indices, the engine language lists and OS-locale maps, and that every
+code point used is one the fonts actually have art for.
+`tools/tests/localization_smoke.py --language <name>` then qualifies the staged
+runtime in game.
 
 `ListAvailableLanguagePacks` only sees retail `zpak_<language>` media archives,
 which is why a repo-authored language would otherwise be rejected before its
@@ -231,11 +264,80 @@ default. Windows x64 SP/OpenGL and MP/Vulkan have been validated with English
 retail dialogue fallback. A complete German retail voice pack was unavailable
 on the validation machine, so German voice playback itself was not qualified.
 
+## Brazilian Portuguese, Czech, Hungarian, Turkish and Ukrainian
+
+These five were chosen as the most-used Steam languages Quake 4 never shipped
+whose scripts the existing faces already draw (Steam survey, September 2026:
+Brazilian Portuguese 3.7%, Turkish 1.1%, Ukrainian 0.66%, Czech 0.50%,
+Hungarian 0.32%). The larger missing languages - Simplified and Traditional
+Chinese, Japanese, Korean, Thai - need new font art and line breaking without
+spaces, which is separate work.
+
+| `sys_lang` | Chooser | Codepage (console, legacy tables) | Bitmap atlases | OS locale |
+|---|---|---|---|---|
+| `brazilian` | Português (Brasil) | Windows-1252 | usable | `pt`, `LANG_PORTUGUESE` |
+| `czech` | Čeština | Windows-1250 | never | `cs`, `LANG_CZECH` |
+| `hungarian` | Magyar | Windows-1250 | never | `hu`, `LANG_HUNGARIAN` |
+| `turkish` | Türkçe | Windows-1254 | never | `tr`, `LANG_TURKISH` |
+| `ukrainian` | Українська | Windows-1251 | never | `uk`, `LANG_UKRAINIAN` |
+
+Each ships `<language>_{code,guis,maps,mappack,openq4}.lang`, translating every
+entry of the English tables, as German does. Like German, campaign dialogue
+is not translated: these languages never had a retail voice pack, so
+`SoundSample_AppendLocalizedVOVariants` falls back to the English voices.
+Character names, multiplayer map names, key names, command tokens and
+technology names keep their original spelling. Every letter is Latin-1, Latin
+Extended-A or Cyrillic, so the universal and Cyrillic pages draw them all.
+The faces do lack a few Latin-1 symbols (`º`, `ª`, superscript digits,
+fractions); the tables avoid them, using `°` for Portuguese ordinals.
+
+Turkish has its own codepage, Windows-1254. It differs from Windows-1252 in
+six letters (G-breve, dotless i, capital dotted I and S-cedilla in both cases)
+and leaves 0x8E/0x9E unassigned. Without it the console's 256 cells would hold
+Icelandic letters where Turkish needs its own. All non-Western codepages now
+go through one lookup, `LangDict_HighTableForCodePage`.
+
+Czech, Hungarian and Turkish join the Cyrillic languages in overriding
+`r_useTrueTypeFonts 0` (see [The legacy bitmap font](#the-legacy-bitmap-font)).
+Their alphabets fit an 8-bit codepage, but the only atlases they can find are
+the English Windows-1252 ones, which would draw wrong letters rather than
+missing ones. Brazilian Portuguese keeps the bitmap path, since every letter it
+uses is in Windows-1252 art.
+`openQ4_NormalizeFontLanguage` also folds `brazilian` onto the English
+artwork, as it does the Western retail languages.
+
+Their keyboards put characters on AltGr: `@`, `/` and `?` on ABNT2, and
+the Ukrainian ghe with upturn. Right Alt therefore binds as `K_RIGHT_ALT` for all
+five, as it does for Polish and the Western retail languages. Typing is still
+limited to code points up to U+00FF (see below). Brazilian Portuguese is fully
+typeable. In the other four, letters outside Latin-1 cannot be entered in chat,
+the console or name fields yet.
+
+The tables were translated from English with a per-language glossary of
+terms, form of address and capitalisation rules. Those rules include
+Turkish's dotted capital İ, Czech and Hungarian sentence case, and Ukrainian
+`’` apostrophes and `«»` quotes. The Portuguese locale `pt` maps to
+`brazilian`; a European Portuguese system gets the closest available
+table rather than English.
+
+`tools/tests/localization_smoke.py` generalises the German smoke. It reads
+the expected labels from the staged tables, so any complete language runs:
+
+```powershell
+python tools/tests/localization_smoke.py --language turkish --mode SP --renderer gl --basepath "E:\SteamLibrary\steamapps\common\Quake 4"
+python tools/tests/localization_smoke.py --language ukrainian --mode MP --renderer vulkan --basepath "E:\SteamLibrary\steamapps\common\Quake 4"
+```
+
+`german_localization_smoke.py` remains as the German case with its original
+evidence folder.
+
 ## What is not covered
 
-- **Text input above ASCII.** `idEditField` and the win32/SDL scan tables are
-  byte-oriented, so typing Cyrillic into the console or a chat box is not wired
-  up. Display is complete; entry is not.
+- **Text input above Latin-1.** `idEditField` and the win32/SDL scan tables are
+  byte-oriented, and the SDL text path drops committed code points above U+00FF.
+  Typing Cyrillic, or the Czech, Hungarian and Turkish letters outside Latin-1,
+  into the console or a chat box is not wired up. Display is complete; entry is
+  not.
 - **Shaping and bidi.** The faces carry Arabic Presentation Forms-B ready for a
   shaper, but there is none, and no bidirectional layout.
 - **Non-BMP code points.** The page directory stops at U+FFFF.

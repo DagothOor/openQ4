@@ -13268,7 +13268,7 @@ windowDef Desktop
 				// compare cvar 'sys_lang', store as gui variable 'curr_lang' and compare
 				// against languages. returns index value 0 for English, 1 Spanish, onward.
 				
-				set "cmd" "CVarStrcmp sys_lang curr_lang English Spanish French Italian Polish Russian German" ;
+				set "cmd" "CVarStrcmp sys_lang curr_lang English Spanish French Italian Polish Russian German Brazilian Czech Hungarian Turkish Ukrainian" ;
 				
 				
 				if ("desktop::dest" == 4 || "desktop::dest" == 21 || "desktop::dest" == 22 || "desktop::dest" == 36 || "desktop::curr" == 16 || "desktop::curr" == 14 ) {

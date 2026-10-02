@@ -4536,6 +4536,13 @@ static const char *Common_MapLocaleLanguageCode( const char *languageCode ) {
 		{ "ja", "japanese" },
 		{ "jp", "japanese" },
 		{ "zh", "chinese" },
+		// Portuguese has one table, written for Brazil; it is still the closest
+		// match for a European Portuguese locale.
+		{ "pt", "brazilian" },
+		{ "cs", "czech" },
+		{ "hu", "hungarian" },
+		{ "tr", "turkish" },
+		{ "uk", "ukrainian" },
 		{ NULL, NULL }
 	};
 
@@ -4618,6 +4625,11 @@ static const char *Common_MapWindowsPrimaryLanguage( WORD primaryLanguage ) {
 		case LANG_KOREAN: return "korean";
 		case LANG_JAPANESE: return "japanese";
 		case LANG_CHINESE: return "chinese";
+		case LANG_PORTUGUESE: return "brazilian";
+		case LANG_CZECH: return "czech";
+		case LANG_HUNGARIAN: return "hungarian";
+		case LANG_TURKISH: return "turkish";
+		case LANG_UKRAINIAN: return "ukrainian";
 		default: return NULL;
 	}
 }
@@ -5623,6 +5635,8 @@ static int Common_CountVisibleSmallChars( const char *string ) {
 		return 0;
 	}
 
+	// Characters, not bytes: the string is UTF-8, and one cell draws one
+	// character whatever its encoded length.
 	int count = 0;
 	const unsigned char *s = reinterpret_cast<const unsigned char *>( string );
 	while ( *s ) {
@@ -5631,10 +5645,31 @@ static int Common_CountVisibleSmallChars( const char *string ) {
 			s += colorEscapeLength;
 			continue;
 		}
+		unsigned int codePoint = 0;
 		count++;
-		s++;
+		s += Max( 1, LangDict_NextCodePoint( reinterpret_cast<const char *>( s ), UTF8_MAX_BYTES, codePoint ) );
 	}
 	return count;
+}
+
+/*
+=================
+Common_SmallCharCellForCodePoint
+
+The splash text is drawn from the console's 'bigchars' sheet, whose 256 cells
+are the active codepage rather than Latin-1 (see Con_ConsoleCellForCodePoint),
+so a code point is mapped onto the cell that draws it. Punctuation the
+codepage lacks folds to ASCII; anything else draws as a question mark rather
+than a wrong letter.
+=================
+*/
+static int Common_SmallCharCellForCodePoint( unsigned int codePoint ) {
+	unsigned char cell = 0;
+	if ( LangDict_ByteForCodePoint( codePoint, cell ) ) {
+		return cell;
+	}
+	const char *fold = LangDict_AsciiFoldForCodePoint( codePoint );
+	return ( fold != NULL && fold[0] != '\0' ) ? (unsigned char)fold[0] : '?';
 }
 
 static void Common_DrawScaledSmallString( float x, float y, float charWidth, float charHeight,
@@ -5666,7 +5701,11 @@ static void Common_DrawScaledSmallString( float x, float y, float charWidth, flo
 			continue;
 		}
 
-		const int ch = *s & 255;
+		// Localized splash text is UTF-8; read whole characters, or a
+		// multi-byte letter would draw as two unrelated cells.
+		unsigned int codePoint = 0;
+		const int codePointBytes = Max( 1, LangDict_NextCodePoint( reinterpret_cast<const char *>( s ), UTF8_MAX_BYTES, codePoint ) );
+		const int ch = Common_SmallCharCellForCodePoint( codePoint );
 		if ( ch != ' ' ) {
 			const int row = ch >> 4;
 			const int col = ch & 15;
@@ -5678,7 +5717,7 @@ static void Common_DrawScaledSmallString( float x, float y, float charWidth, flo
 		}
 
 		xx += charWidth;
-		s++;
+		s += codePointBytes;
 	}
 
 	renderSystem->SetColor( idVec4( 1.0f, 1.0f, 1.0f, 1.0f ) );
