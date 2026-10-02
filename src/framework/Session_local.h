@@ -254,6 +254,19 @@ public:
 	void				PublishRetainedLoadingTip( bool first );
 	// The multiplayer arsenal: the index'th kind of item to spawn, by its icon.
 	void				PublishRetainedLoadingIcon( int index, const char *icon );
+	// The loading server card's players (section 14.17): those known as a
+	// multiplayer load starts, noted by the async server and client before
+	// the map loads and published by team with the card.
+	void				ClearRetainedLoadingRoster();
+	void				NoteRetainedLoadingPlayer( const idDict &userInfo );
+	void				NoteRetainedLoadingConnecting( int count );
+	void				PublishRetainedLoadingServer( const idDict &serverInfo );
+	static const int	RETAINED_ROSTER_SLOTS = 32;
+	idStr				retainedRosterName[ RETAINED_ROSTER_SLOTS ];
+	int					retainedRosterTeam[ RETAINED_ROSTER_SLOTS ];	// 0 Marine, 1 Strogg, -1 spectating
+	int					retainedRosterCount;
+	int					retainedRosterConnecting;
+	bool				retainedRosterKnown;
 	// The Single Player page and Campaign sub-page change (spec 1.10).
 	void				BeginRetainedSubpage( idUserInterface *gui, bool deeper );
 	void				UpdateRetainedSubpage();

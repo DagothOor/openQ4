@@ -2357,6 +2357,12 @@ def corner_bracket(ident: str, left_u: float, top_u: float, flip_x: bool, flip_y
 
 # The multiplayer arsenal's kinds of item (RETAINED_ARSENAL_ICONS in Session.cpp).
 ARSENAL_ICONS = 20
+# The loading server card's roster rows (RETAINED_ROSTER_ROWS in Session.cpp):
+# six names per list and a "+N more" line.
+SERVER_ROSTER_ROWS = 7
+SERVER_ROSTER_HEAD, SERVER_ROSTER_PITCH = 20.0, 16.0
+# The multiplayer palette (section 4): teams, spectators, notices and headers.
+MP_MARINE, MP_STROGG, MP_SPECTATOR, MP_NOTICE, MP_HEADING = "#6AA42B", "#FF7B04", "#999999", "#FFFF8D", "#8B964B"
 # Single player tips: Lowpixel 14 dp, two lines at most, from the band's riser
 # to the bar (216-384 u); ui_retained_gate.py checks every tip in every
 # language fits.
@@ -2405,6 +2411,14 @@ def loading_document() -> dict:
         "loading_controller": {"type": "boolean", "initial": False},
         "loading_tip_a": {"type": "string", "initial": ""},
         "loading_tip_b": {"type": "string", "initial": ""},
+        "server_message": {"type": "string", "initial": ""},
+        "server_team_mode": {"type": "boolean", "initial": False},
+        "server_roster_known": {"type": "boolean", "initial": False},
+        "server_roster_rows": {"type": "number", "initial": 0},
+        "server_team_a": {"type": "string", "initial": ""},
+        "server_team_b": {"type": "string", "initial": ""},
+        "server_players": {"type": "string", "initial": ""},
+        "server_roster_extra": {"type": "string", "initial": ""},
         **{f"load_icon_{index}": {"type": "number", "initial": 0} for index in range(1, ARSENAL_ICONS + 1)},
         **{f"load_icon_src_{index}": {"type": "string", "initial": ""} for index in range(1, ARSENAL_ICONS + 1)},
         **{f"load_icon_{channel}_{index}": {"type": "number", "initial": 1}
@@ -2491,19 +2505,48 @@ def loading_document() -> dict:
 
     # Remastered multiplayer (section 14.17): the bottom band stays low and a
     # section 6 card on the leading side, above the band's thin part, holds
-    # the server's name in its header, then its address, mode and limits.
-    cw, ch, major, minor, header = U * 250, U * 80, 12.0, 3.0, 40.0
-    outline = [(minor, 0), (cw - major, 0), (cw, major), (cw, ch - minor), (cw - minor, ch), (major, ch), (0, ch - major), (0, minor)]
+    # the server's name in its header, then its address in Profont, the mode,
+    # the limits, the players by team (or the players, outside team modes)
+    # over a line of spectators and players still connecting, and the
+    # server's message (si_motd) in the notices color. The card stands on
+    # 384 u, clear of the lower corner bracket (388-412 u): its parts flow,
+    # so it grows upward with what the session publishes and the message
+    # wraps to at most three lines.
+    cw, major, minor, header = U * 250, 12.0, 3.0, 40.0
+    foot = lambda dp: {"fraction": 1, "dp": round(-dp, 3)}
+    outline = [(minor, 0), (cw - major, 0), (cw, major), (cw, foot(minor)), (cw - minor, foot(0)), (major, foot(0)), (0, foot(major)),
+               (0, minor)]
 
-    def card_line(ident: str, top: float, tint: list) -> dict:
-        return label(ident, "#str_230030", {**absolute(left=15, top=top, width=cw - 30, height=20),
-                                            **typeface("lowpixel", 17, 20, tint), "white-space": keyword("nowrap")})
+    def flow(props: dict) -> dict:
+        return {"position": keyword("relative"), "display": keyword("block"), **props}
 
-    # It ends at 384 u, clear of the lower corner bracket (388-412 u).
-    server = group("server", {"display": keyword("block"), **absolute(top=U * 304, width=CANVAS_W, height=ch), "left": length(50, "%"),
-                              "margin-left": length(-CANVAS_W / 2)}, [
-        group("server-card", absolute(left=U * 18, top=0, width=cw, height=ch), [
-            vector("server-frame", absolute(left=0, top=0, width=cw, height=ch), [
+    def card_line(ident: str, tint: list, face: str = "lowpixel", size: float = 17, top: float = 0) -> dict:
+        return label(ident, "#str_230030", flow({"margin-left": length(15), "margin-top": length(top), "width": length(cw - 30),
+                                                 "height": length(20), **typeface(face, size, 20, tint), "white-space": keyword("nowrap")}))
+
+    half = (cw - 30 - 12) / 2
+    rows = {"op": "clamp", "args": [{"state": "server_roster_rows"}, 0, SERVER_ROSTER_ROWS]}
+    named = {"op": ">", "args": [rows, 0]}
+    extra_shown = {"op": "!=", "args": [{"state": "server_roster_extra"}, ""]}
+    roster_shown = {"op": "&&", "args": [{"state": "server_roster_known"}, {"op": "||", "args": [named, extra_shown]}]}
+    # Inside the roster: the list heads, the names from 22 dp on a 16 dp pitch,
+    # then the spectators and connecting line.
+    names_top = {"op": "select", "args": [named, SERVER_ROSTER_HEAD + 2, 4]}
+    extra_top = {"op": "+", "args": [names_top, {"op": "*", "args": [rows, SERVER_ROSTER_PITCH]}]}
+    roster_h = {"op": "+", "args": [extra_top, {"op": "select", "args": [extra_shown, SERVER_ROSTER_PITCH, 0]}]}
+
+    def roster_column(ident: str, key: str, left: float, width: float, tint: list) -> list:
+        return [label(f"{ident}-head", key, {**absolute(left=left, top=4, width=width, height=SERVER_ROSTER_HEAD - 4),
+                                            **typeface("lowpixel", 13, SERVER_ROSTER_HEAD - 4, tint), "white-space": keyword("nowrap")}),
+                label(ident, "#str_230030", {**absolute(left=left, top=SERVER_ROSTER_HEAD + 2, width=width,
+                                                        height=SERVER_ROSTER_PITCH * SERVER_ROSTER_ROWS),
+                                             **typeface("lowpixel", 14, SERVER_ROSTER_PITCH, [1, 1, 1, 0.8]), "white-space": keyword("pre"),
+                                             "overflow": keyword("hidden")})]
+    server = group("server", {"display": keyword("block"), **absolute(top=0, width=CANVAS_W, height=720), "left": length(50, "%"),
+                              "margin-left": length(-CANVAS_W / 2), "pointer-events": keyword("none")}, [
+        group("server-card", {**absolute(left=U * 18, bottom=720 - U * 384, width=cw), "height": keyword("auto"),
+                              "padding-bottom": length(12)}, [
+            vector("server-frame", {**absolute(left=0, top=0, width=cw), "height": length(100, "%")}, [
                 path("body", outline, fill=solid([0, 0, 0, 0.94])),
                 path("wash", [(minor, 0.75), (cw - major, 0.75), (cw - major + header * 0.3, header), (0.75, header), (0.75, minor)],
                      fill=linear((0, 0), (cw, 0), [(0, [1, 1, 1, 0.08]), (0.5, [1, 1, 1, 0.08]), (1, [1, 1, 1, 0])])),
@@ -2511,17 +2554,44 @@ def loading_document() -> dict:
                 path("rail", outline, stroke=stroke(solid(rgb(RAIL_CARD)), 1.5)),
                 marker_path("mark", 14, 16, 8, rgb(MARKER)),
             ]),
-            label("server-name", "#str_230030", {**absolute(left=30, top=0, width=cw - 45, height=header),
-                  **typeface("marine", 14, header, [1, 1, 1, 0.9]), "white-space": keyword("nowrap")}),
-            card_line("server-address", header + 8, [1, 1, 1, 0.62]),
-            card_line("server-mode", header + 28, [1, 1, 1, 0.8]),
-            card_line("server-rules", header + 48, [1, 1, 1, 0.62]),
+            label("server-name", "#str_230030", flow({"margin-left": length(30), "width": length(cw - 45), "height": length(header),
+                  **typeface("marine", 14, header, [1, 1, 1, 0.9]), "white-space": keyword("nowrap")})),
+            # Tabular detail (section 5): Profont 13 dp.
+            card_line("server-address", [1, 1, 1, 0.62], face="profont", size=13, top=8),
+            card_line("server-mode", [1, 1, 1, 0.8]),
+            card_line("server-rules", [1, 1, 1, 0.62]),
+            group("server-roster", flow({"width": length(cw), "height": length(0), "display": keyword("none")}), [
+                group("server-teams", {**absolute(left=0, top=0, width=cw), "height": length(100, "%"), "display": keyword("none")}, [
+                    *roster_column("server-team-a", "#str_200197", 15, half, rgb(MP_MARINE)),
+                    *roster_column("server-team-b", "#str_200199", 15 + half + 12, half, rgb(MP_STROGG)),
+                ]),
+                group("server-all", {**absolute(left=0, top=0, width=cw), "height": length(100, "%"), "display": keyword("none")},
+                      roster_column("server-players", "#str_200038", 15, cw - 30, rgb(MP_HEADING))),
+                label("server-roster-extra", "#str_230030", {**absolute(left=15, top=4, width=cw - 30, height=SERVER_ROSTER_PITCH),
+                      **typeface("lowpixel", 13, SERVER_ROSTER_PITCH, rgb(MP_SPECTATOR)), "white-space": keyword("nowrap")}),
+            ]),
+            label("server-message", "#str_230030", flow({"margin-left": length(15), "margin-top": length(6), "width": length(cw - 30),
+                  "max-height": length(60), "overflow": keyword("hidden"), **typeface("lowpixel", 16, 20, rgb(MP_NOTICE)),
+                  "white-space": keyword("pre-line"), "display": keyword("none")})),
         ]),
     ])
     doc.bind("server-name.text", "server-name", "text", {"state": "server_name"})
     doc.bind("server-address.text", "server-address", "text", {"state": "server_ip"})
     doc.bind("server-mode.text", "server-mode", "text", {"state": "server_gametype"})
     doc.bind("server-rules.text", "server-rules", "text", {"state": "server_limit"})
+    doc.bind("server-roster.display", "server-roster", "display", {"op": "select", "args": [roster_shown, "block", "none"]})
+    doc.bind("server-roster.height", "server-roster", "height", roster_h)
+    doc.bind("server-teams.display", "server-teams", "display", {"op": "select", "args": [
+        {"op": "&&", "args": [named, {"state": "server_team_mode"}]}, "block", "none"]})
+    doc.bind("server-all.display", "server-all", "display", {"op": "select", "args": [
+        {"op": "&&", "args": [named, {"op": "!", "args": [{"state": "server_team_mode"}]}]}, "block", "none"]})
+    for column, key in (("server-team-a", "server_team_a"), ("server-team-b", "server_team_b"), ("server-players", "server_players")):
+        doc.bind(f"{column}.text", column, "text", {"state": key})
+    doc.bind("server-roster-extra.text", "server-roster-extra", "text", {"state": "server_roster_extra"})
+    doc.bind("server-roster-extra.top", "server-roster-extra", "top", extra_top)
+    doc.bind("server-message.text", "server-message", "text", {"state": "server_message"})
+    doc.bind("server-message.display", "server-message", "display", {"op": "select", "args": [
+        {"op": "!=", "args": [{"state": "server_message"}, ""]}, "block", "none"]})
     doc.bind("server.display", "server", "display", {"op": "select", "args": [{"state": "loading_mp"}, "block", "none"]})
 
     # Remastered progress (section 14.17): the thick part of the bottom band

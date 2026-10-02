@@ -1107,4 +1107,7 @@
 	"#str_230067"	"Los vehículos se reparan tras seis segundos sin fuego."
 	"#str_230068"	"Pulsa disparar para cortar la recarga de la escopeta."
 	"#str_230069"	"Salta para bajar de un vehículo."
+	"#str_230070"	"+%d más"
+	"#str_230071"	"Conectando: %d"
+	"#str_230072"	"Espectadores: %d"
 }

@@ -132,6 +132,23 @@ SCENARIOS = {
         'openq4_retainedGui state load_icon_src_3 gfx/guis/hud/icons/item_health', 'openq4_retainedGui state load_icon_r_3 0',
         'openq4_retainedGui state load_icon_g_3 0.5', 'openq4_retainedGui state load_icon_3 1', 'openq4_retainedGui event arsenal3',
         'waitMsec 400', 'screenshot "screenshots/loading-mp-arsenal.tga"',
+        # The card's players by team over a spectators and connecting line, and
+        # the server's message in the notices color, wrapped to three lines, as
+        # the session publishes them; the card grows upward from its foot.
+        # `lines` joins its arguments with line breaks.
+        'openq4_retainedGui pending server_team_mode 1', 'openq4_retainedGui pending server_roster_known 1',
+        'openq4_retainedGui pending server_roster_rows 4', 'openq4_retainedGui lines server_team_a Kane Rhodes Strauss Cortez',
+        'openq4_retainedGui lines server_team_b Makron Gladiator "Iron Maiden"',
+        'openq4_retainedGui pending server_roster_extra "Spectating: 1 \u00b7 Connecting: 2"',
+        'openq4_retainedGui pending server_gametype "Team Deathmatch"', 'openq4_retainedGui pending loading_detail "Team Deathmatch"',
+        'openq4_retainedGui state server_message "Welcome to the openQ4 test server. Teams are balanced every map. Be excellent to each other."',
+        'waitMsec 300', 'screenshot "screenshots/loading-mp-roster.tga"',
+        # Outside team modes one list holds everyone, six names and "+N more".
+        'openq4_retainedGui pending server_team_mode 0', 'openq4_retainedGui pending server_roster_rows 7',
+        'openq4_retainedGui lines server_players Kane Rhodes Strauss Cortez Sledge Bidwell "+3 more"',
+        'openq4_retainedGui pending server_roster_extra "Spectating: 2"', 'openq4_retainedGui pending server_gametype Deathmatch',
+        'openq4_retainedGui pending loading_detail Deathmatch', 'openq4_retainedGui state server_message "Frag limit 30. No camping."',
+        'waitMsec 300', 'screenshot "screenshots/loading-mp-players.tga"',
         'testGUI', 'waitMsec 300',
     ]),
     # A title document that cannot load: the stock title presents.

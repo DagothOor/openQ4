@@ -73,7 +73,9 @@ struct ScreenHost final : Host {
 	void MaskLayer(std::uint32_t, std::uint32_t destination, const Bounds&) override { activeLayer = destination; }
 	void EndLayer(std::uint32_t restore) override { activeLayer = restore; }
 	FontMetrics GetFontMetrics(const std::string&, int size) override { return {size*.8f,size*.2f,size*1.2f,size*.5f}; }
-	Glyph GetGlyph(const std::string&, int size, std::uint32_t) override {
+	std::set<std::uint32_t> glyphs;   // every code point the runtime asked to draw or measure
+	Glyph GetGlyph(const std::string&, int size, std::uint32_t codepoint) override {
+		glyphs.insert(codepoint);
 		return {size*.6f,0,-size*.8f,size*.6f,static_cast<float>(size),0,0,1,1,"test-font"};
 	}
 };
@@ -939,6 +941,64 @@ int main(int argc, char** argv) {
 		Check(runtime.GetBounds("server-card",cardBox) && Near(cardBox.x,160+27) && cardBox.y+cardBox.height <= 582,
 			"the card stands on the leading side above the bracket and the band");
 		Check(runtime.GetBounds("progress-prompt-text",labelMp) && Near(labelSp.y,labelMp.y),"the band and the bar stay low");
+		// The card stands on 384 u (576 dp) and grows upward with what the
+		// session publishes: the players by team under their heads on a 16 dp
+		// pitch, a spectators line, then the server's message, wrapped and
+		// clipped at three 20 dp lines (the test face advances 0.6 em).
+		const auto noRoster = runtime.PresentedValue("server-roster","display");
+		const auto noMessage = runtime.PresentedValue("server-message","display");
+		Check(Near(cardBox.y+cardBox.height,576) && Near(cardBox.height,120) && noRoster && noRoster->text == "none" &&
+			noMessage && noMessage->text == "none","with no players known and no message the card keeps its base height");
+		const auto profont = runtime.PresentedValue("server-address","font-family");
+		Check(profont && profont->text == "profont","the address is tabular detail in Profont");
+		Check(runtime.SetState({{"server_roster_known",true},{"server_team_mode",true},{"server_roster_rows",3.0},
+			{"server_team_a",std::string("Kane\nRhodes\nStrauss")},{"server_team_b",std::string("Makron\nGladiator")},
+			{"server_roster_extra",std::string("Spectating: 1")}},error,3.1),"three marines, two strogg and a spectator");
+		runtime.Frame(viewport,3.1);
+		Bounds headA, headB, teamA, extraLine;
+		const auto byTeam = runtime.PresentedValue("server-teams","display");
+		const auto everyone = runtime.PresentedValue("server-all","display");
+		Check(byTeam && byTeam->text == "block" && everyone && everyone->text == "none","a team mode lists the players by team");
+		Check(!host.glyphs.count('\n'),"a list's line breaks draw no glyph");
+		Check(runtime.GetBounds("server-card",cardBox) && Near(cardBox.y+cardBox.height,576) && Near(cardBox.height,120+22+3*16+16),
+			"the card grows upward by the heads, three rows and the spectators line");
+		Check(runtime.GetBounds("server-team-a-head",headA) && runtime.GetBounds("server-team-b-head",headB) &&
+			runtime.GetBounds("server-team-a",teamA) && runtime.GetBounds("server-roster-extra",extraLine) &&
+			Near(headA.y,cardBox.y+108+4) && Near(headA.x,160+27+15) && Near(headB.x,160+27+15+(375-42)/2.f+12) && Near(headB.y,headA.y) &&
+			Near(teamA.y,cardBox.y+108+22) && Near(extraLine.y,cardBox.y+108+22+3*16),
+			"the lists stand side by side under their heads, the spectators line beneath them");
+		const auto marineHead = runtime.PresentedValue("server-team-a-head","color");
+		const auto stroggHead = runtime.PresentedValue("server-team-b-head","color");
+		Check(marineHead && Near(static_cast<float>(marineHead->data[0]),0x6a/255.f,.002f) && stroggHead &&
+			Near(static_cast<float>(stroggHead->data[0]),1,.002f),"the heads read in the team colors");
+		Check(runtime.SetState({{"server_message",std::string("Welcome to the openQ4 test server")}},error,3.2),"a one-line message");
+		runtime.Frame(viewport,3.2);
+		Bounds message;
+		Check(runtime.GetBounds("server-card",cardBox) && runtime.GetBounds("server-message",message) && Near(message.height,20) &&
+			Near(cardBox.height,120+86+6+20) && Near(cardBox.y+cardBox.height,576) && Near(message.y,cardBox.y+108+86+6),
+			"the message takes a line under the roster");
+		Check(runtime.SetState({{"server_message",std::string("Frag limit 30 and no camping near the rail. Teams are balanced every map. "
+			"Vote kicks need a majority. Be excellent to each other and have fun out there.")}},error,3.3),"a long message");
+		runtime.Frame(viewport,3.3);
+		Check(runtime.GetBounds("server-card",cardBox) && runtime.GetBounds("server-message",message) && Near(message.height,60) &&
+			Near(cardBox.height,120+86+6+60) && cardBox.y >= 178.5f,"a long message wraps and clips at three lines, the card clear of the top band");
+		Check(runtime.SetState({{"server_team_mode",false},{"server_roster_rows",7.0},
+			{"server_players",std::string("One\nTwo\nThree\nFour\nFive\nSix\n+3 more")},{"server_roster_extra",std::string("")},
+			{"server_message",std::string("")}},error,3.4),"seven rows of free-for-all players");
+		runtime.Frame(viewport,3.4);
+		const auto allShown = runtime.PresentedValue("server-all","display");
+		const auto teamsHidden = runtime.PresentedValue("server-teams","display");
+		Check(allShown && allShown->text == "block" && teamsHidden && teamsHidden->text == "none" && runtime.GetBounds("server-card",cardBox) &&
+			Near(cardBox.height,120+22+7*16),"outside team modes one list holds every player");
+		Check(runtime.SetState({{"server_roster_rows",0.0},{"server_players",std::string("")},
+			{"server_roster_extra",std::string("Connecting: 2")}},error,3.5),"only players still connecting");
+		runtime.Frame(viewport,3.5);
+		const auto allEmpty = runtime.PresentedValue("server-all","display");
+		Check(allEmpty && allEmpty->text == "none" && runtime.GetBounds("server-card",cardBox) && runtime.GetBounds("server-roster-extra",extraLine) &&
+			Near(cardBox.height,120+4+16) && Near(extraLine.y,cardBox.y+108+4),"with no names the line stands alone, without heads");
+		Check(runtime.SetState({{"server_roster_known",false},{"server_roster_extra",std::string("")}},error,3.6),"a fresh connection");
+		runtime.Frame(viewport,3.6);
+		Check(runtime.GetBounds("server-card",cardBox) && Near(cardBox.height,120),"a load that knows no players shows none");
 		// The arsenal: each kind of item fades in over 150 ms in its color code,
 		// two rows of ten in the thick band's leading part.
 		host.materials.clear();

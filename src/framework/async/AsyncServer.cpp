@@ -30,6 +30,7 @@ If you have questions concerning this license or the applicable additional terms
 
 
 #include "AsyncNetwork.h"
+#include "ConnectRoster.h"
 #include "Rcon2Protocol.h"
 
 #include "../Session_local.h"
@@ -340,6 +341,48 @@ void idAsyncServer::Kill( void ) {
 
 /*
 ==================
+AsyncServer_WriteConnectRoster
+
+openQ4: the players in the game, bots included, and how many are still
+connecting, for a joining client's loading screen. The block follows a tag
+and its length after the connect response's server info, where a client that
+does not know it stops reading.
+==================
+*/
+static void AsyncServer_WriteConnectRoster( idBitMsg &msg, const serverClient_t *clients, int joiner ) {
+	idConnectRoster::roster_t roster;
+	memset( &roster, 0, sizeof( roster ) );
+	for ( int i = 0; i < MAX_ASYNC_CLIENTS; i++ ) {
+		if ( i == joiner ) {
+			continue;
+		}
+		if ( clients[ i ].clientState == SCS_INGAME ) {
+			const idDict &info = sessLocal.mapSpawnData.userInfo[ i ];
+			idConnectRoster::entry_t &entry = roster.entries[ roster.count++ ];
+			entry.slot = static_cast<std::uint8_t>( i );
+			entry.flags = ( clients[ i ].channel.GetRemoteAddress().type == NA_BOT ? idConnectRoster::FLAG_BOT : 0 ) |
+				( !idStr::Icmp( info.GetString( "ui_spectate" ), "Spectate" ) ? idConnectRoster::FLAG_SPECTATOR : 0 );
+			entry.team = !idStr::Icmp( info.GetString( "ui_team" ), "Strogg" ) ? 1 : 0;
+			// A name cut inside a character is dropped by the client's sanitizer.
+			idStr::Copynz( entry.name, info.GetString( "ui_name" ), sizeof( entry.name ) );
+		} else if ( clients[ i ].clientState >= SCS_PUREWAIT ) {
+			roster.connecting++;
+		}
+	}
+	byte block[ idConnectRoster::MAX_BYTES ];
+	const int size = static_cast<int>( idConnectRoster::Encode( roster, block, sizeof( block ) ) );
+	if ( size > 0 && msg.GetRemainingSpace() >= size + 6 ) {
+		msg.WriteLong( static_cast<int>( idConnectRoster::TAG ) );
+		msg.WriteShort( size );
+		msg.WriteData( block, size );
+		common->DPrintf( "connect roster: %d players and %d connecting in %d bytes\n", roster.count, roster.connecting, size );
+	} else {
+		common->DPrintf( "connect roster: not sent (%d bytes, %d free)\n", size, msg.GetRemainingSpace() );
+	}
+}
+
+/*
+==================
 idAsyncServer::ExecuteMapChange
 ==================
 */
@@ -440,6 +483,23 @@ void idAsyncServer::ExecuteMapChange( void ) {
 		if ( botClient[i] ) {
 			botClientName[i] = sessLocal.mapSpawnData.userInfo[i].GetString( "ui_name" );
 		}
+	}
+
+	// openQ4: the loading screen's server card lists the players the new map
+	// starts with (bots included), and those still connecting; InitClient
+	// below wipes their user info.
+	sessLocal.ClearRetainedLoadingRoster();
+	int retainedConnecting = 0;
+	for ( i = 0; i < MAX_ASYNC_CLIENTS; i++ ) {
+		if ( i == localClientNum || clients[i].clientState == SCS_INGAME ) {
+			sessLocal.NoteRetainedLoadingPlayer( sessLocal.mapSpawnData.userInfo[i] );
+		} else if ( clients[i].clientState >= SCS_PUREWAIT ) {
+			retainedConnecting++;
+		}
+	}
+	sessLocal.NoteRetainedLoadingConnecting( retainedConnecting );
+	if ( strlen( sessLocal.mapSpawnData.serverInfo.GetString( "si_motd" ) ) > 256 ) {
+		common->Warning( "si_motd is longer than 256 bytes; the loading screen shows the first 256" );
 	}
 
 	// re-initialize all connected clients for the new map
@@ -2440,6 +2500,7 @@ void idAsyncServer::ProcessConnectMessage( const netadr_t from, const idBitMsg &
 	outMsg.WriteLong( gameFrame );
 	outMsg.WriteLong( gameTime );
 	outMsg.WriteDeltaDict( sessLocal.mapSpawnData.serverInfo, NULL );
+	AsyncServer_WriteConnectRoster( outMsg, clients, clientNum );
 
 	serverPort.SendPacket( from, outMsg.GetData(), outMsg.GetSize() );
 	

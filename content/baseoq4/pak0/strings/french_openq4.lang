@@ -1107,4 +1107,7 @@
 	"#str_230067"	"Les véhicules se réparent après six secondes au calme."
 	"#str_230068"	"Appuyez sur Tir pour couper le rechargement du fusil à pompe."
 	"#str_230069"	"Sautez pour quitter un véhicule."
+	"#str_230070"	"+%d de plus"
+	"#str_230071"	"Connexions : %d"
+	"#str_230072"	"Spectateurs : %d"
 }

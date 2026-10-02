@@ -612,22 +612,26 @@ Driven off the gametype flags rather than a hard-coded list, so a round or
 objective mode no longer advertises an irrelevant frag limit.
 ================
 */
-static void MPResolveMatchLimit( const char *&limitLabel, int &limitValue ) {
+void MPResolveMatchLimitFor( const idDict &serverInfo, int gameType, const char *&limitLabel, int &limitValue ) {
 	limitLabel = common->GetLocalizedString( "#str_107660" );
-	limitValue = gameLocal.serverInfo.GetInt( "si_fragLimit" );
-	if ( gameLocal.IsFlagGameType() ) {
+	limitValue = serverInfo.GetInt( "si_fragLimit" );
+	if ( MPGameTypeHasAny( gameType, GTF_FLAG ) ) {
 		limitLabel = common->GetLocalizedString( "#str_107661" );
-		limitValue = gameLocal.serverInfo.GetInt( "si_captureLimit" );
-	} else if ( gameLocal.gameType == GAME_DEADZONE ) {
+		limitValue = serverInfo.GetInt( "si_captureLimit" );
+	} else if ( gameType == GAME_DEADZONE ) {
 		limitLabel = common->GetLocalizedString( "#str_122008" );
-		limitValue = gameLocal.serverInfo.GetInt( "si_controlTime" );
-	} else if ( MPGameTypeHasAny( gameLocal.gameType, GTF_ROUNDLIMIT ) ) {
+		limitValue = serverInfo.GetInt( "si_controlTime" );
+	} else if ( MPGameTypeHasAny( gameType, GTF_ROUNDLIMIT ) ) {
 		limitLabel = common->GetLocalizedString( "#str_41404" );
-		limitValue = gameLocal.serverInfo.GetInt( "si_roundLimit" );
-	} else if ( MPGameTypeHasAny( gameLocal.gameType, GTF_SCORELIMIT ) ) {
+		limitValue = serverInfo.GetInt( "si_roundLimit" );
+	} else if ( MPGameTypeHasAny( gameType, GTF_SCORELIMIT ) ) {
 		limitLabel = common->GetLocalizedString( "#str_41403" );
-		limitValue = gameLocal.serverInfo.GetInt( "si_scoreLimit" );
+		limitValue = serverInfo.GetInt( "si_scoreLimit" );
 	}
+}
+
+static void MPResolveMatchLimit( const char *&limitLabel, int &limitValue ) {
+	MPResolveMatchLimitFor( gameLocal.serverInfo, gameLocal.gameType, limitLabel, limitValue );
 }
 
 static bool ResolveMatchControlParticipantText( void *callbackContext,

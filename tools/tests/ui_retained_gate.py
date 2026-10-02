@@ -762,7 +762,7 @@ FACES = r'''
 
 FACES_MAIN = r'''
 int main() {
-    for (const char* family : {"marine", "lowpixel", "r_strogg", "strogg", "chain", "Marine", "unknown"})
+    for (const char* family : {"marine", "lowpixel", "profont", "r_strogg", "strogg", "chain", "Marine", "unknown"})
         std::printf("family %s %s\n", family, FontFamily(family).c_str());
     unsigned scalar = 0;
     while (std::cin >> scalar) std::printf("%u %u\n", scalar, static_cast<unsigned>(RuneScalar(scalar)));
@@ -790,7 +790,7 @@ def check_strogg_faces(compiler: str, directory: Path) -> int:
     result = subprocess.run([str(binary)], input='\n'.join(map(str, scalars)), capture_output=True, text=True, timeout=60, check=True)
     lines = result.stdout.splitlines()
     families = dict(line.split()[1:] for line in lines if line.startswith('family '))
-    assert families == {'marine': 'marine', 'lowpixel': 'lowpixel', 'r_strogg': 'r_strogg', 'strogg': 'strogg',
+    assert families == {'marine': 'marine', 'lowpixel': 'lowpixel', 'profont': 'profont', 'r_strogg': 'r_strogg', 'strogg': 'strogg',
                         'chain': 'chain', 'Marine': 'chain', 'unknown': 'chain'}, families
     runes = font_code_points(ROOT / 'content/baseoq4/pak0/fonts/strogg.ttf')
     folded = dict(tuple(map(int, line.split())) for line in lines if not line.startswith('family '))
@@ -801,6 +801,317 @@ def check_strogg_faces(compiler: str, directory: Path) -> int:
     for blank in (0x21, 0x2019, 0x2026, 0x300, 0x3000):
         assert folded[blank] == 0x20, f'punctuation U+{blank:04X} must be blank in the runes'
     return len(scalars)
+
+
+CARD = r"""
+#include <cctype>
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <map>
+#include <string>
+#include <vector>
+static int checks = 0;
+#define CHECK(x) do { ++checks; if (!(x)) { std::fprintf(stderr, "check failed line %d: %s\n", __LINE__, #x); std::abort(); } } while (false)
+#define BIT(n) (1 << (n))
+#define S_ESCAPE_UNKNOWN BIT(0)
+#define S_ESCAPE_COLOR BIT(1)
+#define S_ESCAPE_COLORINDEX BIT(2)
+#define S_ESCAPE_ICON BIT(3)
+#define S_ESCAPE_COMMAND BIT(4)
+#define S_ESCAPE_ALL ( S_ESCAPE_COLOR | S_ESCAPE_COLORINDEX | S_ESCAPE_ICON | S_ESCAPE_COMMAND )
+const int C_COLOR_ESCAPE = '^';
+class idStr {
+public:
+    std::string s;
+    idStr() = default;
+    idStr(const char* text) : s(text ? text : "") {}
+    int Length() const { return static_cast<int>(s.size()); }
+    const char* c_str() const { return s.c_str(); }
+    char operator[](int i) const { return i >= 0 && i < Length() ? s[i] : '\0'; }
+    idStr& operator+=(char c) { s += c; return *this; }
+    idStr& operator+=(const char* text) { s += text; return *this; }
+    idStr& operator+=(const idStr& text) { s += text.s; return *this; }
+    void Append(const char* text, int length) { s.append(text, length); }
+    void CapLength(int length) { if (length < Length()) s.resize(length); }
+    void Insert(char c, int index) { s.insert(s.begin() + index, c); }
+    static int IsEscape(const char* s, int* type = nullptr);
+    static char* RemoveEscapes(char* string, int escapes = S_ESCAPE_ALL);
+    // As Str.h: the static form over the buffer, then the length again.
+    idStr& RemoveEscapes(int escapes = S_ESCAPE_ALL) {
+        std::vector<char> buffer(s.begin(), s.end()); buffer.push_back('\0');
+        RemoveEscapes(buffer.data(), escapes); s = buffer.data(); return *this;
+    }
+    static int Icmpn(const char* a, const char* b, int n) {
+        for (int i = 0; i < n; ++i) {
+            const int x = std::tolower(static_cast<unsigned char>(a[i])), y = std::tolower(static_cast<unsigned char>(b[i]));
+            if (x != y) return x - y;
+            if (!x) return 0;
+        }
+        return 0;
+    }
+    static int Icmp(const char* a, const char* b) { return Icmpn(a, b, 1 << 30); }
+};
+struct idDict {
+    std::map<std::string, std::string> values;
+    void Set(const char* key, const char* value) { values[key] = value; }
+    const char* GetString(const char* key, const char* fallback = "") const {
+        const auto found = values.find(key); return found == values.end() ? fallback : found->second.c_str();
+    }
+};
+struct idUserInterface {
+    std::map<std::string, std::string> state; int changes = 0;
+    void SetStateString(const char* key, const char* value) { state[key] = value; }
+    void SetStateBool(const char* key, bool value) { state[key] = value ? "1" : "0"; }
+    void SetStateInt(const char* key, int value) { state[key] = std::to_string(value); }
+    struct View {
+        const std::map<std::string, std::string>& values;
+        bool GetBool(const char* key) const { const auto found = values.find(key); return found != values.end() && std::atoi(found->second.c_str()) != 0; }
+    };
+    View State() const { return {state}; }
+    void StateChanged(int) { ++changes; }
+};
+// The game module: game_mp answers the verb from the server info it is given.
+struct Game {
+    bool answers = true; std::vector<std::string> verbs;
+    void HandleMainMenuCommands(const char* verb, idUserInterface* gui) {
+        verbs.push_back(verb);
+        if (!answers || std::strcmp(verb, "retainedLoadingServer")) return;
+        const std::string mode = gui->state["query_si_gameType"];
+        const bool teams = mode == "Team DM" || mode == "CTF";
+        gui->SetStateString("server_gametype", teams ? "Team Deathmatch" : "Deathmatch");
+        gui->SetStateString("server_limit", ("Frag Limit " + gui->state["query_si_fragLimit"]).c_str());
+        gui->SetStateBool("server_team_mode", teams);
+        gui->SetStateBool("server_answered", true);
+    }
+} gameObject, *game = &gameObject;
+struct LangDict {
+    const char* GetString(const char* key) const {
+        static const std::map<std::string, std::string> table = {
+            {"#str_230070", "+%d more"}, {"#str_230071", "Connecting: %d"}, {"#str_230072", "Spectating: %d"}};
+        const auto found = table.find(key); return found == table.end() ? key : found->second.c_str();
+    }
+} languageObject;
+struct Common {
+    std::string output;
+    const LangDict* GetLanguageDict() { return &languageObject; }
+    int GetPresentationTime() { return 0; }
+    void Printf(const char* fmt, ...) { char text[1024]; va_list args; va_start(args, fmt); std::vsnprintf(text, sizeof(text), fmt, args); va_end(args); output += text; }
+} commonObject, *common = &commonObject;
+struct CVarSystem { bool GetCVarBool(const char*) { return true; } } cvarSystemObject, *cvarSystem = &cvarSystemObject;
+// idlib's va: four rotating buffers, so one call may nest another.
+static const char* va(const char* fmt, ...) {
+    static char buffers[4][1024]; static int index = 0; char* text = buffers[index++ & 3];
+    va_list args; va_start(args, fmt); std::vsnprintf(text, 1024, fmt, args); va_end(args); return text;
+}
+class idSessionLocal {
+public:
+    idUserInterface* guiLoading = nullptr;
+    static const int RETAINED_ROSTER_SLOTS = @SLOTS@;
+    idStr retainedRosterName[RETAINED_ROSTER_SLOTS];
+    int retainedRosterTeam[RETAINED_ROSTER_SLOTS] = {};
+    int retainedRosterCount = 0, retainedRosterConnecting = 0;
+    bool retainedRosterKnown = false;
+    void ClearRetainedLoadingRoster(); void NoteRetainedLoadingPlayer(const idDict&); void NoteRetainedLoadingConnecting(int);
+    void PublishRetainedLoadingServer(const idDict&);
+};
+"""
+
+CARD_MAIN = r"""
+static idDict Player(const char* name, const char* team = "Marine", const char* spectate = "Play") {
+    idDict info; info.Set("ui_name", name); info.Set("ui_team", team); info.Set("ui_spectate", spectate); return info;
+}
+static std::string Clean(const char* text, int bytes = 256, int lines = 3) { return Session_RetainedPlayerText(text, bytes, lines).s; }
+int main() {
+    // The sanitizer: Quake 4's own escape grammar, then lines, bytes and UTF-8.
+    CHECK(Clean("^1Red^7Name") == "RedName");
+    CHECK(Clean("^c683Marine^iabcX^nqY^r") == "MarineXY");
+    CHECK(Clean("100^^ fun") == "100^ fun");
+    CHECK(Clean("One\nTwo\nThree\nFour", 256, 3) == "One\nTwo\nThree Four");
+    CHECK(Clean("\n\nHello\n\n") == "Hello");
+    CHECK(Clean("C:\\maps /n") == "C:\\maps /n");  // a backslash is text, as the console never sends one
+    CHECK(Clean("Tab\there\x01\x7f!") == "Tab here!");
+    CHECK(Clean("Line\none\ntwo", 256, 1) == "Line one two");
+    CHECK(Clean("\xc3\x84\xc3\x84\xc3\x84", 5) == "\xc3\x84\xc3\x84");
+    CHECK(Clean("a\xc3(b\xe2\x82") == "a(b");
+    CHECK(Clean("\x80\xbf ok \xf8!") == "ok !");
+    CHECK(Clean("#str_200197") == " #str_200197");
+    CHECK(Clean("^2#str_1") == " #str_1");
+    CHECK(Clean(nullptr).empty() && Clean("^7").empty());
+    // At most the bytes asked for, never a split character, never more lines.
+    for (int bytes = 0; bytes < 12; ++bytes) {
+        const std::string text = Clean("Zo\xc3\xab \xd0\x96\xe2\x82\xac\xf0\x9f\x98\x80!", bytes);
+        CHECK(static_cast<int>(text.size()) <= bytes);
+        for (size_t i = 0; i < text.size(); ) {
+            const unsigned char lead = static_cast<unsigned char>(text[i]);
+            const size_t length = lead >= 0xf0 ? 4 : lead >= 0xe0 ? 3 : lead >= 0xc0 ? 2 : 1;
+            CHECK(lead < 0x80 || lead >= 0xc0);
+            CHECK(i + length <= text.size());
+            i += length;
+        }
+    }
+    idUserInterface loading; idSessionLocal session; session.guiLoading = &loading;
+    idDict server; server.Set("si_gameType", "Team DM"); server.Set("si_fragLimit", "30");
+    server.Set("si_motd", "^3Welcome^7 to the ^1test^7 server\nBe excellent");
+    // A team match: three marines, two strogg, a spectator and two connecting.
+    session.ClearRetainedLoadingRoster();
+    for (const char* name : {"^1Kane", "Rhodes", "Strauss"}) session.NoteRetainedLoadingPlayer(Player(name));
+    session.NoteRetainedLoadingPlayer(Player("Makron", "Strogg"));
+    session.NoteRetainedLoadingPlayer(Player("Gladiator", "strogg"));
+    session.NoteRetainedLoadingPlayer(Player("Watcher", "Marine", "Spectate"));
+    session.NoteRetainedLoadingPlayer(Player("^7"));  // a name that is only escapes
+    session.NoteRetainedLoadingConnecting(2);
+    session.PublishRetainedLoadingServer(server);
+    CHECK(gameObject.verbs.size() == 1 && gameObject.verbs[0] == "retainedLoadingServer");
+    CHECK(loading.state["query_si_gameType"] == "Team DM" && loading.state["query_si_fragLimit"] == "30");
+    CHECK(loading.state["server_gametype"] == "Team Deathmatch" && loading.state["server_limit"] == "Frag Limit 30");
+    CHECK(loading.state["server_roster_known"] == "1" && loading.state["server_team_mode"] == "1");
+    CHECK(loading.state["server_team_a"] == "Kane\nRhodes\nStrauss" && loading.state["server_team_b"] == "Makron\nGladiator");
+    CHECK(loading.state["server_players"].empty() && loading.state["server_roster_rows"] == "3");
+    CHECK(loading.state["server_roster_extra"] == "Spectating: 1 \xc2\xb7 Connecting: 2");
+    CHECK(loading.state["server_message"] == "Welcome to the test server\nBe excellent");
+    CHECK(loading.changes == 1);
+    CHECK(commonObject.output.find("RETAINED_LOADING_SERVER answered=1 teams=1 players=5 spectators=1 connecting=2 rows=3 message=") != std::string::npos);
+    // Each load captures its own roster.
+    CHECK(session.retainedRosterCount == 0 && session.retainedRosterConnecting == 0 && !session.retainedRosterKnown);
+    // Eight marines: six names, then "+2 more" as the seventh row.
+    for (int i = 0; i < 8; ++i) session.NoteRetainedLoadingPlayer(Player(("M" + std::to_string(i)).c_str()));
+    session.PublishRetainedLoadingServer(server);
+    CHECK(loading.state["server_team_a"] == "M0\nM1\nM2\nM3\nM4\nM5\n+2 more" && loading.state["server_team_b"].empty());
+    CHECK(loading.state["server_roster_rows"] == "7" && loading.state["server_roster_extra"].empty());
+    // Outside team modes one list holds everyone, whatever their ui_team.
+    server.Set("si_gameType", "DM");
+    session.NoteRetainedLoadingPlayer(Player("A")); session.NoteRetainedLoadingPlayer(Player("B", "Strogg"));
+    session.PublishRetainedLoadingServer(server);
+    CHECK(loading.state["server_team_mode"] == "0" && loading.state["server_players"] == "A\nB" && loading.state["server_roster_rows"] == "2");
+    // A game that does not answer keeps the session's strings and one list.
+    gameObject.answers = false; loading.state["server_gametype"] = "Team DM (session)";
+    server.Set("si_gameType", "Team DM");
+    session.NoteRetainedLoadingPlayer(Player("A")); session.NoteRetainedLoadingPlayer(Player("B", "Strogg"));
+    session.PublishRetainedLoadingServer(server);
+    CHECK(loading.state["server_gametype"] == "Team DM (session)" && loading.state["server_team_mode"] == "0");
+    CHECK(loading.state["server_players"] == "A\nB" && loading.state["server_team_a"].empty());
+    gameObject.answers = true;
+    // A load that knows no players (a fresh connection) shows none.
+    session.PublishRetainedLoadingServer(server);
+    CHECK(loading.state["server_roster_known"] == "0" && loading.state["server_roster_rows"] == "0");
+    // Only players still connecting: the line stands alone.
+    session.NoteRetainedLoadingConnecting(3);
+    session.PublishRetainedLoadingServer(server);
+    CHECK(loading.state["server_roster_known"] == "1" && loading.state["server_roster_rows"] == "0" &&
+          loading.state["server_roster_extra"] == "Connecting: 3");
+    // The store keeps at most its slots, and long names stop at 48 bytes.
+    for (int i = 0; i < 40; ++i) session.NoteRetainedLoadingPlayer(Player(std::string(60, 'x').c_str()));
+    CHECK(session.retainedRosterCount == idSessionLocal::RETAINED_ROSTER_SLOTS && session.retainedRosterName[0].Length() == 48);
+    session.ClearRetainedLoadingRoster();
+    // No message, no line.
+    server.Set("si_motd", "^7");
+    session.PublishRetainedLoadingServer(server);
+    CHECK(loading.state["server_message"].empty());
+    std::printf("ui_retained gate: %d server card checks passed\n", checks);
+    return 0;
+}
+"""
+
+
+def check_server_card(compiler: str, directory: Path) -> None:
+    """The loading server card's players and message (section 14.17): compile
+    the production sanitizer, roster store and publish with idlib's own escape
+    parser, then pin where the network code captures the roster and where the
+    game resolves the mode."""
+    session = (ROOT / 'src/framework/Session.cpp').read_text(encoding='utf-8')
+    header = (ROOT / 'src/framework/Session_local.h').read_text(encoding='utf-8')
+    strings = (ROOT / 'src/idlib/Str.cpp').read_text(encoding='latin-1')
+    slots = re.search(r'static const int\s+RETAINED_ROSTER_SLOTS = (\d+);', header).group(1)
+    rows = re.search(r'static const int RETAINED_ROSTER_ROWS = \d+;', session).group(0)
+    bodies = [function_body(strings, 'int idStr::IsEscape( const char *s, int* type )'),
+              function_body(strings, 'char *idStr::RemoveEscapes( char *string, int escapes )'),
+              function_body(session, 'static idStr Session_RetainedPlayerText('), rows]
+    bodies += [function_body(session, f'void idSessionLocal::{name}(') for name in (
+        'ClearRetainedLoadingRoster', 'NoteRetainedLoadingPlayer', 'NoteRetainedLoadingConnecting', 'PublishRetainedLoadingServer')]
+    source = directory / 'card.cpp'
+    binary = directory / 'card.exe'
+    source.write_text(CARD.replace('@SLOTS@', slots) + '\n'.join(bodies) + CARD_MAIN, encoding='utf-8')
+    subprocess.run([compiler, '-std=c++20', '-Wall', '-Wextra', '-Wno-unused-function', str(source), '-o', str(binary)], check=True)
+    result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    assert result.returncode == 0, 'the server card checks failed'
+    # The generator's roster rows match the session's.
+    generator = (ROOT / 'tools/ui/build_retained_screens.py').read_text(encoding='utf-8')
+    assert re.search(r'^SERVER_ROSTER_ROWS = (\d+)$', generator, re.M).group(1) == re.search(r'= (\d+);', rows).group(1)
+    # Every language has the roster lines, each with one count, and the
+    # longest forms fit: "+N more" in a team column, spectators and players
+    # connecting together across the card (Lowpixel, as the card sets them).
+    sys.path.insert(0, str(ROOT / 'tools/ui'))
+    import build_retained_screens as layout
+    card_width = layout.U * 250 - 30
+    for table in sorted((ROOT / 'content/baseoq4/pak0/strings').glob('*_openq4.lang')):
+        text = table.read_text(encoding='utf-8')
+        lines = {key: re.search(rf'"{key}"\s+"([^"]*)"', text) for key in ('#str_230070', '#str_230071', '#str_230072')}
+        assert all(lines.values()), f'{table.name} lacks the server card roster lines'
+        more, connecting, spectating = (lines[key].group(1) for key in ('#str_230070', '#str_230071', '#str_230072'))
+        assert all(line.count('%d') == 1 and line.count('%') == 1 for line in (more, connecting, spectating)), table.name
+        assert layout.text_width('lowpixel', more % 26, 14) <= (card_width - 12) / 2, f'{table.name}: "+N more" overflows a team column'
+        extra = f'{spectating % 31} \u00b7 {connecting % 31}'
+        assert layout.text_width('lowpixel', extra, 13) <= card_width, f'{table.name}: the spectators line overflows the card'
+    # Where the roster comes from. The listen host notes everyone in the game,
+    # bots included, before InitClient wipes their user info and before the
+    # map loads; a client notes the players it knows on a map change before
+    # InitGame clears them, and a fresh connection starts from none.
+    server = (ROOT / 'src/framework/async/AsyncServer.cpp').read_text(encoding='utf-8')
+    change = function_body(server, 'void idAsyncServer::ExecuteMapChange(')
+    assert change.index('sessLocal.ClearRetainedLoadingRoster();') < change.index('InitClient( i, clients[i].clientId, clients[i].clientRate );')
+    assert change.index('sessLocal.NoteRetainedLoadingConnecting( retainedConnecting );') < change.index('sessLocal.ExecuteMapChange();')
+    assert change.index('InitLocalClient( 0, false );') < change.index('sessLocal.ClearRetainedLoadingRoster();')
+    assert 'if ( i == localClientNum || clients[i].clientState == SCS_INGAME ) {' in change
+    client = (ROOT / 'src/framework/async/AsyncClient.cpp').read_text(encoding='utf-8')
+    unreliable = function_body(client, 'void idAsyncClient::ProcessUnreliableServerMessage(')
+    gameinit = unreliable[unreliable.index('case SERVER_UNRELIABLE_MESSAGE_GAMEINIT:'):]
+    assert gameinit.index('sessLocal.NoteRetainedLoadingPlayer( sessLocal.mapSpawnData.userInfo[ slot ] );') < \
+        gameinit.index('InitGame( serverGameInitId, serverGameFrame, serverGameTime, serverSI );') < gameinit.index('sessLocal.ExecuteMapChange();')
+    response = function_body(client, 'void idAsyncClient::ProcessConnectResponseMessage(')
+    assert response.index('msg.ReadDeltaDict( serverSI, NULL );') < response.index('msg.IsReadOverflowed() || serverClientNum < 0') < \
+        response.index('sessLocal.ClearRetainedLoadingRoster();') < response.index('AsyncClient_ReadConnectRoster( msg );') < \
+        response.index('InitGame( serverGameInitId, serverGameFrame, serverGameTime, serverSI );') < response.index('sessLocal.ExecuteMapChange();')
+    # A fresh connection learns the players from an optional block after the
+    # server info: the server writes it before sending, and the client reads
+    # it only behind its tag and length, so neither side breaks the other.
+    connect = function_body(server, 'void idAsyncServer::ProcessConnectMessage(')
+    assert connect.index('outMsg.WriteDeltaDict( sessLocal.mapSpawnData.serverInfo, NULL );') < \
+        connect.index('AsyncServer_WriteConnectRoster( outMsg, clients, clientNum );') < connect.rindex('serverPort.SendPacket( from, outMsg.GetData(), outMsg.GetSize() );')
+    writer = function_body(server, 'static void AsyncServer_WriteConnectRoster(')
+    for token in ('if ( i == joiner ) {', 'clients[ i ].clientState == SCS_INGAME', 'NA_BOT ? idConnectRoster::FLAG_BOT',
+                  'msg.GetRemainingSpace() >= size + 6', 'msg.WriteLong( static_cast<int>( idConnectRoster::TAG ) );'):
+        assert token in writer, token
+    reader = function_body(client, 'static void AsyncClient_ReadConnectRoster(')
+    for token in ('msg.GetRemainingReadBits() < 48 || msg.ReadLong() != static_cast<int>( idConnectRoster::TAG )',
+                  'size > static_cast<int>( idConnectRoster::MAX_BYTES ) || msg.GetRemainingReadBits() < size * 8',
+                  '!idConnectRoster::Decode( block, size, roster )', 'sessLocal.NoteRetainedLoadingConnecting( roster.connecting );'):
+        assert token in reader, token
+    assert 'DisconnectFromServer' not in reader and 'disconnect' not in reader, 'a bad roster block must never end the connection'
+    # The session publishes the card only on the retained screen, after the
+    # stock strings it falls back to.
+    loading = function_body(session, 'void idSessionLocal::LoadLoadingGui(')
+    assert loading.index('guiLoading->SetStateString( "server_limit", limitText.c_str() );') < loading.index(
+        'PublishRetainedLoadingServer( mapSpawnData.serverInfo );')
+    assert 'if ( retainedLoading ) {\n\t\t\t\tPublishRetainedLoadingServer( mapSpawnData.serverInfo );' in loading.replace('\r\n', '\n')
+    # game_mp names the mode and its limits from its own table, with the
+    # rules the scoreboard uses, and the message is server info.
+    mp = (ROOT / 'src/mpgame/Game_local.cpp').read_text(encoding='utf-8')
+    verb = mp[mp.index('if ( !idStr::Icmp( menuCommand, "retainedLoadingServer" ) ) {'):]
+    verb = verb[:verb.index('} else if ( !idStr::Icmp( menuCommand, "initCreateServerSettings" ) ) {')]
+    for token in ('MPGameTypeByName( query.GetString( "si_gameType" ) )', 'MPResolveMatchLimitFor( query, info->type, limitLabel, limitValue );',
+                  'MPGameTypeHasAny( info->type, GTF_TEAM )', 'common->GetLocalizedString( info->localizedName )',
+                  'gui->SetStateBool( "server_answered", true );'):
+        assert token in verb, token
+    rules = (ROOT / 'src/mpgame/MultiplayerGame.cpp').read_text(encoding='utf-8')
+    assert 'MPResolveMatchLimitFor( gameLocal.serverInfo, gameLocal.gameType, limitLabel, limitValue );' in \
+        function_body(rules, 'static void MPResolveMatchLimit(')
+    for module in ('src/mpgame/gamesys/SysCvar.cpp', 'src/game/gamesys/SysCvar.cpp'):
+        cvars = (ROOT / module).read_text(encoding='utf-8')
+        assert re.search(r'idCVar si_motd\(\s+"si_motd",\s+"",\s+CVAR_GAME \| CVAR_SERVERINFO \| PC_CVAR_ARCHIVE', cvars), module
 
 
 def main() -> int:
@@ -1028,6 +1339,7 @@ def main() -> int:
         sys.stderr.write(result.stderr)
         if result.returncode == 0:
             print(f'ui_retained gate: the Strogg faces resolve and {check_strogg_faces(compiler, Path(directory))} code points fold onto the rune face')
+            check_server_card(compiler, Path(directory))
         return result.returncode
 
 

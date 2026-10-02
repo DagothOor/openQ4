@@ -123,8 +123,10 @@ objectives display as a page of the pause, with every objective, its
 screenshot and description, and the ones completed on the level. A
 multiplayer load fills the arsenal with each kind of item as it spawns, and
 Single Player's Campaign opens as a sub-page with the band step and crumb.
-Single player loads run localized tips. The Escape and Welcome menus remain.
-No gate closes.
+Single player loads run localized tips. The multiplayer server card lists the
+players by team and the server's message, on the host, on a map change and on
+a fresh connection (an optional roster block after the connect response's
+server info). The Escape and Welcome menus remain. No gate closes.
 
 ## Objective and immutable completion scope
 

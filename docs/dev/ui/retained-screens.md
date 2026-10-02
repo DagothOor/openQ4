@@ -221,9 +221,30 @@ after editing the script; `--check` fails when an output is stale.
   LOADING becomes the continue prompt for the last-used device: the desktop
   prompt, or the south button and CONTINUE after controller input.
   Multiplayer keeps the band low: a card on the leading side holds the
-  server's name in its header, then its address, mode and limits, and a
+  server's name in its header, then its address in Profont, the mode and the
+  limits, the players by team, and the server's message (`si_motd`), and a
   finished multiplayer load reads JOINING, since multiplayer never waits for
-  a click. The arsenal fills the thick band's leading part, from its riser to
+  a click. The card stands on 384 u, clear of the lower corner bracket, and
+  its parts flow, so it grows upward with what it holds. The game module names
+  the mode, the limits it enforces (the scoreboard's rule:
+  `MPResolveMatchLimitFor`) and whether it has teams from the server info the
+  session passes (`retainedLoadingServer`); a game that does not answer leaves
+  the session's own strings and one list. In team modes the players stand in
+  two columns under MARINES and STROGG in their team colors, otherwise in one
+  under PLAYERS, six names a column and then "+N more", over a line of
+  spectators and players still connecting. The players are those known as
+  the load starts: a listen host's own (bots included) before its map change
+  wipes their user info, a client's on a map change before `InitGame` clears
+  them, and on a fresh connection those the server names in an optional block
+  after its connect response's server info (`ConnectRoster`: a tag, a length,
+  then each player's slot, flags, team and name), with this client joining
+  them; a server that sends none, or a malformed one, leaves the card without
+  players and the connection goes on. Names and the message lose Quake 4's
+  color and icon escapes, control bytes and malformed UTF-8, keep whole
+  characters within their limits (48 and 256 bytes), and never read as a
+  `#str_` key. The message wraps to at most three lines in the notices color;
+  the console turns backslashes into slashes, so a cvar can carry no typed
+  line break. The arsenal fills the thick band's leading part, from its riser to
   the bar: two rows of ten 16 u icons on a 17 u pitch, one for each kind of
   item as it spawns (the stock row's twenty), each fading in over 150 ms in
   its color code (Appendix B.4). The stock icons are colour-coded materials,
@@ -529,9 +550,31 @@ controller or the mouse switches the prompt.
   load starting elsewhere in the list, none in multiplayer or while another
   screen presents the load, the calls from the load's redraws, and that every
   tip in every shipped language fits its two lines.
+- The gate test also compiles the server card's production sanitizer, roster
+  store and publish with idlib's own escape parser: escapes, control bytes,
+  malformed and cut UTF-8, line limits and `#str_` names; players by team,
+  six names and "+N more", spectators and players connecting, a game that does
+  not answer, a load that knows no players, the store's 32 slots, and the
+  roster cleared after each publish. It pins where the network code captures
+  the roster (before `InitClient` and the listen host's map load, before a
+  client's `InitGame`, and the connect response's block between the server
+  info and the send, read behind its tag and length and never ending the
+  connection), game_mp's answer, `si_motd` in both game modules, and that
+  every language's roster lines carry one count and fit the card.
+  `openq4-connect-roster-test` covers the block's codec: a round trip, every
+  truncation, another version, counts, slots, teams and flags out of range,
+  the longest name and one byte more, a full roster and capacity. The screens
+  test lays the card out from its foot: its base height with no players and
+  no message, the address in Profont, the team columns under their heads in
+  the team colors, a list's line breaks drawing no glyph, the spectators line
+  beneath, a one-line message and a long one clipped at three lines, the
+  card clear of the top band, one list outside team modes and the line alone
+  without names.
 - `tools/ui/capture_retained_screens.py` captures the screens in the engine
   from a hidden window with engine screenshots and semantic
-  `openq4_retainedGui` operations, never OS input. With `--gate 0` the title
+  `openq4_retainedGui` operations, never OS input (`lines` sets a multi-line
+  state, one argument per line, as the console turns backslashes into
+  slashes). With `--gate 0` the title
   and pause scenarios, including the pause scenario's real map load, check
   that nothing retained loads; the loading scenario drives its document through
   `testGUI` and is not a gate check. Its default, `--gate default`, leaves
@@ -765,6 +808,15 @@ A real airdefense1 load showed the tips changing every 6 s. Evidence:
 `.tmp/ui/retained-loading-tips/validation-evidence.json`, SHA-256
 `4f0f69638a05f185f8018379dd746d6cd804d2eef97d7b66d3206dc090dea4b4`.
 
+The server card's players and message were captured on OpenGL and Vulkan at
+1280x720, on OpenGL at 1024x768 and in German, Polish and Russian: the team
+columns under MARINES and STROGG over the spectators line and a three-line
+message, and one list with "+3 more" outside team modes, the card growing up
+from its foot. A listen host's map change and a second client's fresh
+connection traced the players they published. Evidence:
+`.tmp/ui/retained-server-card/validation-evidence.json`, SHA-256
+`dc352d1c28dfe32f9057dcb7d8ee69d17ad11ba1712b42cb1472c236b617c113`.
+
 ## Known limitations
 
 - The completed objectives are kept per map and not saved, so after loading a
@@ -801,7 +853,8 @@ A real airdefense1 load showed the tips changing every 6 s. Evidence:
   lacks the display mode list, display device, multi-monitor, refresh rate,
   video quality and light-grid preload.
 - The loading screen has no touch prompt (touch counts as desktop input).
-  The multiplayer server card lacks the players by team and the
-  server's message, and JOINING does not yet hand over to a Welcome menu. The
-  arsenal fills in only where the map spawns its items: a listen server's
-  own load, not a client joining another server.
+  JOINING does not yet hand over to a Welcome menu. The arsenal fills in only
+  where the map spawns its items: a listen server's own load, not a client
+  joining another server. The server card lists a joining client under the
+  team it asks for, which the server may balance differently, and a
+  multi-view demo's load shows no players.

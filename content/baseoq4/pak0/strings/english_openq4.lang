@@ -1107,4 +1107,7 @@
 	"#str_230067"	"Vehicle shields and hull repair after six quiet seconds."
 	"#str_230068"	"Press fire to cut a shotgun reload short."
 	"#str_230069"	"Press jump to climb out of a vehicle."
+	"#str_230070"	"+%d more"
+	"#str_230071"	"Connecting: %d"
+	"#str_230072"	"Spectating: %d"
 }

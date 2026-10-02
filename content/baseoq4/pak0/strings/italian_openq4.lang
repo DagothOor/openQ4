@@ -1107,4 +1107,7 @@
 	"#str_230067"	"I veicoli si riparano dopo sei secondi senza fuoco."
 	"#str_230068"	"Premi fuoco per interrompere la ricarica del fucile a pompa."
 	"#str_230069"	"Salta per uscire da un veicolo."
+	"#str_230070"	"+%d in più"
+	"#str_230071"	"In connessione: %d"
+	"#str_230072"	"Spettatori: %d"
 }

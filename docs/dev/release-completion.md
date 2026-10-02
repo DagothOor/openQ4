@@ -557,8 +557,11 @@
   The modern title screen now uses well under half as much CPU per frame, with
   no visible change, and holds its frame rate better, most of all on Vulkan.
   Multiplayer loads show the server's name, address, mode and limits on a card
-  and read JOINING when done. Loading tips and the multiplayer menus remain
-  in development.
+  and read JOINING when done. The card also lists who is playing, by team in
+  team modes, with spectators and players still connecting, whether you host
+  the match or join one, and shows the server's message: server admins set it
+  with the new `si_motd` server variable (up to 256 bytes, wrapped to three
+  lines). The multiplayer menus remain in development.
 
 - The experimental SYSTEM page adds window and custom fullscreen width/height
   fields with localized whole-pixel validation. Custom dimensions select Custom

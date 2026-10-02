@@ -729,6 +729,13 @@ public:
 		return reinterpret_cast<Rml::FontFaceHandle>(face.get());
 	}
 	const Rml::FontMetrics& GetFontMetrics(Rml::FontFaceHandle handle) override { return reinterpret_cast<Face*>(handle)->metrics; }
+	// A 'pre' line reaches the engine with its line break, and a control
+	// character has no glyph: it draws nothing and takes no room, rather than
+	// the face's missing-glyph mark.
+	Glyph Lookup(const Face& face, std::uint32_t codepoint) {
+		if (codepoint < 0x20 || (codepoint >= 0x7f && codepoint < 0xa0)) return {};
+		return host.GetGlyph(face.family, face.size, codepoint);
+	}
 	// Number-field geometry queries this same immutable run as measurement and
 	// font submission. Unknown/released handles and non-editable strings fail
 	// without dereferencing a stale face or changing the legacy streaming path.
@@ -738,14 +745,14 @@ public:
 		if (!face) return {};
 		std::string error;
 		return runs.Get(handle, string, letterSpacing,
-			[&](std::uint32_t codepoint) { return host.GetGlyph(face->family, face->size, codepoint); }, error);
+			[&](std::uint32_t codepoint) { return Lookup(*face, codepoint); }, error);
 	}
 	int GetStringWidth(Rml::FontFaceHandle handle, Rml::StringView string, const Rml::TextShapingContext& shaping, Rml::Character) override {
 		const std::string_view text(string.begin(), string.size());
 		if (const auto run = QueryRun(handle, text, shaping.letter_spacing)) return run->roundedWidth;
 		const auto& face = *reinterpret_cast<Face*>(handle);
 		const float width = WalkTextRun(text, shaping.letter_spacing,
-			[&](std::uint32_t codepoint) { return host.GetGlyph(face.family, face.size, codepoint); });
+			[&](std::uint32_t codepoint) { return Lookup(face, codepoint); });
 		return static_cast<int>(std::lround(width));
 	}
 	int GenerateString(Rml::RenderManager& manager, Rml::FontFaceHandle handle, Rml::FontEffectsHandle,
@@ -775,7 +782,7 @@ public:
 		}
 		const auto& face = *reinterpret_cast<Face*>(handle);
 		const float width = WalkTextRun(text, shaping.letter_spacing,
-			[&](std::uint32_t codepoint) { return host.GetGlyph(face.family, face.size, codepoint); }, emit);
+			[&](std::uint32_t codepoint) { return Lookup(face, codepoint); }, emit);
 		return static_cast<int>(std::lround(width));
 	}
 	void ReleaseFontResources() override { runs.Clear(); faces.clear(); }

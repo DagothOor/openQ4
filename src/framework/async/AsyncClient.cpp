@@ -30,6 +30,7 @@ If you have questions concerning this license or the applicable additional terms
 
 
 #include "AsyncNetwork.h"
+#include "ConnectRoster.h"
 #include "Rcon2Protocol.h"
 
 #include "../ArenaCampaign.h"
@@ -1210,6 +1211,15 @@ void idAsyncClient::ProcessUnreliableServerMessage( const idBitMsg &msg ) {
 			}
 			pureWait = serverSI.GetBool( "si_pure" );
 
+			// openQ4: the loading screen's server card lists the players this
+			// map starts with; InitGame below clears their user info.
+			sessLocal.ClearRetainedLoadingRoster();
+			for ( int slot = 0; slot < MAX_ASYNC_CLIENTS; slot++ ) {
+				if ( sessLocal.mapSpawnData.userInfo[ slot ].GetNumKeyVals() > 0 ) {
+					sessLocal.NoteRetainedLoadingPlayer( sessLocal.mapSpawnData.userInfo[ slot ] );
+				}
+			}
+
 			InitGame( serverGameInitId, serverGameFrame, serverGameTime, serverSI );
 
 			channel.ResetRate();
@@ -1659,6 +1669,45 @@ void idAsyncClient::ProcessChallengeResponseMessage( const netadr_t from, const 
 
 /*
 ==================
+AsyncClient_ReadConnectRoster
+
+openQ4: the players already in the game when the server names them after its
+server info, and this client joining them, for the loading screen's card. A
+server that sends no block, or a malformed one, leaves the roster unknown;
+the connection goes on either way.
+==================
+*/
+static void AsyncClient_ReadConnectRoster( const idBitMsg &msg ) {
+	if ( msg.GetRemainingReadBits() < 48 || msg.ReadLong() != static_cast<int>( idConnectRoster::TAG ) ) {
+		common->DPrintf( "connect roster: none from this server\n" );
+		return;
+	}
+	const int size = msg.ReadShort();
+	if ( size <= 0 || size > static_cast<int>( idConnectRoster::MAX_BYTES ) || msg.GetRemainingReadBits() < size * 8 ) {
+		common->DPrintf( "connect roster: a %d-byte block does not fit the message\n", size );
+		return;
+	}
+	byte block[ idConnectRoster::MAX_BYTES ];
+	idConnectRoster::roster_t roster;
+	if ( msg.ReadData( block, size ) != size || msg.IsReadOverflowed() || !idConnectRoster::Decode( block, size, roster ) ) {
+		common->DPrintf( "connect roster: a malformed %d-byte block was ignored\n", size );
+		return;
+	}
+	common->DPrintf( "connect roster: %d players and %d connecting\n", roster.count, roster.connecting );
+	for ( int i = 0; i < roster.count; i++ ) {
+		const idConnectRoster::entry_t &entry = roster.entries[ i ];
+		idDict info;
+		info.Set( "ui_name", entry.name );
+		info.Set( "ui_team", entry.team ? "Strogg" : "Marine" );
+		info.Set( "ui_spectate", ( entry.flags & idConnectRoster::FLAG_SPECTATOR ) ? "Spectate" : "Play" );
+		sessLocal.NoteRetainedLoadingPlayer( info );
+	}
+	sessLocal.NoteRetainedLoadingConnecting( roster.connecting );
+	sessLocal.NoteRetainedLoadingPlayer( *cvarSystem->MoveCVarsToDict( CVAR_USERINFO ) );
+}
+
+/*
+==================
 idAsyncClient::ProcessConnectResponseMessage
 ==================
 */
@@ -1700,6 +1749,10 @@ void idAsyncClient::ProcessConnectResponseMessage( const netadr_t from, const id
 		return;
 	}
 	common->Printf( "received connect response from %s\n", Sys_NetAdrToString( from ) );
+	// Nothing from the last server shows: the card lists the players this
+	// server names, or none.
+	sessLocal.ClearRetainedLoadingRoster();
+	AsyncClient_ReadConnectRoster( msg );
 
 	channel.Init( from, clientId );
 	clientNum = serverClientNum;

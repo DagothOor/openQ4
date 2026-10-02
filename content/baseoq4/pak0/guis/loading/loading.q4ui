@@ -26,6 +26,14 @@
   "loading_controller": {"type": "boolean", "initial": false},
   "loading_tip_a": {"type": "string", "initial": ""},
   "loading_tip_b": {"type": "string", "initial": ""},
+  "server_message": {"type": "string", "initial": ""},
+  "server_team_mode": {"type": "boolean", "initial": false},
+  "server_roster_known": {"type": "boolean", "initial": false},
+  "server_roster_rows": {"type": "number", "initial": 0},
+  "server_team_a": {"type": "string", "initial": ""},
+  "server_team_b": {"type": "string", "initial": ""},
+  "server_players": {"type": "string", "initial": ""},
+  "server_roster_extra": {"type": "string", "initial": ""},
   "load_icon_1": {"type": "number", "initial": 0},
   "load_icon_2": {"type": "number", "initial": 0},
   "load_icon_3": {"type": "number", "initial": 0},
@@ -210,6 +218,131 @@
   {"id": "server-address.text", "node": "server-address", "property": "text", "value": {"state": "server_ip"}},
   {"id": "server-mode.text", "node": "server-mode", "property": "text", "value": {"state": "server_gametype"}},
   {"id": "server-rules.text", "node": "server-rules", "property": "text", "value": {"state": "server_limit"}},
+  {
+   "id": "server-roster.display",
+   "node": "server-roster",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"state": "server_roster_known"},
+       {
+        "op": "||",
+        "args": [
+         {"op": ">", "args": [{"op": "clamp", "args": [{"state": "server_roster_rows"}, 0, 7]}, 0]},
+         {"op": "!=", "args": [{"state": "server_roster_extra"}, ""]}
+        ]
+       }
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {
+   "id": "server-roster.height",
+   "node": "server-roster",
+   "property": "height",
+   "value": {
+    "op": "+",
+    "args": [
+     {
+      "op": "+",
+      "args": [
+       {
+        "op": "select",
+        "args": [{"op": ">", "args": [{"op": "clamp", "args": [{"state": "server_roster_rows"}, 0, 7]}, 0]}, 22.0, 4]
+       },
+       {"op": "*", "args": [{"op": "clamp", "args": [{"state": "server_roster_rows"}, 0, 7]}, 16.0]}
+      ]
+     },
+     {"op": "select", "args": [{"op": "!=", "args": [{"state": "server_roster_extra"}, ""]}, 16.0, 0]}
+    ]
+   }
+  },
+  {
+   "id": "server-teams.display",
+   "node": "server-teams",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">", "args": [{"op": "clamp", "args": [{"state": "server_roster_rows"}, 0, 7]}, 0]},
+       {"state": "server_team_mode"}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {
+   "id": "server-all.display",
+   "node": "server-all",
+   "property": "display",
+   "value": {
+    "op": "select",
+    "args": [
+     {
+      "op": "&&",
+      "args": [
+       {"op": ">", "args": [{"op": "clamp", "args": [{"state": "server_roster_rows"}, 0, 7]}, 0]},
+       {"op": "!", "args": [{"state": "server_team_mode"}]}
+      ]
+     },
+     "block",
+     "none"
+    ]
+   }
+  },
+  {"id": "server-team-a.text", "node": "server-team-a", "property": "text", "value": {"state": "server_team_a"}},
+  {"id": "server-team-b.text", "node": "server-team-b", "property": "text", "value": {"state": "server_team_b"}},
+  {
+   "id": "server-players.text",
+   "node": "server-players",
+   "property": "text",
+   "value": {"state": "server_players"}
+  },
+  {
+   "id": "server-roster-extra.text",
+   "node": "server-roster-extra",
+   "property": "text",
+   "value": {"state": "server_roster_extra"}
+  },
+  {
+   "id": "server-roster-extra.top",
+   "node": "server-roster-extra",
+   "property": "top",
+   "value": {
+    "op": "+",
+    "args": [
+     {
+      "op": "select",
+      "args": [{"op": ">", "args": [{"op": "clamp", "args": [{"state": "server_roster_rows"}, 0, 7]}, 0]}, 22.0, 4]
+     },
+     {"op": "*", "args": [{"op": "clamp", "args": [{"state": "server_roster_rows"}, 0, 7]}, 16.0]}
+    ]
+   }
+  },
+  {
+   "id": "server-message.text",
+   "node": "server-message",
+   "property": "text",
+   "value": {"state": "server_message"}
+  },
+  {
+   "id": "server-message.display",
+   "node": "server-message",
+   "property": "display",
+   "value": {"op": "select", "args": [{"op": "!=", "args": [{"state": "server_message"}, ""]}, "block", "none"]}
+  },
   {
    "id": "server.display",
    "node": "server",
@@ -4697,11 +4830,12 @@
     "properties": {
      "display": {"type": "keyword", "value": "block"},
      "position": {"type": "keyword", "value": "absolute"},
-     "top": {"type": "length", "value": 456.0, "unit": "dp"},
+     "top": {"type": "length", "value": 0, "unit": "dp"},
      "width": {"type": "length", "value": 960.0, "unit": "dp"},
-     "height": {"type": "length", "value": 120.0, "unit": "dp"},
+     "height": {"type": "length", "value": 720, "unit": "dp"},
      "left": {"type": "length", "value": 50, "unit": "%"},
-     "margin-left": {"type": "length", "value": -480.0, "unit": "dp"}
+     "margin-left": {"type": "length", "value": -480.0, "unit": "dp"},
+     "pointer-events": {"type": "keyword", "value": "none"}
     },
     "children": [
      {
@@ -4710,9 +4844,10 @@
       "properties": {
        "position": {"type": "keyword", "value": "absolute"},
        "left": {"type": "length", "value": 27.0, "unit": "dp"},
-       "top": {"type": "length", "value": 0, "unit": "dp"},
        "width": {"type": "length", "value": 375.0, "unit": "dp"},
-       "height": {"type": "length", "value": 120.0, "unit": "dp"}
+       "bottom": {"type": "length", "value": 144.0, "unit": "dp"},
+       "height": {"type": "keyword", "value": "auto"},
+       "padding-bottom": {"type": "length", "value": 12, "unit": "dp"}
       },
       "children": [
        {
@@ -4723,7 +4858,7 @@
          "left": {"type": "length", "value": 0, "unit": "dp"},
          "top": {"type": "length", "value": 0, "unit": "dp"},
          "width": {"type": "length", "value": 375.0, "unit": "dp"},
-         "height": {"type": "length", "value": 120.0, "unit": "dp"}
+         "height": {"type": "length", "value": 100, "unit": "%"}
         },
         "paths": [
          {
@@ -4732,10 +4867,10 @@
            {"id": "p0", "op": "move", "points": [[3.0, 0]]},
            {"id": "p1", "op": "line", "points": [[363.0, 0]]},
            {"id": "p2", "op": "line", "points": [[375.0, 12.0]]},
-           {"id": "p3", "op": "line", "points": [[375.0, 117.0]]},
-           {"id": "p4", "op": "line", "points": [[372.0, 120.0]]},
-           {"id": "p5", "op": "line", "points": [[12.0, 120.0]]},
-           {"id": "p6", "op": "line", "points": [[0, 108.0]]},
+           {"id": "p3", "op": "line", "points": [[375.0, {"fraction": 1, "dp": -3.0}]]},
+           {"id": "p4", "op": "line", "points": [[372.0, {"fraction": 1, "dp": 0}]]},
+           {"id": "p5", "op": "line", "points": [[12.0, {"fraction": 1, "dp": 0}]]},
+           {"id": "p6", "op": "line", "points": [[0, {"fraction": 1, "dp": -12.0}]]},
            {"id": "p7", "op": "line", "points": [[0, 3.0]]},
            {"id": "close", "op": "close"}
           ],
@@ -4779,10 +4914,10 @@
            {"id": "p0", "op": "move", "points": [[3.0, 0]]},
            {"id": "p1", "op": "line", "points": [[363.0, 0]]},
            {"id": "p2", "op": "line", "points": [[375.0, 12.0]]},
-           {"id": "p3", "op": "line", "points": [[375.0, 117.0]]},
-           {"id": "p4", "op": "line", "points": [[372.0, 120.0]]},
-           {"id": "p5", "op": "line", "points": [[12.0, 120.0]]},
-           {"id": "p6", "op": "line", "points": [[0, 108.0]]},
+           {"id": "p3", "op": "line", "points": [[375.0, {"fraction": 1, "dp": -3.0}]]},
+           {"id": "p4", "op": "line", "points": [[372.0, {"fraction": 1, "dp": 0}]]},
+           {"id": "p5", "op": "line", "points": [[12.0, {"fraction": 1, "dp": 0}]]},
+           {"id": "p6", "op": "line", "points": [[0, {"fraction": 1, "dp": -12.0}]]},
            {"id": "p7", "op": "line", "points": [[0, 3.0]]},
            {"id": "close", "op": "close"}
           ],
@@ -4811,9 +4946,9 @@
         "type": "text",
         "properties": {
          "text": {"type": "text", "value": "#str_230030"},
-         "position": {"type": "keyword", "value": "absolute"},
-         "left": {"type": "length", "value": 30, "unit": "dp"},
-         "top": {"type": "length", "value": 0, "unit": "dp"},
+         "position": {"type": "keyword", "value": "relative"},
+         "display": {"type": "keyword", "value": "block"},
+         "margin-left": {"type": "length", "value": 30, "unit": "dp"},
          "width": {"type": "length", "value": 330.0, "unit": "dp"},
          "height": {"type": "length", "value": 40.0, "unit": "dp"},
          "font-family": {"type": "font", "value": "marine"},
@@ -4828,13 +4963,14 @@
         "type": "text",
         "properties": {
          "text": {"type": "text", "value": "#str_230030"},
-         "position": {"type": "keyword", "value": "absolute"},
-         "left": {"type": "length", "value": 15, "unit": "dp"},
-         "top": {"type": "length", "value": 48.0, "unit": "dp"},
+         "position": {"type": "keyword", "value": "relative"},
+         "display": {"type": "keyword", "value": "block"},
+         "margin-left": {"type": "length", "value": 15, "unit": "dp"},
+         "margin-top": {"type": "length", "value": 8, "unit": "dp"},
          "width": {"type": "length", "value": 345.0, "unit": "dp"},
          "height": {"type": "length", "value": 20, "unit": "dp"},
-         "font-family": {"type": "font", "value": "lowpixel"},
-         "font-size": {"type": "length", "value": 17, "unit": "dp"},
+         "font-family": {"type": "font", "value": "profont"},
+         "font-size": {"type": "length", "value": 13, "unit": "dp"},
          "line-height": {"type": "length", "value": 20, "unit": "dp"},
          "color": {"type": "color", "value": [1, 1, 1, 0.62]},
          "white-space": {"type": "keyword", "value": "nowrap"}
@@ -4845,9 +4981,10 @@
         "type": "text",
         "properties": {
          "text": {"type": "text", "value": "#str_230030"},
-         "position": {"type": "keyword", "value": "absolute"},
-         "left": {"type": "length", "value": 15, "unit": "dp"},
-         "top": {"type": "length", "value": 68.0, "unit": "dp"},
+         "position": {"type": "keyword", "value": "relative"},
+         "display": {"type": "keyword", "value": "block"},
+         "margin-left": {"type": "length", "value": 15, "unit": "dp"},
+         "margin-top": {"type": "length", "value": 0, "unit": "dp"},
          "width": {"type": "length", "value": 345.0, "unit": "dp"},
          "height": {"type": "length", "value": 20, "unit": "dp"},
          "font-family": {"type": "font", "value": "lowpixel"},
@@ -4862,9 +4999,10 @@
         "type": "text",
         "properties": {
          "text": {"type": "text", "value": "#str_230030"},
-         "position": {"type": "keyword", "value": "absolute"},
-         "left": {"type": "length", "value": 15, "unit": "dp"},
-         "top": {"type": "length", "value": 88.0, "unit": "dp"},
+         "position": {"type": "keyword", "value": "relative"},
+         "display": {"type": "keyword", "value": "block"},
+         "margin-left": {"type": "length", "value": 15, "unit": "dp"},
+         "margin-top": {"type": "length", "value": 0, "unit": "dp"},
          "width": {"type": "length", "value": 345.0, "unit": "dp"},
          "height": {"type": "length", "value": 20, "unit": "dp"},
          "font-family": {"type": "font", "value": "lowpixel"},
@@ -4872,6 +5010,187 @@
          "line-height": {"type": "length", "value": 20, "unit": "dp"},
          "color": {"type": "color", "value": [1, 1, 1, 0.62]},
          "white-space": {"type": "keyword", "value": "nowrap"}
+        }
+       },
+       {
+        "id": "server-roster",
+        "type": "group",
+        "properties": {
+         "position": {"type": "keyword", "value": "relative"},
+         "display": {"type": "keyword", "value": "none"},
+         "width": {"type": "length", "value": 375.0, "unit": "dp"},
+         "height": {"type": "length", "value": 0, "unit": "dp"}
+        },
+        "children": [
+         {
+          "id": "server-teams",
+          "type": "group",
+          "properties": {
+           "position": {"type": "keyword", "value": "absolute"},
+           "left": {"type": "length", "value": 0, "unit": "dp"},
+           "top": {"type": "length", "value": 0, "unit": "dp"},
+           "width": {"type": "length", "value": 375.0, "unit": "dp"},
+           "height": {"type": "length", "value": 100, "unit": "%"},
+           "display": {"type": "keyword", "value": "none"}
+          },
+          "children": [
+           {
+            "id": "server-team-a-head",
+            "type": "text",
+            "properties": {
+             "text": {"type": "text", "value": "#str_200197"},
+             "position": {"type": "keyword", "value": "absolute"},
+             "left": {"type": "length", "value": 15, "unit": "dp"},
+             "top": {"type": "length", "value": 4, "unit": "dp"},
+             "width": {"type": "length", "value": 166.5, "unit": "dp"},
+             "height": {"type": "length", "value": 16.0, "unit": "dp"},
+             "font-family": {"type": "font", "value": "lowpixel"},
+             "font-size": {"type": "length", "value": 13, "unit": "dp"},
+             "line-height": {"type": "length", "value": 16.0, "unit": "dp"},
+             "color": {"type": "color", "value": [0.4157, 0.6431, 0.1686, 1.0]},
+             "white-space": {"type": "keyword", "value": "nowrap"}
+            }
+           },
+           {
+            "id": "server-team-a",
+            "type": "text",
+            "properties": {
+             "text": {"type": "text", "value": "#str_230030"},
+             "position": {"type": "keyword", "value": "absolute"},
+             "left": {"type": "length", "value": 15, "unit": "dp"},
+             "top": {"type": "length", "value": 22.0, "unit": "dp"},
+             "width": {"type": "length", "value": 166.5, "unit": "dp"},
+             "height": {"type": "length", "value": 112.0, "unit": "dp"},
+             "font-family": {"type": "font", "value": "lowpixel"},
+             "font-size": {"type": "length", "value": 14, "unit": "dp"},
+             "line-height": {"type": "length", "value": 16.0, "unit": "dp"},
+             "color": {"type": "color", "value": [1, 1, 1, 0.8]},
+             "white-space": {"type": "keyword", "value": "pre"},
+             "overflow": {"type": "keyword", "value": "hidden"}
+            }
+           },
+           {
+            "id": "server-team-b-head",
+            "type": "text",
+            "properties": {
+             "text": {"type": "text", "value": "#str_200199"},
+             "position": {"type": "keyword", "value": "absolute"},
+             "left": {"type": "length", "value": 193.5, "unit": "dp"},
+             "top": {"type": "length", "value": 4, "unit": "dp"},
+             "width": {"type": "length", "value": 166.5, "unit": "dp"},
+             "height": {"type": "length", "value": 16.0, "unit": "dp"},
+             "font-family": {"type": "font", "value": "lowpixel"},
+             "font-size": {"type": "length", "value": 13, "unit": "dp"},
+             "line-height": {"type": "length", "value": 16.0, "unit": "dp"},
+             "color": {"type": "color", "value": [1.0, 0.4824, 0.0157, 1.0]},
+             "white-space": {"type": "keyword", "value": "nowrap"}
+            }
+           },
+           {
+            "id": "server-team-b",
+            "type": "text",
+            "properties": {
+             "text": {"type": "text", "value": "#str_230030"},
+             "position": {"type": "keyword", "value": "absolute"},
+             "left": {"type": "length", "value": 193.5, "unit": "dp"},
+             "top": {"type": "length", "value": 22.0, "unit": "dp"},
+             "width": {"type": "length", "value": 166.5, "unit": "dp"},
+             "height": {"type": "length", "value": 112.0, "unit": "dp"},
+             "font-family": {"type": "font", "value": "lowpixel"},
+             "font-size": {"type": "length", "value": 14, "unit": "dp"},
+             "line-height": {"type": "length", "value": 16.0, "unit": "dp"},
+             "color": {"type": "color", "value": [1, 1, 1, 0.8]},
+             "white-space": {"type": "keyword", "value": "pre"},
+             "overflow": {"type": "keyword", "value": "hidden"}
+            }
+           }
+          ]
+         },
+         {
+          "id": "server-all",
+          "type": "group",
+          "properties": {
+           "position": {"type": "keyword", "value": "absolute"},
+           "left": {"type": "length", "value": 0, "unit": "dp"},
+           "top": {"type": "length", "value": 0, "unit": "dp"},
+           "width": {"type": "length", "value": 375.0, "unit": "dp"},
+           "height": {"type": "length", "value": 100, "unit": "%"},
+           "display": {"type": "keyword", "value": "none"}
+          },
+          "children": [
+           {
+            "id": "server-players-head",
+            "type": "text",
+            "properties": {
+             "text": {"type": "text", "value": "#str_200038"},
+             "position": {"type": "keyword", "value": "absolute"},
+             "left": {"type": "length", "value": 15, "unit": "dp"},
+             "top": {"type": "length", "value": 4, "unit": "dp"},
+             "width": {"type": "length", "value": 345.0, "unit": "dp"},
+             "height": {"type": "length", "value": 16.0, "unit": "dp"},
+             "font-family": {"type": "font", "value": "lowpixel"},
+             "font-size": {"type": "length", "value": 13, "unit": "dp"},
+             "line-height": {"type": "length", "value": 16.0, "unit": "dp"},
+             "color": {"type": "color", "value": [0.5451, 0.5882, 0.2941, 1.0]},
+             "white-space": {"type": "keyword", "value": "nowrap"}
+            }
+           },
+           {
+            "id": "server-players",
+            "type": "text",
+            "properties": {
+             "text": {"type": "text", "value": "#str_230030"},
+             "position": {"type": "keyword", "value": "absolute"},
+             "left": {"type": "length", "value": 15, "unit": "dp"},
+             "top": {"type": "length", "value": 22.0, "unit": "dp"},
+             "width": {"type": "length", "value": 345.0, "unit": "dp"},
+             "height": {"type": "length", "value": 112.0, "unit": "dp"},
+             "font-family": {"type": "font", "value": "lowpixel"},
+             "font-size": {"type": "length", "value": 14, "unit": "dp"},
+             "line-height": {"type": "length", "value": 16.0, "unit": "dp"},
+             "color": {"type": "color", "value": [1, 1, 1, 0.8]},
+             "white-space": {"type": "keyword", "value": "pre"},
+             "overflow": {"type": "keyword", "value": "hidden"}
+            }
+           }
+          ]
+         },
+         {
+          "id": "server-roster-extra",
+          "type": "text",
+          "properties": {
+           "text": {"type": "text", "value": "#str_230030"},
+           "position": {"type": "keyword", "value": "absolute"},
+           "left": {"type": "length", "value": 15, "unit": "dp"},
+           "top": {"type": "length", "value": 4, "unit": "dp"},
+           "width": {"type": "length", "value": 345.0, "unit": "dp"},
+           "height": {"type": "length", "value": 16.0, "unit": "dp"},
+           "font-family": {"type": "font", "value": "lowpixel"},
+           "font-size": {"type": "length", "value": 13, "unit": "dp"},
+           "line-height": {"type": "length", "value": 16.0, "unit": "dp"},
+           "color": {"type": "color", "value": [0.6, 0.6, 0.6, 1.0]},
+           "white-space": {"type": "keyword", "value": "nowrap"}
+          }
+         }
+        ]
+       },
+       {
+        "id": "server-message",
+        "type": "text",
+        "properties": {
+         "text": {"type": "text", "value": "#str_230030"},
+         "position": {"type": "keyword", "value": "relative"},
+         "display": {"type": "keyword", "value": "none"},
+         "margin-left": {"type": "length", "value": 15, "unit": "dp"},
+         "margin-top": {"type": "length", "value": 6, "unit": "dp"},
+         "width": {"type": "length", "value": 345.0, "unit": "dp"},
+         "max-height": {"type": "length", "value": 60, "unit": "dp"},
+         "overflow": {"type": "keyword", "value": "hidden"},
+         "font-family": {"type": "font", "value": "lowpixel"},
+         "font-size": {"type": "length", "value": 16, "unit": "dp"},
+         "line-height": {"type": "length", "value": 20, "unit": "dp"},
+         "color": {"type": "color", "value": [1.0, 1.0, 0.5529, 1.0]},
+         "white-space": {"type": "keyword", "value": "pre-line"}
         }
        }
       ]

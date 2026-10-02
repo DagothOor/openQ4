@@ -436,7 +436,7 @@ private:
 	int blurWidth = 0, blurHeight = 0;
 	static std::string FontFamily(const std::string& family) {
 		// The faces a document may name; anything else draws in Chain.
-		static const char* const faces[] = {"marine","lowpixel","r_strogg","strogg"};
+		static const char* const faces[] = {"marine","lowpixel","profont","r_strogg","strogg"};
 		for (const char* face : faces) if (family == face) return face;
 		return "chain";
 	}

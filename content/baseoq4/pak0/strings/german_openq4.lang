@@ -1107,4 +1107,7 @@
 	"#str_230067"	"Fahrzeuge reparieren sich nach sechs ruhigen Sekunden."
 	"#str_230068"	"Drücke Feuer, um das Nachladen der Schrotflinte abzubrechen."
 	"#str_230069"	"Springe, um aus einem Fahrzeug auszusteigen."
+	"#str_230070"	"+%d weitere"
+	"#str_230071"	"Verbinden: %d"
+	"#str_230072"	"Zuschauer: %d"
 }

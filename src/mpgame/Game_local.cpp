@@ -5073,8 +5073,40 @@ const char* idGameLocal::HandleGuiCommands( const char *menuCommand ) {
 idGameLocal::HandleMainMenuCommands
 ================
 */
+void MPResolveMatchLimitFor( const idDict &serverInfo, int gameType, const char *&limitLabel, int &limitValue );
+
 void idGameLocal::HandleMainMenuCommands( const char *menuCommand, idUserInterface *gui ) {
-	if ( !idStr::Icmp( menuCommand, "initCreateServerSettings" ) ) {
+	if ( !idStr::Icmp( menuCommand, "retainedLoadingServer" ) ) {
+		// openQ4: the retained loading screen's server card names the mode,
+		// the limits it enforces and whether it has teams, from the server info
+		// the session passes as query_si_* (serverInfo is set when the map
+		// spawns, after the loading screen presents).
+		idDict query;
+		static const char *const keys[] = { "si_gameType", "si_fragLimit", "si_captureLimit", "si_controlTime", "si_roundLimit",
+			"si_scoreLimit", "si_timeLimit" };
+		for ( int i = 0; i < static_cast<int>( sizeof( keys ) / sizeof( keys[0] ) ); i++ ) {
+			query.Set( keys[ i ], gui->State().GetString( va( "query_%s", keys[ i ] ) ) );
+		}
+		const mpGameTypeInfo_t *info = MPGameTypeByName( query.GetString( "si_gameType" ) );
+		if ( info == NULL ) {
+			return;
+		}
+		const char *limitLabel = "";
+		int limitValue = 0;
+		MPResolveMatchLimitFor( query, info->type, limitLabel, limitValue );
+		idStr limits;
+		if ( limitValue > 0 ) {
+			limits = va( "%s %d", limitLabel, limitValue );
+		}
+		if ( query.GetInt( "si_timeLimit" ) > 0 ) {
+			limits += limits.Length() ? " - " : "";
+			limits += va( "%s %d", common->GetLocalizedString( "#str_200061" ), query.GetInt( "si_timeLimit" ) );
+		}
+		gui->SetStateString( "server_gametype", common->GetLocalizedString( info->localizedName ) );
+		gui->SetStateString( "server_limit", limits.c_str() );
+		gui->SetStateBool( "server_team_mode", MPGameTypeHasAny( info->type, GTF_TEAM ) );
+		gui->SetStateBool( "server_answered", true );
+	} else if ( !idStr::Icmp( menuCommand, "initCreateServerSettings" ) ) {
 		// openQ4: the vote gametype index is the menu dropdown index
 		gui->SetStateInt( "currentGametype", mpGame.GameTypeToVote( si_gameType.GetString() ) );
 	} else if ( !idStr::Icmp( menuCommand, "filterByNextMod" ) ) {

@@ -1322,6 +1322,13 @@ bool UI_RetainedDiagnostic(idUserInterface* gui, const idCmdArgs& args) {
 	} else if (verb == "pending" && args.Argc() == 4) {
 		if (NumberDraftState(args.Argv(2))) return false;
 		owner.SetStateString(args.Argv(2),args.Argv(3)); okay = true;
+	} else if (verb == "lines" && args.Argc() >= 4) {
+		// A multi-line value, one argument per line: the console turns every
+		// backslash into a slash, so no escape can carry a line break.
+		if (NumberDraftState(args.Argv(2))) return false;
+		idStr value = args.Argv(3);
+		for (int line = 4; line < args.Argc(); ++line) { value += "\n"; value += args.Argv(line); }
+		owner.SetStateString(args.Argv(2),value.c_str()); owner.StateChanged(common->GetPresentationTime()); okay = impl.lastError.empty();
 	} else if (verb == "event" && args.Argc() == 3) {
 		owner.HandleNamedEvent(args.Argv(2)); okay = impl.lastError.empty();
 	} else if (verb == "trigger" && args.Argc() == 2) {

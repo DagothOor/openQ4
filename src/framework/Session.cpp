@@ -3813,6 +3813,9 @@ void idSessionLocal::Clear() {
 	retainedLoadingTip = -1;
 	retainedLoadingTipSlot = 0;
 	retainedLoadingTipAt = 0;
+	retainedRosterCount = 0;
+	retainedRosterConnecting = 0;
+	retainedRosterKnown = false;
 	demoReturnGui = NULL;
 	demoOverlayVisible = false;
 	demoBrowserMode = true;
@@ -4396,7 +4399,7 @@ static void Session_RetainedGui_f( const idCmdArgs &args ) {
 		return;
 	}
 #endif
-	common->Printf( "openq4_retainedGui: requires a retained test/active GUI and report | inspect <id> | widget <id> | focus <id> | menu <action> <0|1> | number <begin|replace|select|preedit|input|undo|redo|commit|keep|reload|cancel> <id> [text or offsets] | state <id> <value> | pending <key> <value> | presentation <alias> <value> <override:0|1> | event <name> | trigger | update | save | restore\n" );
+	common->Printf( "openq4_retainedGui: requires a retained test/active GUI and report | inspect <id> | widget <id> | focus <id> | menu <action> <0|1> | number <begin|replace|select|preedit|input|undo|redo|commit|keep|reload|cancel> <id> [text or offsets] | state <id> <value> | pending <key> <value> | lines <key> <line> [line ...] | presentation <alias> <value> <override:0|1> | event <name> | trigger | update | save | restore\n" );
 }
 
 static void Session_SystemSettings_f( const idCmdArgs &args ) {
@@ -5955,6 +5958,156 @@ void idSessionLocal::PublishRetainedLoadingTip( bool first ) {
 	}
 }
 
+// Player- or server-supplied text for a retained screen: Quake 4's ^ color,
+// icon and command escapes, control bytes and malformed UTF-8 are dropped, a
+// line break past maxLines lines reads as a space, at most maxBytes bytes are
+// kept (never splitting a character), and text that would read as a #str_ key
+// stays literal. The console turns backslashes into slashes, so a cvar can
+// carry no typed line break; the card wraps the text itself.
+static idStr Session_RetainedPlayerText( const char *text, int maxBytes, int maxLines ) {
+	idStr plain = text != NULL ? text : "";
+	plain.RemoveEscapes();
+	idStr out;
+	int lines = 1;
+	for ( int i = 0; i < plain.Length(); i++ ) {
+		const unsigned char c = static_cast<unsigned char>( plain[ i ] );
+		// A break past the last line, and a tab, read as a space.
+		if ( c == '\n' || c == '\t' ) {
+			const char last = out.Length() > 0 ? out[ out.Length() - 1 ] : '\n';
+			if ( c != '\t' && lines < maxLines && last != '\n' ) {
+				lines++;
+				out += '\n';
+			} else if ( last != '\n' && last != ' ' && out.Length() < maxBytes ) {
+				out += ' ';
+			}
+			continue;
+		}
+		// Controls, stray continuation bytes and malformed sequences are
+		// dropped, and so are spaces that would start a line.
+		if ( c < 0x20 || c == 0x7f || ( c >= 0x80 && c < 0xc0 ) || c >= 0xf8 ||
+			( c == ' ' && ( out.Length() == 0 || out[ out.Length() - 1 ] == '\n' ) ) ) {
+			continue;
+		}
+		const int length = c >= 0xf0 ? 4 : c >= 0xe0 ? 3 : c >= 0xc0 ? 2 : 1;
+		bool whole = i + length <= plain.Length();
+		for ( int byte = 1; whole && byte < length; byte++ ) {
+			whole = ( static_cast<unsigned char>( plain[ i + byte ] ) & 0xc0 ) == 0x80;
+		}
+		if ( !whole ) {
+			continue;
+		}
+		if ( out.Length() + length > maxBytes ) {
+			break;
+		}
+		out.Append( plain.c_str() + i, length );
+		i += length - 1;
+	}
+	while ( out.Length() > 0 && ( out[ out.Length() - 1 ] == '\n' || out[ out.Length() - 1 ] == ' ' ) ) {
+		out.CapLength( out.Length() - 1 );
+	}
+	if ( idStr::Icmpn( out.c_str(), "#str_", 5 ) == 0 ) {
+		out.Insert( ' ', 0 );
+	}
+	return out;
+}
+
+// The loading server card's rows: six names per list, then "+N more".
+static const int RETAINED_ROSTER_ROWS = 7;
+
+void idSessionLocal::ClearRetainedLoadingRoster() {
+	retainedRosterCount = 0;
+	retainedRosterConnecting = 0;
+	retainedRosterKnown = false;
+}
+
+void idSessionLocal::NoteRetainedLoadingPlayer( const idDict &userInfo ) {
+	retainedRosterKnown = true;
+	const idStr name = Session_RetainedPlayerText( userInfo.GetString( "ui_name" ), 48, 1 );
+	if ( retainedRosterCount >= RETAINED_ROSTER_SLOTS || name.Length() == 0 ) {
+		return;
+	}
+	retainedRosterName[ retainedRosterCount ] = name;
+	retainedRosterTeam[ retainedRosterCount ] = !idStr::Icmp( userInfo.GetString( "ui_spectate" ), "Spectate" ) ? -1 :
+		!idStr::Icmp( userInfo.GetString( "ui_team" ), "Strogg" ) ? 1 : 0;
+	retainedRosterCount++;
+}
+
+void idSessionLocal::NoteRetainedLoadingConnecting( int count ) {
+	retainedRosterKnown = true;
+	retainedRosterConnecting = count > 0 ? count : 0;
+}
+
+// The multiplayer loading card (section 14.17): the game module names the
+// mode, its enforced limits and whether it has teams from the server info
+// (gameLocal's own copy is set only when the map spawns); the session adds
+// the players known as the load starts and the server's message.
+void idSessionLocal::PublishRetainedLoadingServer( const idDict &serverInfo ) {
+	static const char *const queried[] = { "si_gameType", "si_fragLimit", "si_captureLimit", "si_controlTime", "si_roundLimit",
+		"si_scoreLimit", "si_timeLimit" };
+	for ( int i = 0; i < static_cast<int>( sizeof( queried ) / sizeof( queried[0] ) ); i++ ) {
+		guiLoading->SetStateString( va( "query_%s", queried[ i ] ), serverInfo.GetString( queried[ i ] ) );
+	}
+	guiLoading->SetStateBool( "server_answered", false );
+	guiLoading->SetStateBool( "server_team_mode", false );
+	if ( game != NULL ) {
+		game->HandleMainMenuCommands( "retainedLoadingServer", guiLoading );
+	}
+	const bool answered = guiLoading->State().GetBool( "server_answered" );
+	const bool teams = answered && guiLoading->State().GetBool( "server_team_mode" );
+
+	// The card wraps the message and clips it at three lines.
+	const idStr message = Session_RetainedPlayerText( serverInfo.GetString( "si_motd" ), 256, 3 );
+	guiLoading->SetStateString( "server_message", message.c_str() );
+
+	idStr lists[ 3 ];
+	int counts[ 3 ] = { 0, 0, 0 };
+	int spectators = 0;
+	for ( int i = 0; i < retainedRosterCount; i++ ) {
+		if ( retainedRosterTeam[ i ] < 0 ) {
+			spectators++;
+			continue;
+		}
+		const int list = teams ? retainedRosterTeam[ i ] : 2;
+		if ( counts[ list ] < RETAINED_ROSTER_ROWS - 1 ) {
+			lists[ list ] += lists[ list ].Length() ? "\n" : "";
+			lists[ list ] += retainedRosterName[ i ];
+		}
+		counts[ list ]++;
+	}
+	int rows = 0;
+	for ( int list = 0; list < 3; list++ ) {
+		int shown = counts[ list ] < RETAINED_ROSTER_ROWS - 1 ? counts[ list ] : RETAINED_ROSTER_ROWS - 1;
+		if ( counts[ list ] > shown ) {
+			lists[ list ] += va( "\n%s", va( common->GetLanguageDict()->GetString( "#str_230070" ), counts[ list ] - shown ) );
+			shown++;
+		}
+		rows = shown > rows ? shown : rows;
+	}
+	idStr extra;
+	if ( spectators > 0 ) {
+		extra = va( common->GetLanguageDict()->GetString( "#str_230072" ), spectators );
+	}
+	if ( retainedRosterConnecting > 0 ) {
+		extra += extra.Length() ? " \xc2\xb7 " : "";
+		extra += va( common->GetLanguageDict()->GetString( "#str_230071" ), retainedRosterConnecting );
+	}
+	guiLoading->SetStateBool( "server_roster_known", retainedRosterKnown );
+	guiLoading->SetStateBool( "server_team_mode", teams );
+	guiLoading->SetStateInt( "server_roster_rows", rows );
+	guiLoading->SetStateString( "server_team_a", lists[ 0 ].c_str() );
+	guiLoading->SetStateString( "server_team_b", lists[ 1 ].c_str() );
+	guiLoading->SetStateString( "server_players", lists[ 2 ].c_str() );
+	guiLoading->SetStateString( "server_roster_extra", extra.c_str() );
+	guiLoading->StateChanged( common->GetPresentationTime() );
+	if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+		common->Printf( "RETAINED_LOADING_SERVER answered=%d teams=%d players=%d spectators=%d connecting=%d rows=%d message=%d\n",
+			answered ? 1 : 0, teams ? 1 : 0, retainedRosterCount - spectators, spectators, retainedRosterConnecting, rows,
+			message.Length() );
+	}
+	// Each load captures its own roster.
+	ClearRetainedLoadingRoster();
+}
+
 /*
 ===============
 idSessionLocal::LoadLoadingGui
@@ -6076,7 +6229,8 @@ void idSessionLocal::LoadLoadingGui( const char *mapName ) {
 			const idStr limitText = Session_GetMPLoadLimitString( mapSpawnData.serverInfo );
 
 			if ( serverName && serverName[ 0 ] ) {
-				guiLoading->SetStateString( "server_name", serverName );
+				guiLoading->SetStateString( "server_name", retainedLoading ?
+					Session_RetainedPlayerText( serverName, 96, 1 ).c_str() : serverName );
 			}
 			if ( serverAddress.Length() ) {
 				guiLoading->SetStateString( "server_ip", serverAddress.c_str() );
@@ -6086,6 +6240,11 @@ void idSessionLocal::LoadLoadingGui( const char *mapName ) {
 			}
 			if ( limitText.Length() ) {
 				guiLoading->SetStateString( "server_limit", limitText.c_str() );
+			}
+			// The retained card asks the game for its mode, limits and teams,
+			// and adds the players known now and the server's message.
+			if ( retainedLoading ) {
+				PublishRetainedLoadingServer( mapSpawnData.serverInfo );
 			}
 		}
 

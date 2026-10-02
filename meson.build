@@ -296,6 +296,21 @@ if get_option('build_native_tests')
     timeout: 30,
   )
 
+  openq4_connect_roster_test = executable(
+    'openq4-connect-roster-test',
+    files(
+      'tools/tests/native/ConnectRosterTest.cpp',
+      'src/framework/async/ConnectRoster.cpp',
+    ),
+    include_directories: root_include_dir,
+    install: false,
+  )
+  test(
+    'openq4-connect-roster',
+    openq4_connect_roster_test,
+    timeout: 30,
+  )
+
   openq4_level_load_cache_format_test = executable(
     'openq4-level-load-cache-format-test',
     files(

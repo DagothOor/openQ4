@@ -1116,4 +1116,7 @@
 	"#str_230067"	"Pojazdy naprawiają się po sześciu sekundach spokoju."
 	"#str_230068"	"Naciśnij strzał, by przerwać przeładowanie strzelby."
 	"#str_230069"	"Skocz, by wysiąść z pojazdu."
+	"#str_230070"	"+%d więcej"
+	"#str_230071"	"Łączenie: %d"
+	"#str_230072"	"Obserwatorzy: %d"
 }

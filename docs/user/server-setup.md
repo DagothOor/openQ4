@@ -118,6 +118,7 @@ them does not route multiplayer traffic through a SOCKS proxy.
 | Variable | What it controls |
 |---|---|
 | `si_name` | Server name shown to players |
+| `si_motd` | A message players read on the loading screen while they load the map. Up to 256 bytes; the screen wraps it to three lines, and color codes are dropped |
 | `si_map` | Starting map |
 | `si_gameType` | Multiplayer game type |
 | `si_fragLimit` | Frag limit |
