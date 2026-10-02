@@ -180,6 +180,7 @@ jobs:
             tools/tests/linux_highdpi_mouse.py \
             tools/tests/linux_appimage_packaging.py \
             tools/tests/lang_table_encoding.py \
+            tools/tests/ttf_font_integrity.py \
             tools/tests/source_charset_integrity.py \
             tools/tests/linux_metadata_fuzz.py \
             tools/tests/linux_packaging_guidance.py \
@@ -515,6 +516,7 @@ jobs:
           python tools/tests/linux_highdpi_mouse.py
           python tools/tests/linux_appimage_packaging.py
           python tools/tests/lang_table_encoding.py
+          python tools/tests/ttf_font_integrity.py
           python tools/tests/source_charset_integrity.py
           python tools/tests/linux_metadata_fuzz.py
           python tools/tests/linux_packaging_guidance.py

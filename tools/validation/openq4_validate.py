@@ -587,6 +587,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         root / "tools" / "tests" / "steam_deck_support.py",
         root / "tools" / "tests" / "system_console_presentation.py",
         root / "tools" / "tests" / "lang_table_encoding.py",
+        root / "tools" / "tests" / "ttf_font_integrity.py",
         root / "tools" / "tests" / "startup_language_override.py",
         root / "tools" / "tests" / "stock_asset_baseline.py",
         root / "tools" / "tests" / "stock_media_fallbacks.py",

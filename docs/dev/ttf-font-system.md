@@ -68,23 +68,46 @@ The donor directory needs `NotoSans-var.ttf`, `NotoSansArabic-var.ttf` and
 3. **Axis snapping.** Near-axis lines are forced onto the axis and their offsets
    clustered, so both edges of a stem share one coordinate. Adjacent straight
    runs are intersected to restore corners the antialiasing rounded off.
-4. **Composition.** Diacritics are lifted out of the retail precomposed glyphs
-   (the acute out of `Á`, the cedilla out of `Ç`, and so on), and caron, macron,
-   dot-above and double-acute are derived from those. Latin Extended-A/B and
+4. **Marks.** Diacritics are lifted out of the retail precomposed glyphs (the
+   acute out of `Á`, the cedilla out of `Ç`, and so on), and caron, macron,
+   dot-above and double-acute are derived from those. A shallow acute is
+   narrowed before it is doubled, or the two strokes of `ő` run together. The
+   comma below, the turned comma of `ģ` and the dot below come from the face's
+   own comma and dot; the comma is sized to end at the face's descender depth,
+   as Noto's does. The breve and the ogonek sit on no Latin-1 letter, so they
+   come from the weight-matched donor instance (step 9); a mark is small, and
+   the letter under it stays authentic. When a capital's accent cannot be
+   lifted cleanly (see below), the face's lowercase accent is reused at half
+   the lowercase clearance, the angular ones a fifth flatter.
+5. **Letters.** Turkish dotless `ı`, `ȷ`, the stroked `Ł ł Đ đ Ħ ħ Ŧ ŧ`, `Ĳ ĳ`,
+   `ŉ` and `Ŀ ŀ` are built from the face's own letters plus a stroke, or minus
+   a dot.
+6. **Composition.** Latin-1 (where a face rebuilds it), Latin Extended-A/B and
    Vietnamese are then built as base plus mark, so they are authentic Quake 4
-   shapes rather than imports.
-5. **Shape sharing.** Cyrillic and Greek letters that are identical to a Latin
+   shapes rather than imports. Accents go on the dotless `ı` and `ȷ`; `ď ť ľ Ľ`
+   take an apostrophe beside the stem rather than a caron on the ascender, as
+   Czech and Slovak write them; a second accent stacks on the first (`ǘ`, `ǟ`).
+7. **Shape sharing.** Cyrillic and Greek letters that are identical to a Latin
    one — А В Е К М Н О Р С Т Х, Α Β Ε Ζ Η Ι Κ Μ Ν Ο Ρ Τ Υ Χ and the lowercase
    equivalents — reuse the traced Quake 4 outline, so most of any Cyrillic or
    Greek run stays in the real face. Cyrillic PE and U are *not* shared: PE is a
    pi shape, not an N, and both cases of U carry a descending tail.
-6. **Donors.** Whatever is left comes from Noto. Because the donors are variable
+8. **Symbols.** The Latin-1 symbols every retail atlas left blank - NBSP, the
+   soft hyphen, `¢ ¦ ¨ ª ¬ ¯ ± ² ³ ¶ ¸ ¹ º ¼ ½ ¾` - are built from the face's own
+   glyphs: superscripts and fractions from its digits, the ordinals from a
+   raised `a` and `o` over a rule, spacing accents from its marks.
+9. **Donors.** Whatever is left comes from Noto. Because the donors are variable
    fonts, each one is instantiated at the weight and width whose stem-to-cap
    ratio already matches the target face, rather than being distorted after the
    fact. The solved instances differ per face — Chain lands on 737/88, ProFont on
-   450/85 — which is what keeps the imported scripts at the right colour.
-7. **Synthesis.** Noto Sans carries almost nothing from the arrows, geometric and
-   misc-symbol blocks, so those are constructed directly at the face's weight.
+   450/85 — which is what keeps the imported scripts at the right colour. In an
+   all-caps face (`marine`, `r_strogg`) the lowercase slots are small capitals,
+   so a donor lowercase letter is replaced by the donor's capital at the small
+   capitals' height, from an instance solved for their stem weight.
+10. **Synthesis.** Noto Sans carries almost nothing from the arrows, geometric and
+    misc-symbol blocks, so those are constructed directly at the face's weight.
+11. **The console cell.** `bigchars` is fitted last: every glyph is pressed into
+    the 16x16 cell the console clips to, and given the cell as its advance.
 
 Small sources get an extra step first. Step 1 places an edge from the coverage
 value itself, treating a sample as the area of a pixel cut by *one* edge. That
@@ -95,10 +118,17 @@ counters closing up and `@` collapsing into a blob. Any source below
 `DENSIFY_TARGET_SIZE` (64px) is therefore resampled up to roughly that size
 before tracing, which separates the two edges into different pixels and restores
 the assumption. Bilinear is the right reconstruction: the sheet is antialiased,
-so the coverage ramp already encodes where the edge sits. On `bigchars` this
-takes mean coverage error from 0.044 to 0.036 and IoU from 0.913 to 0.931. The
-resample is itself a low-pass, so contour smoothing is switched off when it runs
-— smoothing again only rounds off detail the source had.
+so the coverage ramp already encodes where the edge sits.
+
+The tracer's geometric thresholds (corner window, trims, minimum line length)
+are fractions of an em, so they scale with the traced size. Its fitting
+tolerances are not: they absorb antialiasing noise, which is a fraction of a
+*source* pixel whatever the size. Scaled with the resampled size they shrank to
+a twenty-fifth of a console pixel, so every kink bilinear leaves at a pixel
+boundary was traced as a notch, and the console's octagonal bevels came out as
+staircases. They are held at their reference value in source pixels instead,
+and the resampled contour gets two smoothing passes; bevels, diagonals and the
+round digits now trace clean.
 
 ### Fidelity
 
@@ -107,14 +137,59 @@ the retail coverage it models. Across the six faces the mean absolute coverage
 error is 0.4–0.8% with total area within 0.3% of the source, which means the
 outlines reproduce the originals rather than merely resembling them.
 
-### A defect in the retail data
+### Defects in the retail data
 
-`chain`'s space glyph has a **zero advance** in all three retail point sizes,
-which collapses every gap in a line of text drawn in that face. Every other face
-uses exactly half an em. The generator substitutes half an em and reports
-`space_repaired=1`. This is a deliberate divergence from the shipped data: text
-drawn in `chain` will be spaced differently under `r_useTrueTypeFonts 1` than it
-is under `0`.
+The generator repairs these deliberately rather than trace them faithfully;
+each one is listed in the face's `FaceSpec` in `build_openq4_fonts.py`.
+
+- `chain`'s space glyph has a **zero advance** in all three retail point sizes,
+  which collapses every gap in a line of text drawn in that face. Every other
+  face uses exactly half an em. The generator substitutes half an em and reports
+  `space_repaired=1`, so text in `chain` is spaced differently under
+  `r_useTrueTypeFonts 1` than under `0`.
+- Every atlas fills the **bullet** with a solid cap-high missing-glyph box. It
+  is rebuilt from the face's middle dot.
+- `profont`'s **`©`, `®` and `%`** were cut off at the left when Raven rendered
+  the atlas, and are rebuilt from the face's `C`, `R`, `o` and `/`.
+- The all-caps faces draw **sharp s as `B`** (`marine`, `r_strogg`). As a small
+  capital it is written `SS`.
+- Neither the 48 point ProFont atlas nor the 16 pixel console cells left room
+  above a capital, so Raven ran the **capital accents into the letters**, and on
+  the console also shortened every accented letter by a row. Lifted out, those
+  accents come away as a sliver fused to a piece of the letter, or as the hole
+  of a ring without the ring. The generator detects such marks and recomposes
+  the accented letters: the capitals in `profont`, every accented Latin-1 letter
+  in `bigchars`, whose accents come from its spacing circumflex, grave, tilde
+  and degree ring and the dot of its `i`.
+- The **console sheet slips around 0xDD**: Y-acute's cell holds the sharp s,
+  and the thorn and sharp s cells hold stray copies of a-grave and a-acute, so
+  every German `ß` on the console drew as `á`. The cells are remapped.
+- The console sheet fills the unassigned Windows-1252 byte 0x81 with a solid
+  block. Unassigned bytes are C1 control codes, which no face maps, so they draw
+  as an empty cell.
+
+### Auditing
+
+`tools/assets/fonts/audit_fonts.py` scores a built set against the retail
+atlases:
+
+```bash
+python tools/assets/fonts/audit_fonts.py --source .tmp/fontsrc --fonts content/baseoq4/pak0/fonts --output .tmp/fontaudit --sheets
+```
+
+Every traced glyph is rasterised back into its atlas cell and compared with the
+retail coverage: IoU, pixels that visibly disagree, ink topology and advance.
+Glyphs with no retail source are checked structurally (specks, empty outlines,
+ink outside the line, and accents that run into their letter), the required
+character set is checked against every cmap, and `--sheets` renders specimen
+sheets for the eye. Rebuilt and remapped cells are left out of the fidelity
+scores, since they differ from the retail art on purpose.
+
+The retail atlases cannot ship, so CI runs `tools/tests/ttf_font_integrity.py`
+instead, which needs only the font files: coverage, no visible character drawn
+empty, no C1 control mapped, no two accented letters with the same drawing
+(the console's sharp s slip), and every `bigchars` glyph inside the console
+cell.
 
 ## Engine
 
@@ -245,8 +320,17 @@ It carries the same extended coverage as the other faces, and its advances are
 forced to one em. The source is a fixed-cell font and both consumers step a
 fixed cell per character, ignoring font advances entirely, so a proportional
 advance would be fiction — which is what the donor-imported scripts arrive
-carrying. Note that the console still indexes by byte, so the extended coverage
-is present in the file but not reachable from the console itself.
+carrying. The console still indexes by byte, so it reaches the 224 characters
+of the active language's codepage (Windows-1250, -1251, -1252 or -1254) rather
+than the whole file; that is how Czech, Hungarian, Polish, Turkish and Cyrillic
+console text draws.
+
+Only two of a cell's sixteen pixel rows lie above a capital and two below the
+baseline, and the sheet clips each glyph to its cell. Capital accents are
+therefore pressed into those two rows, gap and mark together, and a donor
+letter that would reach past the cell is compressed above its cap height or
+below its baseline. At 1080p the cell is 36 pixels, so a capital accent is
+still about four pixels tall.
 
 ### Keeping the atlas materials alive
 
@@ -346,6 +430,14 @@ come out ragged. `uiFontParitySelfTest` covers both the extent measurement and
 the rect placement.
 
 ## Known limitations
+
+- **Cyrillic letters without a Latin twin come from Noto.** They are matched to
+  each face's weight and width, but they are Noto's drawings, not Raven's.
+- **Two accents on one console capital** (`Ȭ`, `Ǖ`) cannot both fit in the
+  cell's two rows above a capital and run together. No shipped language uses
+  them.
+- `r_strogg`'s `Ç` and `ç` close a hairline gap the retail art leaves between
+  the letter and the cedilla; at HUD sizes it is under a tenth of a pixel.
 
 - **Text input above ASCII is not wired up.** Display is complete — engine text
   is UTF-8 and the text path draws by code point — but `idEditField` and the
