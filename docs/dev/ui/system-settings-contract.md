@@ -10,11 +10,13 @@ The transaction core, fixed 53-field engine catalog and typed application servic
 are implemented. Immediate changes can be drafted, validated, applied, canceled
 and restored through the service. The [display confirmation integration](display-confirmation.md)
 adds frame-owned Apply/Keep/Revert, durable recovery and strict initial-device
-recovery for eligible confirmation documents, and the light-grid preload
-applies through the [deferred executor](settings-effect-execution.md#deferred-light-grid-executor).
-Audio, image/resource reload, renderer resources, preset expansion and the
-other next-map settings (`image_writeGeneratedImages`, `s_maxSoundsPerShader`)
-still block the complete batch before live writes. Production controls, editor support and full product qualification remain
+recovery for eligible confirmation documents, the light-grid preload applies
+through the [deferred executor](settings-effect-execution.md#deferred-light-grid-executor)
+and the renderer fallback through the
+[renderer executor](settings-effect-execution.md#renderer-fallback-executor).
+Audio, image/resource reload, the other renderer-resource settings, preset
+expansion and the other next-map settings (`image_writeGeneratedImages`,
+`s_maxSoundsPerShader`) still block the complete batch before live writes. Production controls, editor support and full product qualification remain
 required. Earlier immediate-only evidence below describes its recorded checkpoint;
 the newer display contract defines the current integration and its limits.
 
@@ -271,7 +273,7 @@ The normal retained adapter validates and dispatches these operations:
 | `settings.system.begin` | No arguments; capture live baseline and draft, or keep an existing draft for the same owner |
 | `settings.system.edit` | Nonempty map of exact catalog CVar names to typed values; validate the complete merged candidate without live writes |
 | `settings.system.defaults` | No arguments; stage all 53 registered defaults after complete validation; no global reset, binding reset or immediate write |
-| `settings.system.apply` | No arguments; run one executor: an immediate batch with readback, a display change through Keep/Revert confirmation, or the next map's light-grid preload automatically; reject a batch that mixes executors or changes a field with none |
+| `settings.system.apply` | No arguments; run one executor: an immediate batch with readback, a display change through Keep/Revert confirmation, or automatically the next map's light-grid preload or the renderer fallback; reject a batch that mixes executors or changes a field with none |
 | `settings.system.cancel` | No arguments; close an editing draft; during confirmation/recovery, first restore to Editing on success |
 | `settings.system.confirm` | No arguments; commit a matching pending readback when the transaction is Confirming |
 | `settings.system.revert` | No arguments; discard an editing draft, or attempt safe rollback of pending/recovery writes |
@@ -279,8 +281,9 @@ The normal retained adapter validates and dispatches these operations:
 Confirming, timeout and rollback are implemented transaction states. Display
 restarts apply through Keep/Revert confirmation, and the light-grid preload
 through the [deferred executor](settings-effect-execution.md#deferred-light-grid-executor).
-Image reload, audio restart, renderer resources and preset expansion are still
-refused before Apply writes. That includes changing `com_performancePreset`; a
+The renderer fallback applies through its renderer executor. Image reload,
+audio restart, the other renderer-resource settings and preset expansion are
+still refused before Apply writes. That includes changing `com_performancePreset`; a
 pure complete profile expansion and Auto-Detect draft operation are still
 required. A batch mixing brightness with one refused field applies neither
 change, and a batch that needs two executors is refused with a notice asking

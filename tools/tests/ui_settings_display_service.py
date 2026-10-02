@@ -120,6 +120,20 @@ bool Sys_BuildWindowPlacementCommit(std::uint64_t token,const sysWindowPlacement
 bool Sys_WindowPlacementLeaseActive(){return geometryToken!=0;}
 bool R_RendererModule_QueryDisplay(rendererDisplayState_t* out){if(!queryOkay)return false;*out=actual;return true;}
 bool R_RendererModule_QueryLightGridLoad(renderLightGridLoadReceipt_t&,uint64_t&,uint64_t&){return false;}
+static renderRendererSelection_t selectionReport{};static uint64_t selectionReportSerial=0;static bool selectionReportValid=true;
+// 0 agrees; 1 ignores the request; 2 publishes no new report; 3 reports an unavailable
+// request with the automatic pick; 4 claims promotion for an explicit name.
+static int selectionFault=0;
+static void PublishSelection(){
+    if(selectionFault==2)return;
+    renderRendererSelection_t s{};const std::string request=localCVarSystem.variables.at("r_renderer").value;
+    std::snprintf(s.requested,sizeof(s.requested),"%s",selectionFault==1?"best":request.c_str());
+    s.selected=0;s.automatic=0;s.fallback=selectionFault==3?RENDER_SELECTION_UNAVAILABLE:RENDER_SELECTION_REQUESTED;
+    s.promotionActive=selectionFault==4;selectionReport=s;++selectionReportSerial;
+}
+bool R_RendererModule_QueryRendererSelection(renderRendererSelection_t& s,uint64_t& serial,uint64_t& epoch){
+    if(!selectionReportValid)return false;s=selectionReport;serial=selectionReportSerial;epoch=actual.moduleEpoch;return true;
+}
 static rendererModuleStatus_t moduleStatus{};
 const rendererModuleStatus_t& R_RendererModule_GetStatus(){return moduleStatus;}
 static void ApplyActual(const renderWindowRequest_t& r){
@@ -131,10 +145,10 @@ static void ApplyActual(const renderWindowRequest_t& r){
     if(r.restorePlacement){w.windowX=r.windowX;w.windowY=r.windowY;}
 }
 bool R_RendererModule_TryDeviceRestart(const renderWindowRequest_t* r,char* error,int size){
-    trace.push_back("restart");++restarts;if(!restartOkay)return GeometryError(error,size,"restart failed");ApplyActual(*r);return true;
+    trace.push_back("restart");++restarts;if(!restartOkay)return GeometryError(error,size,"restart failed");ApplyActual(*r);PublishSelection();return true;
 }
 bool R_RendererModule_TryInitializeDisplay(const renderWindowRequest_t* r,char* error,int size){
-    trace.push_back("initialize");++initializations;if(!restartOkay)return GeometryError(error,size,"initialize failed");ApplyActual(*r);return true;
+    trace.push_back("initialize");++initializations;if(!restartOkay)return GeometryError(error,size,"initialize failed");ApplyActual(*r);PublishSelection();return true;
 }
 '''
 
@@ -147,6 +161,7 @@ static void ResetFixture(){
     Seed();localCVarSystem.variables.at("r_swapInterval").value="1";actual=Actual();actual.window.hidden=false;actual.window.focused=true;
     geometry={actual.window.windowX,actual.window.windowY,1280,720,actual.window.windowX,actual.window.windowY,1280,720,true};
     trace.clear();writes=0;moduleStatus.activeApi=RENDER_MODULE_API_GL;
+    selectionFault=0;selectionReportValid=true;selectionReport={};selectionReportSerial=0;PublishSelection();
 }
 static void MultisamplingCapability(){
     ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);
@@ -528,6 +543,138 @@ static void DeferredExactCases(){
     }
 }
 
+// The renderer fallback: a schema-2 record with the renderer domain, a checked
+// device restart on the same display, and the renderer's own selection report.
+static SettingsAttempt RendererAttempt(SystemSettingsHost& settings,const char* request="arb2"){
+    SettingsAttempt a{31,113,Live(settings),{},{}};a.completion=SettingsCompletion::Automatic;a.target=a.baseline;
+    a.target["r_renderer"]=std::string(request);
+    for(const auto& [key,value]:a.target)if(value!=a.baseline.at(key))a.patch[key]=value;
+    Check(settings.Validate(a.baseline,a.target,error) && SystemSettingsHost::ApplyClassOf(a.baseline,a.target)==SystemApplyClass::Renderer,
+          "validate renderer attempt fixture");
+    return a;
+}
+static SettingsAttempt RendererForStartup(SystemSettingsHost& settings,bool confirmed){
+    EngineSettingsDisplayHost preparing(settings);auto a=RendererAttempt(settings);
+    Check(preparing.Prepare(a,error),"prepare renderer startup fixture");
+    if(confirmed){Check(settings.Write(a.patch,error),"write confirmed renderer fixture");SettingsDisplayObservation observed;
+        Check(preparing.Restart(false,observed,error),"restart confirmed renderer fixture");Present();
+        Check(preparing.PersistConfirmation(a,error),"persist confirmed renderer fixture");}
+    preparing.Shutdown();Check(files.contains(journalFile) && leases.empty() && !geometryToken,"shutdown keeps the renderer evidence and releases the leases");
+    configWrites=0;writes=0;trace.clear();return a;
+}
+static void RendererCases(){
+    {ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);
+     Check(host.SupportsRendererSelection(),"a presenting OpenGL renderer with a selection report supports the fallback");
+     moduleStatus.activeApi=RENDER_MODULE_API_VULKAN;Check(!host.SupportsRendererSelection(),"Vulkan has no renderer fallback");
+     moduleStatus.activeApi=RENDER_MODULE_API_GL;
+     selectionReportValid=false;Check(!host.SupportsRendererSelection(),"no selection report, no renderer change");selectionReportValid=true;
+     actual.rendererReady=false;Check(!host.SupportsRendererSelection(),"an unready renderer cannot prove the change");actual.rendererReady=true;
+     auto vulkan=RendererAttempt(settings);moduleStatus.activeApi=RENDER_MODULE_API_VULKAN;
+     Check(!host.Prepare(vulkan,error) && writes==0 && !files.contains(journalFile) && !geometryToken,"Prepare refuses a renderer change Vulkan cannot report");
+     moduleStatus.activeApi=RENDER_MODULE_API_GL;Check(host.CancelPreparation(error) && leases.empty(),"the refused preparation releases its lease");
+     auto wrong=RendererAttempt(settings);wrong.completion=SettingsCompletion::UserConfirmation;
+     Check(!host.Prepare(wrong,error) && leases.empty() && files.empty() && !geometryToken && writes==0,
+           "a renderer change completes automatically or not at all");}
+    {ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);auto a=RendererAttempt(settings);
+     Check(host.Prepare(a,error),"prepare a renderer attempt");
+     Check(writes==0 && restarts==0 && configWrites==0 && leases.contains(lockFile) && geometryToken,"renderer preparation journals under both leases without writes or restarts");
+     const auto j=EffectJournal();
+     Check(j.state==SettingsJournalState::Pending && j.plan.domainMask==SystemSettingRendererResources,"the Pending record has only the renderer domain");
+     Check(j.displayRestore==j.displayTarget,"both directions preserve the captured display");
+     // The fixture archives "modern", a request outside the page's choices.
+     Check(j.resourceRestore.at("request")==a.baseline.at("r_renderer") && j.resourceTarget.at("request")==StateValue(std::string("arb2")),"the record holds both requests");
+     Check(j.placement.size()==18 && j.deferredRestore.empty(),"the record holds the placement and no deferred policy");
+     Check(settings.Write(a.patch,error),"write the renderer request");SettingsDisplayObservation seen;
+     Check(host.Restart(false,seen,error) && restarts==1 && seen.ready,"the renderer restarts once on the same display");
+     Present();Check(host.Observe(false,seen,error),"the selection still agrees after a presented frame");
+     ++selectionReportSerial;Check(!host.Observe(false,seen,error),"a selection the restart did not produce is refused");
+     Check(!host.PersistConfirmation(a,error) && EffectJournal().state==SettingsJournalState::Pending && configWrites==0,
+           "a selection between the last frame and the save refuses the commit");--selectionReportSerial;
+     Check(host.PersistConfirmation(a,error) && EffectJournal().state==SettingsJournalState::Confirmed && configWrites==1,"Confirmed precedes the configuration");
+     const auto config=std::find(trace.begin(),trace.end(),"config"),replace=std::find(trace.rbegin(),trace.rend(),"replace-journal").base()-1;
+     Check(replace<config,"the durable Confirmed record precedes the configuration write");
+     Check(host.Finish(false,error) && !host.RecoveryActive() && !files.contains(journalFile) && !geometryToken && leases.empty(),"Finish retires the record and both leases");}
+    for(int fault:{1,2,4}){ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);auto a=RendererAttempt(settings);
+     Check(host.Prepare(a,error) && settings.Write(a.patch,error),"prepare a renderer attempt to refuse");
+     selectionFault=fault;SettingsDisplayObservation seen;
+     Check(!host.Restart(false,seen,error) && host.RecoveryActive() && files.contains(journalFile),"a selection that ignores, omits or promotes past the request is refused");
+     host.Shutdown();}
+    {ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);auto a=RendererAttempt(settings);
+     Check(host.Prepare(a,error) && settings.Write(a.patch,error),"prepare a renderer attempt whose restart reports nothing");
+     // A frame-time selection already names the new request; the restart must still report.
+     PublishSelection();selectionFault=2;SettingsDisplayObservation seen;
+     Check(!host.Restart(false,seen,error) && host.RecoveryActive(),"a matching report the restart did not produce is refused");host.Shutdown();}
+    {ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);auto a=RendererAttempt(settings);
+     Check(host.Prepare(a,error) && settings.Write(a.patch,error),"prepare an unavailable renderer");
+     selectionFault=3;SettingsDisplayObservation seen;
+     Check(host.Restart(false,seen,error),"a reported fallback to the automatic pick agrees");host.Shutdown();}
+    {ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);auto a=RendererAttempt(settings);
+     Check(host.Prepare(a,error) && settings.Write(a.patch,error),"prepare a renderer attempt to restore");SettingsDisplayObservation seen;
+     Check(host.Restart(false,seen,error),"apply the renderer request");
+     StateValues back;for(const auto& [key,value]:a.patch)back[key]=a.baseline.at(key);
+     Check(settings.Write(back,error) && host.Restart(true,seen,error) && restarts==2,"restore restarts on the baseline request");
+     Present();Check(host.Observe(true,seen,error) && host.Finish(true,error) && configWrites==0 && !files.contains(journalFile) && !geometryToken,
+           "a restored renderer attempt never archives its candidate");}
+    for(bool confirmed:{false,true}){ResetFixture();SystemSettingsHost settings;auto a=RendererForStartup(settings,confirmed);
+     for(const auto& [key,value]:a.patch)localCVarSystem.variables.at(key).value=FormatPresentationValue(StatePresentation(confirmed?a.baseline.at(key):value));
+     EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"startup replays the renderer record before the device starts");
+     Check(!host.StartupActive() && host.RecoveryActive() && configWrites==0 && Live(settings).at("r_renderer")==(confirmed?a.target:a.baseline).at("r_renderer"),
+           "the recovered request is live before the renderer starts the normal way");
+     Check(host.InitializeDisplay(error) && initializations==0 && !geometryToken,"a renderer record initializes no recorded display and leases no geometry");
+     PublishSelection(); // The renderer starts and resolves the recovered request.
+     host.StartupFrame(1,false);Check(configWrites==0,"a loading frame never commits renderer recovery");
+     host.StartupFrame(1,true);
+     Check(configWrites==1 && !host.RecoveryActive() && !files.contains(journalFile),"a full frame with an agreeing selection commits and removes the record");}
+    {ResetFixture();SystemSettingsHost settings;RendererForStartup(settings,true);
+     EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"startup replays a renderer record that will disagree");
+     selectionFault=1;PublishSelection();host.StartupFrame(1,true);
+     Check(configWrites==0 && host.RecoveryActive() && files.contains(journalFile) && !host.RecoveryError().empty(),
+           "a disagreeing selection blocks the recovery and keeps the record");
+     selectionFault=0;PublishSelection();host.StartupFrame(2,true);Check(configWrites==0,"a blocked renderer recovery is never retried blindly");
+     host.Shutdown();}
+    {ResetFixture();SystemSettingsHost settings;RendererForStartup(settings,true);
+     // The captured monitor is gone; a renderer record never needed it.
+     displayOrder={1};displayCount=1;currentDisplay=1;
+     EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"a renderer record recovers without its captured monitor");
+     PublishSelection();host.StartupFrame(1,true);
+     Check(configWrites==1 && !files.contains(journalFile),"the recovery commits on the display the engine found");}
+    {ResetFixture();SystemSettingsHost settings;RendererForStartup(settings,true);
+     EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"a renderer record replays on a Vulkan launch");
+     moduleStatus.activeApi=RENDER_MODULE_API_VULKAN;selectionReportValid=false;host.StartupFrame(1,true);
+     Check(configWrites==1 && !files.contains(journalFile) && Live(settings).at("r_renderer")==StateValue(std::string("arb2")),
+           "Vulkan has no back end to prove, so the recovered request commits");}
+    {ResetFixture();SystemSettingsHost settings;RendererForStartup(settings,false);auto j=EffectJournal();
+     j.resourceTarget["request"]=std::string("best");StoreEffect(j);EngineSettingsDisplayHost host(settings);
+     Check(!host.Startup(error) && writes==0 && files.contains(journalFile),"a renderer record contradicting its snapshots is refused before replay");host.Shutdown();}
+}
+
+// The renderer replay compares exactly too: a subnormal ambient rider under DAZ.
+static void RendererExactCases(){
+    ExactMode mode;
+    for(bool confirmed:{false,true})for(bool conflict:{false,true}){
+     ResetFixture();SystemSettingsHost settings;SetExactAmbient(1);auto a=RendererAttempt(settings);
+     a.target["r_forceAmbient"]=0.0;a.patch["r_forceAmbient"]=0.0;
+     Check(settings.Validate(a.baseline,a.target,error) && SystemSettingsHost::ApplyClassOf(a.baseline,a.target)==SystemApplyClass::Renderer,
+           "an exact ambient rider keeps the renderer class");
+     {EngineSettingsDisplayHost preparing(settings);Check(preparing.Prepare(a,error),"prepare an exact renderer journal");
+      if(confirmed){Check(settings.Write(a.patch,error),"write the exact renderer target");SettingsDisplayObservation observation;
+       Check(preparing.Restart(false,observation,error),"restart the exact renderer target");Present();
+       Check(preparing.PersistConfirmation(a,error),"persist the exact renderer target");}
+      preparing.Shutdown();}
+     SetExactAmbient(conflict?2:confirmed?1:0);writes=configWrites=0;trace.clear();
+     EngineSettingsDisplayHost replay(settings);
+     if(conflict){const auto bytes=files.at(journalFile);
+      Check(!replay.Startup(error) && writes==0 && configWrites==0,"renderer startup rejects a bit-distinct divergent owned field before all writes");
+      Check(AmbientIs(settings,2) && files.at(journalFile)==bytes,"a conflicting renderer replay preserves the live value and the evidence");}
+     else{
+      Check(replay.Startup(error),"renderer startup restores the exact zero/subnormal direction");
+      Check(AmbientIs(settings,confirmed?0:1),"renderer startup emits the required zero or original tiny patch");
+      PublishSelection();replay.StartupFrame(1,true);
+      Check(configWrites==1 && !files.contains(journalFile) && !replay.RecoveryActive(),"exact renderer recovery commits then removes the journal");}
+     replay.Shutdown();
+    }
+}
+
 // Production-encoded journals for a cold-recovery probe. Only the preload
 // changes, off to on, so an engine at its defaults can replay either side.
 static void EmitDeferredJournals(const std::string& directory){
@@ -539,7 +686,7 @@ static void EmitDeferredJournals(const std::string& directory){
 
 int main(){
     if(const char* directory=std::getenv("OPENQ4_EMIT_DEFERRED_JOURNALS")){EmitDeferredJournals(directory);std::printf("Deferred recovery journals emitted: %d checks\n",checks);return 0;}
-    MultisamplingCapability();ExactCatalogCases();RuntimeJournal();StartupCases();GeometryAndStartupFailures();StartupClockCases();CommitOwnershipCases();ReindexedStartupRetry();UnusedTopologyCases();DeferredCases();DeferredExactCases();std::printf("UI settings display service passed: %d checks\n",checks);}
+    MultisamplingCapability();ExactCatalogCases();RuntimeJournal();StartupCases();GeometryAndStartupFailures();StartupClockCases();CommitOwnershipCases();ReindexedStartupRetry();UnusedTopologyCases();DeferredCases();DeferredExactCases();RendererCases();RendererExactCases();std::printf("UI settings display service passed: %d checks\n",checks);}
 
 '''
 

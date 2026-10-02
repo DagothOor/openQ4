@@ -498,6 +498,59 @@ tests, the mutation pass, the full Meson suite and the cold-recovery probe.
 Evidence: `.tmp/ui/deferred-light-grid-executor/validation-evidence.json`,
 SHA-256 `4909d049af40f5c7a8a8436bba2e85caffe6168b9ca676cb64ce213e90664598`.
 
+## Renderer fallback executor
+
+`r_renderer` (Renderer Fallback) applies through its own executor: a checked
+device restart on the display the renderer has now, proved by the renderer's
+own selection report. Like the deferred preload it completes automatically,
+with no Keep/Revert question.
+
+- **Admission.** A draft whose only non-immediate change is `r_renderer`
+  needs an owning view and a renderer that can report its selection: a ready,
+  presenting OpenGL renderer that has reported one for its current module.
+  Vulkan has one back end, so it cannot. Mixing it with display, preload or
+  any other effect is refused before any work.
+- **Attempt.** Apply journals a schema-2 Pending record with the renderer
+  domain (mask 16): exact snapshots, both display directions capturing the
+  same actual display, the leased window placement for both directions, and
+  the request in each direction (`resourceRestore`/`resourceTarget`
+  `request`). It then writes `r_renderer` and restarts the device on the
+  captured display. The new device resolves `r_renderer` and reports it; the
+  attempt continues only if that report is new and agrees.
+- **Agreement.** The report names the requested renderer, and it either
+  selected it or reports a fallback (unavailable, or a retired name) to the
+  automatic pick. `best` takes the automatic pick, and an explicit name never
+  promotes the modern path. A later presented frame on a full frame commits:
+  the Confirmed record, then the configuration, then journal removal, with
+  the report unchanged and still agreeing. A report the restart did not
+  produce, a failed observation or closing the owner restores the previous
+  request with the same restart and checks.
+- **Startup.** A renderer record replays its request before the renderer
+  starts. Its saved display is structural evidence only: a renderer change
+  never moved the display, so the engine starts the normal way on whatever
+  display it finds, and a missing monitor or a Vulkan launch cannot fail the
+  recovery. On the first full frame, where `r_renderer` chooses a back end
+  (OpenGL), the started device's report must agree before the configuration
+  is committed and the record removed; disagreement blocks, keeps the record
+  and is not retried blindly. On Vulkan the recovered request commits as is.
+
+`tools/tests/ui_settings_display_service.py` runs the real host and codec:
+support (OpenGL with a report; not Vulkan, an unready renderer or a missing
+report), Prepare's refusals, the Pending record, one restart on the same
+display, a re-selection refused, Confirmed before the configuration, refusals
+for a report that ignores the request, publishes nothing new or promotes past
+an explicit name, an unavailable fallback accepted, restore, startup in both
+directions with no display initialization or geometry lease, a disagreeing
+startup, a missing captured monitor, a Vulkan launch, a contradicting record
+and an exact subnormal rider. `tools/tests/ui_settings_service.py` drives the service
+route: mixed drafts refused, no report refused, and an automatic apply that
+restarts, commits and finishes. The exact-value list gains two renderer replay
+mutants.
+
+The executor was qualified by the host, service and exact-value harnesses, a
+mutation pass and the full Meson suite. Evidence:
+`.tmp/ui/renderer-fallback-executor/validation-evidence.json`, SHA-256 `7213f4abf2a342f6665306862afa3a19139c09e32e835795985a14866cbea819`.
+
 ## Qualification
 
 Extend the existing transaction, controller, journal, persistence, renderer and

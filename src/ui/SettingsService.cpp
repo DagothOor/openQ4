@@ -102,9 +102,13 @@ bool Supported(Service& service,std::uint64_t owner,bool* invalidDraft = nullptr
     case SystemApplyClass::Deferred:
         if (!service.confirmationOwners.contains(owner) || !service.device.ReadyForAutomatic()) return false;
         break;
+    // The renderer fallback restarts the device and proves itself with the
+    // renderer's selection report.
+    case SystemApplyClass::Renderer:
+        if (!service.confirmationOwners.contains(owner) || !service.device.SupportsRendererSelection()) return false;
+        break;
     case SystemApplyClass::Mixed: if (mixed) *mixed = true; return false;
-    // The renderer fallback waits for its checked restart executor.
-    case SystemApplyClass::Renderer: case SystemApplyClass::Unsupported: return false;
+    case SystemApplyClass::Unsupported: return false;
     }
     std::string error;
     bool valid = false;
@@ -528,9 +532,11 @@ bool UI_SettingsDispatch(std::uint64_t owner, const ActionInvocation& action, st
         else {
             const auto kind = SystemSettingsHost::ApplyClassOf(transaction.Baseline(),transaction.Draft());
             if (kind == SystemApplyClass::Display) result = service.display.Apply(owner,Now());
-            // The next map's light-grid policy needs no confirmation: it completes
-            // automatically once its journal, write and a later frame are proved.
-            else if (kind == SystemApplyClass::Deferred) result = service.display.Apply(owner,Now(),SettingsCompletion::Automatic);
+            // The next map's light-grid policy and the renderer fallback need no
+            // confirmation: each completes automatically once its journal, write,
+            // effect and a later frame are proved.
+            else if (kind == SystemApplyClass::Deferred || kind == SystemApplyClass::Renderer)
+                result = service.display.Apply(owner,Now(),SettingsCompletion::Automatic);
             else result = transaction.Apply(owner,Now());
         }
     }

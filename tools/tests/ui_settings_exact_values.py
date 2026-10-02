@@ -183,7 +183,9 @@ def main():
                 ('display-replay-patch', '!SettingsValueEqual(live.at(key),desired.at(key))', 'live.at(key)!=desired.at(key)'),
                 ('deferred-replay-ownership', '!SettingsValueEqual(live.at(key),saved.baseline.at(key)) && !SettingsValueEqual(live.at(key),value)', 'live.at(key)!=saved.baseline.at(key) && live.at(key)!=value'),
                 ('deferred-replay-patch', '!SettingsValueEqual(live.at(key),chosen.at(key))', 'live.at(key)!=chosen.at(key)'),
-                ('deferred-owned-drift', '!SettingsValueEqual(current->second,chosen->second)', 'current->second!=chosen->second')]
+                ('deferred-owned-drift', '!SettingsValueEqual(current->second,chosen->second)', 'current->second!=chosen->second'),
+                ('renderer-replay-ownership', '!SettingsValueEqual(live.at(key),record.baseline.at(key)) && !SettingsValueEqual(live.at(key),value)', 'live.at(key)!=record.baseline.at(key) && live.at(key)!=value'),
+                ('renderer-replay-patch', '!SettingsValueEqual(live.at(key),wanted.at(key))', 'live.at(key)!=wanted.at(key)')]
             for module, changes in (('ui_settings_service', service_changes), ('ui_settings_display_service', display_changes)):
                 for label, old, new in changes:
                     script = out / (label + '.py')

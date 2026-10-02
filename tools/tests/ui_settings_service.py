@@ -207,7 +207,7 @@ struct idCommonLocal {
 static struct DeviceData {
     SettingsDisplayObservation observation{1,1,0,0,0,true,false,true,false};
     bool held=false,startup=false,blocked=false,refusePrepare=false,refusePersist=false,refuseRestart=false,refuseFinish=false;
-    bool msaaSupported=true,automaticReady=true,receiptValid=false;
+    bool msaaSupported=true,automaticReady=true,receiptValid=false,rendererSelection=false;
     renderLightGridLoadReceipt_t receipt{};std::uint64_t receiptSerial=0;
     int prepares=0,cancels=0,restarts=0,restores=0,observes=0,persists=0,finishes=0,startups=0,frames=0,shutdowns=0;
 } deviceData;
@@ -247,6 +247,7 @@ public:
     bool StartupActive()const noexcept{return deviceData.startup;}
     bool SupportsMultisampling()const{return deviceData.msaaSupported;}
     bool ReadyForAutomatic()const{return deviceData.automaticReady;}
+    bool SupportsRendererSelection()const{return deviceData.rendererSelection;}
     bool LightGridLoad(renderLightGridLoadReceipt_t& receipt,std::uint64_t& serial)const{
         if(!deviceData.receiptValid)return false;receipt=deviceData.receipt;serial=deviceData.receiptSerial;return true;
     }
@@ -406,7 +407,7 @@ static void Drafts() {
 static void Devices() {
     const auto owner=Begin();
     for(const auto& patch:std::vector<StateValues>{{{"r_mode",1.0},{"r_brightness",1.5}},
-                                                 {{"r_renderer",std::string("arb2")},{"r_shadows",false}}}) {
+                                                 {{"s_numberOfSpeakers",6.0},{"r_shadows",false}}}) {
         Check(Dispatch(owner,"edit",patch),"device changes may be drafted");
         Expect(owner,"canApply",false);const auto baseline=host.live;const int reads=host.reads;
         Check(!Dispatch(owner,"apply") && host.writes.empty() && host.reads==reads && host.live==baseline,"reject full device batch before any live write/read");
@@ -561,7 +562,7 @@ static void ConfirmationCapability() {
         }
     }
     UI_SettingsConfirmationDocument(owner,valid);Expect(owner,"canApply",true);
-    Check(Dispatch(owner,"edit",{{"r_renderer",std::string("arb2")},{"r_brightness",1.5}}),"mixed unsupported resource batch can be drafted");
+    Check(Dispatch(owner,"edit",{{"s_numberOfSpeakers",6.0},{"r_brightness",1.5}}),"mixed unsupported resource batch can be drafted");
     Expect(owner,"canApply",false);
     Check(!Dispatch(owner,"apply") && host.writes.empty() && deviceData.prepares==0,"capability cannot authorize unsupported effects in a mixed batch");
     UI_SettingsConfirmationDocument(owner,DocumentModel{});Check(Dispatch(owner,"revert"),"clear mixed draft");
@@ -852,7 +853,7 @@ static void UnsupportedEffects() {
     Expect(owner,"canApply",false);Expect(owner,"message",std::string("#str_230014"));
     Check(Dispatch(owner,"edit",{{"s_numberOfSpeakers",2.0},{"r_lightGridPreload",false},{"r_renderer",std::string("arb2")}}),"draft only the renderer fallback");
     Expect(owner,"canApply",false);
-    Check(!Dispatch(owner,"apply") && deviceData.prepares==0 && host.writes.empty(),"the renderer fallback waits for its executor");
+    Check(!Dispatch(owner,"apply") && deviceData.prepares==0 && host.writes.empty(),"the renderer fallback needs a renderer that reports its selection");
 }
 // The light-grid row's status: what the loaded map did with its light grids
 // and whether a saved choice waits for the next load.
@@ -897,6 +898,28 @@ static void LightGridStatus() {
     LightGridState(owner,true,false,false,false,false,"without a receipt from the current module there is no status");
     const auto other=UI_SettingsCreateOwner();StateValues values;
     Check(UI_SettingsRead(other,values) && !values.contains("settings.lightGrid.pending"),"other owners get no light-grid status");
+}
+// The renderer fallback restarts the device and completes automatically once
+// the renderer's selection agrees; it never mixes with another executor.
+static void RendererRoute() {
+    const auto owner=Begin();UI_SettingsConfirmationDocument(owner,ConfirmationDocument());deviceData.rendererSelection=true;
+    Check(Dispatch(owner,"edit",{{"r_renderer",std::string("arb2")},{"r_lightGridPreload",true}}),"draft the renderer with the preload");
+    Expect(owner,"canApply",false);Expect(owner,"message",std::string("#str_230076"));
+    Check(Dispatch(owner,"edit",{{"r_lightGridPreload",false},{"r_mode",1.0}}),"draft the renderer with a display change");
+    Expect(owner,"canApply",false);Expect(owner,"message",std::string("#str_230076"));
+    Check(Dispatch(owner,"edit",{{"r_mode",0.0},{"r_brightness",1.5}}),"draft the renderer with an immediate edit");
+    deviceData.rendererSelection=false;Expect(owner,"canApply",false);
+    Check(!Dispatch(owner,"apply") && deviceData.prepares==0 && host.writes.empty(),"without a selection report the renderer cannot apply");
+    deviceData.rendererSelection=true;Expect(owner,"canApply",true);
+    Check(Dispatch(owner,"apply"),"the renderer applies without a confirmation");
+    Expect(owner,"phase",static_cast<double>(SettingsPhase::Applying));Expect(owner,"confirmationVisible",false);
+    Expect(owner,"message",std::string("#str_230073"));
+    UI_SettingsFrame();
+    Check(deviceData.prepares==1 && deviceData.restarts==1 && host.writes.size()==1,"a full frame journals, writes and restarts the device");
+    PresentFrame();UI_SettingsFrame();
+    Check(deviceData.persists==1 && deviceData.finishes==1 && !deviceData.held && !UI_SettingsBlocksConfigWrite(),"a presented frame commits, persists and finishes");
+    Expect(owner,"phase",static_cast<double>(SettingsPhase::Editing));Expect(owner,"baseline.r_renderer",std::string("arb2"));
+    Expect(owner,"baseline.r_brightness",1.5);
 }
 static void DisplayClose(bool written) {
     const auto owner=Begin();
@@ -1008,7 +1031,7 @@ static void ExitInvalidate(const std::string& operation) {
 static void ExitFailure(const std::string& failure) {
     const auto owner=Begin();
     Check(Dispatch(owner,"edit",{{"r_brightness",1.5},{"r_shadows",false}}),"draft before failed apply-exit");
-    if(failure=="unsupported")Check(Dispatch(owner,"edit",{{"r_renderer",std::string("arb2")}}),"unsupported effect remains a valid draft");
+    if(failure=="unsupported")Check(Dispatch(owner,"edit",{{"s_numberOfSpeakers",6.0}}),"unsupported effect remains a valid draft");
     else if(failure=="no_view")Check(Dispatch(owner,"edit",{{"r_mode",1.0}}),"display draft without owner confirmation view");
     else if(failure=="write")host.refuseWrite=true;
     else if(failure=="partial")host.partialWrite=true;
@@ -1208,6 +1231,7 @@ int main(int argc,char** argv) {
     else if(name=="deferred_close")DeferredClose();else if(name=="deferred_apply_exit")DeferredApplyExit();
     else if(name=="deferred_apply_exit_restore")DeferredApplyExitRestore();else if(name=="unsupported_effects")UnsupportedEffects();
     else if(name=="deferred_retry_renews")DeferredRetryRenews();else if(name=="light_grid_status")LightGridStatus();
+    else if(name=="renderer_route")RendererRoute();
     else if(name=="exit_immediate")ExitImmediate(false);else if(name=="exit_noop")ExitImmediate(true);
     else if(name.starts_with("exit_invalidate_"))ExitInvalidate(name.substr(16));
     else if(name.starts_with("exit_failure_"))ExitFailure(name.substr(13));
@@ -1232,7 +1256,7 @@ SCENARIOS = (
     'timeout_frame', 'capability', 'msaa_capability', 'display_draft_preflight', 'display_keep', 'display_persist_failure',
     'display_close_queued', 'display_close_written', 'startup_shutdown', 'stale_display_actions', 'level_load_policy', 'level_load_unreadable',
     'deferred_apply', 'deferred_mixed', 'deferred_not_ready', 'deferred_persist_failure', 'deferred_close', 'deferred_apply_exit',
-    'deferred_apply_exit_restore', 'unsupported_effects', 'deferred_retry_renews', 'light_grid_status',
+    'deferred_apply_exit_restore', 'unsupported_effects', 'deferred_retry_renews', 'light_grid_status', 'renderer_route',
     'frame_outside','frame_skipped','frame_submit_only','frame_present_only',
     'frame_readback_before_draw','frame_readback_after_draw','frame_readback_during_end',
     'frame_nested','frame_aborted','frame_begin_aborted','frame_wrong_request','frame_shutdown',

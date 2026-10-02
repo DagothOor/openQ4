@@ -36,6 +36,10 @@ public:
 	bool ReadyForAutomatic() const;
 	// The renderer's latest light-grid load receipt and its engine serial.
 	bool LightGridLoad(renderLightGridLoadReceipt_t& receipt, std::uint64_t& serial) const;
+	// A renderer fallback change restarts the device and proves itself with the
+	// renderer's own selection report, so it needs a presenting OpenGL renderer
+	// that has already reported one for its current module.
+	bool SupportsRendererSelection() const;
 
 private:
 	bool Paths(std::string& error);
@@ -50,17 +54,29 @@ private:
 	bool NewAttemptIdentity(std::string& attempt, std::string& error);
 	bool PrepareDeferred(const openq4::ui::SettingsAttempt&, std::string& error);
 	bool StartupDeferred(const std::string& bytes, const openq4::ui::SettingsEffectRecoveryJournal& saved, std::string& error);
+	bool PrepareRenderer(const openq4::ui::SettingsAttempt&, std::string& error);
+	bool StartupRenderer(const std::string& bytes, const openq4::ui::SettingsEffectRecoveryJournal& record, std::string& error);
+	// The renderer resolved r_renderer as asked; serial names its report.
+	bool RendererAgrees(const std::string& request, std::uint64_t& serial, std::string& error) const;
+	bool RendererCurrent(bool restoring, std::string& error) const;
+	std::string RendererRequest(bool restoring) const;
+	const openq4::ui::StateValues& SavedDisplay(bool restoring) const;
 	void Clear();
 	openq4::ui::SystemSettingsHost& settings;
 	openq4::DurableFileLease processLease;
 	openq4::ui::SettingsRecoveryJournal journal;
 	// A deferred attempt (the next-map light-grid preload) journals a schema-2
 	// record with only its deferred domain; nothing restarts, and a later
-	// presented frame proves the engine still runs before it commits.
-	enum class Kind { Display, Deferred };
+	// presented frame proves the engine still runs before it commits. A
+	// renderer attempt (the renderer fallback) journals a schema-2 record with
+	// the renderer domain and restarts the device on the same display.
+	enum class Kind { Display, Deferred, Renderer };
 	Kind kind = Kind::Display;
+	std::uint64_t selectionSerial = 0; // the selection report the last restart produced
 	openq4::ui::SettingsEffectRecoveryJournal effects;
-	bool deferredStartup = false;
+	// A deferred or renderer record replays catalog values only: the engine
+	// starts the normal way, and the first full frame commits.
+	bool catalogStartup = false;
 	openq4::ui::SystemDisplayPlan targetPlan, restorePlan;
 	rendererDisplayState_t baselineDevice{}, currentDevice{};
 	sysWindowPlacementSnapshot_t placement{}, expectedPlacement{}, committedPlacement{};

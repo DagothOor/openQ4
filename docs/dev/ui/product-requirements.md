@@ -511,6 +511,8 @@ On engine `fd4dd84355ee7f13acb7ff7a10711eefa76f5d6c` the light-grid preload gain
 
 On engine `218745151e4778026c53c7cb034de6b5da478635` the retained SYSTEM page gains Preload Light Grids: the toggle with its help and a status line that names what the loaded map does with its light grids, from the committed preload and the renderer's receipts. Apply completes it through the deferred executor, and the next map load uses it. The service harness, a native page test across seven locales, sizes and densities, and in-game OpenGL and Vulkan runs qualify it. `FLOW-002` and `BEH-002` gain partial evidence without a status change. Evidence: `.tmp/ui/system-render-options/validation-evidence.json`, SHA-256 `092fe0eb98ffc56f6dc38fc2141b6bbe302f9620c37c1798ed9395e753f6b237`.
 
+On engine `f88d8c7cfdfc2c9c116b1a45d66c8b7a78f26d12` the renderer fallback gains its executor: `r_renderer` applies automatically through a checked device restart on the captured display, proved by the renderer's own selection report, with schema-2 recovery and startup replay. The host, service and exact-value harnesses, a mutation pass and the full Meson suite qualify it. `BEH-002` gains partial evidence without a status change. Evidence: `.tmp/ui/renderer-fallback-executor/validation-evidence.json`, SHA-256 `7213f4abf2a342f6665306862afa3a19139c09e32e835795985a14866cbea819`.
+
 There are **87 partial, 252 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
