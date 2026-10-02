@@ -21,7 +21,8 @@ SettingsResult SettingsDisplayController::SetResult(SettingsCode code, std::stri
 }
 void SettingsDisplayController::Reset() {
 	stage = SettingsDisplayStage::Idle; attempt = {}; device = {}; ownerDraw = {};
-	prepared = executed = drawn = closing = commitIntent = confirmPrepared = completed = preserveDraft = false;
+	prepared = executed = drawn = closing = commitIntent = confirmPrepared = completed = preserveDraft = persisted = false;
+	renewCommit = false;
 	lastTime = -1; waitDeadline = 0; restoreCode = SettingsCode::Ok; restoreReason.clear();
 }
 void SettingsDisplayController::Recover(SettingsCode code, const std::string& reason) {
@@ -42,7 +43,7 @@ SettingsResult SettingsDisplayController::Apply(std::uint64_t owner, double now,
 		transaction.CancelPreparedApply(owner,candidate.request);
 		return SetResult(SettingsCode::Ok);
 	}
-	attempt = std::move(candidate); lastTime = now; waitDeadline = now+DeviceTimeout;
+	attempt = std::move(candidate); lastTime = now; waitDeadline = now+DeviceTimeout; lastCommitted = false;
 	stage = SettingsDisplayStage::QueuedApply; return SetResult(SettingsCode::Ok);
 }
 SettingsResult SettingsDisplayController::Keep(std::uint64_t owner, std::uint64_t request, double now) {
@@ -64,6 +65,15 @@ SettingsResult SettingsDisplayController::Revert(std::uint64_t owner, std::uint6
 SettingsResult SettingsDisplayController::Retry(std::uint64_t owner, std::uint64_t request) {
 	if (busy || !CanRetry() || !owner || owner != attempt.owner || !request || request != attempt.request)
 		return {SettingsCode::Busy,"No matching display recovery can be retried"};
+	if (commitIntent && !completed && attempt.completion == SettingsCompletion::Automatic) {
+		// The accepted choice does not depend on this device. A save retried
+		// after the swapchain or window changed compares against them as they
+		// are now, and the commit renews its frozen catalog on the next frame.
+		SettingsDisplayObservation current; std::string error;
+		if (!Invoke([&]{ return host.Observe(false,current,error); },error) || !current.ready || !current.epoch || !current.generation)
+			return {SettingsCode::Busy,"No presenting renderer can finish the settings commit"};
+		device = current; renewCommit = confirmPrepared;
+	}
 	if (commitIntent) stage = completed ? SettingsDisplayStage::FinalizeKeep :
 		(attempt.completion == SettingsCompletion::Automatic ? SettingsDisplayStage::QueuedAutomaticCommit : SettingsDisplayStage::QueuedKeep);
 	else if (completed) stage = SettingsDisplayStage::FinalizeRestore;
@@ -197,18 +207,20 @@ void SettingsDisplayController::Frame(double now, bool ownerAlive, bool allowWor
 		if (!BeginPresentationWait(now,error)) { Recover(SettingsCode::RollbackFailed,error); return; }
 		stage = SettingsDisplayStage::AwaitRestore;
 	} else if (stage == SettingsDisplayStage::QueuedKeep || stage == SettingsDisplayStage::QueuedAutomaticCommit) {
-		if (!confirmPrepared) {
+		if (!confirmPrepared || renewCommit) {
 			SettingsAttempt confirmation;
 			const auto preparation = attempt.completion == SettingsCompletion::Automatic ?
-				transaction.PrepareAutomaticCommit(attempt.owner,attempt.request,now,confirmation) :
+				(renewCommit ? transaction.RenewAutomaticCommit(attempt.owner,attempt.request,now,confirmation) :
+					transaction.PrepareAutomaticCommit(attempt.owner,attempt.request,now,confirmation)) :
 				transaction.PrepareConfirm(attempt.owner,attempt.request,now,confirmation);
+			renewCommit = false;
 			if (preparation.code != SettingsCode::Ok) { Restore(preparation.code,preparation.diagnostic,true); return; }
 			attempt = std::move(confirmation); confirmPrepared = true;
 		}
 		if (closing && !commitIntent) { Restore(SettingsCode::Ok,{},false); return; }
 		commitIntent = true;
 		if (!Invoke([&]{ return host.PersistConfirmation(attempt,error); },error)) { Recover(SettingsCode::ApplyFailed,error); return; }
-		stage = SettingsDisplayStage::FinalizeKeep;
+		persisted = true; stage = SettingsDisplayStage::FinalizeKeep;
 	}
 	if (stage == SettingsDisplayStage::FinalizeKeep || stage == SettingsDisplayStage::FinalizeRestore) {
 		const bool restoring = stage == SettingsDisplayStage::FinalizeRestore;
@@ -221,7 +233,7 @@ void SettingsDisplayController::Frame(double now, bool ownerAlive, bool allowWor
 		}
 		if (!Invoke([&]{ return host.Finish(restoring,error); },error)) { Recover(SettingsCode::RollbackFailed,error); return; }
 		if (closing) transaction.Abandon(attempt.owner);
-		const auto completion = result; Reset(); result = completion;
+		const auto completion = result; Reset(); result = completion; lastCommitted = !restoring;
 	}
 }
 } // namespace openq4::ui

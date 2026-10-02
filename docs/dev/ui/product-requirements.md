@@ -507,6 +507,8 @@ On engine `353d8a55d33677b3bbdb6a0f602ac8f7634edb07` retained choices gain catal
 
 On engine `2c1f988a7ac1c15453cd81159bcde95a17013390` render API 20 gives the settings service the renderer's own evidence: how it resolved `r_renderer` each time it selects a back end, and what each level load did with its light grids. A load pulls the committed preload policy, never a value an open attempt could still undo. A contract test, the settings service harness and SP map loads on OpenGL and Vulkan qualify them. `BEH-002` gains partial evidence without a status change. Evidence: `.tmp/ui/renderer-settings-reports/validation-evidence.json`, SHA-256 `240dffae83f06f6a459fdae2473ab1277718e2671ebf7a210a2fd05b3b9c7a74`.
 
+On engine `fd4dd84355ee7f13acb7ff7a10711eefa76f5d6c` the light-grid preload gains its deferred executor: one executor per Apply, a schema-2 next-map journal that completes automatically after a later presented frame, the committed policy for level loads until it is saved, and cold-start replay in both directions. The page has no row for it yet. Production-body service, host, catalog and controller tests, a mutation pass and a cold-recovery probe qualify it. `BEH-002` gains partial evidence without a status change. Evidence: `.tmp/ui/deferred-light-grid-executor/validation-evidence.json`, SHA-256 `4909d049af40f5c7a8a8436bba2e85caffe6168b9ca676cb64ce213e90664598`.
+
 There are **87 partial, 252 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.

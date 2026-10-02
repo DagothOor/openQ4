@@ -15,6 +15,12 @@ enum SystemSettingEffect : unsigned {
 	SystemSettingPresetExpansion = 1 << 5
 };
 
+// How an Apply runs. Immediate settings ride along with any class. Display
+// changes need the user's confirmation; the renderer fallback and the next-map
+// light-grid preload complete automatically once their effect is proved. Any
+// two of those together are Mixed, and every other effect is Unsupported.
+enum class SystemApplyClass { None, Immediate, Display, Renderer, Deferred, Mixed, Unsupported };
+
 struct SystemSettingDescriptor {
 	std::string key;
 	size_t type = 0; // StateValue index: number, Boolean, string.
@@ -37,6 +43,7 @@ public:
 	static bool ResolveModeDimensions(int mode, int customWidth, int customHeight,
 		int desktopPixelWidth, int desktopPixelHeight, int& width, int& height);
 	static bool ChangedRequiresDisplayRestart(const StateValues& before, const StateValues& target);
+	static SystemApplyClass ApplyClassOf(const StateValues& before, const StateValues& target);
 	static bool RequiresDeviceWork(const StateValues& before, const StateValues& target);
 
  // Pure typed profile expansion. Caller publishes with EditGenerated so

@@ -342,6 +342,28 @@ SettingsResult SettingsTransaction::PrepareAutomaticCommit(std::uint64_t request
 	return Result(SettingsCode::Ok);
 }
 
+SettingsResult SettingsTransaction::RenewAutomaticCommit(std::uint64_t requestedOwner, std::uint64_t request,
+	double now, SettingsAttempt& attempt) {
+	if (busy) return RejectReentry();
+	Operation operation(busy);
+	if (auto access = AccessAttempt(requestedOwner,request); access.code != SettingsCode::Ok) return access;
+	if (phase != SettingsPhase::Applying || attemptStage != AttemptStage::AutomaticCommitPrepared ||
+		pending.completion != SettingsCompletion::Automatic)
+		return Result(SettingsCode::Busy,"No prepared automatic settings commit can be renewed");
+	if (!ValidTime(now,lastTime)) return Result(SettingsCode::Invalid,"Automatic commit retry time is invalid");
+	StateValues current; std::string error;
+	if (!Read(current,error)) return Result(SettingsCode::ApplyFailed,std::move(error));
+	for (const auto& [key,value] : written) {
+		const auto found = current.find(key);
+		if (found == current.end() || !SettingsValueEqual(found->second,value))
+			return Result(SettingsCode::Conflict,"A committed setting changed before its save was retried");
+	}
+	SettingsAttempt renewed{owner,NewRequest(),baseline,std::move(current),written,SettingsCompletion::Automatic};
+	if (!renewed.request) return Result(SettingsCode::Invalid,"Settings request identities are exhausted");
+	attempt = renewed; pending = std::move(renewed); lastTime = now;
+	return Result(SettingsCode::Ok);
+}
+
 SettingsResult SettingsTransaction::CompleteAutomaticCommit(std::uint64_t requestedOwner, std::uint64_t request) {
 	if (busy) return RejectReentry();
 	Operation operation(busy);

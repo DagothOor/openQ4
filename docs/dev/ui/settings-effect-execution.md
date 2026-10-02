@@ -183,8 +183,9 @@ the existing transaction suite and exact-value regressions. Windows Clang,
 MSVC debug STL and Linux GCC with ASan/UBSan pass 873 controller checks, 1,168
 exact-value checks and 13 compiled behavioral mutations. The hosts are counted
 test boundaries: this qualifies sequencing, not real mixed effects or native
-file durability. The production SYSTEM effect gate remains closed until the
-same durable host, portable journal and all participating executors are connected.
+file durability. The SYSTEM page uses it for the deferred light-grid preload
+(below); every other effect stays refused until the same durable host, portable
+journal and its own executor are connected.
 
 ## Versioned journal envelope
 
@@ -222,9 +223,10 @@ return false; they do not promise recovery from process termination. The shared
 typed parser uses an equivalent throwing construction for its own empty BOM
 buffer, without modifying JsonCpp.
 
-Production startup and live persistence remain on schema 1 until the existing
-host can validate, execute, observe and recover every schema-2 domain. This
-increment creates no second journal or independently committing controller.
+Production uses schema 2 only for the deferred next-map domain (see
+[Deferred light-grid executor](#deferred-light-grid-executor)); display attempts
+stay on schema 1, and every other schema-2 domain waits for its own executor.
+This increment created no second journal or independently committing controller.
 
 ## Checked image and material restart
 
@@ -282,8 +284,8 @@ The codec/capture suite and the existing checked audio suite pass on Windows
 Clang, MSVC debug and Linux GCC with sanitizers. Eleven compiled mutations cover
 the new grammar/capture; the original 34 audio mutations remain covered. Full
 effect parameters, cold initialization, live audibility and integration with the
-shared durable host remain required. Startup and live persistence still use
-schema 1. The new runner's repository-default path was corrected after the
+shared durable host remain required. At this checkpoint startup and live
+persistence still used schema 1. The new runner's repository-default path was corrected after the
 integrated Meson run exposed its snapshot-only assumption; the failing run and
 successful rerun are retained under `.tmp/ui/native-retirement-integration/`.
 
@@ -371,8 +373,9 @@ changes nothing a player sees.
   pre-capability placeholder in early initialization reports nothing.
 - **Light-grid loads.** A level load asks the settings service once for its
   preload policy and a fresh, never-reused token. The service answers with the
-  committed choice: an open attempt's baseline until that attempt is
-  approved, otherwise the live catalog value. A load during an Apply
+  committed choice: an open attempt's baseline until its Confirmed record
+  and configuration are durable, otherwise the live catalog value. A load
+  during an Apply
   therefore never consumes a value that could still be undone. Without the
   service, as on a dedicated server, the load uses `r_lightGridPreload`. The
   preload itself no longer reads the CVar. Every exit of the light-grid setup
@@ -393,14 +396,106 @@ and forwarders, the epochs, the report beside the existing fallback warnings,
 the single policy request with a receipt at every exit, and the provider rule.
 The settings service harness compiles the provider against its catalog double:
 the live choice outside an attempt, the baseline while one is open, fresh
-tokens, and no answer when the setting cannot be read. Nothing consumes the
-reports for Apply yet; the deferred and renderer executors below will.
+tokens, and no answer when the setting cannot be read. The deferred
+executor below relies on that rule; the receipts and the selection report
+wait for the light-grid status row and the renderer executor.
 
 The reports were qualified by the contract test, the settings service harness
 and the full Meson suite, and by SP map loads on OpenGL and Vulkan that logged
 the selection report and the light-grid receipt beside unchanged residency
 lines. Evidence: `.tmp/ui/renderer-settings-reports/validation-evidence.json`,
 SHA-256 `240dffae83f06f6a459fdae2473ab1277718e2671ebf7a210a2fd05b3b9c7a74`.
+
+## Deferred light-grid executor
+
+`r_lightGridPreload` is the first SYSTEM setting outside display modes that
+Apply can complete. It takes effect at the next map load, so its attempt
+completes automatically: there is nothing for the player to see before the
+next load, and no Keep/Revert question to answer.
+
+- **Admission.** Apply runs one executor. `SystemSettingsHost::ApplyClassOf`
+  classes a draft by what its changed keys need: immediate, display,
+  renderer, deferred, mixed or unsupported. Immediate keys ride along with
+  any class. A display change keeps its Keep/Revert confirmation. A deferred
+  change needs an owning view and a renderer that is presenting now
+  (`ReadyForAutomatic`). A draft that combines display, renderer and
+  light-grid changes is refused before any work, with a notice asking for
+  them to be applied separately. The renderer fallback, image, audio and
+  preset effects remain refused until their executors exist.
+- **Attempt.** Apply journals a schema-2 Pending record with only the
+  next-map domain (mask 8): exact snapshots, the patch, and the portable
+  policy in each direction (`deferredRestore`/`deferredTarget`
+  `lightGridPreload`). There is no placement lease and no device restart;
+  the host only observes that the same renderer module keeps presenting. A
+  later presented frame lets a full frame commit: the Confirmed record is
+  written, then the configuration, then the journal is removed. Loading
+  frames observe but never start work or persist. A failed observation or
+  closing the owning view restores the baseline instead and never archives
+  the candidate.
+- **Retry.** A save that did not finish leaves the attempt in recovery with
+  Retry. Retry re-reads the presenting renderer and renews the commit: the
+  keys the attempt wrote must still hold the choice, and the rest of the
+  catalog is taken as it is now, so a resized window or a recreated swapchain
+  no longer fails every retry.
+- **Level loads.** A load during the attempt takes the committed baseline.
+  Once the Confirmed record and the configuration are durable (`Persisted`),
+  loads take the new choice, even while journal cleanup still waits for
+  Retry. A failed save keeps the baseline until Retry persists it.
+- **Status.** Automatic attempts report Applying settings (`#str_230073`),
+  Restoring previous settings (`#str_230074`) and Saving settings
+  (`#str_230075`) instead of the display wording. The confirmation panel
+  opens for one only when it needs recovery (a failed preparation or restore,
+  or a save that did not finish); its title then reads Settings need
+  attention (`#str_230077`) rather than the Keep question.
+  `tools/ui/update_system_render_options.py` owns that title binding.
+- **Apply and Exit.** Exit completes only when the attempt committed its
+  target (`LastCommitted`); a restore cancels it.
+- **Startup.** A schema-2 deferred record replays its owned keys before the
+  renderer starts: Pending restores the baseline, Confirmed keeps the target.
+  Display initialization is untouched. Renderer and window startup may
+  settle keys: on the first full frame, keys the record does not own keep
+  what startup chose (the window size, an MSAA fallback), owned keys go back
+  to the recovered choice (a platform frame-cap default, for instance), and
+  the configuration is committed before the record is removed. Machine-spec
+  detection skips a launch with any pending recovery and runs on the next
+  launch without one. A record whose policy contradicts its snapshots, or
+  whose owned keys changed outside the attempt, blocks before any write; a
+  failed save keeps the record and is not retried blindly. Schema-1 records
+  keep the display route and still refuse any batch with a non-display
+  effect.
+
+`tools/tests/ui_settings_service.py` drives the production service through
+deferred Apply, the loading-frame rule, the policy before, during and after
+persistence, Retry after a failed save (also after a recreated swapchain and
+a change to a key the attempt did not write), owner close, Apply and Exit
+with commit and restore, the mixed and unready refusals, and an audio change
+with no executor. `tools/tests/ui_settings_display_service.py` runs the real
+host and codec: readiness, class/completion agreement before any lease, the
+Pending record's contents, observe-only restarts, Confirmed before the
+configuration, restore, module replacement, cold startup in both directions,
+startup settling unowned keys and changing owned ones, configuration and
+journal-removal failures with no blind retry, exact subnormal values and
+tampered records.
+`tools/tests/ui_system_settings_host.py` classes every key of the real
+catalog: only `r_lightGridPreload` is deferred and only `r_renderer` needs the
+renderer. The controller test checks `Completion`, `Persisted`,
+`LastCommitted` and the renewed commit. The checked mutation lists gain three
+automatic-completion and three exact-value mutants, all rejected. Of fifteen
+further compiled mutations of the new branches, fourteen are rejected; the
+survivor, an exit witness forced true, is equivalent today because every
+restore passes through a stage that cancels exit first.
+
+The harness also emits production-encoded Pending and Confirmed journals
+(`--emit-deferred-journals`). Cold starts of the staged client with each
+journal in an isolated savepath logged `UI_SETTINGS startup_recovery=complete`,
+loaded `game/airdefense2` with the recovered policy (streamed with 0 of 29
+areas resident, or preloaded with 29 of 29), removed the journal and archived
+`r_lightGridPreload` as 0 and 1.
+
+The executor was qualified by the settings service, host, catalog and controller
+tests, the mutation pass, the full Meson suite and the cold-recovery probe.
+Evidence: `.tmp/ui/deferred-light-grid-executor/validation-evidence.json`,
+SHA-256 `4909d049af40f5c7a8a8436bba2e85caffe6168b9ca676cb64ce213e90664598`.
 
 ## Qualification
 

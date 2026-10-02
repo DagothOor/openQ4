@@ -1110,4 +1110,9 @@
 	"#str_230070"	"+%d más"
 	"#str_230071"	"Conectando: %d"
 	"#str_230072"	"Espectadores: %d"
+	"#str_230073"	"Aplicando ajustes…"
+	"#str_230074"	"Restaurando los ajustes anteriores…"
+	"#str_230075"	"Guardando ajustes…"
+	"#str_230076"	"Aplica por separado los cambios de pantalla, renderizado e iluminación."
+	"#str_230077"	"Los ajustes requieren atención"
 }

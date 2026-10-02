@@ -30,6 +30,9 @@ public:
 	// Active backend policy, not a promise that every sample count is supported
 	// by the current device. Strict Apply still validates the actual request.
 	bool SupportsMultisampling() const;
+	// An automatic attempt proves its effect with later presented frames, so it
+	// needs a ready renderer and window presenting now.
+	bool ReadyForAutomatic() const;
 
 private:
 	bool Paths(std::string& error);
@@ -39,11 +42,22 @@ private:
 	bool ReleasePlacement(std::string& error);
 	bool FinishJournal(std::string& error);
 	bool ValidateLive(const openq4::ui::StateValues& target, std::string& error);
+	bool ValidateOwned(const openq4::ui::StateValues& owned, const openq4::ui::StateValues& expected, std::string& error);
 	bool CommitConfiguration(std::string& error);
+	bool NewAttemptIdentity(std::string& attempt, std::string& error);
+	bool PrepareDeferred(const openq4::ui::SettingsAttempt&, std::string& error);
+	bool StartupDeferred(const std::string& bytes, const openq4::ui::SettingsEffectRecoveryJournal& saved, std::string& error);
 	void Clear();
 	openq4::ui::SystemSettingsHost& settings;
 	openq4::DurableFileLease processLease;
 	openq4::ui::SettingsRecoveryJournal journal;
+	// A deferred attempt (the next-map light-grid preload) journals a schema-2
+	// record with only its deferred domain; nothing restarts, and a later
+	// presented frame proves the engine still runs before it commits.
+	enum class Kind { Display, Deferred };
+	Kind kind = Kind::Display;
+	openq4::ui::SettingsEffectRecoveryJournal effects;
+	bool deferredStartup = false;
 	openq4::ui::SystemDisplayPlan targetPlan, restorePlan;
 	rendererDisplayState_t baselineDevice{}, currentDevice{};
 	sysWindowPlacementSnapshot_t placement{}, expectedPlacement{}, committedPlacement{};

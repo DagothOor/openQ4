@@ -35,6 +35,9 @@ the device applies and the user confirms it. Exit requires successful Keep and
 completion of persistence. Failed application, Revert, timeout, recovery or a
 failed save cancels the exit intent and keeps the unresolved flow available.
 Retry can finish recovery or saving; it cannot revive canceled exit intent.
+An automatic attempt, such as the next map's light-grid preload, has no Keep:
+exit completes once its target is committed and saved, and a restore cancels
+it as Revert would.
 
 The service binds pending exit intent to the live owner and display request.
 A private, one-use receipt transfers a successful result to the GUI adapter;

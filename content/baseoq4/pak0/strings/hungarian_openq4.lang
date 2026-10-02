@@ -1110,4 +1110,9 @@
 	"#str_230070"	"+%d további"
 	"#str_230071"	"Csatlakozik: %d"
 	"#str_230072"	"Néző: %d"
+	"#str_230073"	"Beállítások alkalmazása…"
+	"#str_230074"	"Az előző beállítások visszaállítása…"
+	"#str_230075"	"Beállítások mentése…"
+	"#str_230076"	"A megjelenítési, renderelő- és fényrács-változtatásokat külön alkalmazd."
+	"#str_230077"	"A beállítások figyelmet igényelnek"
 }

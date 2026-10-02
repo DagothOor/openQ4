@@ -7118,7 +7118,12 @@ void idCommonLocal::InitGame( void ) {
 	// have to do this twice.. first one sets the correct r_mode for the renderer init
 	// this time around the backend is all setup correct.. a bit fugly but do not want
 	// to mess with all the gl init at this point.. an old vid card will never qualify for 
-	if ( sysDetect && !UI_SettingsStartupActive() ) {
+	// Detection rewrites catalog settings that a pending recovery owns. Skip it
+	// for this launch and remove the marker this launch created, so the next
+	// launch without a recovery detects.
+	if ( sysDetect && ( UI_SettingsStartupActive() || UI_SettingsRecoveryPending() ) ) {
+		fileSystem->RemoveFile( CONFIG_SPEC );
+	} else if ( sysDetect ) {
 		SetMachineSpec();
 		Com_ExecMachineSpec_f( args );
 		cvarSystem->SetCVarInteger( "s_numberOfSpeakers", 6 );

@@ -94,6 +94,9 @@ def main():
                 ('automatic-nested-effects', controller, 'if (!allowWork) return;', '(void)allowWork;', 1),
                 ('commit-preparation-close-lost', controller, 'if (closing && !commitIntent) { Restore(SettingsCode::Ok,{},false); return; }', '', 1),
                 ('automatic-commit-intent-lost', controller, 'commitIntent = true;', 'commitIntent = false;', 1),
+                ('automatic-retry-renewal-lost', controller, 'device = current; renewCommit = confirmPrepared;', 'device = current;', 1),
+                ('automatic-retry-device-stale', controller, 'device = current; renewCommit = confirmPrepared;', 'renewCommit = confirmPrepared;', 1),
+                ('automatic-renewal-written-check', tx, 'if (found == current.end() || !SettingsValueEqual(found->second,value))\n\t\t\treturn Result(SettingsCode::Conflict,"A committed setting changed before its save was retried");', '(void)found;', 1),
             ]
             for label, source, old, new, count in changes:
                 text = tx_source if source == tx else display_source

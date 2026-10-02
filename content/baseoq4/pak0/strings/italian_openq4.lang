@@ -1110,4 +1110,9 @@
 	"#str_230070"	"+%d in più"
 	"#str_230071"	"In connessione: %d"
 	"#str_230072"	"Spettatori: %d"
+	"#str_230073"	"Applicazione delle impostazioni…"
+	"#str_230074"	"Ripristino delle impostazioni precedenti…"
+	"#str_230075"	"Salvataggio delle impostazioni…"
+	"#str_230076"	"Applica separatamente le modifiche a schermo, rendering e griglie luce."
+	"#str_230077"	"Le impostazioni richiedono attenzione"
 }

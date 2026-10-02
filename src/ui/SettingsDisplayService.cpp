@@ -16,6 +16,10 @@ bool EngineSettingsDisplayHost::SupportsMultisampling() const {
 	// Vulkan's strict device initialization currently requires zero samples.
 	return api == RENDER_MODULE_API_GL || api == RENDER_MODULE_API_GL_MODULE || api == RENDER_MODULE_API_GLES;
 }
+bool EngineSettingsDisplayHost::ReadyForAutomatic() const {
+	rendererDisplayState_t state{};
+	return R_RendererModule_QueryDisplay(&state) && state.rendererReady && state.windowValid && state.presentation.available;
+}
 namespace {
 bool Fail(std::string& error, const char* message) { error = message; return false; }
 bool ObserveDevice(rendererDisplayState_t& state, SettingsDisplayObservation& output, std::string& error) {
@@ -69,7 +73,8 @@ bool EngineSettingsDisplayHost::Paths(std::string& error) {
 	return Common_SettingsPersistencePaths(journalPath,lockPath,error);
 }
 void EngineSettingsDisplayHost::Clear() {
-	processLease.Release(); journal={}; targetPlan={}; restorePlan={}; baselineDevice={}; currentDevice={};
+	processLease.Release(); journal={}; effects={}; kind=Kind::Display; deferredStartup=false;
+	targetPlan={}; restorePlan={}; baselineDevice={}; currentDevice={};
 	placement={}; expectedPlacement={}; committedPlacement={}; startupTarget.clear();
 	placementToken=0; writtenBytes.clear(); attemptedBytes.clear(); recoveryError.clear();
 	ownsJournal=placed=blocked=startup=startupReady=startupConfirmed=false; startupDeadline=0; startupLastTime=-1;
@@ -85,11 +90,14 @@ bool EngineSettingsDisplayHost::VerifyJournal(bool allowMissing, std::string& er
 }
 bool EngineSettingsDisplayHost::WriteJournal(std::string& error) {
 	if (!VerifyJournal(!ownsJournal,error)) return false;
-	if (!EncodeSettingsJournal(journal,SystemSettingsHost::Schema(),attemptedBytes,error)) return false;
+	if (!(kind==Kind::Deferred ? EncodeSettingsEffectJournal(effects,SystemSettingsHost::Schema(),attemptedBytes,error) :
+		EncodeSettingsJournal(journal,SystemSettingsHost::Schema(),attemptedBytes,error))) return false;
 	ownsJournal=true; // Publication can succeed even if a later durability barrier fails.
 	if (!DurableReplaceExact(journalPath,attemptedBytes,error)) return false;
 	writtenBytes=attemptedBytes;
-	if (cvarSystem->GetCVarBool("ui_retainedTrace")) common->Printf("UI_SETTINGS_JOURNAL state=%s durable=1\n",journal.state==SettingsJournalState::Confirmed?"confirmed":"pending");
+	const auto state=kind==Kind::Deferred?effects.state:journal.state;
+	if (cvarSystem->GetCVarBool("ui_retainedTrace")) common->Printf("UI_SETTINGS_JOURNAL state=%s durable=1 schema=%d\n",
+		state==SettingsJournalState::Confirmed?"confirmed":"pending",kind==Kind::Deferred?2:1);
 	return true;
 }
 bool EngineSettingsDisplayHost::ValidateLive(const StateValues& target, std::string& error) {
@@ -102,21 +110,33 @@ bool EngineSettingsDisplayHost::CommitConfiguration(std::string& error) {
 	if (currentJournal!=journalPath || currentLock!=lockPath) return Fail(error,"Settings save root changed during the recovery lease");
 	return Common_WriteSettingsConfiguration(true,error);
 }
+bool EngineSettingsDisplayHost::NewAttemptIdentity(std::string& attempt, std::string& error) {
+	unsigned char random[16];
+	if (!Sys_GetSecureRandomBytes(random,sizeof(random))) return Fail(error,"Cannot create a persistent settings attempt identity");
+	attempt.clear();
+	for (unsigned char c:random) { attempt += "0123456789abcdef"[c>>4]; attempt += "0123456789abcdef"[c&15]; }
+	return true;
+}
 bool EngineSettingsDisplayHost::Prepare(const SettingsAttempt& attempt, std::string& error) {
 	if (RecoveryActive() || placementToken) return Fail(error,"A previous settings recovery has not completed");
+	// The attempt's class decides its executor; its completion must agree
+	// before any lease or journal exists.
+	const auto applyClass=SystemSettingsHost::ApplyClassOf(attempt.baseline,attempt.target);
+	const bool deferred=applyClass==SystemApplyClass::Deferred;
+	if (deferred ? attempt.completion!=SettingsCompletion::Automatic : attempt.completion!=SettingsCompletion::UserConfirmation)
+		return Fail(error,"The settings attempt's effects and completion disagree");
 	if (!Paths(error) || !processLease.TryAcquire(lockPath,error)) return false;
 	std::string bytes;
 	const auto read=DurableReadExact(journalPath,SettingsJournalMaxBytes,bytes,error);
 	if (read!=DurableReadResult::Missing) { blocked=true; return read==DurableReadResult::Failed?false:Fail(error,"An existing settings recovery journal requires startup recovery"); }
+	if (deferred) return PrepareDeferred(attempt,error);
 	if (!ValidateLive(attempt.baseline,error) || !R_RendererModule_QueryDisplay(&baselineDevice))
 		return Fail(error,error.empty()?"Actual baseline display is unavailable":error.c_str());
 	SystemDisplayTopology topology;
 	if (!CaptureDisplayTopology(topology,error) || !BuildDisplayRestore(baselineDevice,topology,restorePlan,error) ||
 		!BuildDisplayRequest(attempt.target,baselineDevice,topology,targetPlan,error)) return false;
 	SettingsRecoveryJournal candidate; candidate.baseline=attempt.baseline; candidate.target=attempt.target; candidate.patch=attempt.patch;
-	unsigned char random[16];
-	if (!Sys_GetSecureRandomBytes(random,sizeof(random))) return Fail(error,"Cannot create a persistent settings attempt identity");
-	for (unsigned char c:random) { candidate.attempt += "0123456789abcdef"[c>>4]; candidate.attempt += "0123456789abcdef"[c&15]; }
+	if (!NewAttemptIdentity(candidate.attempt,error)) return false;
 	if (!CaptureDisplayRecovery(restorePlan,topology,candidate.displayRestore,error) ||
 		!CaptureDisplayRecovery(targetPlan,topology,candidate.displayTarget,error)) return false;
 	char diagnostic[512]{};
@@ -130,6 +150,21 @@ bool EngineSettingsDisplayHost::Prepare(const SettingsAttempt& attempt, std::str
 	committedPlacement.height=int(std::get<double>(attempt.target.at("r_windowHeight")));
 	AddPlacement(candidate.placement,"target.",committedPlacement);
 	journal=std::move(candidate);
+	return WriteJournal(error);
+}
+bool EngineSettingsDisplayHost::PrepareDeferred(const SettingsAttempt& attempt, std::string& error) {
+	SettingsDisplayObservation ready;
+	if (!ValidateLive(attempt.baseline,error)) return false;
+	if (!ObserveDevice(baselineDevice,ready,error) || !ready.ready) return Fail(error,error.empty()?"No presenting renderer can prove the settings change":error.c_str());
+	SettingsEffectRecoveryJournal candidate;
+	candidate.baseline=attempt.baseline; candidate.target=attempt.target; candidate.patch=attempt.patch;
+	if (!BuildSettingsEffectPlan(attempt.baseline,attempt.target,SystemSettingsHost::Schema(),candidate.plan,error)) return false;
+	if (candidate.plan.domainMask!=SystemSettingNextMap) return Fail(error,"A deferred attempt carries only the next-map domain");
+	// The portable policy: what the next level load uses in each direction.
+	candidate.deferredRestore.emplace("lightGridPreload",attempt.baseline.at("r_lightGridPreload"));
+	candidate.deferredTarget.emplace("lightGridPreload",attempt.target.at("r_lightGridPreload"));
+	if (!NewAttemptIdentity(candidate.attempt,error)) return false;
+	kind=Kind::Deferred; effects=std::move(candidate); currentDevice=baselineDevice;
 	return WriteJournal(error);
 }
 bool EngineSettingsDisplayHost::Place(const sysWindowPlacementSnapshot_t& finalState, std::string& error) {
@@ -174,6 +209,18 @@ bool EngineSettingsDisplayHost::CancelPreparation(std::string& error) {
 }
 bool EngineSettingsDisplayHost::Restart(bool restoring, SettingsDisplayObservation& output, std::string& error) {
 	if (!VerifyJournal(false,error)) return false;
+	if (kind==Kind::Deferred) {
+		// The next level load reads the committed policy; nothing restarts. The
+		// controller still waits for a later presented frame on this device.
+		rendererDisplayState_t observed{}; SettingsDisplayObservation candidate;
+		if (!ObserveDevice(observed,candidate,error) || !candidate.ready || candidate.epoch!=baselineDevice.moduleEpoch)
+			return Fail(error,error.empty()?"The renderer stopped presenting during the settings change":error.c_str());
+		currentDevice=observed; output=candidate;
+		if (cvarSystem->GetCVarBool("ui_retainedTrace")) common->Printf("UI_SETTINGS_DEFERRED restore=%d epoch=%llu generation=%llu submitted=%llu presented=%llu\n",
+			restoring?1:0,static_cast<unsigned long long>(candidate.epoch),static_cast<unsigned long long>(candidate.generation),
+			static_cast<unsigned long long>(candidate.submitted),static_cast<unsigned long long>(candidate.presented));
+		return true;
+	}
 	SystemDisplayTopology topology; SystemDisplayPlan plan;
 	if (!CaptureDisplayTopology(topology,error) || !ResolveDisplayRecovery(restoring?journal.displayRestore:journal.displayTarget,topology,plan,error)) return false;
 	// Catalog writes have completed. Only their window dimensions may change;
@@ -200,11 +247,20 @@ bool EngineSettingsDisplayHost::Restart(bool restoring, SettingsDisplayObservati
 }
 bool EngineSettingsDisplayHost::Observe(bool restoring, SettingsDisplayObservation& output, std::string& error) {
 	rendererDisplayState_t observed{}; SettingsDisplayObservation candidate;
+	if (kind==Kind::Deferred) {
+		if (!ObserveDevice(observed,candidate,error)) return false;
+		output=candidate; return true;
+	}
 	if (!ObserveDevice(observed,candidate,error) || !MatchesDisplay(restoring?restorePlan:targetPlan,observed,error)) return false;
 	output=candidate; return true;
 }
 bool EngineSettingsDisplayHost::PersistConfirmation(const SettingsAttempt& attempt, std::string& error) {
 	if (!ValidateLive(attempt.target,error) || !VerifyJournal(false,error)) return false;
+	if (kind==Kind::Deferred) {
+		effects.state=SettingsJournalState::Confirmed;
+		if (!WriteJournal(error) || !ValidateLive(attempt.target,error)) return false;
+		return CommitConfiguration(error);
+	}
 	rendererDisplayState_t actual{}; SettingsDisplayObservation observed;
 	if (!ObserveDevice(actual,observed,error) || actual.moduleEpoch!=currentDevice.moduleEpoch ||
 		actual.presentation.generation!=currentDevice.presentation.generation ||
@@ -221,6 +277,7 @@ bool EngineSettingsDisplayHost::PersistConfirmation(const SettingsAttempt& attem
 	return CommitConfiguration(error);
 }
 bool EngineSettingsDisplayHost::Finish(bool restoring, std::string& error) {
+	if (kind==Kind::Deferred) return FinishJournal(error);
 	auto finalState=restoring?placement:committedPlacement;
 	if (restoring) {
 		// The catalog transaction already restored its owned keys and rebased
@@ -238,9 +295,15 @@ bool EngineSettingsDisplayHost::Startup(std::string& error) {
 	const auto read=DurableReadExact(journalPath,SettingsJournalMaxBytes,bytes,error);
 	if (read==DurableReadResult::Missing) { Clear(); return true; }
 	blocked=true;
+	if (read!=DurableReadResult::Present) return false;
+	// A schema-2 record is a deferred attempt; schema 1 keeps its display route.
+	{
+		SettingsJournalRecord record; std::string schemaError;
+		if (DecodeSettingsJournalRecord(bytes,SystemSettingsHost::Schema(),record,schemaError) && record.Schema()==2)
+			return StartupDeferred(bytes,std::get<SettingsEffectRecoveryJournal>(*record.Value()),error);
+	}
 	StateValues currentCatalog;
-	if (read!=DurableReadResult::Present || !settings.Read(currentCatalog,error) ||
-		!DecodeSystemSettingsJournal(bytes,currentCatalog,journal,error)) return false;
+	if (!settings.Read(currentCatalog,error) || !DecodeSystemSettingsJournal(bytes,currentCatalog,journal,error)) return false;
 	ownsJournal=true; writtenBytes=bytes;
 	if (journal.placement.size()!=18 || !ReadPlacement(journal.placement,"baseline.",placement) ||
 		!ReadPlacement(journal.placement,"target.",committedPlacement)) return Fail(error,"Invalid settings recovery placement metadata");
@@ -293,6 +356,44 @@ bool EngineSettingsDisplayHost::Startup(std::string& error) {
 	if (!Place(finalPlacement,error)) return false;
 	startup=true; blocked=false; return true;
 }
+bool EngineSettingsDisplayHost::ValidateOwned(const StateValues& owned, const StateValues& expected, std::string& error) {
+	StateValues live;
+	if (!settings.Read(live,error)) return false;
+	for (const auto& item:owned) {
+		const auto actual=live.find(item.first);
+		const auto wanted=expected.find(item.first);
+		if (actual==live.end() || wanted==expected.end() || !SettingsValueEqual(actual->second,wanted->second))
+			return Fail(error,"A recovered setting changed before it was saved");
+	}
+	return true;
+}
+bool EngineSettingsDisplayHost::StartupDeferred(const std::string& bytes, const SettingsEffectRecoveryJournal& saved, std::string& error) {
+	// Only the light-grid preload has a deferred executor. Its record holds that
+	// one portable policy in each direction, agreeing with the snapshots.
+	const auto restore=saved.deferredRestore.find("lightGridPreload"), target=saved.deferredTarget.find("lightGridPreload");
+	if (saved.plan.domainMask!=SystemSettingNextMap || saved.deferredRestore.size()!=1 || saved.deferredTarget.size()!=1 ||
+		restore==saved.deferredRestore.end() || target==saved.deferredTarget.end() ||
+		!SettingsValueEqual(restore->second,saved.baseline.at("r_lightGridPreload")) ||
+		!SettingsValueEqual(target->second,saved.target.at("r_lightGridPreload")) ||
+		SystemSettingsHost::ApplyClassOf(saved.baseline,saved.target)!=SystemApplyClass::Deferred)
+		return Fail(error,"Unsupported settings effect recovery record");
+	if (!settings.ValidateSavedTarget(saved.baseline,saved.target,error)) return false;
+	StateValues live;
+	if (!settings.Read(live,error)) return false;
+	const bool approved=saved.state==SettingsJournalState::Confirmed;
+	const auto& chosen=approved?saved.target:saved.baseline;
+	startupTarget=live; StateValues patch;
+	for (const auto& [key,value]:saved.patch) {
+		if (!SettingsValueEqual(live.at(key),saved.baseline.at(key)) && !SettingsValueEqual(live.at(key),value))
+			return Fail(error,"A settings recovery key changed outside the saved attempt");
+		startupTarget[key]=chosen.at(key);
+		if (!SettingsValueEqual(live.at(key),chosen.at(key))) patch[key]=chosen.at(key);
+	}
+	if (!settings.ValidateRollback(saved.baseline,live,startupTarget,error)) return false;
+	if ((!patch.empty() && !settings.Write(patch,error)) || !ValidateLive(startupTarget,error)) return false;
+	kind=Kind::Deferred; effects=saved; ownsJournal=true; writtenBytes=bytes;
+	startupConfirmed=approved; deferredStartup=true; blocked=false; return true;
+}
 bool EngineSettingsDisplayHost::InitializeDisplay(std::string& error) {
 	if (!startup) return true;
 	const auto& plan=startupConfirmed?targetPlan:restorePlan; char diagnostic[512]{};
@@ -302,6 +403,34 @@ bool EngineSettingsDisplayHost::InitializeDisplay(std::string& error) {
 	startupReady=true; startupDeadline=0; return true;
 }
 void EngineSettingsDisplayHost::StartupFrame(double now, bool allowWork) {
+	if (deferredStartup) {
+		// The recovered policy is already live and the next load uses it.
+		// Persist it on a full frame, then remove the evidence. Renderer and
+		// window startup may settle keys: the configuration archives what they
+		// chose for keys the record does not own (the window size, an MSAA
+		// fallback), and owned keys go back to the recovered choice (a platform
+		// frame-cap default, for instance).
+		if (blocked || !allowWork) return;
+		std::string error; const bool approved=startupConfirmed;
+		StateValues live, drift;
+		if (settings.Read(live,error)) {
+			for (const auto& item:effects.patch) {
+				const auto current=live.find(item.first);
+				const auto chosen=startupTarget.find(item.first);
+				if (current!=live.end() && chosen!=startupTarget.end() && !SettingsValueEqual(current->second,chosen->second))
+					drift[item.first]=chosen->second;
+			}
+		}
+		if (!drift.empty() && cvarSystem->GetCVarBool("ui_retainedTrace"))
+			common->Printf("UI_SETTINGS_STARTUP deferred=1 reasserted=%d\n",static_cast<int>(drift.size()));
+		if ((!drift.empty() && !settings.Write(drift,error)) || !ValidateOwned(effects.patch,startupTarget,error) ||
+			!CommitConfiguration(error) || !FinishJournal(error)) {
+			blocked=true; recoveryError=error; common->Warning("UI settings startup recovery: %s",error.c_str()); return;
+		}
+		if (cvarSystem->GetCVarBool("ui_retainedTrace")) common->Printf("UI_SETTINGS_STARTUP approved=%d deferred=1\n",approved?1:0);
+		common->Printf("UI_SETTINGS startup_recovery=complete\n");
+		return;
+	}
 	if (!startup || blocked || !startupReady) return;
 	if (!std::isfinite(now) || now<0 || now<startupLastTime || !std::isfinite(now+20.0)) {
 		blocked=true; recoveryError="Startup recovery clock moved backwards or is invalid";

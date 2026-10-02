@@ -180,7 +180,10 @@ def main():
             display_changes = [
                 ('display-catalog-freeze', 'SettingsValuesEqual(current,target)', 'current==target'),
                 ('display-replay-ownership', '!SettingsValueEqual(live.at(key),journal.baseline.at(key)) && !SettingsValueEqual(live.at(key),value)', 'live.at(key)!=journal.baseline.at(key) && live.at(key)!=value'),
-                ('display-replay-patch', '!SettingsValueEqual(live.at(key),desired.at(key))', 'live.at(key)!=desired.at(key)')]
+                ('display-replay-patch', '!SettingsValueEqual(live.at(key),desired.at(key))', 'live.at(key)!=desired.at(key)'),
+                ('deferred-replay-ownership', '!SettingsValueEqual(live.at(key),saved.baseline.at(key)) && !SettingsValueEqual(live.at(key),value)', 'live.at(key)!=saved.baseline.at(key) && live.at(key)!=value'),
+                ('deferred-replay-patch', '!SettingsValueEqual(live.at(key),chosen.at(key))', 'live.at(key)!=chosen.at(key)'),
+                ('deferred-owned-drift', '!SettingsValueEqual(current->second,chosen->second)', 'current->second!=chosen->second')]
             for module, changes in (('ui_settings_service', service_changes), ('ui_settings_display_service', display_changes)):
                 for label, old, new in changes:
                     script = out / (label + '.py')

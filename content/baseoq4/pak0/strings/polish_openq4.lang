@@ -1119,4 +1119,9 @@
 	"#str_230070"	"+%d więcej"
 	"#str_230071"	"Łączenie: %d"
 	"#str_230072"	"Obserwatorzy: %d"
+	"#str_230073"	"Stosowanie ustawień…"
+	"#str_230074"	"Przywracanie poprzednich ustawień…"
+	"#str_230075"	"Zapisywanie ustawień…"
+	"#str_230076"	"Zmiany ekranu, renderera i siatek światła zastosuj osobno."
+	"#str_230077"	"Ustawienia wymagają uwagi"
 }

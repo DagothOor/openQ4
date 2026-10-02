@@ -66,6 +66,12 @@ public:
 	bool CanRevert() const noexcept { return Active() && !commitIntent; }
 	bool CanRetry() const noexcept { return stage == SettingsDisplayStage::Recovery; }
 	bool Approved() const noexcept { return commitIntent; }
+	SettingsCompletion Completion() const noexcept { return attempt.completion; }
+	// The accepted target has been durably confirmed and configured; until then
+	// the attempt can still end on its baseline.
+	bool Persisted() const noexcept { return persisted; }
+	// The last attempt ended by committing its target, not by restoring.
+	bool LastCommitted() const noexcept { return lastCommitted; }
 	bool ConfirmationVisible() const noexcept;
 	std::uint64_t Owner() const noexcept { return attempt.owner; }
 	std::uint64_t Request() const noexcept { return attempt.request; }
@@ -93,6 +99,8 @@ private:
 	bool busy = false, prepared = false, executed = false, drawn = false;
 	bool closing = false, commitIntent = false, confirmPrepared = false, completed = false;
 	bool preserveDraft = false;
+	bool persisted = false, lastCommitted = false;
+	bool renewCommit = false; // an automatic commit's Retry re-freezes its catalog
 	SettingsCode restoreCode = SettingsCode::Ok;
 	std::string restoreReason;
 };

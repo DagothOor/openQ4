@@ -244,6 +244,35 @@ int main() {
         candidate=original;candidate[key]=true;assert(host.RequiresDeviceWork(original,candidate));
         assert(!host.NeedsConfirmation(original,candidate));
     }
+    // One executor per Apply; immediate keys ride along with any class, and an
+    // effect without an executor refuses the whole batch.
+    const auto classOf=[&]{return SystemSettingsHost::ApplyClassOf(original,candidate);};
+    candidate=original;assert(classOf()==SystemApplyClass::None);
+    candidate["r_brightness"]=1.4;assert(classOf()==SystemApplyClass::Immediate);
+    candidate["r_lightGridPreload"]=true;assert(classOf()==SystemApplyClass::Deferred);
+    candidate["r_multiSamples"]=std::get<double>(original.at("r_multiSamples"))+1;assert(classOf()==SystemApplyClass::Mixed);
+    candidate=original;candidate["r_brightness"]=1.4;candidate["r_multiSamples"]=std::get<double>(original.at("r_multiSamples"))+1;
+    assert(classOf()==SystemApplyClass::Display);
+    candidate=original;candidate["r_renderer"]=std::string("arb2");assert(classOf()==SystemApplyClass::Renderer);
+    candidate["r_lightGridPreload"]=true;assert(classOf()==SystemApplyClass::Mixed);
+    candidate=original;candidate["image_downSize"]=true;assert(classOf()==SystemApplyClass::Unsupported);
+    candidate["r_lightGridPreload"]=true;assert(classOf()==SystemApplyClass::Unsupported);
+    candidate=original;candidate["s_useEAXReverb"]=true;assert(classOf()==SystemApplyClass::Unsupported);
+    candidate=original;candidate["com_performancePreset"]=std::string("ultra");assert(classOf()==SystemApplyClass::Unsupported);
+    std::vector<std::string> deferredKeys,rendererKeys;
+    for(const auto& item:SystemSettingsHost::Catalog()) {
+        candidate=original;auto& value=candidate.at(item.key);
+        if(auto* flag=std::get_if<bool>(&value))*flag=!*flag;
+        else if(auto* number=std::get_if<double>(&value))*number+=1;
+        else std::get<std::string>(value)+="x";
+        const auto kind=classOf();
+        if(kind==SystemApplyClass::Deferred)deferredKeys.push_back(item.key);
+        if(kind==SystemApplyClass::Renderer)rendererKeys.push_back(item.key);
+        if(item.effects==SystemSettingImmediate)assert(kind==SystemApplyClass::Immediate);
+        else if(item.effects==SystemSettingDisplayRestart)assert(kind==SystemApplyClass::Display);
+        else assert(kind==SystemApplyClass::Unsupported || kind==SystemApplyClass::Deferred || kind==SystemApplyClass::Renderer);
+    }
+    assert(deferredKeys==std::vector<std::string>{"r_lightGridPreload"} && rendererKeys==std::vector<std::string>{"r_renderer"});
     candidate=original;candidate["r_screen"]=1.0;
 #if defined(USE_SDL3)
     const int preflightWrites=writes;

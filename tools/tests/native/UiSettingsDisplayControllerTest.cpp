@@ -456,6 +456,8 @@ void AutomaticCompletion() {
         Code(f.controller.Apply(f.owner,0,SettingsCompletion::Automatic),SettingsCode::Ok,"queue automatic operation");
         const auto request=f.controller.Request();
         Check(!f.controller.ConfirmationVisible() && !f.controller.CanConfirm(0),"automatic work exposes no Keep UI");
+        Check(f.controller.Completion()==SettingsCompletion::Automatic && !f.controller.Persisted() && !f.controller.LastCommitted(),
+              "a queued automatic attempt has neither persisted nor committed");
         f.controller.Frame(0,true,false);
         Check(!f.storage.writes && !f.display.preparations,"nested automatic frame cannot start effects");
         f.controller.Frame(0,true);
@@ -469,6 +471,7 @@ void AutomaticCompletion() {
         Check(!f.display.persists && f.controller.Stage()==SettingsDisplayStage::QueuedAutomaticCommit,"ready effects only queue work in nested frames");
         f.controller.Frame(2,true);
         Check(f.display.persists==1 && f.display.finishes==1 && !f.controller.Active() && !f.boundary.journal,"fresh effects complete without Keep");
+        Check(f.controller.LastCommitted() && !f.controller.Persisted(),"a finished commit stays witnessed after the controller resets");
         Check(f.transaction.Phase()==SettingsPhase::Editing && !f.transaction.AsyncPending() && !f.transaction.Dirty(),"automatic commit returns a clean editing session");
         Check(std::get<double>(f.storage.live.at("volume"))==0.75,"automatic change is retained");
     }
@@ -492,6 +495,7 @@ void AutomaticCompletion() {
         f.controller.Frame(0,true);f.display.Present();f.display.persistOkay=false;
         f.controller.Frame(1,true);
         Check(f.controller.CanRetry() && f.controller.Approved() && f.display.persists==1 && f.boundary.journal,"uncertain automatic persistence keeps monotonic commit intent");
+        Check(!f.controller.Persisted() && !f.controller.LastCommitted(),"uncertain persistence is neither persisted nor committed");
         if(close)f.controller.Close(f.owner);
         Code(f.controller.Revert(f.owner,f.controller.Request()),SettingsCode::Busy,"uncertain automatic commit cannot roll back");
         f.controller.Frame(2,!close);Check(f.display.persists==1 && f.display.restores==0,"uncertain work never retries or restores implicitly");
@@ -499,7 +503,34 @@ void AutomaticCompletion() {
         Code(f.controller.Retry(f.owner,f.controller.Request()),SettingsCode::Ok,"explicit automatic finalization retry");
         f.controller.Frame(3,!close);
         Check(!f.controller.Active() && !f.boundary.journal && f.display.persists==2 && f.display.restores==0,"automatic retry preserves target and completes cleanup");
+        Check(f.controller.LastCommitted(),"the retried commit is witnessed");
         Check(f.transaction.Phase()==(close?SettingsPhase::Closed:SettingsPhase::Editing),"close completes only after durable automatic result");
+    }
+    {
+        // A retried save renews the commit: a recreated swapchain and a key the
+        // attempt did not write no longer fail it; a changed written key does.
+        Fixture f;AutomaticEdit(f);
+        Code(f.controller.Apply(f.owner,0,SettingsCompletion::Automatic),SettingsCode::Ok,"queue renewable automatic case");
+        f.controller.Frame(0,true);f.display.Present();f.display.persistOkay=false;f.controller.Frame(1,true);
+        Check(f.controller.CanRetry() && f.controller.Approved() && f.display.persists==1,"a failed automatic save waits for Retry");
+        ++f.display.current.generation;f.storage.live["width"]=1366.0;f.storage.live["volume"]=0.5;f.display.persistOkay=true;
+        Code(f.controller.Retry(f.owner,f.controller.Request()),SettingsCode::Ok,"retry with a written key changed");
+        f.controller.Frame(2,true);
+        Check(f.controller.Stage()==SettingsDisplayStage::Recovery && f.display.persists==1 && f.display.restores==0,"a changed written key keeps recovery without saving");
+        f.storage.live["volume"]=0.75;
+        Code(f.controller.Retry(f.owner,f.controller.Request()),SettingsCode::Ok,"retry after the written key returns");
+        f.controller.Frame(3,true);
+        Check(!f.controller.Active() && f.display.persists==2 && f.display.finishes==1 && f.controller.LastCommitted(),"the renewed commit saves and finishes");
+        Check(std::get<double>(f.transaction.Baseline().at("width"))==1366.0 && std::get<double>(f.transaction.Baseline().at("volume"))==0.75,
+              "the committed baseline keeps the unwritten change and the written target");
+    }
+    {
+        Fixture f;AutomaticEdit(f);
+        Code(f.controller.Apply(f.owner,0,SettingsCompletion::Automatic),SettingsCode::Ok,"queue automatic case without a renderer");
+        f.controller.Frame(0,true);f.display.Present();f.display.persistOkay=false;f.controller.Frame(1,true);
+        f.display.observeOkay=false;
+        Code(f.controller.Retry(f.owner,f.controller.Request()),SettingsCode::Busy,"Retry needs a presenting renderer");
+        Check(f.controller.Stage()==SettingsDisplayStage::Recovery && f.controller.CanRetry(),"a refused Retry keeps recovery");
     }
     {
         Fixture f;AutomaticEdit(f);
@@ -510,6 +541,19 @@ void AutomaticCompletion() {
         f.display.current.effectsReady=true;f.controller.Frame(3,false);
         Check(!f.controller.Active() && !f.boundary.journal && f.transaction.Phase()==SettingsPhase::Closed,"restoration completes the original close");
         Check(f.storage.live==Initial() && f.display.restores==1 && f.display.persists==0,"cancelled automatic apply restores baseline");
+        Check(!f.controller.LastCommitted() && !f.controller.Persisted(),"a restored attempt is never witnessed as committed");
+    }
+    {
+        // Persistence and cleanup are separate: a persisted commit whose journal
+        // removal failed is Persisted but not yet LastCommitted.
+        Fixture f;AutomaticEdit(f);
+        Code(f.controller.Apply(f.owner,0,SettingsCompletion::Automatic),SettingsCode::Ok,"queue automatic cleanup failure");
+        f.controller.Frame(0,true);f.display.Present();f.display.finishOkay=false;f.controller.Frame(1,true);
+        Check(f.controller.Active() && f.controller.Persisted() && !f.controller.LastCommitted() && f.display.persists==1,
+              "a persisted commit awaiting cleanup reports Persisted before LastCommitted");
+        f.display.finishOkay=true;
+        Code(f.controller.Retry(f.owner,f.controller.Request()),SettingsCode::Ok,"retry automatic cleanup");f.controller.Frame(2,true);
+        Check(!f.controller.Active() && f.controller.LastCommitted() && !f.controller.Persisted() && !f.boundary.journal,"the cleanup retry completes the witnessed commit");
     }
     {
         Fixture f;AutomaticEdit(f);
@@ -558,6 +602,27 @@ void AutomaticTransactionAuthority() {
         Fixture f;f.Execute();SettingsAttempt result;
         Code(f.transaction.PrepareAutomaticCommit(f.owner,f.controller.Request(),1,result),SettingsCode::Busy,"manual apply cannot use automatic commit");
         Code(f.transaction.CompleteAutomaticCommit(f.owner,f.controller.Request()),SettingsCode::Busy,"manual apply cannot use automatic finalization");
+        Code(f.transaction.RenewAutomaticCommit(f.owner,f.controller.Request(),1,result),SettingsCode::Busy,"manual apply cannot renew an automatic commit");
+    }
+    {
+        Fixture f;AutomaticEdit(f);SettingsAttempt applying,committing,renewed{999,777,{},{},{}};
+        Code(f.transaction.PrepareApply(f.owner,2,applying,SettingsCompletion::Automatic),SettingsCode::Ok,"prepare a renewable automatic commit");
+        f.boundary.journal=true;
+        Code(f.transaction.ExecuteApply(f.owner,applying.request),SettingsCode::Ok,"write the renewable target");
+        Code(f.transaction.RenewAutomaticCommit(f.owner,applying.request,3,renewed),SettingsCode::Busy,"an unprepared commit cannot be renewed");
+        Code(f.transaction.PrepareAutomaticCommit(f.owner,applying.request,3,committing),SettingsCode::Ok,"prepare the commit to renew");
+        f.storage.live["width"]=1366.0;
+        Code(f.transaction.RenewAutomaticCommit(f.owner,committing.request,2,renewed),SettingsCode::Invalid,"renewal rejects backwards time");
+        f.storage.live["volume"]=0.875;
+        Code(f.transaction.RenewAutomaticCommit(f.owner,committing.request,4,renewed),SettingsCode::Conflict,"a changed written key refuses renewal");
+        Check(renewed.owner==999 && renewed.request==777 && f.transaction.AsyncPending(),"refused renewal preserves caller output and ownership");
+        f.storage.live["volume"]=0.75;
+        Code(f.transaction.RenewAutomaticCommit(f.owner,committing.request,4,renewed),SettingsCode::Ok,"renewal adopts unwritten changes");
+        Check(renewed.request!=committing.request && std::get<double>(renewed.target.at("width"))==1366.0 && renewed.patch==committing.patch &&
+              renewed.completion==SettingsCompletion::Automatic,"renewal freezes a new identity over the current catalog");
+        Code(f.transaction.CompleteAutomaticCommit(f.owner,committing.request),SettingsCode::Invalid,"the superseded commit identity cannot finalize");
+        Code(f.transaction.CompleteAutomaticCommit(f.owner,renewed.request),SettingsCode::Ok,"the renewed commit finalizes");
+        Check(std::get<double>(f.transaction.Baseline().at("width"))==1366.0 && !f.transaction.AsyncPending(),"the baseline keeps the unwritten change");
     }
     for(int defect=0;defect<7;++defect) {
         Fixture f;AutomaticEdit(f);SettingsAttempt applying,committing{999,777,{},{},{}};

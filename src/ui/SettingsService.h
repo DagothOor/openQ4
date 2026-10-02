@@ -21,6 +21,8 @@ bool UI_SettingsBlocksConfigWrite();
 bool UI_SettingsStartup(std::string& error);
 bool UI_SettingsInitializeDisplay(std::string& error);
 bool UI_SettingsStartupActive();
+// Any startup recovery (display or deferred) still owns settings evidence.
+bool UI_SettingsRecoveryPending();
 void UI_SettingsShutdown();
 // The light-grid preload a level load uses (render API 20): the committed
 // choice, which is the open attempt's baseline until that attempt persists,

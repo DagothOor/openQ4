@@ -648,6 +648,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         (root / "tools" / "ui" / 'update_system_dimensions.py', ['--check']),
         (root / "tools" / "ui" / 'update_system_text_layout.py', ['--check']),
         (root / "tools" / "ui" / 'update_system_soft_focus.py', ['--check']),
+        (root / "tools" / "ui" / 'update_system_render_options.py', ['--check']),
         (root / "tools" / "tests" / 'system_settings_archive_policy.py', []),
         (root / "tools" / "tests" / 'ui_text_input.py', []),
         (root / "tools" / "tests" / 'ui_retained_input.py', []),

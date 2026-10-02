@@ -1110,4 +1110,9 @@
 	"#str_230070"	"+%d de plus"
 	"#str_230071"	"Connexions : %d"
 	"#str_230072"	"Spectateurs : %d"
+	"#str_230073"	"Application des paramètres…"
+	"#str_230074"	"Restauration des paramètres précédents…"
+	"#str_230075"	"Enregistrement des paramètres…"
+	"#str_230076"	"Appliquez séparément les changements d’affichage, de rendu et de lumière."
+	"#str_230077"	"Les paramètres demandent votre attention"
 }

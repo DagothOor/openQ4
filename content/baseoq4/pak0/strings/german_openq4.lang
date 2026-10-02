@@ -1110,4 +1110,9 @@
 	"#str_230070"	"+%d weitere"
 	"#str_230071"	"Verbinden: %d"
 	"#str_230072"	"Zuschauer: %d"
+	"#str_230073"	"Einstellungen werden angewendet…"
+	"#str_230074"	"Vorherige Einstellungen werden wiederhergestellt…"
+	"#str_230075"	"Einstellungen werden gespeichert…"
+	"#str_230076"	"Wenden Sie Anzeige-, Renderer- und Lichtgitteränderungen getrennt an."
+	"#str_230077"	"Einstellungen erfordern Aufmerksamkeit"
 }

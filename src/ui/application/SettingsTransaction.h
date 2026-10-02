@@ -100,6 +100,10 @@ public:
 	// every actual effect. Rechecks that the host needs no user confirmation and
 	// freezes a new commit identity without entering Confirming or inventing Keep.
 	SettingsResult PrepareAutomaticCommit(std::uint64_t owner, std::uint64_t request, double now, SettingsAttempt& attempt);
+	// Retrying a prepared Automatic commit after a failed save renews it: every
+	// key the request wrote must still hold its target, and the rest of the
+	// catalog is taken as it is now (a resized window, for instance).
+	SettingsResult RenewAutomaticCommit(std::uint64_t owner, std::uint64_t request, double now, SettingsAttempt& attempt);
 	SettingsResult CompleteAutomaticCommit(std::uint64_t owner, std::uint64_t request);
 	SettingsResult CancelPreparedApply(std::uint64_t owner, std::uint64_t request);
 	// Restore freezes a fresh conflict-safe patch. Execution can restore safe

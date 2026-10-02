@@ -47,7 +47,8 @@ static void Check(bool condition,const char* message) {
     if(!condition) { std::fprintf(stderr,"FAIL: %s\n",message);std::exit(1); }
 }
 static StateValues Initial() {
-    return {{"r_brightness",1.0},{"r_lightGridPreload",false},{"r_mode",0.0},{"r_multiSamples",0.0},{"r_renderer",std::string("best")},{"r_shadows",true}};
+    return {{"r_brightness",1.0},{"r_lightGridPreload",false},{"r_mode",0.0},{"r_multiSamples",0.0},{"r_renderer",std::string("best")},{"r_shadows",true},
+            {"s_numberOfSpeakers",2.0}};
 }
 static struct HostData {
     StateValues live=Initial(),defaults=Initial();
@@ -60,7 +61,8 @@ static struct HostData {
 } host;
 namespace openq4::ui {
 const std::map<std::string,size_t>& SystemSettingsHost::Schema() {
-    static const std::map<std::string,size_t> schema={{"r_brightness",0},{"r_lightGridPreload",1},{"r_mode",0},{"r_multiSamples",0},{"r_renderer",2},{"r_shadows",1}};
+    static const std::map<std::string,size_t> schema={{"r_brightness",0},{"r_lightGridPreload",1},{"r_mode",0},{"r_multiSamples",0},{"r_renderer",2},{"r_shadows",1},
+        {"s_numberOfSpeakers",0}};
     return schema;
 }
 bool SystemSettingsHost::Read(StateValues& result,std::string& error) {
@@ -125,7 +127,27 @@ unsigned SystemSettingsHost::ChangedEffects(const StateValues& before,const Stat
     if(before.empty() || target.empty())return 0;
     return (before.at("r_mode")!=target.at("r_mode") || before.at("r_multiSamples")!=target.at("r_multiSamples")?unsigned(SystemSettingDisplayRestart):0u) |
         (before.at("r_renderer")!=target.at("r_renderer")?unsigned(SystemSettingRendererResources):0u) |
-        (before.at("r_lightGridPreload")!=target.at("r_lightGridPreload")?unsigned(SystemSettingNextMap):0u);
+        (before.at("r_lightGridPreload")!=target.at("r_lightGridPreload")?unsigned(SystemSettingNextMap):0u) |
+        (before.at("s_numberOfSpeakers")!=target.at("s_numberOfSpeakers")?unsigned(SystemSettingAudioRestart):0u);
+}
+// Production's apply class over this catalog: r_mode and r_multiSamples restart
+// the display, r_renderer reloads renderer resources, r_lightGridPreload waits
+// for the next map, s_numberOfSpeakers has no executor, and the rest apply
+// immediately.
+SystemApplyClass SystemSettingsHost::ApplyClassOf(const StateValues& before,const StateValues& target) {
+    bool changed=false;
+    for(const auto& [key,type]:Schema()) {
+        const auto a=before.find(key),b=target.find(key);
+        changed=changed || (a==before.end())!=(b==target.end()) || (a!=before.end() && b!=target.end() && a->second!=b->second);
+    }
+    if(!changed)return SystemApplyClass::None;
+    const unsigned effects=ChangedEffects(before,target);
+    if(effects&SystemSettingAudioRestart)return SystemApplyClass::Unsupported;
+    const bool display=(effects&SystemSettingDisplayRestart)!=0,renderer=(effects&SystemSettingRendererResources)!=0,
+        deferred=(effects&SystemSettingNextMap)!=0;
+    if(int(display)+int(renderer)+int(deferred)>1)return SystemApplyClass::Mixed;
+    return display?SystemApplyClass::Display:renderer?SystemApplyClass::Renderer:
+        deferred?SystemApplyClass::Deferred:SystemApplyClass::Immediate;
 }
 bool SystemSettingsHost::ChangedRequiresDisplayRestart(const StateValues& before,const StateValues& target) {
     return (ChangedEffects(before,target)&SystemSettingDisplayRestart)!=0;
@@ -184,7 +206,7 @@ struct idCommonLocal {
 static struct DeviceData {
     SettingsDisplayObservation observation{1,1,0,0,0,true,false,true,false};
     bool held=false,startup=false,blocked=false,refusePrepare=false,refusePersist=false,refuseRestart=false,refuseFinish=false;
-    bool msaaSupported=true;
+    bool msaaSupported=true,automaticReady=true;
     int prepares=0,cancels=0,restarts=0,restores=0,observes=0,persists=0,finishes=0,startups=0,frames=0,shutdowns=0;
 } deviceData;
 class EngineSettingsDisplayHost final:public SettingsDisplayHost {
@@ -222,6 +244,7 @@ public:
     bool RecoveryActive()const noexcept{return deviceData.held || deviceData.startup || deviceData.blocked;}
     bool StartupActive()const noexcept{return deviceData.startup;}
     bool SupportsMultisampling()const{return deviceData.msaaSupported;}
+    bool ReadyForAutomatic()const{return deviceData.automaticReady;}
 };
 // Execute the production Session::UpdateScreen frame boundary with a counted
 // synchronous renderer. No window, GPU or input APIs are used by these doubles.
@@ -284,7 +307,7 @@ static std::uint64_t Pending() {
 }
 static void Validation() {
     const auto& schema=UI_SettingsStateSchema();
-    Check(schema.size()==25 && schema.at("settings.msaaAvailable")==1 && schema.at("settings.message")==2 && schema.at("settings.open")==1 &&
+    Check(schema.size()==27 && schema.at("settings.msaaAvailable")==1 && schema.at("settings.message")==2 && schema.at("settings.open")==1 &&
           schema.at("settings.phase")==0,"service status schema types");
     for(const auto& [key,type]:SystemSettingsHost::Schema())
         Check(schema.at("settings.draft."+key)==type && schema.at("settings.baseline."+key)==type,"typed snapshot schema");
@@ -714,6 +737,114 @@ static void LevelLoadUnreadable() {
     bool preload=true;std::uint64_t token=7;host.failRead=true;
     Check(!UI_SettingsLevelLoadPolicy(preload,token) && preload && token==7,"an unreadable setting leaves the load on r_lightGridPreload");
 }
+// A deferred attempt: the next map's light-grid preload with an immediate edit
+// riding along. It needs an owning view and a presenting renderer, never shows
+// a confirmation, and commits itself after a later presented frame.
+static void AwaitDeferred(std::uint64_t owner,const char* operation="apply") {
+    UI_SettingsConfirmationDocument(owner,ConfirmationDocument());
+    Check(Dispatch(owner,"edit",{{"r_lightGridPreload",true},{"r_brightness",1.5}}),"draft the preload with an immediate edit");
+    Expect(owner,"canApply",true);
+    Check(Dispatch(owner,operation),"a deferred change applies without a confirmation");
+    Expect(owner,"phase",static_cast<double>(SettingsPhase::Applying));Expect(owner,"confirmationVisible",false);
+    Expect(owner,"message",std::string("#str_230073"));
+    UI_SettingsFrame(false);Check(host.writes.empty() && deviceData.prepares==0,"a loading frame starts no deferred work");
+    UI_SettingsFrame();
+    Check(host.writes.size()==1 && deviceData.prepares==1 && UI_SettingsBlocksConfigWrite(),"a full frame journals, then writes the deferred change");
+    Expect(owner,"confirmationVisible",false);Expect(owner,"canConfirm",false);Expect(owner,"message",std::string("#str_230073"));
+}
+static void PresentFrame() { ++deviceData.observation.submitted;++deviceData.observation.presented; }
+static void DeferredApply() {
+    const auto owner=Begin();AwaitDeferred(owner);
+    bool preload=true;std::uint64_t token=0;
+    Check(UI_SettingsLevelLoadPolicy(preload,token) && !preload,"a load before the commit keeps the committed baseline");
+    UI_SettingsFrame();Check(deviceData.persists==0,"no commit before a later presented frame");
+    PresentFrame();UI_SettingsFrame(false);Check(deviceData.persists==0,"a loading frame never persists the commit");
+    Check(UI_SettingsLevelLoadPolicy(preload,token) && !preload,"a load with the commit queued keeps the committed baseline");
+    UI_SettingsFrame();
+    Check(deviceData.persists==1 && deviceData.finishes==1 && !deviceData.held && !UI_SettingsBlocksConfigWrite(),"a presented frame commits, persists and finishes once");
+    Expect(owner,"phase",static_cast<double>(SettingsPhase::Editing));Expect(owner,"baseline.r_lightGridPreload",true);
+    Expect(owner,"baseline.r_brightness",1.5);
+    Check(UI_SettingsLevelLoadPolicy(preload,token) && preload,"a load after the commit uses the new choice");
+}
+static void DeferredMixed() {
+    const auto owner=Begin();UI_SettingsConfirmationDocument(owner,ConfirmationDocument());
+    Check(Dispatch(owner,"edit",{{"r_lightGridPreload",true},{"r_mode",1.0}}),"draft a display and a deferred change");
+    Expect(owner,"canApply",false);Expect(owner,"message",std::string("#str_230076"));
+    Check(!Dispatch(owner,"apply") && deviceData.prepares==0 && host.writes.empty(),"a mixed batch refuses before any preparation or write");
+    Check(Dispatch(owner,"edit",{{"r_mode",0.0}}),"take the display change back");
+    Expect(owner,"canApply",true);Expect(owner,"message",std::string("#str_230014"));
+}
+static void DeferredNotReady() {
+    const auto owner=Begin();
+    Check(Dispatch(owner,"edit",{{"r_lightGridPreload",true}}),"draft the preload");
+    Expect(owner,"canApply",false);
+    Check(!Dispatch(owner,"apply") && deviceData.prepares==0,"no owning view refuses the deferred apply");
+    UI_SettingsConfirmationDocument(owner,ConfirmationDocument());deviceData.automaticReady=false;
+    Expect(owner,"canApply",false);
+    Check(!Dispatch(owner,"apply") && deviceData.prepares==0,"no presenting renderer refuses the deferred apply");
+    deviceData.automaticReady=true;Expect(owner,"canApply",true);
+}
+static void DeferredPersistFailure() {
+    const auto owner=Begin();AwaitDeferred(owner);
+    deviceData.refusePersist=true;PresentFrame();UI_SettingsFrame();
+    Check(deviceData.persists==1 && deviceData.held && UI_SettingsBlocksConfigWrite(),"an uncertain deferred commit keeps its journal");
+    Expect(owner,"phase",static_cast<double>(SettingsPhase::RecoveryRequired));Expect(owner,"message",std::string("#str_229997"));
+    bool preload=true;std::uint64_t token=0;
+    Check(UI_SettingsLevelLoadPolicy(preload,token) && !preload,"a load during recovery keeps the baseline until persistence");
+    const auto request=std::get<std::string>(Read(owner).at("settings.request"));
+    deviceData.refusePersist=false;Check(Dispatch(owner,"retry",{{"request",request}}),"retry the deferred commit");
+    UI_SettingsFrame();
+    Check(deviceData.persists==2 && deviceData.finishes==1 && !deviceData.held,"the retry persists and finishes");
+    Check(UI_SettingsLevelLoadPolicy(preload,token) && preload,"after persistence a load uses the new choice");
+}
+static void DeferredRetryRenews() {
+    const auto owner=Begin();AwaitDeferred(owner);
+    deviceData.refusePersist=true;PresentFrame();UI_SettingsFrame();
+    Expect(owner,"phase",static_cast<double>(SettingsPhase::RecoveryRequired));
+    ++deviceData.observation.generation;host.live.at("r_shadows")=false;deviceData.refusePersist=false;
+    const auto request=std::get<std::string>(Read(owner).at("settings.request"));
+    Check(Dispatch(owner,"retry",{{"request",request}}),"retry after the swapchain and an unwritten key changed");
+    UI_SettingsFrame();
+    Check(deviceData.persists==2 && deviceData.finishes==1 && !deviceData.held && !UI_SettingsBlocksConfigWrite(),"the renewed deferred commit saves and finishes");
+    Expect(owner,"phase",static_cast<double>(SettingsPhase::Editing));Expect(owner,"baseline.r_shadows",false);
+    Expect(owner,"baseline.r_lightGridPreload",true);
+    bool preload=false;std::uint64_t token=0;
+    Check(UI_SettingsLevelLoadPolicy(preload,token) && preload,"after the renewed save a load uses the new choice");
+}
+static void DeferredClose() {
+    const auto owner=Begin();AwaitDeferred(owner);
+    UI_SettingsCloseOwner(owner);UI_SettingsFrame();
+    Expect(owner,"message",std::string("#str_230074"));
+    PresentFrame();UI_SettingsFrame();
+    Check(deviceData.restores==1 && deviceData.persists==0 && deviceData.finishes==1 && host.live.at("r_lightGridPreload")==StateValue(false),
+          "closing the owner restores the deferred change without persisting it");
+}
+static void DeferredApplyExit() {
+    const auto owner=Begin();AwaitDeferred(owner,"applyExit");
+    Check(!UI_SettingsExitReady(owner),"exit waits for the automatic commit");
+    PresentFrame();UI_SettingsFrame();
+    Check(UI_SettingsExitReady(owner) && UI_SettingsConsumeExit(owner),"a committed deferred change completes Apply and Exit");
+}
+static void DeferredApplyExitRestore() {
+    const auto owner=Begin();AwaitDeferred(owner,"applyExit");
+    ++deviceData.observation.failures;UI_SettingsFrame();
+    PresentFrame();UI_SettingsFrame();UI_SettingsFrame();
+    Check(deviceData.restores==1 && deviceData.persists==0 && deviceData.finishes==1 && !deviceData.held,"a failed observation restores the deferred attempt");
+    Check(!UI_SettingsExitReady(owner) && !UI_SettingsConsumeExit(owner),"a restored deferred attempt cancels Apply and Exit");
+    Expect(owner,"phase",static_cast<double>(SettingsPhase::Editing));Expect(owner,"baseline.r_lightGridPreload",false);
+    Check(host.live.at("r_lightGridPreload")==StateValue(false) && host.live.at("r_brightness")==StateValue(1.0),"the restore returns both keys");
+}
+static void UnsupportedEffects() {
+    const auto owner=Begin();UI_SettingsConfirmationDocument(owner,ConfirmationDocument());
+    Check(Dispatch(owner,"edit",{{"s_numberOfSpeakers",6.0}}),"draft an audio restart");
+    Expect(owner,"canApply",false);Expect(owner,"message",std::string("#str_230014"));
+    Check(!Dispatch(owner,"apply") && deviceData.prepares==0 && host.writes.empty(),"an effect without an executor refuses before any preparation or write");
+    Check(Dispatch(owner,"edit",{{"r_lightGridPreload",true}}),"add the preload to the audio restart");
+    Expect(owner,"canApply",false);Expect(owner,"message",std::string("#str_230014"));
+    Check(Dispatch(owner,"edit",{{"s_numberOfSpeakers",2.0},{"r_lightGridPreload",false},{"r_renderer",std::string("arb2")}}),"draft only the renderer fallback");
+    Expect(owner,"canApply",false);
+    Check(!Dispatch(owner,"apply") && deviceData.prepares==0 && host.writes.empty(),"the renderer fallback waits for its executor");
+}
 static void DisplayClose(bool written) {
     const auto owner=Begin();
     if(written)AwaitDisplay(owner);
@@ -1019,6 +1150,11 @@ int main(int argc,char** argv) {
     else if(name=="startup_shutdown")StartupShutdown();else if(name=="stale_display_actions")StaleDisplayActions();
     else if(name=="frame_trace")FrameReceiptTrace();
     else if(name=="level_load_policy")LevelLoadPolicy();else if(name=="level_load_unreadable")LevelLoadUnreadable();
+    else if(name=="deferred_apply")DeferredApply();else if(name=="deferred_mixed")DeferredMixed();
+    else if(name=="deferred_not_ready")DeferredNotReady();else if(name=="deferred_persist_failure")DeferredPersistFailure();
+    else if(name=="deferred_close")DeferredClose();else if(name=="deferred_apply_exit")DeferredApplyExit();
+    else if(name=="deferred_apply_exit_restore")DeferredApplyExitRestore();else if(name=="unsupported_effects")UnsupportedEffects();
+    else if(name=="deferred_retry_renews")DeferredRetryRenews();
     else if(name=="exit_immediate")ExitImmediate(false);else if(name=="exit_noop")ExitImmediate(true);
     else if(name.starts_with("exit_invalidate_"))ExitInvalidate(name.substr(16));
     else if(name.starts_with("exit_failure_"))ExitFailure(name.substr(13));
@@ -1042,6 +1178,8 @@ SCENARIOS = (
     'orphan_divergence', 'waiting_close', 'waiting_release', 'persistence',
     'timeout_frame', 'capability', 'msaa_capability', 'display_draft_preflight', 'display_keep', 'display_persist_failure',
     'display_close_queued', 'display_close_written', 'startup_shutdown', 'stale_display_actions', 'level_load_policy', 'level_load_unreadable',
+    'deferred_apply', 'deferred_mixed', 'deferred_not_ready', 'deferred_persist_failure', 'deferred_close', 'deferred_apply_exit',
+    'deferred_apply_exit_restore', 'unsupported_effects', 'deferred_retry_renews',
     'frame_outside','frame_skipped','frame_submit_only','frame_present_only',
     'frame_readback_before_draw','frame_readback_after_draw','frame_readback_during_end',
     'frame_nested','frame_aborted','frame_begin_aborted','frame_wrong_request','frame_shutdown',
@@ -1140,7 +1278,7 @@ def main(production_mutations=()):
         dedicated = Path(directory) / 'dedicated.cpp'
         dedicated.write_text('#define ID_DEDICATED\n#include <cassert>\n#include "src/ui/SettingsService.h"\n' +
                              service + '\nint main() { assert(UI_SettingsCreateOwner()==0); '
-                             'UI_SettingsCloseOwner(1); UI_SettingsReleaseOwner(1); UI_SettingsFrame(); '
+                             'UI_SettingsCloseOwner(1); UI_SettingsReleaseOwner(1); UI_SettingsFrame(); assert(!UI_SettingsRecoveryPending()); '
                              'assert(!UI_SettingsExitReady(1) && !UI_SettingsConsumeExit(1)); '
                              'assert(!UI_SettingsBlocksConfigWrite()); }\n', encoding='utf-8')
         dedicated_binary = Path(directory) / 'dedicated.exe'

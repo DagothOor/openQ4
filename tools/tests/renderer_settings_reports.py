@@ -130,9 +130,9 @@ def main() -> int:
     for token in ("bool UI_SettingsLevelLoadPolicy(bool&, std::uint64_t&) { return false; }", "void UI_SettingsLevelUnloaded() {}"):
         require(dedicated, token, "dedicated stubs")
     provider = body(service, "bool UI_SettingsLevelLoadPolicy(bool& preload, std::uint64_t& token)")
-    ordered(provider, ["service.display.Active() && !service.display.Approved()", "service.transaction.Baseline().find(\"r_lightGridPreload\")",
+    ordered(provider, ["service.display.Active() && !service.display.Persisted()", "service.transaction.Baseline().find(\"r_lightGridPreload\")",
                        "service.host.ReadValue(\"r_lightGridPreload\",value,error)", "token = ++levelLoadToken;"],
-            "the provider uses the baseline while an attempt could still be undone")
+            "the provider uses the baseline until an attempt's choice is saved")
     if "cvarSystem" in provider:
         raise AssertionError("the provider reads the catalog, not raw CVars")
     host = read("src/ui/application/SystemSettingsHost.cpp")

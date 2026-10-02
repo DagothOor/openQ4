@@ -379,12 +379,171 @@ static void ExactCatalogCases(){
     }
 }
 
-int main(){MultisamplingCapability();ExactCatalogCases();RuntimeJournal();StartupCases();GeometryAndStartupFailures();StartupClockCases();CommitOwnershipCases();ReindexedStartupRetry();UnusedTopologyCases();std::printf("UI settings display service passed: %d checks\n",checks);}
+// The next-map light-grid preload: a schema-2 record with only the next-map
+// domain, no restart or placement lease, and the same Pending/Confirmed order.
+static SettingsAttempt DeferredAttempt(SystemSettingsHost& settings,bool rider=true){
+    SettingsAttempt a{23,91,Live(settings),{},{}};a.completion=SettingsCompletion::Automatic;a.target=a.baseline;
+    a.target["r_lightGridPreload"]=!std::get<bool>(a.baseline.at("r_lightGridPreload"));if(rider)a.target["r_brightness"]=1.25;
+    for(const auto& [key,value]:a.target)if(value!=a.baseline.at(key))a.patch[key]=value;
+    Check(settings.Validate(a.baseline,a.target,error) && SystemSettingsHost::ApplyClassOf(a.baseline,a.target)==SystemApplyClass::Deferred,
+          "validate deferred attempt fixture");
+    return a;
+}
+static SettingsEffectRecoveryJournal EffectJournal(){
+    SettingsJournalRecord record;
+    Check(DecodeSettingsJournalRecord(files.at(journalFile),SystemSettingsHost::Schema(),record,error) && record.Schema()==2,"decode a schema-2 deferred journal");
+    return std::get<SettingsEffectRecoveryJournal>(*record.Value());
+}
+static void StoreEffect(const SettingsEffectRecoveryJournal& j){std::string bytes;Check(EncodeSettingsEffectJournal(j,SystemSettingsHost::Schema(),bytes,error),"encode altered deferred journal");files[journalFile]=bytes;}
+static SettingsAttempt DeferredForStartup(SystemSettingsHost& settings,bool confirmed,bool rider=true){
+    EngineSettingsDisplayHost preparing(settings);auto a=DeferredAttempt(settings,rider);
+    Check(preparing.Prepare(a,error),"prepare deferred startup fixture");
+    if(confirmed){Check(settings.Write(a.patch,error),"write confirmed deferred fixture");SettingsDisplayObservation observed;
+        Check(preparing.Restart(false,observed,error),"observe confirmed deferred fixture");Present();Check(preparing.PersistConfirmation(a,error),"persist confirmed deferred fixture");}
+    preparing.Shutdown();Check(files.contains(journalFile) && leases.empty() && !geometryToken,"shutdown keeps the deferred evidence and releases the lease");
+    configWrites=0;writes=0;trace.clear();return a;
+}
+static void DeferredCases(){
+    {ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);
+     Check(host.ReadyForAutomatic(),"a presenting renderer is ready for an automatic attempt");
+     queryOkay=false;Check(!host.ReadyForAutomatic(),"no observation is not ready");queryOkay=true;
+     actual.rendererReady=false;Check(!host.ReadyForAutomatic(),"an unready renderer is not ready");actual.rendererReady=true;
+     actual.presentation.available=false;Check(!host.ReadyForAutomatic(),"no presentation is not ready");actual.presentation.available=true;
+     auto deferred=DeferredAttempt(settings);deferred.completion=SettingsCompletion::UserConfirmation;
+     auto display=Attempt(settings);display.completion=SettingsCompletion::Automatic;
+     Check(!host.Prepare(deferred,error) && !host.Prepare(display,error) && leases.empty() && files.empty() && !geometryToken && writes==0,
+           "a completion that disagrees with the effects is refused before any lease or journal");}
+    {ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);auto a=DeferredAttempt(settings);
+     Check(host.Prepare(a,error),"prepare a deferred attempt");
+     Check(writes==0 && configWrites==0 && leases.contains(lockFile) && !geometryToken && restarts==0,"deferred preparation journals under the process lease without geometry or devices");
+     const auto j=EffectJournal();
+     Check(j.state==SettingsJournalState::Pending && j.baseline==a.baseline && j.target==a.target && j.patch==a.patch && j.plan.domainMask==SystemSettingNextMap,
+           "the Pending record carries exact snapshots and only the next-map domain");
+     Check(j.deferredRestore.size()==1 && j.deferredRestore.at("lightGridPreload")==a.baseline.at("r_lightGridPreload") &&
+           j.deferredTarget.size()==1 && j.deferredTarget.at("lightGridPreload")==a.target.at("r_lightGridPreload") &&
+           j.displayRestore.empty() && j.displayTarget.empty() && j.placement.empty(),"the record holds the portable preload policy in each direction and no display state");
+     Check(settings.Write(a.patch,error),"write the deferred patch");SettingsDisplayObservation seen;
+     Check(host.Restart(false,seen,error) && seen.ready && restarts==0 && initializations==0,"a deferred restart only observes the presenting device");
+     Present();Check(host.Observe(false,seen,error) && seen.presented==actual.presentation.presentedSequence,"observation reports the later presented frame");
+     Check(host.PersistConfirmation(a,error) && EffectJournal().state==SettingsJournalState::Confirmed && configWrites==1,"Confirmed precedes the configuration commit");
+     const auto config=std::find(trace.begin(),trace.end(),"config"),replace=std::find(trace.rbegin(),trace.rend(),"replace-journal").base()-1;
+     Check(replace<config,"the durable Confirmed record precedes the configuration write");
+     Check(host.Finish(false,error) && !host.RecoveryActive() && !files.contains(journalFile) && leases.empty(),"Finish retires the deferred journal and its lease");}
+    {ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);auto a=DeferredAttempt(settings);
+     Check(host.Prepare(a,error) && settings.Write(a.patch,error),"prepare and write a deferred attempt to restore");
+     SettingsDisplayObservation seen;Check(host.Restart(false,seen,error),"observe the deferred attempt");
+     StateValues back;for(const auto& [key,value]:a.patch)back[key]=a.baseline.at(key);
+     Check(settings.Write(back,error) && host.Restart(true,seen,error) && host.Finish(true,error),"restore observes and retires the deferred attempt");
+     Check(configWrites==0 && restarts==0 && !files.contains(journalFile) && !host.RecoveryActive() && Live(settings)==a.baseline,"a restored deferred attempt never archives its candidate");}
+    {ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);auto a=DeferredAttempt(settings);
+     Check(host.Prepare(a,error) && settings.Write(a.patch,error),"prepare a deferred attempt across a module change");
+     ++actual.moduleEpoch;SettingsDisplayObservation seen;
+     Check(!host.Restart(false,seen,error) && host.RecoveryActive() && files.contains(journalFile),"a replaced renderer module cannot prove the deferred attempt");host.Shutdown();}
+    {ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);auto a=DeferredAttempt(settings);
+     actual.rendererReady=false;Check(!host.Prepare(a,error) && writes==0 && !files.contains(journalFile),"no presenting renderer refuses deferred preparation");
+     actual.rendererReady=true;Check(host.CancelPreparation(error) && !host.RecoveryActive() && leases.empty(),"the refused preparation releases its lease");}
+    for(bool confirmed:{false,true}){ResetFixture();SystemSettingsHost settings;auto a=DeferredForStartup(settings,confirmed);
+     // Config loading may have left either side live; unrelated changes survive.
+     for(const auto& [key,value]:a.patch)localCVarSystem.variables.at(key).value=FormatPresentationValue(StatePresentation(confirmed?a.baseline.at(key):value));
+     const bool crt=!std::get<bool>(Live(settings).at("r_crt"));localCVarSystem.variables.at("r_crt").value=crt?"1":"0";
+     EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"startup replays the deferred record");
+     const auto current=Live(settings);
+     Check(current.at("r_crt")==StateValue(crt),"deferred startup preserves unrelated live changes");
+     for(const auto& [key,value]:a.patch)Check(current.at(key)==(confirmed?a.target:a.baseline).at(key),"deferred startup chooses the committed direction");
+     Check(host.RecoveryActive() && !host.StartupActive() && configWrites==0 && files.contains(journalFile),"replayed values wait for a full frame before persistence");
+     Check(host.InitializeDisplay(error) && initializations==0,"a deferred record never initializes a recorded display");
+     host.StartupFrame(1,false);Check(configWrites==0 && files.contains(journalFile),"a loading frame never persists deferred recovery");
+     host.StartupFrame(1,true);
+     Check(configWrites==1 && !host.RecoveryActive() && !files.contains(journalFile) && leases.empty(),"a full frame commits the recovered choice then retires the record");}
+    for(bool confirmed:{false,true}){ResetFixture();SystemSettingsHost settings;auto a=DeferredForStartup(settings,confirmed);
+     if(!confirmed)for(const auto& [key,value]:a.patch)localCVarSystem.variables.at(key).value=FormatPresentationValue(StatePresentation(a.baseline.at(key)));
+     EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"startup replays the deferred record before the renderer");
+     // Renderer and window startup settle keys the record does not own.
+     localCVarSystem.variables.at("r_windowWidth").value="1366";localCVarSystem.variables.at("r_multiSamples").value="8";
+     host.StartupFrame(1,true);
+     Check(configWrites==1 && !host.RecoveryActive() && !files.contains(journalFile) && cvarSystem->GetCVarInteger("r_windowWidth")==1366,
+           "startup settling unowned keys still commits the recovered choice");}
+    {ResetFixture();SystemSettingsHost settings;auto a=DeferredForStartup(settings,true);
+     EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"startup replays the deferred record");
+     // A platform default rewrites an owned rider after the replay.
+     localCVarSystem.variables.at("r_brightness").value="1.75";
+     host.StartupFrame(1,true);
+     Check(configWrites==1 && !host.RecoveryActive() && !files.contains(journalFile) && Live(settings).at("r_brightness")==a.target.at("r_brightness"),
+           "an owned key startup changed goes back to the recovered choice before the commit");}
+    for(int failure=0;failure<2;++failure){ResetFixture();SystemSettingsHost settings;DeferredForStartup(settings,true);
+     EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"startup replays the deferred record to fail");
+     const auto bytes=files.at(journalFile);
+     if(failure==0)configFailure=true;
+     if(failure==1)removeFailure=true;
+     host.StartupFrame(1,true);
+     Check(host.RecoveryActive() && files.contains(journalFile) && files.at(journalFile)==bytes && !host.RecoveryError().empty() && configWrites==1,
+           "a failed deferred startup commit keeps its record and reports why");
+     configFailure=removeFailure=false;host.StartupFrame(2,true);
+     Check(configWrites==1 && files.contains(journalFile),"a failed deferred startup commit is never retried blindly");host.Shutdown();}
+    {ResetFixture();SystemSettingsHost settings;DeferredForStartup(settings,false);auto j=EffectJournal();
+     j.deferredTarget["lightGridPreload"]=j.deferredRestore.at("lightGridPreload");StoreEffect(j);
+     EngineSettingsDisplayHost host(settings);
+     Check(!host.Startup(error) && writes==0 && files.contains(journalFile) && host.RecoveryActive(),"a deferred record contradicting its snapshots is refused before replay");host.Shutdown();}
+    {ResetFixture();SystemSettingsHost settings;DeferredForStartup(settings,false);
+     localCVarSystem.variables.at("r_brightness").value="1.75";EngineSettingsDisplayHost host(settings);
+     Check(!host.Startup(error) && writes==0 && files.contains(journalFile),"a divergent owned key blocks deferred replay");host.Shutdown();}
+}
+
+// The deferred replay compares exactly too: a subnormal ambient rider under
+// DAZ must not read as zero when choosing or checking an owned key.
+static void DeferredExactCases(){
+    ExactMode mode;
+    for(bool confirmed:{false,true})for(bool conflict:{false,true}){
+     ResetFixture();SystemSettingsHost settings;SetExactAmbient(1);auto a=DeferredAttempt(settings,false);
+     a.target["r_forceAmbient"]=0.0;a.patch["r_forceAmbient"]=0.0;
+     Check(settings.Validate(a.baseline,a.target,error) && SystemSettingsHost::ApplyClassOf(a.baseline,a.target)==SystemApplyClass::Deferred,
+           "an exact ambient rider keeps the deferred class");
+     {EngineSettingsDisplayHost preparing(settings);Check(preparing.Prepare(a,error),"prepare an exact deferred journal");
+      if(confirmed){Check(settings.Write(a.patch,error),"write the exact deferred target");SettingsDisplayObservation observation;
+       Check(preparing.Restart(false,observation,error),"observe the exact deferred target");Present();
+       Check(preparing.PersistConfirmation(a,error),"persist the exact deferred target");}
+      preparing.Shutdown();}
+     const auto saved=EffectJournal();Check(saved.patch.contains("r_forceAmbient") &&
+       std::bit_cast<std::uint64_t>(std::get<double>(saved.baseline.at("r_forceAmbient")))==1,"the deferred journal keeps the exact original and the zero patch");
+     SetExactAmbient(conflict?2:confirmed?1:0);writes=configWrites=0;trace.clear();
+     EngineSettingsDisplayHost replay(settings);
+     if(conflict){const auto bytes=files.at(journalFile);
+      Check(!replay.Startup(error) && writes==0 && configWrites==0,"deferred startup rejects a bit-distinct divergent owned field before all writes");
+      Check(AmbientIs(settings,2) && files.at(journalFile)==bytes,"a conflicting deferred replay preserves the live value and the evidence");}
+     else{
+      Check(replay.Startup(error),"deferred startup restores the exact zero/subnormal direction");
+      Check(AmbientIs(settings,confirmed?0:1),"deferred startup emits the required zero or original tiny patch");
+      Check(writes>0 && configWrites==0,"deferred startup changes the owned value without a premature archive");
+      if(confirmed){
+       // A different subnormal reads as zero under DAZ; setting the owned value
+       // back must still see it.
+       SetExactAmbient(2);replay.StartupFrame(1,true);
+       Check(configWrites==1 && !files.contains(journalFile) && !replay.RecoveryActive() && AmbientIs(settings,0),
+             "a bit-distinct owned value goes back to the exact recovered choice");
+      }else{
+       replay.StartupFrame(1,true);
+       Check(configWrites==1 && !files.contains(journalFile) && !replay.RecoveryActive(),"exact deferred recovery commits then removes the journal");}}
+     replay.Shutdown();
+    }
+}
+
+// Production-encoded journals for a cold-recovery probe. Only the preload
+// changes, off to on, so an engine at its defaults can replay either side.
+static void EmitDeferredJournals(const std::string& directory){
+    for(bool confirmed:{false,true}){ResetFixture();SystemSettingsHost settings;DeferredForStartup(settings,confirmed,false);
+        const auto& bytes=files.at(journalFile);const auto path=directory+(confirmed?"/confirmed.dat":"/pending.dat");
+        std::FILE* file=std::fopen(path.c_str(),"wb");
+        Check(file && std::fwrite(bytes.data(),1,bytes.size(),file)==bytes.size() && std::fclose(file)==0,"emit a production-encoded deferred journal");}
+}
+
+int main(){
+    if(const char* directory=std::getenv("OPENQ4_EMIT_DEFERRED_JOURNALS")){EmitDeferredJournals(directory);std::printf("Deferred recovery journals emitted: %d checks\n",checks);return 0;}
+    MultisamplingCapability();ExactCatalogCases();RuntimeJournal();StartupCases();GeometryAndStartupFailures();StartupClockCases();CommitOwnershipCases();ReindexedStartupRetry();UnusedTopologyCases();DeferredCases();DeferredExactCases();std::printf("UI settings display service passed: %d checks\n",checks);}
 
 '''
 
 
-def main(production_mutations=()):
+def main(production_mutations=(), emit_directory=None):
     text = lambda path: (ROOT / path).read_text(encoding="utf-8")
     document = text("src/ui/retained/Document.cpp")
     names = ("bool Identifier(", "std::string PointerPart(", "void Diagnose(", "bool Utf8(",
@@ -431,6 +590,9 @@ def main(production_mutations=()):
                *(str(jsoncpp / "src/lib_json" / f"json_{name}.cpp") for name in ("reader", "value", "writer")),
                "-o", str(executable)]
     environment = dict(os.environ, TEMP=str(out), TMP=str(out), TMPDIR=str(out))
+    if emit_directory:
+        Path(emit_directory).mkdir(parents=True, exist_ok=True)
+        environment["OPENQ4_EMIT_DEFERRED_JOURNALS"] = str(Path(emit_directory).resolve()).replace("\\", "/")
     inputs = [Path(__file__), Path(host_test.__file__), Path(display_test.__file__),
               *(ROOT / name for name in (
                   "src/ui/SettingsDisplayService.h", "src/ui/SettingsDisplayService.cpp",
@@ -454,6 +616,9 @@ def main(production_mutations=()):
                         "extracted_source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
                         "log_sha256": hashlib.sha256((out / "test.log").read_bytes()).hexdigest(),
                         "scope": "Production service/host/display helpers and real journal codec; native I/O, renderer, SDL and geometry leases are counted doubles."}
+            if emit_directory:
+                evidence["scope"] = "Emitted production-encoded deferred recovery journals only; the test cases did not run."
+                evidence["emitted"] = environment["OPENQ4_EMIT_DEFERRED_JOURNALS"]
             if executable.exists():
                 evidence["executable_sha256"] = hashlib.sha256(executable.read_bytes()).hexdigest()
             (out / "result.json").write_text(json.dumps(evidence, indent=2) + '\n', encoding="utf-8")
@@ -465,4 +630,8 @@ def main(production_mutations=()):
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--emit-deferred-journals", type=Path,
+                        help="write production-encoded Pending and Confirmed deferred journals for a cold-recovery probe instead of testing")
+    main(emit_directory=parser.parse_args().emit_deferred_journals)

@@ -329,6 +329,23 @@ const std::map<std::string, size_t>& SystemSettingsHost::Schema() {
 bool SystemSettingsHost::ChangedRequiresDisplayRestart(const StateValues& before, const StateValues& target) {
 	return (ChangedEffects(before,target) & SystemSettingDisplayRestart) != 0;
 }
+SystemApplyClass SystemSettingsHost::ApplyClassOf(const StateValues& before, const StateValues& target) {
+	bool changed=false,display=false,renderer=false,deferred=false,unsupported=false;
+	for (const auto& item:Catalog()) {
+		if (!Changed(before,target,item.key)) continue;
+		changed=true;
+		if (item.effects==SystemSettingImmediate) continue;
+		if (item.effects==SystemSettingDisplayRestart) display=true;
+		else if (item.key=="r_renderer") renderer=true;
+		else if (item.key=="r_lightGridPreload") deferred=true;
+		else unsupported=true;
+	}
+	if (!changed) return SystemApplyClass::None;
+	if (unsupported) return SystemApplyClass::Unsupported;
+	if (int(display)+int(renderer)+int(deferred)>1) return SystemApplyClass::Mixed;
+	return display ? SystemApplyClass::Display : renderer ? SystemApplyClass::Renderer :
+		deferred ? SystemApplyClass::Deferred : SystemApplyClass::Immediate;
+}
 bool SystemSettingsHost::RequiresDeviceWork(const StateValues& before, const StateValues& target) {
 	return ChangedEffects(before,target) != 0;
 }

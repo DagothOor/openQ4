@@ -1110,4 +1110,9 @@
 	"#str_230070"	"e mais %d"
 	"#str_230071"	"Conectando: %d"
 	"#str_230072"	"Assistindo: %d"
+	"#str_230073"	"Aplicando configurações…"
+	"#str_230074"	"Restaurando configurações anteriores…"
+	"#str_230075"	"Salvando configurações…"
+	"#str_230076"	"Aplique separadamente as alterações de tela, renderizador e grades de iluminação."
+	"#str_230077"	"As configurações precisam de atenção"
 }

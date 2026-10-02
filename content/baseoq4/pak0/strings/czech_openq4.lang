@@ -1110,4 +1110,9 @@
 	"#str_230070"	"Další: %d"
 	"#str_230071"	"Připojuje se: %d"
 	"#str_230072"	"Diváci: %d"
+	"#str_230073"	"Používá se nastavení…"
+	"#str_230074"	"Obnovuje se předchozí nastavení…"
+	"#str_230075"	"Ukládá se nastavení…"
+	"#str_230076"	"Změny obrazu, rendereru a světelných mřížek použij každou zvlášť."
+	"#str_230077"	"Nastavení vyžaduje pozornost"
 }

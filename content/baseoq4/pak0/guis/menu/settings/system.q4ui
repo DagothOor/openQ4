@@ -3849,6 +3849,27 @@
       }
     },
     {
+      "id": "confirmation-panel-title.text",
+      "node": "confirmation-panel-title",
+      "property": "text",
+      "value": {
+        "op": "select",
+        "args": [
+          {
+            "op": "==",
+            "args": [
+              {
+                "state": "settings.phase"
+              },
+              3
+            ]
+          },
+          "#str_230077",
+          "#str_229993"
+        ]
+      }
+    },
+    {
       "id": "discard_apply_changes.enabled",
       "node": "discard_apply_changes",
       "property": "enabled",
@@ -12221,6 +12242,23 @@
         "validation": "Exact decimal integers within renderer bounds; intermediate size tuples remain drafts and cannot Apply until the complete display request validates.",
         "availability": "Window size is editable in a windowed draft. Custom fullscreen size is editable with Exclusive policy, including while preparing that policy in windowed mode.",
         "remaining": "Dynamic display/resolution/refresh catalogs, visible fullscreen/platform qualification, native input and full SYSTEM/editor acceptance."
+      },
+      "renderOptions": {
+        "scope": "Automatic attempts (the next map's light-grid preload) apply without Keep/Revert and report Applying, Restoring and Saving status. The confirmation panel opens for one only when it needs recovery, under the neutral recovery title.",
+        "confirmationTitle": {
+          "recoveryPhase": 3,
+          "recovery": "#str_230077",
+          "otherwise": "#str_229993"
+        },
+        "localization": [
+          "#str_229993",
+          "#str_230077",
+          "#str_230073",
+          "#str_230074",
+          "#str_230075",
+          "#str_230076"
+        ],
+        "remaining": "The Preload Light Grids, Renderer Fallback, display device and resolution rows follow in their own increments."
       }
     }
   },

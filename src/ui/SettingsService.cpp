@@ -13,6 +13,7 @@ bool UI_SettingsBlocksConfigWrite() { return false; }
 bool UI_SettingsStartup(std::string&) { return true; }
 bool UI_SettingsInitializeDisplay(std::string&) { return true; }
 bool UI_SettingsStartupActive() { return false; }
+bool UI_SettingsRecoveryPending() { return false; }
 void UI_SettingsShutdown() {}
 bool UI_SettingsLevelLoadPolicy(bool&, std::uint64_t&) { return false; }
 void UI_SettingsLevelUnloaded() {}
@@ -84,15 +85,26 @@ bool RequestToken(const std::string& value, std::uint64_t& token) {
     const auto result=std::from_chars(value.data(),value.data()+value.size(),token);
     return result.ec==std::errc() && result.ptr==value.data()+value.size() && token!=0;
 }
-bool Supported(Service& service,std::uint64_t owner,bool* invalidDraft = nullptr) {
+bool Supported(Service& service,std::uint64_t owner,bool* invalidDraft = nullptr,bool* mixed = nullptr) {
     if (invalidDraft) *invalidDraft = false;
-    const auto effects=SystemSettingsHost::ChangedEffects(service.transaction.Baseline(),service.transaction.Draft());
+    if (mixed) *mixed = false;
+    const auto kind=SystemSettingsHost::ApplyClassOf(service.transaction.Baseline(),service.transaction.Draft());
     const auto samples=service.transaction.Draft().find("r_multiSamples");
     if (samples!=service.transaction.Draft().end() && std::get<double>(samples->second)!=0 &&
         !SettingsValueEqual(samples->second,service.transaction.Baseline().at("r_multiSamples")) &&
         !service.device.SupportsMultisampling()) return false;
-    if (service.device.RecoveryActive() || (effects & ~unsigned(SystemSettingDisplayRestart))!=0 ||
-        (effects && !service.confirmationOwners.contains(owner))) return false;
+    if (service.device.RecoveryActive()) return false;
+    switch (kind) {
+    case SystemApplyClass::None: case SystemApplyClass::Immediate: break;
+    // Display confirmations and automatic attempts report through an owning view.
+    case SystemApplyClass::Display: if (!service.confirmationOwners.contains(owner)) return false; break;
+    case SystemApplyClass::Deferred:
+        if (!service.confirmationOwners.contains(owner) || !service.device.ReadyForAutomatic()) return false;
+        break;
+    case SystemApplyClass::Mixed: if (mixed) *mixed = true; return false;
+    // The renderer fallback waits for its checked restart executor.
+    case SystemApplyClass::Renderer: case SystemApplyClass::Unsupported: return false;
+    }
     std::string error;
     bool valid = false;
     try { valid = service.host.Validate(service.transaction.Baseline(),service.transaction.Draft(),error); }
@@ -116,7 +128,7 @@ void CancelExit(Service& service, std::uint64_t owner) {
 bool ForwardExitStage(SettingsDisplayStage stage) {
     return stage == SettingsDisplayStage::QueuedApply || stage == SettingsDisplayStage::AwaitApply ||
         stage == SettingsDisplayStage::Confirming || stage == SettingsDisplayStage::QueuedKeep ||
-        stage == SettingsDisplayStage::FinalizeKeep;
+        stage == SettingsDisplayStage::QueuedAutomaticCommit || stage == SettingsDisplayStage::FinalizeKeep;
 }
 SettingsResult CompleteExit(Service& service, Service::ExitIdentity identity) {
     // Callers must already have witnessed a successful Apply or completed Keep.
@@ -204,10 +216,9 @@ void UI_SettingsFrame(bool allowWork) {
                 CancelExit(service,service.exitIntent.owner);
             } else if (!service.display.Active()) {
                 // PrepareConfirm may renew the internal token and complete in
-                // this single synchronous Frame. Only the matching Keep entry
-                // can authorize exit; restoration also returns Ok/Editing.
-                if (before == SettingsDisplayStage::QueuedKeep || before == SettingsDisplayStage::FinalizeKeep)
-                    result = CompleteExit(service,service.exitIntent);
+                // this single synchronous Frame. Only an attempt that committed
+                // its target can authorize exit; restoration also returns Ok/Editing.
+                if (service.display.LastCommitted()) result = CompleteExit(service,service.exitIntent);
                 else CancelExit(service,owner);
             } else if (!ForwardExitStage(service.display.Stage()) || service.display.Owner() != owner) {
                 CancelExit(service,owner);
@@ -272,7 +283,7 @@ bool UI_SettingsStartup(std::string& error) { return Settings().device.Startup(e
 bool UI_SettingsLevelLoadPolicy(bool& preload, std::uint64_t& token) {
     auto& service = Settings();
     StateValue value; std::string error;
-    if (service.display.Active() && !service.display.Approved()) {
+    if (service.display.Active() && !service.display.Persisted()) {
         // The attempt could still be undone: its baseline is the committed choice.
         const auto found = service.transaction.Baseline().find("r_lightGridPreload");
         if (found == service.transaction.Baseline().end()) return false;
@@ -288,6 +299,7 @@ void UI_SettingsLevelUnloaded() {
 }
 bool UI_SettingsInitializeDisplay(std::string& error) { return Settings().device.InitializeDisplay(error); }
 bool UI_SettingsStartupActive() { return Settings().device.StartupActive(); }
+bool UI_SettingsRecoveryPending() { return Settings().device.RecoveryActive(); }
 void UI_SettingsShutdown() {
     auto& service=Instance(); if (service) { service->device.Shutdown(); service.reset(); }
 }
@@ -486,9 +498,14 @@ bool UI_SettingsDispatch(std::uint64_t owner, const ActionInvocation& action, st
         if (transaction.Owner() == owner && transaction.Phase() == SettingsPhase::Editing &&
             !Supported(service,owner))
             result = {SettingsCode::Invalid,"System settings batch is invalid, requires unsupported effects or lacks an owning confirmation view"};
-        else if (SystemSettingsHost::ChangedRequiresDisplayRestart(transaction.Baseline(),transaction.Draft()))
-            result=service.display.Apply(owner,Now());
-        else result = transaction.Apply(owner,Now());
+        else {
+            const auto kind = SystemSettingsHost::ApplyClassOf(transaction.Baseline(),transaction.Draft());
+            if (kind == SystemApplyClass::Display) result = service.display.Apply(owner,Now());
+            // The next map's light-grid policy needs no confirmation: it completes
+            // automatically once its journal, write and a later frame are proved.
+            else if (kind == SystemApplyClass::Deferred) result = service.display.Apply(owner,Now(),SettingsCompletion::Automatic);
+            else result = transaction.Apply(owner,Now());
+        }
     }
     if (result.code != SettingsCode::Ok) CancelExit(service,owner);
     else if (action.operation == "settings.system.applyExit") {
@@ -528,9 +545,9 @@ bool UI_SettingsRead(std::uint64_t owner, StateValues& values) {
     const bool dirty = own && transaction.Dirty();
     const auto result = service.results.find(owner);
     const auto code = result == service.results.end() ? SettingsCode::Ok : result->second.code;
-    bool invalidDraft = false;
+    bool invalidDraft = false, mixed = false;
     const bool canApply = own && phase == SettingsPhase::Editing && dirty && !service.display.Active() &&
-        Supported(service,owner,&invalidDraft);
+        Supported(service,owner,&invalidDraft,&mixed);
     StateValues candidate{{"settings.open",own},{"settings.dirty",dirty},
         {"settings.busy",(transaction.Owner() != 0 && !own) || (own && service.display.Active()) || service.device.StartupActive()},
         {"settings.canApply",canApply},
@@ -544,13 +561,17 @@ bool UI_SettingsRead(std::uint64_t owner, StateValues& values) {
         {"settings.phase",static_cast<double>(phase)},
         {"settings.message",std::string(Message(code,phase,dirty))}};
     if (invalidDraft && code == SettingsCode::Ok) candidate["settings.message"] = std::string("#str_230023");
+    // Display, renderer and light-grid changes apply one class at a time.
+    if (mixed && dirty && code == SettingsCode::Ok && !service.display.Active()) candidate["settings.message"] = std::string("#str_230076");
+    // An automatic attempt changes no display, so its status names settings.
+    const bool automatic = service.display.Completion() == SettingsCompletion::Automatic;
     if (own) switch (service.display.Stage()) {
-        case SettingsDisplayStage::QueuedApply: case SettingsDisplayStage::AwaitApply:
-            candidate["settings.message"]=std::string("#str_229990"); break;
+        case SettingsDisplayStage::QueuedApply: case SettingsDisplayStage::AwaitApply: case SettingsDisplayStage::QueuedAutomaticCommit:
+            candidate["settings.message"]=std::string(automatic?"#str_230073":"#str_229990"); break;
         case SettingsDisplayStage::QueuedRestore: case SettingsDisplayStage::AwaitRestore: case SettingsDisplayStage::FinalizeRestore:
-            candidate["settings.message"]=std::string("#str_229991"); break;
+            candidate["settings.message"]=std::string(automatic?"#str_230074":"#str_229991"); break;
         case SettingsDisplayStage::QueuedKeep: case SettingsDisplayStage::FinalizeKeep:
-            candidate["settings.message"]=std::string("#str_229992"); break;
+            candidate["settings.message"]=std::string(automatic?"#str_230075":"#str_229992"); break;
         case SettingsDisplayStage::Recovery:
             if (service.display.Approved()) candidate["settings.message"]=std::string("#str_229997"); break;
         default: break;
