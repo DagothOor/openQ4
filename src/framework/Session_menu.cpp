@@ -5112,6 +5112,29 @@ void idSessionLocal::HandleRetainedSessionRequest( idUserInterface *gui, const c
 #endif
 }
 
+#ifndef ID_DEDICATED
+// A mod that ships its own loading screen under a stock name keeps it: the
+// file comes from the mod's own game directory (fs_game or fs_game_base),
+// not from openQ4, the stock game or the Awakening, whose stock screens the
+// retained one replaces.
+static bool Session_ModSuppliesFile( const char *path ) {
+	const char *const mods[] = { cvarSystem->GetCVarString( "fs_game" ), cvarSystem->GetCVarString( "fs_game_base" ) };
+	for ( int i = 0; i < static_cast<int>( sizeof( mods ) / sizeof( mods[0] ) ); ++i ) {
+		const char *mod = mods[i];
+		if ( mod == NULL || mod[0] == '\0' || !idStr::Icmp( mod, OPENQ4_GAMEDIR ) || !idStr::Icmp( mod, BASE_GAMEDIR ) ||
+				!idStr::Icmp( mod, "q4xbase" ) ) {
+			continue;
+		}
+		idFile *file = fileSystem->OpenFileRead( path, false, mod );
+		if ( file != NULL ) {
+			fileSystem->CloseFile( file );
+			return true;
+		}
+	}
+	return false;
+}
+#endif
+
 idUserInterface *idSessionLocal::SelectRetainedLoadingGui( idUserInterface *legacy, bool multiplayer ) {
 #ifdef ID_DEDICATED
 	return legacy;
@@ -5119,7 +5142,8 @@ idUserInterface *idSessionLocal::SelectRetainedLoadingGui( idUserInterface *lega
 	if ( !Session_RetainedScreensEnabled() || legacy == NULL ) {
 		return legacy;
 	}
-	// Only the stock loading screens are replaced; a map's own GUI stays.
+	// Only the stock loading screens are replaced; a map's own GUI stays, and
+	// so does a mod's own copy of a stock one.
 	static const char *stockScreens[] = {
 		"guis/loading/generic.gui", "guis/loading/splevel.gui", "guis/loading/mplevel.gui", "guis/loading/intro.gui"
 	};
@@ -5128,6 +5152,10 @@ idUserInterface *idSessionLocal::SelectRetainedLoadingGui( idUserInterface *lega
 		stock |= idStr::Icmp( legacy->Name(), stockScreens[i] ) == 0;
 	}
 	if ( !stock ) {
+		return legacy;
+	}
+	if ( Session_ModSuppliesFile( legacy->Name() ) ) {
+		common->DPrintf( "retained UI: the mod supplies its own '%s', so it presents instead of the retained loading screen\n", legacy->Name() );
 		return legacy;
 	}
 	idUserInterface *retained = FindRetainedGui( RETAINED_LOADING_GUI, true, false );

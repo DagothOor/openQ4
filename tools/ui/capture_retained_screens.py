@@ -14,7 +14,8 @@ The fallback scenarios run as a private mod (fs_game) in the savepath, whose
 files take precedence over openQ4's packs as any mod's do: a retained document
 that cannot load, or a main menu without a page the home screens hand off to,
 as a mod's own menu might be. Each screen must then present its stock GUI, and
-ui_retainedStatus lists the fallback.
+ui_retainedStatus lists the fallback. A mod's own copy of a stock loading
+screen presents instead of the retained one, which never loads.
 
     python tools/ui/capture_retained_screens.py --assets "E:/SteamLibrary/steamapps/common/Quake 4" \
         --runtime .install --output .tmp/retained-screens/gl-720 --renderer gl --size 1280x720
@@ -143,6 +144,11 @@ SCENARIOS = {
         'waitMsec 1500', 'openq4_guiGet p_settings_sys::visible', 'openq4_system report', 'ui_retainedStatus',
         'screenshot "screenshots/fallback-system.tga"',
     ]),
+    # A mod with its own copies of the stock loading screens: the level loads
+    # under the mod's screen, and the retained loading screen never loads.
+    'fallback-loading': ('game/airdefense2', [
+        'ui_retainedStatus', 'screenshot "screenshots/fallback-loading.tga"',
+    ]),
     # A Single Player selector that cannot load: the stock selector opens.
     'fallback-campaign': (None, [
         'waitMsec 4000', 'openq4_guiAction main_b_newgame', 'waitMsec 2500', 'openq4_system report', 'ui_retainedStatus',
@@ -152,6 +158,22 @@ SCENARIOS = {
 
 # Not a retained document: it fails to load with diagnostics.
 BROKEN_DOCUMENT = '{ "openq4": "not a retained document" }\n'
+
+# A mod's own loading screen under a stock name: a plain blue card.
+MOD_LOADING_GUI = '''windowDef Desktop
+{
+	rect	0, 0, 640, 480
+	backcolor	0.05, 0.1, 0.3, 1
+	windowDef modLoading
+	{
+		rect	0, 200, 640, 40
+		text	"MOD LOADING SCREEN"
+		textscale	0.5
+		textalign	1
+		forecolor	1, 1, 1, 1
+	}
+}
+'''
 
 
 def stock_menu_without_demos(runtime: Path) -> str:
@@ -163,7 +185,8 @@ def stock_menu_without_demos(runtime: Path) -> str:
 
 
 # CVars a scenario sets beyond the common ones.
-SCENARIO_CVARS = {'system-optin': {'ui_retainedSystem': '1'}, 'fallback-system': {'ui_retainedSystem': '1'}}
+SCENARIO_CVARS = {'system-optin': {'ui_retainedSystem': '1'}, 'fallback-system': {'ui_retainedSystem': '1'},
+                  'fallback-loading': {'developer': '1'}}
 
 # The private mod the fallback scenarios run as, and the files it provides.
 FALLBACK_MOD = 'retainedfallback'
@@ -172,6 +195,8 @@ OVERRIDES = {
     'fallback-menu': {'guis/mainmenu.gui': stock_menu_without_demos},
     'fallback-system': {'guis/menu/settings/system.q4ui': lambda runtime: BROKEN_DOCUMENT},
     'fallback-campaign': {'guis/menu/singleplayer.q4ui': lambda runtime: BROKEN_DOCUMENT},
+    'fallback-loading': {'guis/loading/splevel.gui': lambda runtime: MOD_LOADING_GUI,
+                         'guis/loading/generic.gui': lambda runtime: MOD_LOADING_GUI},
 }
 
 

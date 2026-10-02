@@ -209,6 +209,8 @@ On engine `a3a7eb5f4b7ead9cea89a886d40734b4f70e5a82` the retained pause lists OB
 
 On engine `3c367e0fdbc4ca211da9ade81ba1a81701e95a93` RESUME closes the retained pause screen at once while the softened view, or the scrim standing in for it, releases over 250 ms over the running game, as the modal backdrop does: the session keeps drawing the closed screen, without input or cursor, until the release ends, and every activation after a release shows the screen and ramps the softening back in. Engine captures on OpenGL and Vulkan at 1280x720 show airdefense1 and game/recomp mid-release and resumed. `BEH-007` and `REN-016` gain partial evidence without a status change; a gradual release on the ways out that replace the view remains. Evidence: `.tmp/ui/retained-pause-release/validation-evidence.json`, SHA-256 `f7e0da538649ac0ccb7f21133ffd74133909e3bf25dc342bad0d57a48ef8f957`.
 
+On engine `e4583498dba9e7e67b2b15f757880c75c68631ee` a mod's own copy of a stock loading screen presents instead of the retained loading screen: the session keeps a stock-named loading GUI that the mod's own game directory supplies, file by file, while openQ4's, the stock game's and the Awakening's stock screens are still replaced. Engine runs on OpenGL and Vulkan as a private mod load game/airdefense2 under the mod's screen. `RUN-004` gains partial evidence without a status change. Evidence: `.tmp/ui/retained-mod-loading/validation-evidence.json`, SHA-256 `a5bf27df44fef680527d2358f64eac706d3bbac6a0f2f1a97a9a1ddaa11bf874`.
+
 An earlier recorded increment starts from engine `17b106daa1827d6e50c786f99ea5970b1e8b91cf` and companion
 `1cd33980f072ac3d78978a07b388b4b6fe6b5eb2`. The register also identifies the current
 [manager/snapshot foundation](instance-persistence.md) as partial

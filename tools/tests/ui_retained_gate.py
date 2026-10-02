@@ -85,8 +85,22 @@ struct Common {
 // The installed files the session can find, and the Awakening content probe.
 struct idCampaignContentInfo { bool ready = true, present = true; idStr missing; };
 #define MAX_STRING_CHARS 1024
+#define BASE_GAMEDIR "q4base"
+#define OPENQ4_GAMEDIR "baseoq4"
+struct idFile {};
+struct CVarSystem {
+    std::map<std::string, std::string> strings;
+    const char* GetCVarString(const char* name) const { const auto found = strings.find(name); return found == strings.end() ? "" : found->second.c_str(); }
+} cvarSystemObject, *cvarSystem = &cvarSystemObject;
 struct FileSystem {
     std::set<std::string> files;
+    std::map<std::string, std::set<std::string>> gameDirFiles; // what each game directory itself supplies
+    idFile file; int opens = 0, closes = 0;
+    idFile* OpenFileRead(const char* path, bool, const char* gameDir) {
+        ++opens; const auto found = gameDirFiles.find(gameDir ? gameDir : "");
+        return found != gameDirFiles.end() && found->second.count(path) ? &file : nullptr;
+    }
+    void CloseFile(idFile* opened) { if (opened == &file) ++closes; }
     std::map<std::string, std::string> screenshots; // a map's own levelshot; the stock search ends at the generic .tga
     int ReadFile(const char* path, void**, ID_TIME_T*) { return files.count(path) ? 64 : -1; }
     void FindMapScreenshot(const char* map, char* buffer, int length) {
@@ -249,6 +263,7 @@ static idSessionLocal Session(bool gate, bool inGame = false) {
     managerObject = Manager{}; commonObject = Common{}; commands = CommandSystem{}; legacy.clear(); legacyActions.clear(); precached.clear(); stickX = stickY = 0;
     legacyActionAvailable = true; preview = false; ui_retained.value = gate; ui_retainedSystem.value = false;
     fileSystemObject.files = std::set<std::string>(std::begin(DOCUMENTS), std::end(DOCUMENTS)); arenaCampaign = ArenaCampaign{};
+    fileSystemObject.gameDirFiles.clear(); fileSystemObject.opens = fileSystemObject.closes = 0; cvarSystemObject = CVarSystem{};
     legacyMissing.clear(); reloaded.clear(); describedShot = "savegames/quick.tga"; mapDecls.clear(); fileSystemObject.screenshots.clear();
     gameObject = Game{};
     static idUserInterface menu("guis/mainmenu.gui"); menu = idUserInterface("guis/mainmenu.gui");
@@ -370,6 +385,25 @@ int main() {
         auto title = Session(true); managerObject.fail = true; title.UpdateRetainedHome(); title.UpdateRetainedHome();
         CHECK(title.guiRetainedHome == nullptr && managerObject.loads.size() == 1 && commonObject.warnings.size() == 1);
         CHECK((Stock(title) == std::vector<std::string>{"guis/menu/title.q4ui"}));
+    }
+    {   // A mod's own copy of a stock loading screen stays; the stock screens of
+        // openQ4, the stock game and the Awakening are replaced.
+        auto s = Session(true); idUserInterface splevel("guis/loading/splevel.gui"), mplevel("guis/loading/mplevel.gui");
+        cvarSystemObject.strings["fs_game"] = "mymod";
+        fileSystemObject.gameDirFiles["mymod"] = {"guis/loading/splevel.gui"};
+        CHECK(s.SelectRetainedLoadingGui(&splevel, false) == &splevel && managerObject.loads.empty() && commonObject.warnings.empty());
+        CHECK(fileSystemObject.closes == 1 && commonObject.developer.size() == 1 &&
+              commonObject.developer[0].find("'guis/loading/splevel.gui'") != std::string::npos);
+        CHECK(s.SelectRetainedLoadingGui(&mplevel, true) != &mplevel);  // a stock screen the mod does not ship
+        auto based = Session(true); idUserInterface intro("guis/loading/intro.gui");
+        cvarSystemObject.strings["fs_game"] = "mymod"; cvarSystemObject.strings["fs_game_base"] = "mybase";
+        fileSystemObject.gameDirFiles["mybase"] = {"guis/loading/intro.gui"};
+        CHECK(based.SelectRetainedLoadingGui(&intro, false) == &intro);  // the mod's own base supplies it
+        for (const char* firstParty : {"baseoq4", "q4base", "q4xbase", "Q4XBASE"}) {
+            auto own = Session(true); idUserInterface generic("guis/loading/generic.gui");
+            cvarSystemObject.strings["fs_game"] = firstParty; fileSystemObject.gameDirFiles[firstParty] = {"guis/loading/generic.gui"};
+            CHECK(own.SelectRetainedLoadingGui(&generic, false) != &generic && fileSystemObject.opens == 0);
+        }
     }
     {   // A document that is not installed falls back quietly, screen by screen.
         auto s = Session(true); fileSystemObject.files.erase("guis/menu/title.q4ui");
@@ -828,7 +862,8 @@ def main() -> int:
         'bool idSessionLocal::RetainedHomeInputBlocked(',
         'void idSessionLocal::UpdateRetainedHome(', 'idUserInterface *idSessionLocal::RetainedHomeDocument(',
         'bool idSessionLocal::RetainedPauseIsStrogg(', 'void idSessionLocal::RetainedHomeFrameEvent(',
-        'void idSessionLocal::HandleRetainedSessionRequest(', 'idUserInterface *idSessionLocal::SelectRetainedLoadingGui(',
+        'void idSessionLocal::HandleRetainedSessionRequest(', 'static bool Session_ModSuppliesFile(',
+        'idUserInterface *idSessionLocal::SelectRetainedLoadingGui(',
         'void idSessionLocal::PreloadRetainedScreens(', 'void idSessionLocal::PrepareRetainedLevel(',
         'void idSessionLocal::ReportRetainedScreens(')]
     bodies += [function_body(session, signature) for signature in (

@@ -486,7 +486,8 @@
   stays opt-in (`ui_retainedSystem 1`) until it offers every setting of the
   classic one, so no setting goes missing from the menu. When a modern
   screen's content is missing or can't load, or a mod brings its own main
-  menu, that screen shows the classic one instead, so a click never leads to
+  menu or loading screen, that screen shows the classic one or the mod's
+  own instead, so a click never leads to
   a blank or unresponsive screen. The new screens follow the visual
   specification's framing bands, lighting and motion, and hand off to the
   stock pages for anything they do not replace yet. Continue now shows the

@@ -206,7 +206,10 @@ after editing the script; `--check` fails when an output is stale.
     pause stands in for the rest of the session. A game module that does not
     answer keeps the Marine pause.
 - **Loading** (section 14.17). Replaces the stock `generic`, `splevel`,
-  `mplevel` and `intro` loading GUIs; a map's own loading GUI stays. The
+  `mplevel` and `intro` loading GUIs; a map's own loading GUI stays, and so
+  does a mod's own copy of a stock one: a stock-named GUI that the mod's own
+  game directory (`fs_game` or `fs_game_base`, other than openQ4's, the stock
+  game's or the Awakening's) supplies. The
   levelshot, reticle grid, framing bands, brackets and dot matrix frame the
   level name, its message line (the difficulty in single player, the game type
   in multiplayer) and the objectives plate. The levelshot drifts in by 3% over
@@ -446,7 +449,9 @@ controller or the mouse switches the prompt.
   a private mod in the savepath, whose files take precedence over openQ4's
   packs as any mod's do (loose files in the savepath alone cannot, because
   the savepath is searched last): a title, SYSTEM or Single Player document
-  that cannot load, and a main menu without its Demos page. `system-default`
+  that cannot load, a main menu without its Demos page, and
+  (`fallback-loading`) a mod's own `splevel` and `generic` loading GUIs, under
+  which game/airdefense2 loads without the retained loading screen. `system-default`
   and `system-optin` press the SYSTEM button with the page off and opted into.
   `pause-strogg` pauses game/recomp, where Kane is Strogg, mid-translation
   and at rest, then focuses a plate, opens the quit confirmation and resumes.
@@ -633,6 +638,14 @@ runs exited cleanly with no errors, and all 109 Meson tests pass. Evidence:
 `.tmp/ui/retained-pause-release/validation-evidence.json`, SHA-256
 `f7e0da538649ac0ccb7f21133ffd74133909e3bf25dc342bad0d57a48ef8f957`.
 
+A private mod supplying its own `splevel` and `generic` loading GUIs loaded
+game/airdefense2 on OpenGL and Vulkan at 1280x720 under its own `generic`
+screen: the retained loading screen never loaded, and the developer log
+names the mod's file. The same sets load airdefense1 under the retained
+loading screen without the mod. Evidence:
+`.tmp/ui/retained-mod-loading/validation-evidence.json`, SHA-256
+`a5bf27df44fef680527d2358f64eac706d3bbac6a0f2f1a97a9a1ddaa11bf874`.
+
 ## Known limitations
 
 - The completed objectives are kept per map and not saved, so after loading a
@@ -660,8 +673,6 @@ runs exited cleanly with no errors, and all 109 Meson tests pass. Evidence:
 - The SYSTEM page stays opt-in until it offers every stock setting: it still
   lacks the display mode list, display device, multi-monitor, refresh rate,
   video quality and light-grid preload.
-- A mod's own loading GUI that keeps a stock name (`generic`, `splevel`,
-  `mplevel` or `intro`) is still replaced by the retained loading screen.
 - The loading screen has no tips and no touch prompt (touch counts as desktop
   input). The multiplayer server card lacks the players by team and the
   server's message, the arsenal does not fill in (the game publishes no item
