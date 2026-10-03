@@ -941,8 +941,13 @@ void R_RenderGraphResources_Init( const renderBackendCaps_t &caps, const renderF
 	rg_renderGraphResourceStats.supported = features.renderGraph && caps.hasFBO;
 	rg_renderGraphResourceStats.available = R_RenderGraphResources_CanUseGLObjects( caps, features );
 	rg_renderGraphMaxSceneSamples = 1;
+	// Ask the context, as idImage::AllocImage does, not GLEW. Under
+	// glewExperimental, GLEW's 3.2 and ARB_texture_multisample flags only mean
+	// the entry points resolved, and macOS resolves every 3.2 entry point for
+	// its GL 2.1 legacy context too. There these two limit queries raised
+	// GL_INVALID_ENUM on every startup.
 	if ( rg_renderGraphResourceStats.available && glTexImage2DMultisample != NULL
-			&& ( GLEW_VERSION_3_2 || GLEW_ARB_texture_multisample ) ) {
+			&& ( caps.glVersion >= 3.2f || GLCapabilityProbe_HasExtension( "GL_ARB_texture_multisample" ) ) ) {
 		GLint colorSamples = 1, depthSamples = 1;
 		glGetIntegerv( GL_MAX_COLOR_TEXTURE_SAMPLES, &colorSamples );
 		glGetIntegerv( GL_MAX_DEPTH_TEXTURE_SAMPLES, &depthSamples );

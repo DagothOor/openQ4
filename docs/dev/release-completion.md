@@ -30,6 +30,15 @@
   shares the client's source list, which had dropped the dedicated server's
   stand-in for the client-only native input driver.
 
+- [x] Stop macOS OpenGL logging a `GL_INVALID_ENUM` error and backtrace at
+  every startup. The render graph asked Apple's GL 2.1 legacy context for
+  GL 3.2 multisample limits: GLEW's experimental flags only say an entry point
+  resolved, and macOS resolves 3.2 entry points for that context too. It now
+  asks the context, as texture allocation already did, so rendering is
+  unchanged. The error failed four renderer self-tests on both macOS CI legs;
+  an Apple-shaped Mesa 2.1 context reproduces it, and all four pass there with
+  the fix.
+
 - [x] Turn shadow maps on in the `quality` and `ultra` performance presets and
   default projected-light filtering to PCSS-lite (`r_shadowMapFilterMode 2`)
   with a 2-texel minimum radius (`r_shadowMapFilterRadius 2.0`). Lower presets

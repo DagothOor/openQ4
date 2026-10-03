@@ -625,10 +625,44 @@ def validate_framebuffer_and_profile_diagnostics() -> None:
     )
 
 
+def validate_multisample_gates_ask_the_context() -> None:
+    """glewExperimental sets GLEW_VERSION_3_2 and GLEW_ARB_texture_multisample
+    whenever their entry points resolve, and macOS resolves them for its 2.1
+    legacy context. A limit query gated on them raised GL_INVALID_ENUM at every
+    Apple startup and failed the renderer matrix on both macOS legs."""
+
+    graph_source = read("src/renderer/RenderGraphResources.cpp")
+    graph_init = function_body(
+        graph_source,
+        "void R_RenderGraphResources_Init( const renderBackendCaps_t &caps, const renderFeatureSet_t &features ) {",
+    )
+    require(
+        graph_init,
+        '( caps.glVersion >= 3.2f || GLCapabilityProbe_HasExtension( "GL_ARB_texture_multisample" ) )',
+        "render graph multisample limit gate",
+    )
+
+    image_source = read("src/renderer/OpenGL/gl_Image.cpp")
+    alloc_image = function_body(image_source, "void idImage::AllocImage() {")
+    require(
+        alloc_image,
+        'GLCapabilityProbe_HasExtension( "GL_ARB_texture_multisample" )',
+        "multisample texture allocation gate",
+    )
+
+    for body, context in (
+        (graph_init, "render graph multisample limit gate"),
+        (alloc_image, "multisample texture allocation gate"),
+    ):
+        for token in ("GLEW_VERSION_3_2", "GLEW_ARB_texture_multisample"):
+            reject(body, token, context)
+
+
 def main() -> None:
     validate_context_aware_apple_gl21_quirk()
     validate_corridor_lighting_contract()
     validate_framebuffer_and_profile_diagnostics()
+    validate_multisample_gates_ask_the_context()
     validate_simple_interaction_fail_closed()
     validate_arb_entrypoint_and_binding_audit()
     validate_upload_and_vertex_cache_static_coverage()
