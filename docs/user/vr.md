@@ -77,9 +77,20 @@ around you while the game is paused. Point your weapon-hand controller at the
 screen: a dot shows where it points, and the trigger clicks there like a
 mouse. The sticks and the A and B buttons also work in menus.
 
-You aim with the controller in your weapon hand, and the gun follows it. Set
-`vr_aimMode 0` to aim with your head instead. The HUD crosshair only shows
-when you aim with your head.
+You aim with the controller in your weapon hand, and the gun follows it. A
+red laser dot sits where your shots will land, at the real distance of what
+you're pointing at, so it stays sharp whether the target is near or far. It
+dims when something between you and the target hides it. Set `vr_aimMode 0`
+to aim with your head instead; the HUD crosshair only shows when you aim with
+your head.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `vr_aimLaser` | 1 | 0 no marker, 1 laser dot, 2 laser dot and a beam from the gun |
+
+The controllers vibrate: your weapon hand with every shot, and both hands
+when you're hit, harder for bigger hits. Set `vr_hapticStrength` between 0
+(off) and 1 (full, the default).
 
 ## Comfort
 

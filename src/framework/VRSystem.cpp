@@ -62,6 +62,10 @@ idCVar vr_weaponOffsetZ( "vr_weaponOffsetZ", "-3", CVAR_SYSTEM | CVAR_ARCHIVE | 
 	"view weapon offset above the controller, in game units" );
 idCVar vr_weaponPitch( "vr_weaponPitch", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
 	"view weapon pitch relative to the controller's aim, in degrees (positive tilts down)", -60.0f, 60.0f );
+idCVar vr_hapticStrength( "vr_hapticStrength", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"controller vibration strength, from 0 (off) to 1", 0.0f, 1.0f );
+idCVar vr_aimLaser( "vr_aimLaser", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_INTEGER,
+	"while aiming with the controller: 0 = no marker, 1 = a dot where the shot lands, 2 = the dot and a laser beam", 0, 2, idCmdSystem::ArgCompletion_Integer<0,2> );
 idCVar vr_debug( "vr_debug", "0", CVAR_SYSTEM | CVAR_INTEGER,
 	"1 = log OpenXR session and frame events, 2 = also log every submitted frame", 0, 2, idCmdSystem::ArgCompletion_Integer<0,2> );
 
@@ -93,6 +97,11 @@ public:
 		return false;
 	}
 	virtual void			DrawMenuPointer( void ) {}
+	virtual void			Vibrate( int hand, float amplitude, int durationMsec ) {
+		(void)hand;
+		(void)amplitude;
+		(void)durationMsec;
+	}
 };
 
 #if defined( OPENQ4_OPENXR )

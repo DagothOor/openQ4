@@ -591,6 +591,11 @@ public:
 	// The view weapon at the weapon hand: from the interpolated eye for
 	// drawing, from the simulated eye for the tic. False outside hand aim.
 	bool					GetVRWeaponTransform( idVec3 &origin, idMat3 &axis, bool presentation ) const;
+	// Where this frame's shot lands, for the weapon hand's aim marker. False
+	// when nothing is aimed by hand.
+	bool					GetVRAimMarker( vrAimMarker_t &marker ) const;
+	// A pulse in the local player's weapon hand, other hand, or both.
+	void					VRVibrate( bool weaponHand, bool otherHand, float amplitude, int durationMsec ) const;
 	void					UpdateEyeHeight( bool snap );
  	void					OffsetThirdPersonView( float angle, float range, float height, bool clip );
 	void					OffsetThirdPersonVehicleView( bool clip );

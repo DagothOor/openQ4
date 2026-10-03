@@ -14,6 +14,12 @@ Checks:
   quad layer before gameplay;
 - gameplay submits a stereo projection layer plus the HUD quad, both eyes are
   lit and differ (parallax), and a scripted head turn changes what they see;
+- with game time stopped, the weapon hand's aim marker (vr_aimLaser) is the
+  only difference between captures: one small red dot in each eye, at the
+  same height in both, whose disparity puts it in front of the player at a
+  plausible range, and a beam that adds more;
+- the trigger fires the weapon through its default binding, and each shot
+  pulses the weapon hand's controller (a 40 ms vibration on the right hand);
 - a stick snap turn turns the body by vr_snapTurnAngle and a controller
   trigger press reaches the binding system;
 - the controller's menu button opens the pause menu on an opaque, world-locked
@@ -29,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -45,6 +52,14 @@ ROOT = Path(__file__).resolve().parents[2]
 POINTER_RIGHT_M = -0.84
 POINTER_UP_M = 0.15
 SCREEN_WIDTH_M = 3.0
+
+# The test runtime's eyes (OpenXRTestRuntime.cpp EyeFov, TR_IPD): signed
+# angles of each frustum, and their separation in metres.
+EYE_FOV = {"left": (-0.94, 0.78, 0.86, -0.92), "right": (-0.78, 0.94, 0.86, -0.92)}
+EYE_SEPARATION_M = 0.064
+# For the aim marker the weapon hand points 10 degrees down from 0.35 m below
+# the eyes, so the shot meets the ground a few metres ahead.
+LASER_HAND_POSE = "0.2 1.25 -0.35 0 -10 0"
 
 
 def read_events(path: Path) -> list[dict]:
@@ -63,6 +78,25 @@ def body_yaws(text: str) -> list[float]:
 
 def yaw_delta(before: float, after: float) -> float:
     return (after - before + 180.0) % 360.0 - 180.0
+
+
+def changed_box(before, after, threshold=48):
+    """The bounding box of pixels whose largest channel changed by more than threshold."""
+    from PIL import ImageChops
+    difference = ImageChops.difference(before, after)
+    mask = difference.split()[0].point(lambda v: 255 if v > threshold else 0)
+    for channel in difference.split()[1:]:
+        mask = ImageChops.lighter(mask, channel.point(lambda v: 255 if v > threshold else 0))
+    count = mask.histogram()[255]
+    return mask.getbbox(), count
+
+
+def eye_tangents(eye: str, x: float, y: float, width: int, height: int) -> tuple[float, float]:
+    """A pixel position on an eye image as tangents right and up of that eye's axis."""
+    left, right, up, down = (math.tan(a) for a in EYE_FOV[eye])
+    u = (x + 0.5) / width
+    v = (y + 0.5) / height
+    return left + u * (right - left), up - v * (up - down)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -104,6 +138,13 @@ def main(argv: list[str] | None = None) -> None:
     # The runtime acts on the frame after each marker appears.
     script = [
         f"when {marker('gameplay')} capture {profile / 'xr_gameplay'}",
+        f"when {marker('laser_aim')} hand right {LASER_HAND_POSE}",
+        f"when {marker('laser_off')} capture {profile / 'xr_laser_off'}",
+        f"when {marker('laser_dot')} capture {profile / 'xr_laser_dot'}",
+        f"when {marker('laser_beam')} capture {profile / 'xr_laser_beam'}",
+        f"when {marker('laser_done')} hand right 0.2 1.25 -0.35 0 0 0",
+        f"when {marker('fire')} button right trigger 1",
+        f"when {marker('fire_release')} button right trigger 0",
         f"when {marker('turn')} head 40 0 0",
         f"when {marker('turned')} capture {profile / 'xr_turned'}",
         f"when {marker('snap')} head 0 0 0",
@@ -125,7 +166,18 @@ def main(argv: list[str] | None = None) -> None:
     # there, so the trigger's binding runs the rest of the script itself.
     commands = [
         "waitMsec 3000", "echo VR_GAMEPLAY_ACTIVE", "vr_status",
+        # the profile persists between runs: start from the default trigger binding
+        "bind JOY15 _attack",
         "condump vr_marker_gameplay.txt", "waitMsec 1000",
+        # the aim marker against a frozen world: only the marker may change
+        "condump vr_marker_laser_aim.txt", "g_stopTime 1", "vr_aimLaser 0", "waitMsec 800",
+        "condump vr_marker_laser_off.txt", "waitMsec 500", "vr_aimLaser 1", "waitMsec 500",
+        "condump vr_marker_laser_dot.txt", "waitMsec 500", "vr_aimLaser 2", "waitMsec 500",
+        "condump vr_marker_laser_beam.txt", "waitMsec 500", "vr_aimLaser 1", "g_stopTime 0",
+        "condump vr_marker_laser_done.txt", "waitMsec 500",
+        # the right trigger's default binding fires the weapon
+        "echo VR_FIRE", "condump vr_marker_fire.txt", "waitMsec 400",
+        "condump vr_marker_fire_release.txt", "waitMsec 600",
         "condump vr_marker_turn.txt", "waitMsec 700",
         "condump vr_marker_turned.txt", "waitMsec 700",
         "echo VR_SNAP_BEFORE", "vr_status",
@@ -136,7 +188,7 @@ def main(argv: list[str] | None = None) -> None:
         "condump vr_marker_trigger.txt",
     ]
     menu_commands = [
-        "unbind JOY15",
+        "bind JOY15 _attack",
         "condump vr_marker_release.txt", "waitMsec 500",
         "condump vr_marker_menu.txt", "waitMsec 300",
         "condump vr_marker_menu_release.txt", "waitMsec 1500",
@@ -236,9 +288,12 @@ def main(argv: list[str] | None = None) -> None:
     captures = {}
     for e in events:
         if e.get("event") == "capture":
-            stage = next(s for s in ("gameplay", "turned", "menu") if f"xr_{s}_" in Path(e["path"]).name)
+            stage = next(s for s in ("gameplay", "turned", "menu", "laser_off", "laser_dot", "laser_beam")
+                         if f"xr_{s}_" in Path(e["path"]).name)
             captures[f"{stage}_{e['layer']}"] = e
-    for name in ("gameplay_left", "gameplay_right", "gameplay_quad1", "turned_left", "turned_right", "menu_quad1"):
+    for name in ("gameplay_left", "gameplay_right", "gameplay_quad1", "turned_left", "turned_right", "menu_quad1",
+                 "laser_off_left", "laser_off_right", "laser_dot_left", "laser_dot_right",
+                 "laser_beam_left", "laser_beam_right"):
         assert name in captures and captures[name]["written"], f"missing capture {name}: {sorted(captures)}"
     for name in ("gameplay_left", "gameplay_right", "turned_left", "turned_right"):
         assert captures[name]["lit_fraction"] > 0.2, f"eye capture {name} is mostly black: {captures[name]}"
@@ -252,6 +307,34 @@ def main(argv: list[str] | None = None) -> None:
     turned = image("xr_turned", "left")
     turn_difference = max(ImageStat.Stat(ImageChops.difference(left, turned)).mean)
     assert turn_difference > 4.0, f"a 40 degree head turn barely changed the view ({turn_difference:.3f})"
+    # a shot pulses the weapon hand, and only it (a hit would pulse both, for 90 ms)
+    pulses = [e for e in events if e.get("event") == "haptic" and e.get("duration_ns") == 40_000_000]
+    assert pulses, "firing the weapon did not vibrate a controller"
+    assert all(e.get("hand") == "/user/hand/right" and 0.4 <= e["amplitude"] <= 1.0 for e in pulses), \
+        f"a shot must pulse only the right (weapon) hand: {pulses}"
+
+    # the aim marker: the same dot in both eyes, fusing in front of the player
+    dots = {}
+    for eye in ("left", "right"):
+        off, dot, beam = image("xr_laser_off", eye), image("xr_laser_dot", eye), image("xr_laser_beam", eye)
+        box, dot_pixels = changed_box(off, dot)
+        assert box is not None, f"the aim marker changed nothing in the {eye} eye"
+        assert box[2] - box[0] <= 24 and box[3] - box[1] <= 24, \
+            f"the {eye} eye changed beyond a small dot with game time stopped: {box}"
+        x, y = (box[0] + box[2] - 1) / 2.0, (box[1] + box[3] - 1) / 2.0
+        # a red dot round a paler hot centre
+        red = sum(1 for r, g, b in dot.crop(box).getdata() if r > 150 and r > g + 60 and r > b + 60)
+        assert red >= 4, f"the {eye} eye's marker is not a red dot ({red} red pixels in {box})"
+        _, beam_pixels = changed_box(off, beam)
+        assert beam_pixels > dot_pixels * 2, f"the {eye} eye's beam adds too little ({beam_pixels} vs {dot_pixels} pixels)"
+        dots[eye] = eye_tangents(eye, x, y, dot.width, dot.height)
+    (left_x, left_y), (right_x, right_y) = dots["left"], dots["right"]
+    assert abs(left_y - right_y) < 0.01, f"the marker sits at different heights in the two eyes ({left_y:.4f} vs {right_y:.4f})"
+    disparity = left_x - right_x
+    assert disparity > 0.0, f"the marker's disparity puts it behind the eyes ({disparity:.5f})"
+    marker_depth = EYE_SEPARATION_M / disparity
+    assert 1.0 < marker_depth < 40.0, f"the marker fuses at {marker_depth:.2f} m, not on the ground a few metres ahead"
+
     with Image.open(profile / "xr_gameplay_quad1.tga") as hud:
         alpha = hud.convert("RGBA").getchannel("A")
         covered = sum(alpha.histogram()[16:]) / float(hud.width * hud.height)
@@ -305,8 +388,11 @@ def main(argv: list[str] | None = None) -> None:
         image("xr_gameplay", name).save(profile / f"xr_gameplay_{name}.png")
     turned.save(profile / "xr_turned_left.png")
     image("xr_menu", "quad1").save(profile / "xr_menu_quad1.png")
+    for name in ("off", "dot", "beam"):
+        for eye in ("left", "right"):
+            image(f"xr_laser_{name}", eye).save(profile / f"xr_laser_{name}_{eye}.png")
     print(f"OpenXR VR smoke: PASS (eye difference {eye_difference:.2f}, head turn {turn_difference:.2f}, "
-          f"HUD coverage {covered:.3f}, pointer at {px},{py}); evidence={profile}")
+          f"HUD coverage {covered:.3f}, aim marker at {marker_depth:.2f} m, pointer at {px},{py}); evidence={profile}")
 
 
 if __name__ == "__main__":

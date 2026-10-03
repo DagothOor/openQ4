@@ -13297,6 +13297,92 @@ bool idPlayer::GetVRAimOrigin( idVec3 &origin ) const {
 
 /*
 ===============
+idPlayer::GetVRAimMarker
+
+Where a shot from the weapon hand would land this frame: the path
+GetVRAimOrigin gives the weapon, followed along the tracked aim from the
+same presentation pose the view weapon is drawn at.
+===============
+*/
+bool idPlayer::GetVRAimMarker( vrAimMarker_t &marker ) const {
+	vrFrameState_t frame;
+	float trackingYaw;
+	if ( health <= 0 || !GetVRView( frame, trackingYaw ) || frame.aimMode != VR_AIM_HAND ) {
+		return false;
+	}
+	// a holstered or hidden weapon has nothing to aim, and a focused world GUI shows its own cursor
+	if ( weapon == NULL || weapon->IsHidden() || !weapon->ShowCrosshair() || focusType == FOCUS_GUI ) {
+		return false;
+	}
+	const vrPose_t &aim = frame.aim[ frame.weaponHand == VR_HAND_LEFT ? VR_HAND_LEFT : VR_HAND_RIGHT ];
+	if ( !aim.valid ) {
+		return false;
+	}
+	idVec3 eyeOrigin;
+	idMat3 eyeAxis;
+	GetPresentationViewPos( eyeOrigin, eyeAxis );
+	const idVec3 headCorrection = VR_HeadOffsetCorrection( frame );
+	vrPose_t pose = aim;
+	pose.origin += headCorrection;
+	idVec3 handOrigin;
+	idMat3 handAxis;
+	VR_PoseToWorld( pose, eyeOrigin, trackingYaw, handOrigin, handAxis );
+
+	trace_t trace;
+	gameLocal.TracePoint( this, trace, eyeOrigin, handOrigin, MASK_SHOT_RENDERMODEL, this );
+	const idVec3 start = trace.fraction < 1.0f ? eyeOrigin + ( trace.endpos - eyeOrigin ) * 0.9f : handOrigin;
+	gameLocal.TracePoint( this, trace, start, start + handAxis[0] * VR_AIM_RANGE, MASK_SHOT_RENDERMODEL, this );
+	// a beam leaves the drawn weapon's muzzle, or the hand without one
+	if ( !weapon->GetVRMuzzle( marker.muzzle ) ) {
+		marker.muzzle = handOrigin;
+	}
+	marker.target = trace.endpos;
+	marker.hit = trace.fraction < 1.0f;
+
+	// round a corner the hand can see what the head can't
+	marker.hidden = false;
+	if ( frame.head.valid ) {
+		vrPose_t head = frame.head;
+		head.origin += headCorrection;
+		idVec3 headOrigin;
+		idMat3 headAxis;
+		VR_PoseToWorld( head, eyeOrigin, trackingYaw, headOrigin, headAxis );
+		const idVec3 toTarget = marker.target - headOrigin;
+		const float distance = toTarget.Length();
+		if ( distance > 8.0f ) {
+			trace_t sight;
+			gameLocal.TracePoint( this, sight, headOrigin, marker.target - toTarget * ( 4.0f / distance ), MASK_SHOT_RENDERMODEL, this );
+			marker.hidden = sight.fraction < 1.0f;
+		}
+	}
+	return true;
+}
+
+/*
+===============
+idPlayer::VRVibrate
+
+openQ4 VR: a pulse in the local player's controllers. Prediction reruns a
+multiplayer client's frames, so only a new frame pulses.
+===============
+*/
+void idPlayer::VRVibrate( bool weaponHand, bool otherHand, float amplitude, int durationMsec ) const {
+	if ( vrSystem == NULL || !vrSystem->IsActive() || gameLocal.GetLocalPlayer() != this || !gameLocal.isNewFrame ) {
+		return;
+	}
+	vrFrameState_t frame;
+	vrSystem->GetFrameState( frame );
+	const int hand = frame.weaponHand == VR_HAND_LEFT ? VR_HAND_LEFT : VR_HAND_RIGHT;
+	if ( weaponHand ) {
+		vrSystem->Vibrate( hand, amplitude, durationMsec );
+	}
+	if ( otherHand ) {
+		vrSystem->Vibrate( hand == VR_HAND_LEFT ? VR_HAND_RIGHT : VR_HAND_LEFT, amplitude, durationMsec );
+	}
+}
+
+/*
+===============
 idPlayer::CalculateFirstPersonView
 ===============
 */
@@ -16049,6 +16135,8 @@ void idPlayer::ClientDamageEffects ( const idDict& damageDef, const idVec3& dir,
 			playerView.DamageImpulse( localDir, &damageDef, damage, damageDefName );
 		}
 // RAVEN END
+		// openQ4 VR: a hit shakes both hands, harder for bigger hits
+		VRVibrate( true, true, Min( 1.0f, 0.3f + static_cast<float>( damage ) / 50.0f ), 90 );
 	}
 
 	// Visual effects

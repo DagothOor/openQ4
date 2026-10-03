@@ -1007,6 +1007,11 @@ void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const
 		soundSystem->PlaceListener( headOrigin, headAxis, player->entityNumber + 1, gameLocal.time, "Undefined" );
 	}
 
+	// where the shot lands, marked in each eye over its 3D pass
+	vrAimMarker_t aimMarker;
+	const bool drawAimMarker = vrFrame.aimLaser != VR_AIM_LASER_OFF && player->GetVRAimMarker( aimMarker );
+	const idMaterial *aimMaterial = drawAimMarker ? declManager->FindMaterial( "_white" ) : NULL;
+
 	for ( int eye = 0; eye < VR_NUM_EYES; eye++ ) {
 		if ( !renderSystem->SetVRRenderTarget( eye ) ) {
 			break;
@@ -1014,6 +1019,9 @@ void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const
 		renderView_t eyeView = *view;
 		VR_BuildEyeView( vrFrame, eye, eyeOrigin, trackingYaw, eyeView );
 		SingleView( hud, &eyeView, RF_NO_GUI | RF_PRIMARY_VIEW );
+		if ( drawAimMarker ) {
+			VR_DrawAimMarker( eyeView, aimMarker, vrFrame.aimLaser, aimMaterial );
+		}
 		ScreenFade();
 	}
 	renderSystem->SetVRRenderTarget( -1 );

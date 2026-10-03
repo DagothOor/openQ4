@@ -245,6 +245,42 @@ inline void VR_ProjectionExtents( const vrFovTangents_t &fov, float zNear, float
 
 /*
 ====================
+Eye-image projection
+
+A point seen from an eye, given in the eye's own engine axes (x forward,
+y left, z up), lies along tangents x right and y up of the view axis; the
+eye's signed fov tangents then place it on that eye's image, with u running
+left to right and v top to bottom over 0..1 (the 640x480 GUI convention).
+Each eye projecting the same world point gives the stereo pair that fuses
+at the point's depth. Points at or behind the eye plane do not project.
+====================
+*/
+struct vrEyeTangent_t {
+	bool	inFront;
+	float	x, y;		// tangents right and up of the view axis
+	float	depth;		// distance along the view axis
+};
+
+inline vrEyeTangent_t VR_EyeTangentOf( const vrVec3_t &eyeLocal ) {
+	vrEyeTangent_t result = { false, 0.0f, 0.0f, 0.0f };
+	const float minimumDepth = 1e-3f;
+	if ( !VR_IsFinite( eyeLocal ) || eyeLocal.x < minimumDepth ) {
+		return result;
+	}
+	result.inFront = true;
+	result.x = -eyeLocal.y / eyeLocal.x;
+	result.y = eyeLocal.z / eyeLocal.x;
+	result.depth = eyeLocal.x;
+	return result;
+}
+
+inline void VR_TangentToImage( const vrFovTangents_t &fov, float tangentX, float tangentY, float &u, float &v ) {
+	u = ( tangentX - fov.left ) / ( fov.right - fov.left );
+	v = ( fov.up - tangentY ) / ( fov.up - fov.down );
+}
+
+/*
+====================
 Turning
 
 A snap turn fires once when the stick passes the press threshold and re-arms

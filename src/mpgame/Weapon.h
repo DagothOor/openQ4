@@ -290,6 +290,9 @@ public:
 	int					GetFirstPersonShadowSuppressLightId( void ) const;
 
 	idMat3				ForeshortenAxis				( const idMat3& axis ) const;
+	// openQ4 VR: the muzzle where this frame draws the view model at the
+	// weapon hand. False outside hand aim or without a flash joint.
+	bool				GetVRMuzzle					( idVec3 &origin ) const;
 
 	// Script state management
 	struct weaponStateFlags_s {

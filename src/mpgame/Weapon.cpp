@@ -1395,6 +1395,33 @@ void rvWeapon::RestoreAuthoritativeViewModelTransform( void ) {
 
 /*
 ================
+rvWeapon::GetVRMuzzle
+
+openQ4 VR: the view model's flash joint where this frame draws it at the
+weapon hand, the way the render entity places it (see UpdateModelTransform).
+================
+*/
+bool rvWeapon::GetVRMuzzle( idVec3 &origin ) const {
+	if ( owner == NULL || viewModel == NULL || viewAnimator == NULL || flashJointView == INVALID_JOINT ) {
+		return false;
+	}
+	idVec3 weaponOrigin;
+	idMat3 weaponAxis;
+	if ( !owner->GetVRWeaponTransform( weaponOrigin, weaponAxis, true ) ) {
+		return false;
+	}
+	idVec3 jointOrigin;
+	idMat3 jointAxis;
+	if ( !viewAnimator->GetPresentationJointTransform( flashJointView, jointOrigin, jointAxis ) &&
+		!viewAnimator->GetJointTransform( flashJointView, gameLocal.time, jointOrigin, jointAxis ) ) {
+		return false;
+	}
+	origin = weaponOrigin + jointOrigin * ForeshortenAxis( weaponAxis );
+	return true;
+}
+
+/*
+================
 rvWeapon::UpdatePresentationEffects
 
 Draw-pass hook for weapons that drive a view effect from an explicit origin
@@ -3163,6 +3190,9 @@ void rvWeapon::Attack( bool altAttack, int num_attacks, float spread, float fuse
 
 	// add the muzzleflash
 	MuzzleFlash();
+
+	// openQ4 VR: each shot kicks the weapon hand, a spread of pellets harder
+	owner->VRVibrate( true, false, Min( 1.0f, 0.5f + 0.05f * static_cast<float>( num_attacks ) ), 40 );
 
 	// quad damage overlays a sound
 	if ( owner->PowerUpActive( POWERUP_QUADDAMAGE ) ) {

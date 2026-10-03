@@ -33,6 +33,8 @@ extern idCVar vr_weaponOffsetX;
 extern idCVar vr_weaponOffsetY;
 extern idCVar vr_weaponOffsetZ;
 extern idCVar vr_weaponPitch;
+extern idCVar vr_hapticStrength;
+extern idCVar vr_aimLaser;
 extern idCVar vr_debug;
 
 // The OpenXR implementation, when the client was built with it (OPENQ4_OPENXR).

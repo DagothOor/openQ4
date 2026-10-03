@@ -102,6 +102,35 @@ static void TestProjection( void ) {
 	Check( !VR_FovTangentsValid( degenerate ), "near-90 degree frustum rejected" );
 }
 
+static void TestEyeImage( void ) {
+	const vrFovTangents_t symmetric = VR_FovTangentsFromAngles( -45.0f * VR_DEG2RAD, 45.0f * VR_DEG2RAD, 45.0f * VR_DEG2RAD, -45.0f * VR_DEG2RAD );
+	float u, v;
+	const vrEyeTangent_t ahead = VR_EyeTangentOf( VR_Vec3( 10.0f, 0.0f, 0.0f ) );
+	Check( ahead.inFront && Near( ahead.x, 0.0f ) && Near( ahead.y, 0.0f ) && Near( ahead.depth, 10.0f ), "a point dead ahead lies on the view axis" );
+	VR_TangentToImage( symmetric, ahead.x, ahead.y, u, v );
+	Check( Near( u, 0.5f ) && Near( v, 0.5f ), "the view axis is the centre of a symmetric image" );
+	const vrEyeTangent_t corner = VR_EyeTangentOf( VR_Vec3( 2.0f, -2.0f, 2.0f ) );
+	VR_TangentToImage( symmetric, corner.x, corner.y, u, v );
+	Check( Near( u, 1.0f ) && Near( v, 0.0f ), "45 degrees right and up is the top right corner" );
+
+	const vrFovTangents_t eye = { -1.2f, 0.8f, 1.0f, -1.0f };
+	VR_TangentToImage( eye, 0.0f, 0.0f, u, v );
+	Check( Near( u, 0.6f ) && Near( v, 0.5f ), "an off-axis eye's view axis sits off the image centre" );
+
+	Check( !VR_EyeTangentOf( VR_Vec3( -1.0f, 0.0f, 0.0f ) ).inFront, "a point behind the eye does not project" );
+	Check( !VR_EyeTangentOf( VR_Vec3( 0.0f, 1.0f, 0.0f ) ).inFront, "a point on the eye plane does not project" );
+	Check( !VR_EyeTangentOf( VR_Vec3( std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f ) ).inFront, "a non-finite point does not project" );
+
+	// Eyes 64 units apart (the left one on +Y) both see a point 1000 units
+	// ahead of their midpoint; its disparity gives back that depth.
+	const float ipd = 64.0f;
+	const float depth = 1000.0f;
+	const vrEyeTangent_t fromLeft = VR_EyeTangentOf( VR_Vec3( depth, -ipd * 0.5f, 0.0f ) );
+	const vrEyeTangent_t fromRight = VR_EyeTangentOf( VR_Vec3( depth, ipd * 0.5f, 0.0f ) );
+	Check( fromLeft.x > fromRight.x, "the left eye sees a point further right than the right eye does" );
+	Check( Near( ipd / ( fromLeft.x - fromRight.x ), depth, 0.01f ), "disparity gives back the point's depth" );
+}
+
 static void TestTurning( void ) {
 	vrSnapTurnState_t snap = { false };
 	Check( VR_SnapTurn( snap, 0.5f, 45.0f ) == 0.0f, "below the press threshold does nothing" );
@@ -158,6 +187,7 @@ int main() {
 	TestBasis();
 	TestOrientation();
 	TestProjection();
+	TestEyeImage();
 	TestTurning();
 	TestOffsets();
 	TestQuad();

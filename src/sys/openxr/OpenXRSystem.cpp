@@ -211,6 +211,7 @@ public:
 	virtual void			GetFrameState( vrFrameState_t &state ) const;
 	virtual bool			GetUsercmdInput( float otherYawDelta, float currentYaw, vrUsercmdInput_t &input );
 	virtual void			DrawMenuPointer( void );
+	virtual void			Vibrate( int hand, float amplitude, int durationMsec );
 
 	void					RequestRestart( void ) { restartRequested = true; }
 	void					RequestRecenter( void ) { recenterRequested = true; }
@@ -1811,6 +1812,33 @@ void idVRSystemOpenXR::UpdateMenuPointer( int weaponHand, bool menu ) {
 
 /*
 ====================
+idVRSystemOpenXR::Vibrate
+====================
+*/
+void idVRSystemOpenXR::Vibrate( int hand, float amplitude, int durationMsec ) {
+	if ( !sessionRunning || !sessionFocused || !actionsAttached || hand < 0 || hand >= VR_NUM_HANDS || durationMsec <= 0 ) {
+		return;
+	}
+	const float strength = idMath::ClampFloat( 0.0f, 1.0f, amplitude ) * idMath::ClampFloat( 0.0f, 1.0f, vr_hapticStrength.GetFloat() );
+	if ( strength <= 0.0f ) {
+		return;
+	}
+	XrHapticActionInfo info;
+	memset( &info, 0, sizeof( info ) );
+	info.type = XR_TYPE_HAPTIC_ACTION_INFO;
+	info.action = actions[VR_ACTION_HAPTIC];
+	info.subactionPath = handPaths[hand];
+	XrHapticVibration vibration;
+	memset( &vibration, 0, sizeof( vibration ) );
+	vibration.type = XR_TYPE_HAPTIC_VIBRATION;
+	vibration.duration = static_cast<XrDuration>( Min( durationMsec, 2000 ) ) * 1000000;
+	vibration.frequency = XR_FREQUENCY_UNSPECIFIED;
+	vibration.amplitude = strength;
+	Check( xrApplyHapticFeedback( session, &info, reinterpret_cast<const XrHapticBaseHeader *>( &vibration ) ), "xrApplyHapticFeedback" );
+}
+
+/*
+====================
 idVRSystemOpenXR::DrawMenuPointer
 
 A ringed dot over everything else in the 2D pass; stock menus also move their
@@ -1903,6 +1931,7 @@ void idVRSystemOpenXR::BeginFrame( void ) {
 	frame.headOffsetLimit = vr_headOffsetLimit.GetFloat();
 	frame.weaponOffset.Set( vr_weaponOffsetX.GetFloat(), vr_weaponOffsetY.GetFloat(), vr_weaponOffsetZ.GetFloat() );
 	frame.weaponPitch = vr_weaponPitch.GetFloat();
+	frame.aimLaser = idMath::ClampInt( VR_AIM_LASER_OFF, VR_AIM_LASER_BEAM, vr_aimLaser.GetInteger() );
 
 	if ( !frameShouldRender || !ResizeScreenSwapchain() || !AcquireImages() ) {
 		return;

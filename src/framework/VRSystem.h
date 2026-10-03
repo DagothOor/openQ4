@@ -21,6 +21,8 @@
 ===============================================================================
 */
 
+#include "VRMathCore.h"
+
 const int VR_NUM_EYES = 2;
 const int VR_NUM_HANDS = 2;
 
@@ -33,6 +35,13 @@ typedef enum {
 	VR_AIM_HEAD = 0,		// gaze aim: the usercmd follows the head
 	VR_AIM_HAND = 1			// the weapon hand's controller aims
 } vrAimMode_t;
+
+// What marks the weapon hand's aim (vr_aimLaser).
+typedef enum {
+	VR_AIM_LASER_OFF = 0,
+	VR_AIM_LASER_DOT = 1,	// a dot where the shot lands
+	VR_AIM_LASER_BEAM = 2	// the dot and a beam from the weapon hand
+} vrAimLaser_t;
 
 // A tracked pose relative to the recentred tracking origin, in engine axes
 // (forward, left, up) and game units. The origin is where the player's eye
@@ -72,6 +81,8 @@ typedef struct vrFrameState_s {
 	// view-weapon placement in the weapon hand's aim axes (units, degrees)
 	idVec3					weaponOffset;
 	float					weaponPitch;
+
+	int						aimLaser;		// vrAimLaser_t
 } vrFrameState_t;
 
 // What the usercmd generator applies for one tic while VR drives input.
@@ -118,6 +129,11 @@ public:
 	// Menus: marks where the controller points on the virtual screen. Called
 	// once all 2D drawing is queued, before the renderer's EndFrame.
 	virtual void			DrawMenuPointer( void ) = 0;
+
+	// Haptics: vibrates one controller (vrHand_t) at a strength of 0..1,
+	// scaled by vr_hapticStrength, for durationMsec. Nothing happens without
+	// a focused session.
+	virtual void			Vibrate( int hand, float amplitude, int durationMsec ) = 0;
 };
 
 extern idVRSystem *			vrSystem;
@@ -201,6 +217,134 @@ ID_INLINE bool VR_WeaponTransform( const vrFrameState_t &frame, const idVec3 &ey
 	axis = idAngles( frame.weaponPitch, 0.0f, 0.0f ).ToMat3() * aimAxis;
 	origin = aimOrigin + frame.weaponOffset * axis;
 	return true;
+}
+
+/*
+===============================================================================
+
+	The aim marker (vr_aimLaser), drawn into each eye.
+
+	The game module that fires the shot traces its path once per frame. Each
+	eye then draws the marker at its own projection of the hit point, so the
+	pair fuses at the target's depth instead of at a fixed distance. It is 2D
+	over the eye's finished 3D pass, which the trace makes safe: the shot's
+	path ends at the first surface, so nothing should hide the dot from the
+	weapon. When nearer geometry hides it from the head, it dims instead.
+
+===============================================================================
+*/
+
+typedef struct vrAimMarker_s {
+	idVec3					muzzle;		// where a beam leaves: the drawn weapon's muzzle
+	idVec3					target;		// where the shot lands, or the end of its range
+	bool					hit;		// a surface stops the shot within range
+	bool					hidden;		// nearer geometry hides the target from the head
+} vrAimMarker_t;
+
+const float VR_AIM_RANGE = 8192.0f;
+
+// A world point as seen from an eye view: tangents of the view axis.
+ID_INLINE vrEyeTangent_t VR_EyeTangent( const renderView_t &view, const idVec3 &point ) {
+	const idVec3 offset = point - view.vieworg;
+	return VR_EyeTangentOf( VR_Vec3( offset * view.viewaxis[0], offset * view.viewaxis[1], offset * view.viewaxis[2] ) );
+}
+
+// Eye tangents on the 640x480 canvas an eye target's 2D pass stretches over
+// the eye's whole image.
+ID_INLINE idVec2 VR_EyeCanvasPoint( const renderView_t &view, float tangentX, float tangentY ) {
+	vrFovTangents_t fov;
+	fov.left = view.fovTanLeft;
+	fov.right = view.fovTanRight;
+	fov.up = view.fovTanUp;
+	fov.down = view.fovTanDown;
+	float u, v;
+	VR_TangentToImage( fov, tangentX, tangentY, u, v );
+	return idVec2( u * SCREEN_WIDTH, v * SCREEN_HEIGHT );
+}
+
+// A disc of a fixed angular radius (as a tangent), so it looks the same size
+// at any range, round in the eye however the canvas stretches.
+ID_INLINE void VR_DrawEyeDisc( const renderView_t &view, float tangentX, float tangentY, float radius, const idMaterial *material ) {
+	const int segments = 16;
+	const idVec2 centre = VR_EyeCanvasPoint( view, tangentX, tangentY );
+	idVec2 previous = VR_EyeCanvasPoint( view, tangentX + radius, tangentY );
+	for ( int i = 1; i <= segments; i++ ) {
+		float s, c;
+		idMath::SinCos( idMath::TWO_PI * static_cast<float>( i ) / static_cast<float>( segments ), s, c );
+		const idVec2 next = VR_EyeCanvasPoint( view, tangentX + radius * c, tangentY + radius * s );
+		renderSystem->DrawStretchTri( centre, previous, next, vec2_origin, vec2_origin, vec2_origin, material );
+		previous = next;
+	}
+}
+
+// The beam leaves the muzzle, fades in, and fades out again within a few
+// metres: it shows the line of fire without striping the scene. Its quads
+// narrow with depth like a thin rod would.
+ID_INLINE void VR_DrawAimBeam( const renderView_t &view, const vrAimMarker_t &marker, const idMaterial *material ) {
+	const float clearOfWeapon = 0.5f;			// units out of the muzzle
+	const float fullStrength = 6.0f;
+	const float radius = 0.12f;					// units, about 3 mm
+	const float minimumHalfWidth = 0.0008f;		// tangent: about a pixel at typical headset density
+	const int segments = 12;
+	idVec3 direction = marker.target - marker.muzzle;
+	const float length = direction.Normalize();
+	const float fadeEnd = Min( length, 160.0f );
+	if ( fadeEnd <= fullStrength ) {
+		return;
+	}
+	for ( int i = 0; i < segments; i++ ) {
+		const float nearDistance = clearOfWeapon + ( fadeEnd - clearOfWeapon ) * static_cast<float>( i ) / static_cast<float>( segments );
+		const float farDistance = clearOfWeapon + ( fadeEnd - clearOfWeapon ) * static_cast<float>( i + 1 ) / static_cast<float>( segments );
+		const float middle = 0.5f * ( nearDistance + farDistance );
+		const float fadeIn = idMath::ClampFloat( 0.0f, 1.0f, ( middle - clearOfWeapon ) / ( fullStrength - clearOfWeapon ) );
+		const float fadeOut = idMath::ClampFloat( 0.0f, 1.0f, ( fadeEnd - middle ) / ( fadeEnd - fullStrength ) );
+		const float alpha = 0.55f * fadeIn * fadeOut;
+		const vrEyeTangent_t a = VR_EyeTangent( view, marker.muzzle + direction * nearDistance );
+		const vrEyeTangent_t b = VR_EyeTangent( view, marker.muzzle + direction * farDistance );
+		if ( alpha <= 0.0f || !a.inFront || !b.inFront ) {
+			continue;
+		}
+		idVec2 along( b.x - a.x, b.y - a.y );
+		if ( along.Normalize() <= 0.0f ) {
+			continue;
+		}
+		const idVec2 across( -along.y, along.x );
+		const float halfA = Max( radius / a.depth, minimumHalfWidth );
+		const float halfB = Max( radius / b.depth, minimumHalfWidth );
+		const idVec2 a0 = VR_EyeCanvasPoint( view, a.x + across.x * halfA, a.y + across.y * halfA );
+		const idVec2 a1 = VR_EyeCanvasPoint( view, a.x - across.x * halfA, a.y - across.y * halfA );
+		const idVec2 b0 = VR_EyeCanvasPoint( view, b.x + across.x * halfB, b.y + across.y * halfB );
+		const idVec2 b1 = VR_EyeCanvasPoint( view, b.x - across.x * halfB, b.y - across.y * halfB );
+		// the 2D pass culls by winding: keep the disc's (counter-clockwise in tangent space)
+		renderSystem->SetColor4( 1.0f, 0.15f, 0.1f, alpha );
+		renderSystem->DrawStretchTri( a0, b1, b0, vec2_origin, vec2_origin, vec2_origin, material );
+		renderSystem->DrawStretchTri( a0, a1, b1, vec2_origin, vec2_origin, vec2_origin, material );
+	}
+}
+
+// Called between an eye's 3D pass and its fade, with the "_white" material.
+ID_INLINE void VR_DrawAimMarker( const renderView_t &view, const vrAimMarker_t &marker, int laser, const idMaterial *material ) {
+	if ( laser == VR_AIM_LASER_OFF || material == NULL || !view.asymmetricFov ) {
+		return;
+	}
+	const bool previousUIViewportMode = renderSystem->GetUseUIViewportFor2D();
+	renderSystem->SetUseUIViewportFor2D( false );
+	if ( laser == VR_AIM_LASER_BEAM ) {
+		VR_DrawAimBeam( view, marker, material );
+	}
+	const vrEyeTangent_t spot = VR_EyeTangent( view, marker.target );
+	if ( spot.inFront ) {
+		// dimmer when the head can't see the target, or the shot meets nothing
+		const float alpha = marker.hidden ? 0.35f : ( marker.hit ? 1.0f : 0.6f );
+		renderSystem->SetColor4( 0.0f, 0.0f, 0.0f, 0.5f * alpha );
+		VR_DrawEyeDisc( view, spot.x, spot.y, 0.0080f, material );
+		renderSystem->SetColor4( 1.0f, 0.15f, 0.1f, alpha );
+		VR_DrawEyeDisc( view, spot.x, spot.y, 0.0050f, material );
+		renderSystem->SetColor4( 1.0f, 0.8f, 0.7f, alpha );
+		VR_DrawEyeDisc( view, spot.x, spot.y, 0.0020f, material );
+	}
+	renderSystem->SetColor4( 1.0f, 1.0f, 1.0f, 1.0f );
+	renderSystem->SetUseUIViewportFor2D( previousUIViewportMode );
 }
 
 #endif /* !__VRSYSTEM_H__ */

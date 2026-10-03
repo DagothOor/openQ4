@@ -398,6 +398,7 @@ struct TRSession : TRHandle {
 	bool				frameBegun;
 	int64_t				waitedDisplayTime;
 	uint64_t			framesSubmitted;
+	std::string			lastLayout;			// layer types and flags of the last submitted frame
 	uint64_t			framesWaited;
 };
 
@@ -2006,6 +2007,7 @@ XRAPI_ATTR XrResult XRAPI_CALL TR_xrEndFrame( XrSession handle, const XrFrameEnd
 	}
 
 	std::string summary;
+	std::string layout;
 	const bool capture = !g.pendingCapture.empty();
 	const std::string capturePrefix = g.pendingCapture;
 	g.pendingCapture.clear();
@@ -2098,11 +2100,15 @@ XRAPI_ATTR XrResult XRAPI_CALL TR_xrEndFrame( XrSession handle, const XrFrameEnd
 			return XR_ERROR_LAYER_INVALID;
 		}
 		summary += ( i ? "," : "" ) + std::string( item );
+		layout += ( i ? "," : "" ) + std::to_string( static_cast<int>( layer->type ) ) + ":" + std::to_string( static_cast<unsigned long long>( layer->layerFlags ) );
 	}
 
 	++session->framesSubmitted;
-	// log the first frames, then a sample; captures are always reported
-	if ( session->framesSubmitted <= 3 || session->framesSubmitted % 90 == 0 || capture ) {
+	// log the first frames, then a sample; captures and every change of layer
+	// layout (a menu opening or closing) are always reported
+	const bool layoutChanged = layout != session->lastLayout;
+	session->lastLayout = layout;
+	if ( session->framesSubmitted <= 3 || session->framesSubmitted % 90 == 0 || capture || layoutChanged ) {
 		Log( "{\"event\":\"end_frame\",\"frame\":%llu,\"layers\":[%s]}", static_cast<unsigned long long>( session->framesSubmitted ), summary.c_str() );
 	}
 	AdvanceScript( session );
@@ -2591,7 +2597,8 @@ XRAPI_ATTR XrResult XRAPI_CALL TR_xrGetInputSourceLocalizedName( XrSession handl
 
 XRAPI_ATTR XrResult XRAPI_CALL TR_xrApplyHapticFeedback( XrSession handle, const XrHapticActionInfo *hapticActionInfo, const XrHapticBaseHeader *hapticFeedback ) {
 	std::lock_guard<std::recursive_mutex> guard( G().lock );
-	if ( GetSession( handle ) == nullptr ) {
+	TRSession *session = GetSession( handle );
+	if ( session == nullptr ) {
 		return XR_ERROR_HANDLE_INVALID;
 	}
 	if ( hapticActionInfo == nullptr || hapticFeedback == nullptr || hapticActionInfo->type != XR_TYPE_HAPTIC_ACTION_INFO ) {
@@ -2606,8 +2613,13 @@ XRAPI_ATTR XrResult XRAPI_CALL TR_xrApplyHapticFeedback( XrSession handle, const
 	}
 	if ( hapticFeedback->type == XR_TYPE_HAPTIC_VIBRATION ) {
 		const XrHapticVibration *vibration = reinterpret_cast<const XrHapticVibration *>( hapticFeedback );
-		Log( "{\"event\":\"haptic\",\"action\":\"%s\",\"amplitude\":%.3f,\"duration_ns\":%lld}",
-			JsonEscape( action->name ).c_str(), vibration->amplitude, static_cast<long long>( vibration->duration ) );
+		if ( !( vibration->amplitude >= 0.0f && vibration->amplitude <= 1.0f ) || vibration->duration < 0 ) {
+			return XR_ERROR_VALIDATION_FAILURE;
+		}
+		const std::string hand = hapticActionInfo->subactionPath == XR_NULL_PATH ? std::string( "both" )
+			: PathString( session->instance, hapticActionInfo->subactionPath );
+		Log( "{\"event\":\"haptic\",\"action\":\"%s\",\"hand\":\"%s\",\"amplitude\":%.3f,\"duration_ns\":%lld}",
+			JsonEscape( action->name ).c_str(), JsonEscape( hand ).c_str(), vibration->amplitude, static_cast<long long>( vibration->duration ) );
 	}
 	return XR_SUCCESS;
 }

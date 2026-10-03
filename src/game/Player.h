@@ -560,6 +560,11 @@ public:
 	bool					GetVRWeaponTransform( idVec3 &origin, idMat3 &axis, bool presentation ) const;
 	// Where shots leave the weapon hand, pulled back out of solid geometry.
 	bool					GetVRAimOrigin( idVec3 &origin ) const;
+	// Where this frame's shot from the weapon hand lands, for the aim
+	// marker. False when nothing is aimed by hand.
+	bool					GetVRAimMarker( vrAimMarker_t &marker ) const;
+	// A pulse in the local player's weapon hand, other hand, or both.
+	void					VRVibrate( bool weaponHand, bool otherHand, float amplitude, int durationMsec ) const;
  	void					OffsetThirdPersonView( float angle, float range, float height, bool clip );
 // RAVEN BEGIN
 // jnewquist: option to avoid clipping against world

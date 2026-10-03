@@ -9,6 +9,8 @@ Pins what keeps VR safe to ship without a headset in CI:
 - engines without OpenXR, and dedicated servers, run the null VR system;
 - controller input enters through the gamepad key path, never synthesised OS
   input, and every action name the runtime shows is localised;
+- both game modules draw the aim marker into each eye between its 3D pass and
+  its fade;
 - the user guide, developer plan, licence notice and runtime smoke exist.
 """
 from __future__ import annotations
@@ -82,8 +84,12 @@ def check_abi() -> None:
     interface = vr_system[vr_system.index("class idVRSystem {"):vr_system.index("extern idVRSystem *")]
     vr_slots = re.findall(r"virtual \w+\s+(\w+)\(", interface)
     if vr_slots != ["Init", "Shutdown", "RendererStarted", "RendererStopping", "BeginFrame", "EndFrame",
-                    "IsPacing", "IsActive", "GetFrameState", "GetUsercmdInput", "DrawMenuPointer"]:
+                    "IsPacing", "IsActive", "GetFrameState", "GetUsercmdInput", "DrawMenuPointer", "Vibrate"]:
         raise AssertionError(f"idVRSystem's slots changed order: {vr_slots}")
+    # game modules read the frame state by layout: new members go at the end
+    frame = vr_system[vr_system.index("typedef struct vrFrameState_s {"):vr_system.index("} vrFrameState_t;")]
+    if not frame.rstrip().endswith("int\t\t\t\t\t\taimLaser;\t\t// vrAimLaser_t"):
+        raise AssertionError("vrFrameState_t grows at the end; aimLaser is its newest member")
 
     render_world = read("src/renderer/RenderWorld.h")
     for field in ("bool					asymmetricFov = false;", "float					fovTanLeft = 0.0f;",
@@ -108,6 +114,11 @@ def check_engine() -> None:
     require(system, "static idVRSystemNull vrSystemNull;\nidVRSystem *vrSystem = &vrSystemNull;",
             "other builds run the null system")
     require(system, 'idCVar vr_enable( "vr_enable", "0",', "VR is off by default")
+    require(system, 'idCVar vr_aimLaser( "vr_aimLaser", "1",', "the aim dot is on by default")
+    for module in ("src/game/PlayerView.cpp", "src/mpgame/PlayerView.cpp"):
+        require(read(module), "\t\tSingleView( hud, &eyeView, RF_NO_GUI | RF_PRIMARY_VIEW );\n\t\tif ( drawAimMarker ) {\n"
+                              "\t\t\tVR_DrawAimMarker( eyeView, aimMarker, vrFrame.aimLaser, aimMaterial );\n\t\t}\n\t\tScreenFade();",
+                f"{module} marks the aim in each eye over its 3D pass, under its fade")
 
     openxr = read("src/sys/openxr/OpenXRSystem.cpp")
     for banned in ("SendInput", "keybd_event", "mouse_event", "XTest"):
@@ -156,7 +167,8 @@ def check_documents() -> None:
         if not (ROOT / relative).is_file():
             raise AssertionError(f"missing {relative}")
     guide = read("docs/user/vr.md")
-    for cvar in ("vr_enable", "vr_aimMode", "vr_turnMode", "vr_recenter", "vr_restart"):
+    for cvar in ("vr_enable", "vr_aimMode", "vr_aimLaser", "vr_hapticStrength", "vr_turnMode", "vr_recenter",
+                 "vr_restart"):
         require(guide, cvar, "the VR guide documents the settings players use")
 
 
