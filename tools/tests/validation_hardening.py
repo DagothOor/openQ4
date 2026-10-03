@@ -669,6 +669,7 @@ def validate_validation_wiring() -> None:
         "renderer_pbr_probe_parity.py",
         "renderer_render_target_lifetime.py",
         "renderer_smaa_orientation.py",
+        "renderer_vulkan_arb_programs.py",
         "renderer_vulkan_hdr_gameplay.py",
         "renderer_vulkan_hdr_post.py",
         "renderer_vulkan_hdr_post_compare.py",

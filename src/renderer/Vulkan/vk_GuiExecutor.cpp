@@ -237,6 +237,8 @@ enum vkSpecialPipelineKind_t {
 	VK_SPECIAL_POINT_SHADOW_PBR_TRANSPARENT_COMPOSITE,
 	VK_SPECIAL_POINT_SHADOW_PBR_TRANSPARENT_ADD,
 	VK_SPECIAL_STENCIL_SHADOW,
+	VK_SPECIAL_STENCIL_SHADOW_DEBUG_LINE,
+	VK_SPECIAL_STENCIL_SHADOW_DEBUG_FILL,
 	VK_SPECIAL_FOG,
 	VK_SPECIAL_SHADOW_OVERLAY_PANEL,
 	VK_SPECIAL_SHADOW_OVERLAY_POINT_PANEL,
@@ -414,6 +416,7 @@ typedef struct vkGuiExecutor_s {
 	VkShaderModule		gpuSkinningModule;
 	VkShaderModule		temporalResolveVertModule;
 	VkShaderModule		temporalResolveFragModule;
+	VkShaderModule		sceneScaleFragModule;	// r_resolutionScaleMode 2/3
 	VkShaderModule		displayColorFragModule;
 	VkPipeline			displayColorPipeline;
 	idImage *			displayColorSourceImages[ VK_FRAMES_IN_FLIGHT ];
@@ -465,6 +468,8 @@ typedef struct vkGuiExecutor_s {
 	int					numBlendLightPipelines;
 	vkGuiPipeline_t		temporalResolvePipelines[ VK_MAX_TEMPORAL_RESOLVE_PIPELINES ];
 	int					numTemporalResolvePipelines;
+	vkGuiPipeline_t		sceneScalePipelines[ VK_MAX_TEMPORAL_RESOLVE_PIPELINES ];
+	int					numSceneScalePipelines;
 	vkPostPipeline_t	postPipelines[ VK_MAX_POST_PIPELINES ];
 	int					numPostPipelines;
 	VkFormat			pipelineTargetFormat;	// swapchain format the pipelines were built for
@@ -836,7 +841,8 @@ static VkPipeline VK_Exec_CreatePipeline( VkShaderModule vertModule, VkShaderMod
 		bool depthOnly, bool colorWriteOff, const vkPipelineTarget_t &target,
 		bool enableDepthClamp = false,
 		VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-		bool alphaToCoverage = false ) {
+		bool alphaToCoverage = false,
+		VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL ) {
 	const uint32_t colorCount = depthOnly ? 0 : target.colorCount;
 	VkPipelineShaderStageCreateInfo stages[ 2 ];
 	memset( stages, 0, sizeof( stages ) );
@@ -867,7 +873,7 @@ static VkPipeline VK_Exec_CreatePipeline( VkShaderModule vertModule, VkShaderMod
 	VkPipelineRasterizationStateCreateInfo raster;
 	memset( &raster, 0, sizeof( raster ) );
 	raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-	raster.polygonMode = VK_POLYGON_MODE_FILL;
+	raster.polygonMode = polygonMode;
 	raster.cullMode = VK_CULL_MODE_NONE;	// 2D
 	raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	raster.lineWidth = 1.0f;
@@ -1235,6 +1241,40 @@ static VkPipeline VK_TemporalPresentation_GetResolvePipeline( void ) {
 	}
 	vkGuiPipeline_t &entry = vkExec.temporalResolvePipelines[
 		vkExec.numTemporalResolvePipelines++ ];
+	entry.stateBits = pipelineBits;
+	entry.separateColor = false;
+	entry.target = target;
+	entry.pipeline = pipeline;
+	return pipeline;
+}
+
+// The scaled-scene presentation for r_resolutionScaleMode 2 and 3 shares the
+// resolve pass's full-screen vertex stage and layout (scene_scale.frag).
+static VkPipeline VK_TemporalPresentation_GetScalePipeline( void ) {
+	const int pipelineBits = GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO;
+	const vkPipelineTarget_t target = VK_Exec_CurrentPipelineTarget();
+	for ( int i = 0; i < vkExec.numSceneScalePipelines; ++i ) {
+		const vkGuiPipeline_t &entry = vkExec.sceneScalePipelines[i];
+		if ( VK_Exec_PipelineTargetsMatch( entry.target, target ) ) {
+			return entry.pipeline;
+		}
+	}
+	if ( vkExec.temporalResolveVertModule == VK_NULL_HANDLE
+			|| vkExec.sceneScaleFragModule == VK_NULL_HANDLE
+			|| vkExec.numSceneScalePipelines >= VK_MAX_TEMPORAL_RESOLVE_PIPELINES ) {
+		return VK_NULL_HANDLE;
+	}
+	VkPipelineVertexInputStateCreateInfo vertexInput;
+	memset( &vertexInput, 0, sizeof( vertexInput ) );
+	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	const VkPipeline pipeline = VK_Exec_CreatePipeline(
+		vkExec.temporalResolveVertModule, vkExec.sceneScaleFragModule,
+		&vertexInput, pipelineBits, vkExec.interactionPipelineLayout,
+		false, false, target );
+	if ( pipeline == VK_NULL_HANDLE ) {
+		return VK_NULL_HANDLE;
+	}
+	vkGuiPipeline_t &entry = vkExec.sceneScalePipelines[ vkExec.numSceneScalePipelines++ ];
 	entry.stateBits = pipelineBits;
 	entry.separateColor = false;
 	entry.target = target;
@@ -2293,6 +2333,43 @@ VkPipeline VK_Exec_StencilShadowPipeline( void ) {
 				&vertexInput, 0, vkExec.pipelineLayout, false, true, target ) );
 }
 
+// r_showShadows: the stencil-volume geometry drawn in color. Lines match
+// RB_StencilShadowPass's ONE/ZERO GLS_POLYMODE_LINE state (modes 1 and 3);
+// the fill variant is its additive ONE/ONE state (mode 2). Devices without
+// fillModeNonSolid draw the line modes filled.
+VkPipeline VK_Exec_StencilShadowDebugPipeline( bool lines ) {
+	lines = lines && vkCtx.fillModeNonSolidSupported;
+	const vkSpecialPipelineKind_t kind = lines ? VK_SPECIAL_STENCIL_SHADOW_DEBUG_LINE : VK_SPECIAL_STENCIL_SHADOW_DEBUG_FILL;
+	const vkPipelineTarget_t target = VK_Exec_CurrentPipelineTarget();
+	VkPipeline cached = VK_Exec_FindSpecialPipeline( kind, target );
+	if ( cached != VK_NULL_HANDLE ) {
+		return cached;
+	}
+	if ( vkExec.stencilShadowVertModule == VK_NULL_HANDLE || vkExec.stencilShadowFragModule == VK_NULL_HANDLE ) {
+		return VK_NULL_HANDLE;
+	}
+	VkVertexInputBindingDescription binding;
+	memset( &binding, 0, sizeof( binding ) );
+	binding.stride = sizeof( shadowCache_t );
+	binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	VkVertexInputAttributeDescription attr;
+	memset( &attr, 0, sizeof( attr ) );
+	attr.location = 0;
+	attr.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	VkPipelineVertexInputStateCreateInfo vertexInput;
+	memset( &vertexInput, 0, sizeof( vertexInput ) );
+	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInput.vertexBindingDescriptionCount = 1;
+	vertexInput.pVertexBindingDescriptions = &binding;
+	vertexInput.vertexAttributeDescriptionCount = 1;
+	vertexInput.pVertexAttributeDescriptions = &attr;
+	const int blendBits = lines ? 0 : ( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE );
+	return VK_Exec_StoreSpecialPipeline( kind, target,
+			VK_Exec_CreatePipeline( vkExec.stencilShadowVertModule, vkExec.stencilShadowFragModule,
+				&vertexInput, blendBits, vkExec.pipelineLayout, false, false, target, false,
+				VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, false, lines ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL ) );
+}
+
 VkPipelineLayout VK_Exec_BasePipelineLayout( void ) {
 	return vkExec.pipelineLayout;
 }
@@ -2779,6 +2856,13 @@ static bool VK_GuiExecutor_Init( void ) {
 	if ( vkCreateShaderModule( vkCtx.device, &smci, NULL,
 			&vkExec.temporalResolveFragModule ) != VK_SUCCESS ) {
 		common->Warning( "Vulkan: temporal resolve fragment shader module creation failed" );
+		return false;
+	}
+	smci.codeSize = vk_scene_scale_frag_spv_size;
+	smci.pCode = (const uint32_t *)vk_scene_scale_frag_spv;
+	if ( vkCreateShaderModule( vkCtx.device, &smci, NULL,
+			&vkExec.sceneScaleFragModule ) != VK_SUCCESS ) {
+		common->Warning( "Vulkan: scene scale fragment shader module creation failed" );
 		return false;
 	}
 	smci.codeSize = vk_sky_vert_spv_size;
@@ -3455,6 +3539,12 @@ void VK_GuiExecutor_Shutdown( void ) {
 				vkExec.temporalResolvePipelines[i].pipeline, NULL );
 		}
 	}
+	for ( int i = 0; i < vkExec.numSceneScalePipelines; ++i ) {
+		if ( vkExec.sceneScalePipelines[i].pipeline != VK_NULL_HANDLE ) {
+			vkDestroyPipeline( vkCtx.device,
+				vkExec.sceneScalePipelines[i].pipeline, NULL );
+		}
+	}
 	for ( int i = 0; i < vkExec.numPostPipelines; ++i ) {
 		if ( vkExec.postPipelines[i].pipeline != VK_NULL_HANDLE ) {
 			vkDestroyPipeline( vkCtx.device, vkExec.postPipelines[i].pipeline, NULL );
@@ -3519,6 +3609,10 @@ void VK_GuiExecutor_Shutdown( void ) {
 	if ( vkExec.temporalResolveFragModule != VK_NULL_HANDLE ) {
 		vkDestroyShaderModule( vkCtx.device,
 			vkExec.temporalResolveFragModule, NULL );
+	}
+	if ( vkExec.sceneScaleFragModule != VK_NULL_HANDLE ) {
+		vkDestroyShaderModule( vkCtx.device,
+			vkExec.sceneScaleFragModule, NULL );
 	}
 	if ( vkExec.skyVertModule != VK_NULL_HANDLE ) {
 		vkDestroyShaderModule( vkCtx.device, vkExec.skyVertModule, NULL );
@@ -3699,7 +3793,8 @@ bool VK_GuiExecutor_BeginFrame( void ) {
 	}
 	// a failed mid-run recreate tears the swapchain down entirely; keep
 	// retrying until a usable swapchain (with depth images) exists
-	if ( vkCtx.swapchain == VK_NULL_HANDLE || vkCtx.depthImages[ vkCtx.frameSlot ] == VK_NULL_HANDLE ) {
+	if ( vkCtx.swapchain == VK_NULL_HANDLE || vkCtx.depthImages[ vkCtx.frameSlot ] == VK_NULL_HANDLE
+			|| vkCtx.surfaceLost ) {
 		if ( !VK_Device_RecreateSwapchain()
 				|| vkCtx.swapchain == VK_NULL_HANDLE || vkCtx.depthImages[ vkCtx.frameSlot ] == VK_NULL_HANDLE ) {
 			return false;
@@ -3767,6 +3862,11 @@ bool VK_GuiExecutor_BeginFrame( void ) {
 				vkExec.temporalResolvePipelines[i].pipeline, NULL );
 		}
 		vkExec.numTemporalResolvePipelines = 0;
+		for ( int i = 0; i < vkExec.numSceneScalePipelines; ++i ) {
+			vkDestroyPipeline( vkCtx.device,
+				vkExec.sceneScalePipelines[i].pipeline, NULL );
+		}
+		vkExec.numSceneScalePipelines = 0;
 		for ( int i = 0; i < vkExec.numPostPipelines; ++i ) {
 			vkDestroyPipeline( vkCtx.device, vkExec.postPipelines[i].pipeline, NULL );
 		}
@@ -3805,6 +3905,9 @@ bool VK_GuiExecutor_BeginFrame( void ) {
 	VK_Device_WaitUploadBatch();
 	if ( vkCtx.presentationBlocked ) return false;
 	VK_Device_FlushDeferredDestroys( slot );
+	// A shadow resize seen under the previous recording is applied here,
+	// before this frame records anything that could bind the old resources.
+	VK_ShadowMap_BeginFrame();
 	if ( vkExec.numRetiredSets[ slot ] > 0 ) {
 		vkFreeDescriptorSets( vkCtx.device, vkExec.descriptorPool,
 				(uint32_t)vkExec.numRetiredSets[ slot ], vkExec.retiredSets[ slot ] );
@@ -3823,9 +3926,14 @@ bool VK_GuiExecutor_BeginFrame( void ) {
 		}
 	}
 
+	// A presentation engine that withholds images (an occluded Wayland
+	// window with FIFO, a compositor stall) must not block the game loop
+	// forever. A timeout acquires nothing and signals nothing, so the frame is
+	// simply skipped and retried; normal acquisition returns well within it.
+	const uint64_t acquireTimeout = 1000000000ull;
 	uint32_t imageIndex = 0;
 	const unsigned long long acquireBegin = timingEnabled ? R_RendererMetrics_CpuClock() : 0;
-	VkResult res = vkAcquireNextImageKHR( vkCtx.device, vkCtx.swapchain, UINT64_MAX,
+	VkResult res = vkAcquireNextImageKHR( vkCtx.device, vkCtx.swapchain, acquireTimeout,
 			vkCtx.acquireSemaphores[ slot ], VK_NULL_HANDLE, &imageIndex );
 	R_RendererMetrics_EndWaitPhase( RENDERER_WAIT_SWAPCHAIN_IMAGE, acquireBegin );
 	if ( res == VK_ERROR_OUT_OF_DATE_KHR ) {
@@ -3833,9 +3941,19 @@ bool VK_GuiExecutor_BeginFrame( void ) {
 			return false;
 		}
 		const unsigned long long retryBegin = timingEnabled ? R_RendererMetrics_CpuClock() : 0;
-		res = vkAcquireNextImageKHR( vkCtx.device, vkCtx.swapchain, UINT64_MAX,
+		res = vkAcquireNextImageKHR( vkCtx.device, vkCtx.swapchain, acquireTimeout,
 				vkCtx.acquireSemaphores[ slot ], VK_NULL_HANDLE, &imageIndex );
 		R_RendererMetrics_EndWaitPhase( RENDERER_WAIT_SWAPCHAIN_IMAGE, retryBegin );
+	}
+	if ( res == VK_TIMEOUT || res == VK_NOT_READY ) {
+		R_DisplayPresentationFailed( RDP_ACQUIRE_FAILED, (int32_t)res );
+		return false;
+	}
+	if ( res == VK_ERROR_SURFACE_LOST_KHR ) {
+		// Nothing was acquired; rebuild the surface and retry next frame.
+		R_DisplayPresentationFailed( RDP_ACQUIRE_FAILED, (int32_t)res );
+		(void)VK_Device_RecoverSurface();
+		return false;
 	}
 	if ( res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR ) {
 		if ( res == VK_ERROR_DEVICE_LOST ) VK_Device_BlockPresentation( RDP_ACQUIRE_FAILED, res, "frame acquire" );
@@ -6898,11 +7016,19 @@ static bool VK_GuiExecutor_SubmitFrame( bool present ) {
 	pi.pImageIndices = &imageIndex;
 	const VkResult res = vkQueuePresentKHR( vkCtx.graphicsQueue, &pi );
 	if ( res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR ) R_DisplayPresentationPresented();
-	else if ( res == VK_ERROR_OUT_OF_DATE_KHR ) R_DisplayPresentationFailed( RDP_PRESENT_FAILED, (int32_t)res );
+	else if ( res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_ERROR_SURFACE_LOST_KHR ) R_DisplayPresentationFailed( RDP_PRESENT_FAILED, (int32_t)res );
 	else { VK_Device_BlockPresentation( RDP_PRESENT_FAILED, res, "frame present" ); return false; }
-	if ( res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR ) {
-		const bool recreated = VK_Device_RecreateSwapchain();
-		return recreated && res == VK_SUBOPTIMAL_KHR;
+	// The frame was submitted whatever the presentation engine said; only the
+	// image's display was lost. Report success so callers such as a partial
+	// vid_restart do not escalate a resize into a full device restart.
+	if ( res == VK_ERROR_SURFACE_LOST_KHR ) {
+		(void)VK_Device_RecoverSurface();
+	} else if ( res == VK_ERROR_OUT_OF_DATE_KHR ) {
+		(void)VK_Device_RecreateSwapchain();
+	} else if ( res == VK_SUBOPTIMAL_KHR && VK_Device_SurfaceExtentChanged() ) {
+		// Some surfaces stay suboptimal at the current size (scaling, rotation);
+		// recreating every frame for that would idle the device per frame.
+		(void)VK_Device_RecreateSwapchain();
 	}
 	return true;
 }
@@ -8370,12 +8496,96 @@ static bool VK_TemporalPresentation_DrawResolve(
 	return true;
 }
 
+// Upscales a single-sample, sampled image over the whole swapchain target
+// with r_resolutionScaleMode 2 (sharpened) or 3 (nearest), scene_scale.frag.
+// Writes top-down rows. Callers own the admission decision.
+static bool VK_TemporalPresentation_PresentScaledImage( idImage *sceneImage,
+		vkImageEntry_t *sceneEntry, int mode ) {
+	if ( sceneImage == NULL || sceneEntry == NULL || ( mode != 2 && mode != 3 )
+			|| sceneEntry->samples != VK_SAMPLE_COUNT_1_BIT
+			|| ( sceneEntry->usage & VK_IMAGE_USAGE_SAMPLED_BIT ) == 0 ) {
+		return false;
+	}
+	VK_Exec_TransitionImage( sceneEntry, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL );
+	const VkDescriptorSet sceneSet = VK_GuiExecutor_GetImageDescriptor( sceneImage->GetDeviceHandle() );
+	struct sceneScaleBlock_t {
+		float scale[ 4 ];
+		float flags[ 4 ];
+	} block;
+	memset( &block, 0, sizeof( block ) );
+	block.scale[ 0 ] = 1.0f / (float)Max( 1, sceneEntry->width );
+	block.scale[ 1 ] = 1.0f / (float)Max( 1, sceneEntry->height );
+	block.scale[ 2 ] = idMath::ClampFloat( 0.0f, 1.5f, r_resolutionScaleSharpness.GetFloat() );
+	block.scale[ 3 ] = (float)mode;
+	block.flags[ 0 ] = sceneEntry->materialSampleFlipY ? 0.0f : 1.0f;
+	const int uniformOffset = VK_Exec_InteractionUniformAlloc( &block, sizeof( block ) );
+	if ( sceneSet == VK_NULL_HANDLE || uniformOffset < 0 || !VK_Exec_SetRenderTarget( NULL ) ) {
+		return false;
+	}
+	const VkPipeline pipeline = VK_TemporalPresentation_GetScalePipeline();
+	if ( pipeline == VK_NULL_HANDLE ) {
+		return false;
+	}
+	VkViewport viewport;
+	memset( &viewport, 0, sizeof( viewport ) );
+	viewport.width = (float)vkExec.activeExtent.width;
+	viewport.height = (float)vkExec.activeExtent.height;
+	viewport.maxDepth = 1.0f;
+	VkRect2D scissor;
+	memset( &scissor, 0, sizeof( scissor ) );
+	scissor.extent = vkExec.activeExtent;
+	vkCmdSetViewport( vkExec.cmd, 0, 1, &viewport );
+	vkCmdSetScissor( vkExec.cmd, 0, 1, &scissor );
+	vkCmdSetDepthTestEnable( vkExec.cmd, VK_FALSE );
+	vkCmdSetDepthWriteEnable( vkExec.cmd, VK_FALSE );
+	vkCmdSetDepthCompareOp( vkExec.cmd, VK_COMPARE_OP_ALWAYS );
+	vkCmdSetCullMode( vkExec.cmd, VK_CULL_MODE_NONE );
+	vkCmdSetFrontFace( vkExec.cmd, VK_Exec_CanonicalFrontFace() );
+	vkCmdSetDepthBiasEnable( vkExec.cmd, VK_FALSE );
+	vkCmdSetStencilTestEnable( vkExec.cmd, VK_FALSE );
+	vkCmdBindPipeline( vkExec.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline );
+	vkCmdBindDescriptorSets( vkExec.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		vkExec.interactionPipelineLayout, 0, 1, &sceneSet, 0, NULL );
+	const VkDescriptorSet uniformSet = VK_Exec_InteractionUniformSet();
+	const uint32_t dynamicOffset = (uint32_t)uniformOffset;
+	vkCmdBindDescriptorSets( vkExec.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		vkExec.interactionPipelineLayout, 6, 1, &uniformSet, 1, &dynamicOffset );
+	vkCmdDraw( vkExec.cmd, 3, 1, 0, 0 );
+	VK_Exec_MarkColorOrigin( true );
+	static int loggedMode = 0;
+	if ( loggedMode != mode ) {
+		loggedMode = mode;
+		common->Printf( "Vulkan: scaled scene %dx%d presented with r_resolutionScaleMode %d\n",
+			sceneEntry->width, sceneEntry->height, mode );
+	}
+	return true;
+}
+
+// r_resolutionScaleMode 2 (sharpened) and 3 (nearest) for the renderer-owned
+// scaled scene. Only a plain spatial upscale qualifies: the screen-space
+// effects and the jitter recentering live in the resolve shader, which keeps
+// those frames.
+static bool VK_TemporalPresentation_DrawScaledScene( const viewDef_t *viewDef,
+		idImage *sceneImage, vkImageEntry_t *sceneEntry ) {
+	const int mode = idMath::ClampInt( 0, 3, r_resolutionScaleMode.GetInteger() );
+	if ( ( mode != 2 && mode != 3 ) || viewDef->temporalJitterEnabled
+			|| R_TemporalPresentation_ScreenSpaceEffectsRequested()
+			|| ( sceneEntry->width == (int)vkCtx.swapchainExtent.width
+				&& sceneEntry->height == (int)vkCtx.swapchainExtent.height ) ) {
+		return false;
+	}
+	return VK_TemporalPresentation_PresentScaledImage( sceneImage, sceneEntry, mode );
+}
+
 static bool VK_TemporalPresentation_DrawPendingSceneSpatial(
 		const viewDef_t *viewDef, idImage *sceneImage,
 		vkImageEntry_t *sceneEntry, idImage *depthImage,
 		vkImageEntry_t *depthEntry ) {
 	if ( viewDef == NULL || sceneImage == NULL || sceneEntry == NULL ) {
 		return false;
+	}
+	if ( VK_TemporalPresentation_DrawScaledScene( viewDef, sceneImage, sceneEntry ) ) {
+		return true;
 	}
 	resolveTemporalPresentationCommand_t command;
 	memset( &command, 0, sizeof( command ) );
@@ -9496,8 +9706,9 @@ static unsigned int VK_Exec_GLSLRequiredTextureMask(
 }
 
 static bool VK_Exec_BindGLSLStageColor( const drawSurf_t *drawSurf,
-		const srfTriangles_t *tri, const shaderStage_t *stage, int stageNum ) {
-	if ( stage->vertexColor == SVC_IGNORE || drawSurf->decalColorCache == NULL
+		const srfTriangles_t *tri, const shaderStage_t *stage, int stageNum,
+		bool anyVertexColorMode = false ) {
+	if ( ( !anyVertexColorMode && stage->vertexColor == SVC_IGNORE ) || drawSurf->decalColorCache == NULL
 			|| stageNum < 0 || stageNum >= drawSurf->decalColorStageCount
 			|| drawSurf->decalColorStride < tri->numVerts * 4 ) {
 		return false;
@@ -10261,9 +10472,172 @@ void VK_GuiExecutor_DrawResolvedSpecialEffects(
 	backEnd.feedbackRenderTexture = savedFeedbackRenderTexture;
 }
 
-// Draws the stock ARB newStage families for which Vulkan has native SPIR-V.
-// The stable family query deliberately avoids depending on parser handle
-// allocation order.
+static idCVar r_vkARBTranslation( "r_vkARBTranslation", "1", CVAR_RENDERER | CVAR_INTEGER,
+	"authored ARB material programs: 0 = skip programs without a native implementation, "
+	"1 = translate them to GLSL, 2 = translate the stock families too (diagnostic comparison)", 0, 2 );
+
+/*
+====================
+VK_Exec_BuildARBMaterialUniforms
+
+The program environment draw_common.cpp gives ARB material stages:
+RB_SetProgramEnvironment (env 0 current-render scale in both programs, vertex
+env 1 global eye, fragment env 1 window-to-[0,1] scale) and
+RB_SetProgramEnvironmentSpace (vertex env 5 local eye, 6-8 model rows).
+vertexParm feeds both programs' locals unless fragmentParm is present.
+Locals the material does not set read zero, the value of an unset GL local.
+====================
+*/
+static bool VK_Exec_BuildARBMaterialUniforms( const viewDef_t *viewDef, const drawSurf_t *drawSurf,
+		const shaderStage_t *stage, const std::vector<oq4material::ARBParameter> &parameters,
+		oq4material::UniformBlock &block ) {
+	const newShaderStage_t *newStage = stage->newStage;
+	const float *regs = drawSurf->shaderRegisters;
+	if ( newStage == NULL || regs == NULL || drawSurf->space == NULL ) {
+		return false;
+	}
+	block = {};
+	const int viewportWidth = Max( 1, viewDef->viewport.x2 - viewDef->viewport.x1 + 1 );
+	const int viewportHeight = Max( 1, viewDef->viewport.y2 - viewDef->viewport.y1 + 1 );
+	int textureWidth = viewportWidth;
+	int textureHeight = viewportHeight;
+	if ( globalImages->currentRenderImage != NULL ) {
+		if ( globalImages->currentRenderImage->GetUploadWidth() > 0 ) {
+			textureWidth = globalImages->currentRenderImage->GetUploadWidth();
+		}
+		if ( globalImages->currentRenderImage->GetUploadHeight() > 0 ) {
+			textureHeight = globalImages->currentRenderImage->GetUploadHeight();
+		}
+	}
+	const float *model = drawSurf->space->modelMatrix;
+	for ( size_t i = 0; i < parameters.size() && i < (size_t)oq4material::MaxParameters; i++ ) {
+		const oq4material::ARBParameter &parameter = parameters[ i ];
+		float *value = block.parameters[ i ].data();
+		const int index = parameter.index;
+		const int ( *source )[ 4 ] = NULL;
+		switch ( parameter.space ) {
+			case oq4material::ARBParameterSpace::VertexLocal:
+				if ( index < newStage->numVertexParms ) {
+					source = &newStage->vertexParms[ index ];
+				}
+				break;
+			case oq4material::ARBParameterSpace::FragmentLocal:
+				if ( newStage->numFragmentParms > 0 ) {
+					if ( index < newStage->numFragmentParms ) {
+						source = &newStage->fragmentParms[ index ];
+					}
+				} else if ( index < newStage->numVertexParms ) {
+					source = &newStage->vertexParms[ index ];
+				}
+				break;
+			case oq4material::ARBParameterSpace::VertexEnv:
+			case oq4material::ARBParameterSpace::FragmentEnv: {
+				const bool fragment = parameter.space == oq4material::ARBParameterSpace::FragmentEnv;
+				if ( index == 0 ) {
+					value[ 0 ] = (float)viewportWidth / (float)textureWidth;
+					value[ 1 ] = (float)viewportHeight / (float)textureHeight;
+					value[ 3 ] = 1.0f;
+				} else if ( index == 1 && fragment ) {
+					value[ 0 ] = 1.0f / (float)viewportWidth;
+					value[ 1 ] = 1.0f / (float)viewportHeight;
+					value[ 3 ] = 1.0f;
+				} else if ( index == 1 ) {
+					value[ 0 ] = viewDef->renderView.vieworg[ 0 ];
+					value[ 1 ] = viewDef->renderView.vieworg[ 1 ];
+					value[ 2 ] = viewDef->renderView.vieworg[ 2 ];
+					value[ 3 ] = 1.0f;
+				} else if ( index == 5 && !fragment ) {
+					idVec3 localEye;
+					R_GlobalPointToLocal( drawSurf->space->modelMatrix, viewDef->renderView.vieworg, localEye );
+					value[ 0 ] = localEye[ 0 ];
+					value[ 1 ] = localEye[ 1 ];
+					value[ 2 ] = localEye[ 2 ];
+					value[ 3 ] = 1.0f;
+				} else if ( index >= 6 && index <= 8 && !fragment ) {
+					const int row = index - 6;
+					value[ 0 ] = model[ row ];
+					value[ 1 ] = model[ row + 4 ];
+					value[ 2 ] = model[ row + 8 ];
+					value[ 3 ] = model[ row + 12 ];
+				} else {
+					// The translator rejects every other environment index.
+					return false;
+				}
+				break;
+			}
+		}
+		if ( source != NULL ) {
+			for ( int j = 0; j < 4; j++ ) {
+				value[ j ] = regs[ ( *source )[ j ] ];
+			}
+		}
+	}
+	memcpy( block.modelView.data(), drawSurf->space->modelViewMatrix, sizeof( float ) * 16 );
+	memcpy( block.projection.data(), viewDef->projectionMatrix, sizeof( float ) * 16 );
+	if ( drawSurf->space->modelDepthHack != 0.0f ) {
+		block.projection[ 14 ] -= drawSurf->space->modelDepthHack;
+	} else if ( drawSurf->space->weaponDepthHack ) {
+		block.projection[ 14 ] *= 0.25f;
+	}
+	myGlMultMatrix( block.modelView.data(), block.projection.data(), block.modelViewProjection.data() );
+	VK_FixupClipSpaceZ( block.modelViewProjectionVulkan.data(), block.modelViewProjection.data() );
+	// The ARB material path loads no texture matrix.
+	for ( int i = 0; i < oq4material::MaxTextures; i++ ) {
+		for ( int j = 0; j < 4; j++ ) {
+			block.textureMatrix[ i ][ j * 5 ] = 1.0f;
+		}
+	}
+	for ( int i = 0; i < 4; i++ ) {
+		block.stageColor[ i ] = regs[ stage->color.registers[ i ] ];
+	}
+	// RB_SetStageVertexColorPointer always enables the color array.
+	block.controls[ 0 ] = 1.0f;
+	if ( stage->hasAlphaTest ) {
+		block.controls[ 1 ] = static_cast<float>( stage->alphaTestMode == GL_LESS ? oq4material::AlphaCompare::Less
+			: stage->alphaTestMode == GL_EQUAL ? oq4material::AlphaCompare::Equal : oq4material::AlphaCompare::GreaterEqual );
+		block.controls[ 2 ] = regs[ stage->alphaTestRegister ];
+	}
+	block.controls[ 3 ] = static_cast<float>( VK_Exec_ActiveFramebufferHeight() );
+	return true;
+}
+
+// Draws an authored ARB vertex/fragment program pair through the GLSL
+// translation (ARBTranslator.cpp). Either side may be the fixed-function
+// stage it replaces.
+static bool VK_Exec_DrawARBProgramStage( const viewDef_t *viewDef,
+		const drawSurf_t *drawSurf, const srfTriangles_t *tri,
+		bool worldDepthState, const shaderStage_t *stage, int stageNum ) {
+	const newShaderStage_t *newStage = stage->newStage;
+	const char *vertexFile = newStage->vertexProgram != 0
+			? VK_MaterialProgramFileName( GL_VERTEX_PROGRAM_ARB, newStage->vertexProgram ) : NULL;
+	const char *fragmentFile = newStage->fragmentProgram != 0
+			? VK_MaterialProgramFileName( GL_FRAGMENT_PROGRAM_ARB, newStage->fragmentProgram ) : NULL;
+	if ( vertexFile == NULL && fragmentFile == NULL ) {
+		return false;
+	}
+	const std::vector<oq4material::ARBParameter> *parameters =
+			VK_MaterialPrograms_ARBParameters( vertexFile, fragmentFile );
+	if ( parameters == NULL ) {
+		return false;
+	}
+	oq4material::UniformBlock block = {};
+	if ( !VK_Exec_BuildARBMaterialUniforms( viewDef, drawSurf, stage, *parameters, block ) ) {
+		return false;
+	}
+	const bool separateColor = VK_Exec_BindGLSLStageColor( drawSurf, tri, stage, stageNum, true );
+	if ( !VK_MaterialPrograms_BindARB( vertexFile, fragmentFile, newStage, block,
+			stage->drawStateBits, separateColor ) ) {
+		return false;
+	}
+	VK_Exec_SetProgramStageDepthState( vkExec.cmd, stage, worldDepthState );
+	VK_Device_CountDrawIndexed( tri->numIndexes, tri->numVerts );
+	vkCmdDrawIndexed( vkExec.cmd, tri->numIndexes, 1, 0, 0, 0 );
+	return true;
+}
+
+// Draws the stock ARB newStage families for which Vulkan has native SPIR-V,
+// and translates every other authored program. The stable family query
+// deliberately avoids depending on parser handle allocation order.
 static void VK_Exec_DrawProgramStage( const viewDef_t *viewDef,
 		const drawSurf_t *drawSurf, const srfTriangles_t *tri, const float mvp[ 16 ],
 		bool worldDepthState, const shaderStage_t *stage, int stageNum ) {
@@ -10292,17 +10666,33 @@ static void VK_Exec_DrawProgramStage( const viewDef_t *viewDef,
 	if ( family == VK_MATERIAL_PROGRAM_FAMILY_UNKNOWN ) {
 		family = vertexFamily;
 	}
-	if ( family == VK_MATERIAL_PROGRAM_FAMILY_UNKNOWN
-			|| ( fragmentFamily != VK_MATERIAL_PROGRAM_FAMILY_UNKNOWN
-				&& vertexFamily != VK_MATERIAL_PROGRAM_FAMILY_UNKNOWN
-				&& fragmentFamily != vertexFamily ) ) {
-		static bool loggedUnknownProgram = false;
-		if ( !loggedUnknownProgram ) {
-			loggedUnknownProgram = true;
-			common->Printf( "Vulkan: unsupported ARB material program skipped (%s)\n",
-					shader->GetName() );
+	// A native family implements a complete stock pair. Any program without
+	// one, on either side, means the pair is authored and is translated.
+	const bool authoredVertex = newStage->vertexProgram != 0
+			&& vertexFamily == VK_MATERIAL_PROGRAM_FAMILY_UNKNOWN;
+	const bool authoredFragment = newStage->fragmentProgram != 0
+			&& fragmentFamily == VK_MATERIAL_PROGRAM_FAMILY_UNKNOWN;
+	const bool mixedFamilies = fragmentFamily != VK_MATERIAL_PROGRAM_FAMILY_UNKNOWN
+			&& vertexFamily != VK_MATERIAL_PROGRAM_FAMILY_UNKNOWN
+			&& fragmentFamily != vertexFamily;
+	const int translation = r_vkARBTranslation.GetInteger();
+	const bool authored = family == VK_MATERIAL_PROGRAM_FAMILY_UNKNOWN || authoredVertex
+			|| authoredFragment || mixedFamilies;
+	if ( authored || translation >= 2 ) {
+		if ( translation >= 1 && VK_Exec_DrawARBProgramStage( viewDef, drawSurf, tri,
+				worldDepthState, stage, stageNum ) ) {
+			return;
 		}
-		return;
+		if ( authored ) {
+			static bool loggedUnknownProgram = false;
+			if ( !loggedUnknownProgram ) {
+				loggedUnknownProgram = true;
+				common->Printf( "Vulkan: unsupported ARB material program skipped (%s)\n",
+						shader->GetName() );
+			}
+			return;
+		}
+		// A stock pair whose diagnostic translation failed keeps its native path.
 	}
 
 	if ( family == VK_MATERIAL_PROGRAM_FAMILY_MONOCHROME ) {

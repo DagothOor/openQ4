@@ -28,12 +28,16 @@ struct UniformBlock {
     // Vulkan clip conversion exactly; authored matrix reads retain GL space.
     std::array<float, 16> modelViewProjection;
     std::array<float, 16> modelViewProjectionVulkan;
+    // x: one bit per texture slot whose image stores rows top-down (Vulkan
+    // render targets); authored 2D coordinates are flipped for those images.
+    std::array<float, 4> textureOrientation;
 };
-static_assert(sizeof(UniformBlock) == 1312, "material uniform std140 ABI");
+static_assert(sizeof(UniformBlock) == 1328, "material uniform std140 ABI");
 static_assert(offsetof(UniformBlock, modelView) == 512 && offsetof(UniformBlock, projection) == 576 &&
     offsetof(UniformBlock, textureMatrix) == 640 && offsetof(UniformBlock, stageColor) == 1152 &&
     offsetof(UniformBlock, controls) == 1168 && offsetof(UniformBlock, modelViewProjection) == 1184 &&
-    offsetof(UniformBlock, modelViewProjectionVulkan) == 1248, "material uniform std140 offsets");
+    offsetof(UniformBlock, modelViewProjectionVulkan) == 1248 && offsetof(UniformBlock, textureOrientation) == 1312,
+    "material uniform std140 offsets");
 
 enum class AlphaCompare { Disabled, Greater, Less, GreaterEqual, Equal };
 

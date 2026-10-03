@@ -146,6 +146,7 @@ VkPipelineLayout VK_Exec_ShadowInteractionPipelineLayout( void );
 // source-alpha variants of the three above, for native ordered transparency
 VkPipeline VK_Exec_TransparentInteractionPipeline( int shadowMode, bool composite );
 VkPipeline VK_Exec_StencilShadowPipeline( void );
+VkPipeline VK_Exec_StencilShadowDebugPipeline( bool lines );
 VkPipelineLayout VK_Exec_BasePipelineLayout( void );
 VkPipeline VK_Exec_FogPipeline( void );
 VkPipeline VK_Exec_BlendLightPipeline( int stateBits );
@@ -336,6 +337,7 @@ typedef struct vkInterPass_s {
 	int					fogDrawCount;
 	int					blendDrawCount;
 	int					fogSkipCount;		// prim-batch / cache-less fog+blend surfs skipped
+	bool				enhancedChain;		// r_enhancedMaterials owns the current light chain
 } vkInterPass_t;
 
 static vkInterPass_t interPass;
@@ -3300,17 +3302,25 @@ static void VK_DrawSingleInteractionMode( const drawInteraction_t *din,
 	push.c[ 0 ] = parallaxScale;
 	push.c[ 1 ] = parallaxBias;
 	push.c[ 2 ] = parallax && !nativePBR ? 1.0f : 0.0f;
+	const bool enhanced = !nativePBR && interPass.enhancedChain;
 	if ( nativePBR ) {
 		push.c[ 0 ] = (float)pbr.dataFlags;
 		push.c[ 1 ] = (float)pbr.normalFormat;
 		push.c[ 3 ] = r_vkPBRSpecularAA.GetBool() ? 1.0f : 0.0f;
+	} else if ( enhanced ) {
+		push.c[ 3 ] = 1.0f;	// enhanced_material.glsl
 	}
 	// Diagnostics and emission have one ambient/coverage owner. A light must
 	// never add its own copy, including when multiple lights touch the surface.
+	// A classic draw carries the r_enhancedMaterials tunables in d.yzw, the
+	// values RB_MaterialInteractionSetEnhancementUniforms uploads on OpenGL.
 	push.d[ 0 ] = nativePBR ? ( r_pbrDebug.GetInteger() != 0 ? 3.0f : 1.0f ) : 0.0f;
-	push.d[ 1 ] = nativePBR ? pbr.metallic : 0.0f;
-	push.d[ 2 ] = nativePBR ? pbr.roughness : 0.0f;
-	push.d[ 3 ] = nativePBR ? pbr.normalScale : 1.0f;
+	push.d[ 1 ] = nativePBR ? pbr.metallic
+		: enhanced ? Max( 0.0f, r_enhancedMaterialSpecularBoost.GetFloat() ) : 0.0f;
+	push.d[ 2 ] = nativePBR ? pbr.roughness
+		: enhanced ? idMath::ClampFloat( 0.0f, 1.0f, r_enhancedMaterialFresnel.GetFloat() ) : 0.0f;
+	push.d[ 3 ] = nativePBR ? pbr.normalScale
+		: enhanced ? idMath::ClampFloat( 0.5f, 2.0f, r_enhancedMaterialNormalScale.GetFloat() ) : 1.0f;
 
 	// dynamic offsets consume in set order: set 6 interaction slice, then
 	// (shadowed only) set 7 binding 1 shadow slice
@@ -4131,8 +4141,9 @@ CT_FRONT_SIDED ops to frontSidedFace = isMirror ? GL_FRONT : GL_BACK
 (:7321), so those ops land on VK_STENCIL_FACE_BACK_BIT in non-mirror views
 and flip for mirrors.
 
-Documented Phase G1 gap:
-- r_showShadows debug visualization: Phase I rendertools.
+r_showShadows replaces the stencil writes with the volumes drawn in color,
+exactly as RB_T_Shadow does: no stencil is written, so the light's receivers
+draw unshadowed while the volumes are visible.
 ====================
 */
 static bool VK_StencilShadowPass( const drawSurf_t *drawSurfs ) {
@@ -4146,14 +4157,27 @@ static bool VK_StencilShadowPass( const drawSurf_t *drawSurfs ) {
 	VkCommandBuffer cmd = interPass.cmd;
 	bool complete = true;
 
-	vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, interPass.pipelineStencilShadow );
+	// RB_StencilShadowPass: 2 draws filled and additive under depth LESS
+	// without depth writes; 1 and 3 draw lines that write depth, test ALWAYS.
+	const int showShadows = r_showShadows.GetInteger();
+	VkPipeline debugPipeline = VK_NULL_HANDLE;
+	if ( showShadows != 0 ) {
+		debugPipeline = VK_Exec_StencilShadowDebugPipeline( showShadows != 2 );
+	}
+	vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			debugPipeline != VK_NULL_HANDLE ? debugPipeline : interPass.pipelineStencilShadow );
 
 	// GL_State(GLS_DEPTHMASK | GLS_COLORMASK | GLS_ALPHAMASK |
 	// GLS_DEPTHFUNC_LESS): color writes are off in the pipeline; depth
 	// tests LEQUAL with writes off
 	vkCmdSetDepthTestEnable( cmd, VK_TRUE );
-	vkCmdSetDepthWriteEnable( cmd, VK_FALSE );
-	vkCmdSetDepthCompareOp( cmd, VK_COMPARE_OP_LESS_OR_EQUAL );
+	vkCmdSetDepthWriteEnable( cmd, debugPipeline != VK_NULL_HANDLE && showShadows != 2 ? VK_TRUE : VK_FALSE );
+	vkCmdSetDepthCompareOp( cmd, debugPipeline != VK_NULL_HANDLE && showShadows != 2
+			? VK_COMPARE_OP_ALWAYS : VK_COMPARE_OP_LESS_OR_EQUAL );
+	if ( debugPipeline != VK_NULL_HANDLE ) {
+		// The visualization replaces the stencil writes (glDisable(GL_STENCIL_TEST)).
+		vkCmdSetStencilTestEnable( cmd, VK_FALSE );
+	}
 
 	// glPolygonOffset(r_shadowPolygonFactor, -r_shadowPolygonOffset): the
 	// defaults (0, -1) give constant +1, slope 0 — bias IS on by default.
@@ -4297,6 +4321,40 @@ static bool VK_StencilShadowPass( const drawSurf_t *drawSurfs ) {
 			vkCmdSetDepthBounds( cmd, minDepth, maxDepth );
 		}
 
+		if ( debugPipeline != VK_NULL_HANDLE && packedPrimBatches ) {
+			continue;	// packed MD5R volumes stream through their own stencil path
+		}
+		if ( debugPipeline != VK_NULL_HANDLE ) {
+			// RB_T_Shadow's colors: mode 3 separates external (green) from
+			// internal (red) volumes; otherwise infinite turbo volumes are red
+			// and finite ones green, shaded by which caps were drawn.
+			float color[ 3 ];
+			if ( showShadows == 3 ) {
+				color[ 0 ] = external ? 0.1f : 1.0f; color[ 1 ] = external ? 1.0f : 0.1f; color[ 2 ] = 0.1f;
+			} else if ( tri->shadowCapPlaneBits & SHADOW_CAP_INFINITE ) {
+				color[ 0 ] = 1.0f; color[ 1 ] = numIndexes == tri->numIndexes ? 0.1f : 0.4f; color[ 2 ] = 0.1f;
+			} else if ( numIndexes == tri->numIndexes ) {
+				color[ 0 ] = 0.1f; color[ 1 ] = 1.0f; color[ 2 ] = 0.1f;
+			} else if ( numIndexes == tri->numShadowIndexesNoFrontCaps ) {
+				color[ 0 ] = 0.1f; color[ 1 ] = 1.0f; color[ 2 ] = 0.6f;
+			} else {
+				color[ 0 ] = 0.6f; color[ 1 ] = 1.0f; color[ 2 ] = 0.1f;
+			}
+			const float overBright = backEnd.overBright > 0.0f ? backEnd.overBright : 1.0f;
+			for ( int c = 0; c < 3; c++ ) {
+				push.b[ c ] = color[ c ] / overBright;
+			}
+			push.b[ 3 ] = 1.0f;
+			vkCmdPushConstants( cmd, interPass.layoutStencilShadow,
+					VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), &push );
+			vkCmdDrawIndexed( cmd, (uint32_t)numIndexes, 1, 0, 0, 0 );
+			interPass.volumeDrawCount++;
+			backEnd.pc.c_shadowElements++;
+			backEnd.pc.c_shadowIndexes += numIndexes;
+			backEnd.pc.c_shadowVertexes += tri->numVerts;
+			continue;
+		}
+
 #if defined( _MD5R_SUPPORT ) || defined( Q4SDK_MD5R )
 		if ( packedPrimBatches ) {
 			if ( !VK_Inter_DrawPackedShadowSurface( surf, packedCapInclusive, external,
@@ -4352,6 +4410,10 @@ static bool VK_StencilShadowPass( const drawSurf_t *drawSurfs ) {
 	}
 	vkCmdSetStencilOp( cmd, VK_STENCIL_FACE_FRONT_AND_BACK, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP,
 			VK_STENCIL_OP_KEEP, VK_COMPARE_OP_GREATER_OR_EQUAL );
+	if ( debugPipeline != VK_NULL_HANDLE ) {
+		vkCmdSetStencilTestEnable( cmd, VK_TRUE );
+		vkCmdSetDepthWriteEnable( cmd, VK_FALSE );
+	}
 	return complete;
 }
 
@@ -4584,8 +4646,45 @@ static void VK_CreateSingleDrawInteractions( const drawSurf_t *surf ) {
 VK_DrawInteractionChain
 ====================
 */
+// r_enhancedMaterials eligibility, mirroring draw_arb2.cpp: the whole light
+// chain must have ambient caches, no GPU-posed packed MD5R and no custom GLSL
+// lighting, or every surface of the chain keeps the stock interaction.
+static bool VK_EnhancedMaterialSurfaceEligible( const drawSurf_t *surf ) {
+	if ( surf == NULL || surf->geo == NULL || surf->space == NULL || surf->material == NULL
+			|| surf->shaderRegisters == NULL ) {
+		return false;
+	}
+	const srfTriangles_t *tri = surf->geo;
+	if ( tri->numIndexes <= 0 || tri->ambientCache == NULL
+			|| surf->material->HasActiveCustomGLSLLighting( surf->shaderRegisters ) ) {
+		return false;
+	}
+#if defined( _MD5R_SUPPORT ) || defined( Q4SDK_MD5R )
+	const srfTriangles_t *ambientTri = tri->ambientSurface != NULL ? tri->ambientSurface : tri;
+	if ( tri->primBatchMesh != NULL || ambientTri->primBatchMesh != NULL
+			|| tri->skinToModelTransforms != NULL || tri->numSkinToModelTransforms > 0
+			|| ambientTri->skinToModelTransforms != NULL || ambientTri->numSkinToModelTransforms > 0 ) {
+		return false;
+	}
+#endif
+	return true;
+}
+
+static bool VK_EnhancedMaterialChainEligible( const drawSurf_t *chain ) {
+	if ( !r_enhancedMaterials.GetBool() || chain == NULL ) {
+		return false;
+	}
+	for ( const drawSurf_t *surf = chain; surf != NULL; surf = surf->nextOnLight ) {
+		if ( !VK_EnhancedMaterialSurfaceEligible( surf ) ) {
+			return false;
+		}
+	}
+	return true;
+}
+
 static void VK_DrawInteractionChain( const drawSurf_t *surf, bool authoredOnly = false ) {
 	const drawSurf_t *chain = surf;
+	interPass.enhancedChain = VK_EnhancedMaterialChainEligible( chain );
 	for ( ; surf ; surf = surf->nextOnLight ) {
 		const bool authored = VK_MaterialPrograms_NeedsStencil( surf->material, surf->shaderRegisters );
 		if ( authoredOnly && !authored ) { continue; }
@@ -4604,6 +4703,8 @@ static void VK_DrawInteractionChain( const drawSurf_t *surf, bool authoredOnly =
 static void VK_DrawAuthoredStencilReceivers( const viewLight_t *light, const drawSurf_t *chain,
 		bool global, bool translucent, bool stencilReady ) {
 	const VkCommandBuffer cmd = interPass.cmd;
+	// A chain with custom lighting is never enhanced (draw_arb2.cpp).
+	interPass.enhancedChain = false;
 	VK_Inter_SelectShadowMode( NULL, NULL );
 	// Match GL's custom-receiver fallback: its caster contract is the retail
 	// stencil chain, not the expanded shadow-map-only caster set. The front
@@ -4714,6 +4815,7 @@ static void VK_PBRTransparentPrepareView( const viewDef_t *viewDef ) {
 				continue;
 			}
 			backEnd.vLight = light;
+			interPass.enhancedChain = false;	// native PBR records only
 			for ( const drawSurf_t *surf = light->translucentInteractions;
 					surf != NULL && !vkPBRTransparentView.failed; surf = surf->nextOnLight ) {
 				if ( VK_PBRTransparentFindSurface( surf ) != NULL ) {

@@ -23,11 +23,16 @@ struct Program {
     oq4material::CompileResult compiled;
     VkShaderModule vertex = VK_NULL_HANDLE, fragment = VK_NULL_HANDLE;
     bool sourcePairFound = false, valid = false, warnedResource = false, loggedDraw = false, loggedLightingDraw = false;
+    // ARB assembly translated to compatibility GLSL; parameters[i] feeds
+    // uniform slot i and textures bind by texture image unit.
+    bool arb = false;
+    std::vector<oq4material::ARBParameter> arbParameters;
     int identity = 0;
 };
 std::vector<std::unique_ptr<Program>> programs;
 std::map<std::string, int> currentPrograms;
 std::map<std::string, vkGLSLProgramFamily_t> nativeFamilies;
+std::map<std::string, bool> arbTranslatable;
 size_t compilerBytes = 0;
 bool warnedCapacity = false;
 VkDescriptorSetLayout uniformLayout = VK_NULL_HANDLE;
@@ -59,9 +64,11 @@ bool CacheFull() {
     return true;
 }
 
+const char *Kind( const Program &program ) { return program.arb ? "ARB" : "GLSL"; }
+
 bool Fail( Program &program, const char *reason ) {
     if ( !program.warnedResource ) {
-        common->Warning( "Vulkan authored GLSL '%s': %s", program.name.c_str(), reason );
+        common->Warning( "Vulkan authored %s '%s': %s", Kind( program ), program.name.c_str(), reason );
         program.warnedResource = true;
     }
     return false;
@@ -150,6 +157,92 @@ Program *Find( const newShaderStage_t *stage ) {
         common->Warning( "Vulkan authored GLSL '%s': %s", program->name.c_str(), program->compiled.diagnostic.c_str() );
     } else {
         common->Printf( "Vulkan: compiled authored GLSL '%s' (%s, %s)\n", program->name.c_str(), vertexPath.c_str(), fragmentPath.c_str() );
+    }
+    currentPrograms[key] = program->identity;
+    programs.push_back( std::move( program ) );
+    return programs.back().get();
+}
+
+// Reads glprogs/<file>. An empty name selects the fixed-function stage.
+bool ReadARBSource( const char *file, std::string &source ) {
+    source.clear();
+    if ( file == NULL || file[0] == '\0' ) { return true; }
+    idStr path = "glprogs/";
+    path += file;
+    path.BackSlashesToSlashes();
+    void *buffer = NULL;
+    const int length = fileSystem->ReadFile( path.c_str(), &buffer, NULL );
+    if ( buffer == NULL || length <= 0 ) {
+        if ( buffer != NULL ) { fileSystem->FreeFile( buffer ); }
+        return false;
+    }
+    source.assign( static_cast<const char *>( buffer ), static_cast<size_t>( length ) );
+    fileSystem->FreeFile( buffer );
+    return true;
+}
+
+Program *FindARB( const char *vertexFile, const char *fragmentFile ) {
+    const std::string vertexName = vertexFile != NULL ? vertexFile : "";
+    const std::string fragmentName = fragmentFile != NULL ? fragmentFile : "";
+    if ( vertexName.empty() && fragmentName.empty() ) { return NULL; }
+    const std::string key = "arb|" + vertexName + "|" + fragmentName;
+    auto found = currentPrograms.find( key );
+    if ( found != currentPrograms.end() ) { return programs[found->second].get(); }
+    oq4material::ARBTranslateRequest request;
+    request.vertexName = vertexName.empty() ? "" : "glprogs/" + vertexName;
+    request.fragmentName = fragmentName.empty() ? "" : "glprogs/" + fragmentName;
+    const bool vertexRead = ReadARBSource( vertexFile, request.vertexSource );
+    const bool fragmentRead = ReadARBSource( fragmentFile, request.fragmentSource );
+    const bool sourcesFound = vertexRead && fragmentRead;
+    // Reuse precedes the capacity check, as for authored GLSL.
+    for ( size_t i = 0; i < programs.size(); ++i ) {
+        Program &old = *programs[i];
+        if ( old.key == key && old.sourcePairFound == sourcesFound
+            && old.vertexSource == request.vertexSource && old.fragmentSource == request.fragmentSource ) {
+            currentPrograms[key] = static_cast<int>( i );
+            if ( !old.valid ) { common->Warning( "Vulkan authored ARB '%s': %s", old.name.c_str(), old.compiled.diagnostic.c_str() ); }
+            return &old;
+        }
+    }
+    if ( CacheFull() ) { return NULL; }
+    auto program = std::make_unique<Program>();
+    program->arb = true;
+    program->name = vertexName.empty() ? fragmentName
+        : fragmentName.empty() || vertexName == fragmentName ? vertexName : vertexName + " + " + fragmentName;
+    program->key = key;
+    program->identity = static_cast<int>( programs.size() );
+    program->sourcePairFound = sourcesFound;
+    program->vertexSource = request.vertexSource;
+    program->fragmentSource = request.fragmentSource;
+    if ( !sourcesFound ) {
+        program->compiled.diagnostic = !vertexRead ? "glprogs/" + vertexName + ": file not found"
+            : "glprogs/" + fragmentName + ": file not found";
+    } else if ( compilerBytes + request.vertexSource.size() + request.fragmentSource.size() >= MaxCompilerBytes ) {
+        program->compiled.diagnostic = "material compiler storage exhausted";
+    } else {
+        oq4material::ARBTranslation translation;
+        if ( !oq4material::TranslateARB( request, translation ) ) {
+            program->compiled.diagnostic = translation.diagnostic;
+        } else {
+            program->valid = oq4material::CompileGLSL( translation.request, program->compiled );
+            program->arbParameters = translation.parameters;
+        }
+    }
+    const size_t bytes = program->vertexSource.size() + program->fragmentSource.size() + program->compiled.diagnostic.size()
+        + program->compiled.vertexSource.size() + program->compiled.fragmentSource.size()
+        + (program->compiled.vertex.size() + program->compiled.fragment.size()) * sizeof( uint32_t );
+    if ( bytes > MaxCompilerBytes - Min( compilerBytes, MaxCompilerBytes ) ) {
+        program->compiled = {};
+        std::string().swap( program->vertexSource );
+        std::string().swap( program->fragmentSource );
+        program->arbParameters.clear();
+        program->compiled.diagnostic = "material compiler storage exhausted";
+        program->valid = false;
+    } else { compilerBytes += bytes; }
+    if ( !program->valid ) {
+        common->Warning( "Vulkan authored ARB '%s': %s", program->name.c_str(), program->compiled.diagnostic.c_str() );
+    } else {
+        common->Printf( "Vulkan: translated authored ARB '%s'\n", program->name.c_str() );
     }
     currentPrograms[key] = program->identity;
     programs.push_back( std::move( program ) );
@@ -256,14 +349,16 @@ bool VK_MaterialPrograms_NeedsStencil( const idMaterial *material, const float *
 void VK_MaterialPrograms_Reload() {
     currentPrograms.clear();
     nativeFamilies.clear();
+    arbTranslatable.clear();
     for ( auto &program : programs ) { program->warnedResource = false; }
     common->Printf( "Vulkan: authored GLSL sources will be reloaded on use\n" );
 }
 
 void VK_MaterialPrograms_Report() {
-    common->Printf( "Vulkan authored GLSL programs: %d versions, %zu compiler bytes\n", static_cast<int>( programs.size() ), compilerBytes );
+    common->Printf( "Vulkan authored GLSL/ARB programs: %d versions, %zu compiler bytes\n", static_cast<int>( programs.size() ), compilerBytes );
     for ( const auto &program : programs ) {
-        common->Printf( "  %s %s%s\n", program->valid ? "compiled" : "invalid", program->name.c_str(), program->loggedDraw ? " (drawn)" : "" );
+        common->Printf( "  %s %s %s%s\n", program->valid ? "compiled" : "invalid", Kind( *program ), program->name.c_str(),
+            program->loggedDraw ? " (drawn)" : "" );
     }
 }
 
@@ -272,10 +367,12 @@ void VK_MaterialPrograms_BeginFrame( int slot ) {
     poolReady[slot] = pools[slot] == VK_NULL_HANDLE || vkResetDescriptorPool( vkCtx.device, pools[slot], 0 ) == VK_SUCCESS;
 }
 
-bool VK_MaterialPrograms_Bind( const newShaderStage_t *stage,
+namespace {
+// Records the program's images and draw state into the active command buffer.
+// images[i] is consulted only for slots the compiled program samples.
+bool BindProgram( Program *program, idImage *const images[oq4material::MaxTextures],
         const oq4material::UniformBlock &uniforms, int stateBits, bool separateColor,
         const drawInteraction_t *interaction ) {
-    Program *program = Find( stage );
     if ( program == NULL || !program->valid || !VK_Exec_MainRenderingScopeOpen() ) { return false; }
     if ( !CreateLayouts() || !CreateModule( program->compiled.vertex, program->vertex )
         || !CreateModule( program->compiled.fragment, program->fragment ) ) { return Fail( *program, "shader resource allocation failed" ); }
@@ -289,24 +386,28 @@ bool VK_MaterialPrograms_Bind( const newShaderStage_t *stage,
         info.maxSets = MaxDraws * 2; info.poolSizeCount = 2; info.pPoolSizes = sizes;
         if ( vkCreateDescriptorPool( vkCtx.device, &info, NULL, &pools[slot] ) != VK_SUCCESS ) { return Fail( *program, "frame descriptor pool allocation failed" ); }
     }
-    VkDescriptorImageInfo images[oq4material::MaxTextures] = {};
+    VkDescriptorImageInfo descriptors[oq4material::MaxTextures] = {};
+    // Images Vulkan rendered keep top-down rows; the compiled program flips
+    // its 2D coordinates for those slots (GLSLCompiler.cpp FlipHelpers).
+    unsigned flipMask = 0;
     for ( int i = 0; i < oq4material::MaxTextures; ++i ) {
         const bool used = (program->compiled.textureMask & (1u << i)) != 0;
-        idImage *image = used ? RB_ResolveGLSLShaderTextureImage( stage, i, interaction ) : globalImages->whiteImage;
+        idImage *image = used ? images[i] : globalImages->whiteImage;
         if ( image == NULL ) { return Fail( *program, "missing shader texture" ); }
-        if ( used ) { image->SetSamplerState( stage->shaderTextureFilters[i], stage->shaderTextureRepeats[i] ); }
         const bool cube = (program->compiled.cubeTextureMask & (1u << i)) != 0;
         if ( VK_Exec_ImageDescriptor( image->GetDeviceHandle(), !cube ) == VK_NULL_HANDLE ) { return Fail( *program, "shader texture is not resident" ); }
         const vkImageEntry_t *entry = VK_Image_GetEntry( image->GetDeviceHandle() );
         if ( entry == NULL || entry->isCube != cube || entry->samples != VK_SAMPLE_COUNT_1_BIT ) { return Fail( *program, "shader texture type/sample mismatch" ); }
-        if ( used && entry->materialSampleFlipY ) { return Fail( *program, "flipped render-target texture sampling is not yet supported" ); }
-        images[i].sampler = entry->sampler; images[i].imageView = entry->view; images[i].imageLayout = entry->layout;
+        if ( used && !cube && entry->materialSampleFlipY ) { flipMask |= 1u << i; }
+        descriptors[i].sampler = entry->sampler; descriptors[i].imageView = entry->view; descriptors[i].imageLayout = entry->layout;
     }
+    oq4material::UniformBlock block = uniforms;
+    block.textureOrientation[0] = static_cast<float>( flipMask );
     VkPipeline pipeline = VK_Exec_AuthoredMaterialPipeline( program->identity,
         program->vertex, program->fragment, pipelineLayout, stateBits, separateColor, program->compiled.vertexInputMask );
     if ( pipeline == VK_NULL_HANDLE ) { return Fail( *program, "material pipeline allocation failed" ); }
     VkDescriptorBufferInfo buffer = {};
-    if ( !VK_Exec_AuthoredUniformAlloc( &uniforms, sizeof( uniforms ), buffer ) ) { return Fail( *program, "material uniform ring exhausted" ); }
+    if ( !VK_Exec_AuthoredUniformAlloc( &block, sizeof( block ), buffer ) ) { return Fail( *program, "material uniform ring exhausted" ); }
     const VkDescriptorSetLayout layouts[] = {uniformLayout, textureLayout};
     VkDescriptorSet sets[2] = {};
     VkDescriptorSetAllocateInfo allocate = {};
@@ -320,21 +421,82 @@ bool VK_MaterialPrograms_Bind( const newShaderStage_t *stage,
         writes[i].dstSet = sets[i == 0 ? 0 : 1]; writes[i].dstBinding = i == 0 ? 0 : i - 1;
         writes[i].descriptorCount = 1;
         writes[i].descriptorType = i == 0 ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        if ( i == 0 ) { writes[i].pBufferInfo = &buffer; } else { writes[i].pImageInfo = &images[i - 1]; }
+        if ( i == 0 ) { writes[i].pBufferInfo = &buffer; } else { writes[i].pImageInfo = &descriptors[i - 1]; }
     }
     vkUpdateDescriptorSets( vkCtx.device, 1 + oq4material::MaxTextures, writes, 0, NULL );
     const VkCommandBuffer cmd = VK_Exec_ActiveCmd();
     vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline );
     vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 2, sets, 0, NULL );
     if ( !program->loggedDraw ) {
-        common->Printf( "Vulkan: drawing authored GLSL '%s'\n", program->name.c_str() );
+        common->Printf( "Vulkan: drawing authored %s '%s'\n", Kind( *program ), program->name.c_str() );
         program->loggedDraw = true;
     }
     if ( interaction != NULL && !program->loggedLightingDraw ) {
-        common->Printf( "Vulkan: drawing authored GLSL lighting '%s'\n", program->name.c_str() );
+        common->Printf( "Vulkan: drawing authored %s lighting '%s'\n", Kind( *program ), program->name.c_str() );
         program->loggedLightingDraw = true;
     }
     return true;
+}
+} // namespace
+
+bool VK_MaterialPrograms_Bind( const newShaderStage_t *stage,
+        const oq4material::UniformBlock &uniforms, int stateBits, bool separateColor,
+        const drawInteraction_t *interaction ) {
+    Program *program = Find( stage );
+    if ( program == NULL || !program->valid ) { return false; }
+    idImage *images[oq4material::MaxTextures] = {};
+    for ( int i = 0; i < oq4material::MaxTextures; ++i ) {
+        if ( (program->compiled.textureMask & (1u << i)) == 0 ) { continue; }
+        images[i] = RB_ResolveGLSLShaderTextureImage( stage, i, interaction );
+        if ( images[i] != NULL ) { images[i]->SetSamplerState( stage->shaderTextureFilters[i], stage->shaderTextureRepeats[i] ); }
+    }
+    return BindProgram( program, images, uniforms, stateBits, separateColor, interaction );
+}
+
+const std::vector<oq4material::ARBParameter> *VK_MaterialPrograms_ARBParameters(
+        const char *vertexFile, const char *fragmentFile ) {
+    Program *program = FindARB( vertexFile, fragmentFile );
+    return program != NULL && program->valid ? &program->arbParameters : NULL;
+}
+
+bool VK_MaterialPrograms_BindARB( const char *vertexFile, const char *fragmentFile,
+        const newShaderStage_t *stage, const oq4material::UniformBlock &uniforms, int stateBits, bool separateColor ) {
+    Program *program = FindARB( vertexFile, fragmentFile );
+    if ( program == NULL || !program->valid || stage == NULL ) { return false; }
+    idImage *images[oq4material::MaxTextures] = {};
+    for ( int unit = 0; unit < oq4material::MaxTextures; ++unit ) {
+        if ( (program->compiled.textureMask & (1u << unit)) == 0 ) { continue; }
+        // fragmentMap images keep their own sampler state, as glBind does.
+        // Light images only exist in an interaction; an ambient stage that
+        // names one samples white instead of whatever GL left bound.
+        if ( unit < stage->numFragmentProgramImages && stage->fragmentProgramImages[unit] != NULL ) {
+            images[unit] = stage->fragmentProgramImages[unit];
+        } else if ( unit < MAX_FRAGMENT_IMAGES && ( stage->fragmentProgramBindings[unit] == LEGACY_FRAGMENT_BINDING_LIGHT_FALLOFF
+            || stage->fragmentProgramBindings[unit] == LEGACY_FRAGMENT_BINDING_LIGHT_IMAGE ) ) {
+            images[unit] = globalImages->whiteImage;
+        } else {
+            return Fail( *program, "fragment program samples a texture unit the material has no fragmentMap for" );
+        }
+    }
+    return BindProgram( program, images, uniforms, stateBits, separateColor, NULL );
+}
+
+bool VK_MaterialPrograms_ARBTranslatable( unsigned int target, const char *file ) {
+    if ( file == NULL || file[0] == '\0' ) { return false; }
+    const std::string key = std::string( target == GL_VERTEX_PROGRAM_ARB ? "v|" : "f|" ) + file;
+    const auto cached = arbTranslatable.find( key );
+    if ( cached != arbTranslatable.end() ) { return cached->second; }
+    oq4material::ARBTranslateRequest request;
+    std::string source;
+    bool translatable = ReadARBSource( file, source );
+    if ( translatable ) {
+        if ( target == GL_VERTEX_PROGRAM_ARB ) { request.vertexName = file; request.vertexSource = source; }
+        else { request.fragmentName = file; request.fragmentSource = source; }
+        oq4material::ARBTranslation translation;
+        translatable = oq4material::TranslateARB( request, translation );
+    }
+    if ( arbTranslatable.size() < MaxPrograms ) { arbTranslatable.emplace( key, translatable ); }
+    return translatable;
 }
 
 void VK_MaterialPrograms_Shutdown() {
@@ -350,6 +512,6 @@ void VK_MaterialPrograms_Shutdown() {
     if ( uniformLayout != VK_NULL_HANDLE ) { vkDestroyDescriptorSetLayout( vkCtx.device, uniformLayout, NULL ); }
     if ( textureLayout != VK_NULL_HANDLE ) { vkDestroyDescriptorSetLayout( vkCtx.device, textureLayout, NULL ); }
     pipelineLayout = VK_NULL_HANDLE; uniformLayout = textureLayout = VK_NULL_HANDLE;
-    programs.clear(); currentPrograms.clear(); nativeFamilies.clear(); compilerBytes = 0; warnedCapacity = false;
+    programs.clear(); currentPrograms.clear(); nativeFamilies.clear(); arbTranslatable.clear(); compilerBytes = 0; warnedCapacity = false;
 }
 #endif

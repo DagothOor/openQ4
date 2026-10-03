@@ -59,6 +59,14 @@ typedef struct vkDeviceContext_s {
 	// state unknown. Never reuse them or wait an unsubmitted frame fence;
 	// only a new full device lifetime releases this latch.
 	bool				presentationBlocked;
+	// The automatic renderer restart for a latched device has been queued.
+	bool				presentationRecoveryQueued;
+	// The surface reported a zero extent (minimized); swapchain recreation
+	// waits for a real size instead of idling the device every attempt.
+	bool				surfaceExtentZero;
+	// A surface query or swapchain create reported VK_ERROR_SURFACE_LOST_KHR;
+	// the next recreation rebuilds the surface first.
+	bool				surfaceLost;
 
 	VkInstance			instance;
 	VkDebugUtilsMessengerEXT debugMessenger;
@@ -73,6 +81,8 @@ typedef struct vkDeviceContext_s {
 	// line widths and point sizes other than 1, for the debug tools
 	// (glLineWidth / glPointSize); both optional, 1 when missing
 	bool				wideLinesSupported;
+	// polygonMode LINE: only the r_showShadows wireframe uses it.
+	bool				fillModeNonSolidSupported;
 	bool				largePointsSupported;
 	// Vulkan Portability (MoltenVK on macOS): the device is a portability
 	// implementation whose optional subset features must be honored instead of
@@ -186,6 +196,14 @@ void	VK_Device_Shutdown( void );
 // recreates the swapchain (resize / OUT_OF_DATE / swap-interval change);
 // reads the current window pixel size through the services
 bool	VK_Device_RecreateSwapchain( void );
+// VK_ERROR_SURFACE_LOST_KHR: rebuild the surface and swapchain in place;
+// latches presentation when the window can no longer provide a surface.
+bool	VK_Device_RecoverSurface( void );
+// Once per frame: queue the automatic renderer restart a latched device
+// needs, within a per-session budget (see VK_Device_BlockPresentation).
+void	VK_Device_ServicePresentationRecovery( void );
+// The surface's current extent differs from the swapchain's.
+bool	VK_Device_SurfaceExtentChanged( void );
 int		VK_Device_RequestedSwapInterval( void );
 void	VK_Device_BlockPresentation( renderDisplayOutcome_t outcome, VkResult error, const char *operation );
 

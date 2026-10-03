@@ -26,8 +26,45 @@ layout(set=0, binding=0, std140) uniform OQ4MaterialUniforms {
     vec4 controls;
     mat4 modelViewProjection;
     mat4 modelViewProjectionVulkan;
+    vec4 textureOrientation;
 } oq4;
 )";
+
+// Authored coordinates follow OpenGL's bottom-up rows. Images that Vulkan
+// rendered keep top-down rows, so their 2D lookups flip Y (and the Y
+// gradients) per texture slot. Bias forms only exist in fragment shaders.
+const char *FlipHelpers = R"(
+bool oq4Flipped(int b) { return (uint(oq4.textureOrientation.x) & (1u << uint(b))) != 0u; }
+vec2 oq4FlipY(int b, vec2 c) { return oq4Flipped(b) ? vec2(c.x, 1.0 - c.y) : c; }
+vec3 oq4FlipYProj(int b, vec3 c) { return oq4Flipped(b) ? vec3(c.x, c.z - c.y, c.z) : c; }
+vec4 oq4FlipYProj(int b, vec4 c) { return oq4Flipped(b) ? vec4(c.x, c.w - c.y, c.z, c.w) : c; }
+vec2 oq4FlipD(int b, vec2 d) { return oq4Flipped(b) ? vec2(d.x, -d.y) : d; }
+vec4 oq4FlipTexture2D(int b, sampler2D s, vec2 c) { return texture(s, oq4FlipY(b, c)); }
+vec4 oq4FlipTexture2DProj(int b, sampler2D s, vec3 c) { return textureProj(s, oq4FlipYProj(b, c)); }
+vec4 oq4FlipTexture2DProj(int b, sampler2D s, vec4 c) { return textureProj(s, oq4FlipYProj(b, c)); }
+vec4 oq4FlipTexture2DLod(int b, sampler2D s, vec2 c, float l) { return textureLod(s, oq4FlipY(b, c), l); }
+vec4 oq4FlipTexture2DProjLod(int b, sampler2D s, vec3 c, float l) { return textureProjLod(s, oq4FlipYProj(b, c), l); }
+vec4 oq4FlipTexture2DProjLod(int b, sampler2D s, vec4 c, float l) { return textureProjLod(s, oq4FlipYProj(b, c), l); }
+vec4 oq4FlipTexture2DGrad(int b, sampler2D s, vec2 c, vec2 x, vec2 y) { return textureGrad(s, oq4FlipY(b, c), oq4FlipD(b, x), oq4FlipD(b, y)); }
+vec4 oq4FlipTexture2DProjGrad(int b, sampler2D s, vec3 c, vec2 x, vec2 y) { return textureProjGrad(s, oq4FlipYProj(b, c), oq4FlipD(b, x), oq4FlipD(b, y)); }
+vec4 oq4FlipTexture2DProjGrad(int b, sampler2D s, vec4 c, vec2 x, vec2 y) { return textureProjGrad(s, oq4FlipYProj(b, c), oq4FlipD(b, x), oq4FlipD(b, y)); }
+)";
+const char *FlipBiasHelpers = R"(
+vec4 oq4FlipTexture2D(int b, sampler2D s, vec2 c, float bias) { return texture(s, oq4FlipY(b, c), bias); }
+vec4 oq4FlipTexture2DProj(int b, sampler2D s, vec3 c, float bias) { return textureProj(s, oq4FlipYProj(b, c), bias); }
+vec4 oq4FlipTexture2DProj(int b, sampler2D s, vec4 c, float bias) { return textureProj(s, oq4FlipYProj(b, c), bias); }
+)";
+
+// The 2D lookups whose coordinates name a texture row.
+const char *FlipFunction(const std::string &name) {
+    static const std::map<std::string, const char *> functions = {
+        {"texture2D", "oq4FlipTexture2D"}, {"texture2DProj", "oq4FlipTexture2DProj"},
+        {"texture2DLod", "oq4FlipTexture2DLod"}, {"texture2DProjLod", "oq4FlipTexture2DProjLod"},
+        {"texture2DGradARB", "oq4FlipTexture2DGrad"}, {"texture2DProjGradARB", "oq4FlipTexture2DProjGrad"},
+    };
+    const auto found = functions.find(name);
+    return found == functions.end() ? nullptr : found->second;
+}
 
 struct Process {
     bool initialized = glslang::InitializeProcess();
@@ -110,6 +147,7 @@ struct Rewrite {
     std::string source;
     std::string initialization;
     std::map<std::string, std::string> samplers;
+    bool flips = false;
 };
 
 int AttributeLocation(const std::string &name) {
@@ -226,6 +264,23 @@ bool Translate(const std::string &source, bool vertex, const std::map<std::strin
         }
         if (token.text == "{") { ++depth; }
         if (token.text == "}") { --depth; }
+        // texture2D(Image, ...) on a declared 2D sampler becomes
+        // oq4FlipTexture2D(<slot>, Image, ...). A sampler reached through a
+        // function parameter keeps the plain lookup.
+        const char *flip = FlipFunction(token.text);
+        if (flip != nullptr && i + 2 < tokens.size() && tokens[i + 1].text == "(") {
+            const auto sampler = rewrite.samplers.find(tokens[i + 2].text);
+            const auto binding = textures.find(tokens[i + 2].text);
+            if (sampler != rewrite.samplers.end() && sampler->second == "sampler2D" && binding != textures.end()) {
+                rewrite.source += flip;
+                rewrite.source += source.substr(cursor, tokens[i + 1].begin - cursor);
+                rewrite.source += "(" + std::to_string(binding->second) + ", ";
+                cursor = tokens[i + 1].end;
+                rewrite.flips = true;
+                ++i;
+                continue;
+            }
+        }
         rewrite.source += Builtin(token.text, vertex);
     }
     rewrite.source += source.substr(cursor);
@@ -272,7 +327,12 @@ vec4 oq4VertexColor() {
 }
 
 std::string Wrap(const Rewrite &rewrite, bool vertex, const std::set<std::string> &builtins) {
-    std::string result = Interface(vertex, builtins) + "#line 1\n" + rewrite.source + "\nvoid main() {\n";
+    std::string result = Interface(vertex, builtins);
+    if (rewrite.flips) {
+        result += FlipHelpers;
+        if (!vertex) { result += FlipBiasHelpers; }
+    }
+    result += "#line 1\n" + rewrite.source + "\nvoid main() {\n";
     result += rewrite.initialization;
     if (vertex) {
         if (builtins.count("gl_TexCoord")) { result += "for (int i=0; i<8; ++i) oq4TexCoord[i]=vec4(0.0);\n"; }

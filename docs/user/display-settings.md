@@ -136,14 +136,16 @@ program effects, interaction lighting, baked light grids, stencil and mapped
 shadows, fog, decals, soft particles, GUIs, and cinematics, plus brightness
 and gamma, MSAA alpha-to-coverage, the classic post-processing chain, cel
 shading, the underwater view, multiplayer player outlines, and the `r_show*`
-debug views. On the development machine (an NVIDIA RTX 4060 laptop on
-Windows) it runs clean under the Vulkan validation layers. Runs recorded there
-before soft particles and alpha-to-coverage reached Vulkan had it faster than
-OpenGL; it has not been timed since. It stays experimental because it has been
-tried on very few GPUs and drivers. Linux CI now selects software-Vulkan
-startup, render-target, and fallback checks, with hosted results still pending;
-physical GPU coverage and the gaps under [What Vulkan does not do yet](#what-vulkan-does-not-do-yet)
-remain. OpenGL remains the recommended renderer for normal play.
+debug views, `r_showShadows` included. Mods' own material programs run too:
+GLSL programs compile as written, and ARB assembly programs are translated to
+GLSL. `r_enhancedMaterials` and the sharpened and nearest
+`r_resolutionScaleMode` upscales work as they do on OpenGL. On the development
+machine (an NVIDIA RTX 4060 laptop on Windows) it runs clean under the Vulkan
+validation layers. It stays experimental because it has been tried on very few
+GPUs and drivers. Linux CI runs software-Vulkan startup, render-target,
+recovery and fallback checks on every push. Physical GPU coverage and the gaps
+under [What Vulkan does not do yet](#what-vulkan-does-not-do-yet) remain.
+OpenGL remains the recommended renderer for normal play.
 
 | Setting | Default | What it does |
 |---|---:|---|
@@ -176,6 +178,12 @@ Notes:
   mandatory renderer resources also recover to OpenGL in the same launch.
   openQ4 releases the failed startup's renderer objects before loading OpenGL,
   and keeps the failure reason in the log. Your Vulkan selection is preserved.
+- If the GPU or driver resets during play (Vulkan reports a lost device),
+  openQ4 restarts the renderer by itself and carries on with the same game.
+  It allows three such restarts per session (`r_vkPresentationRecoveries`).
+  If presentation keeps failing after that, openQ4 stops with an error and
+  saves `r_renderApi gl` for the next launch. A window whose surface is lost,
+  for example after a display change, gets a new surface without a restart.
 - A device failure during a later full `vid_restart` still stops openQ4 and
   saves `r_renderApi gl` for the next launch. Switching renderer modules during
   gameplay requires a full engine restart. If you supplied
@@ -185,17 +193,18 @@ Notes:
 
 ### What Vulkan does not do yet
 
-- **Custom material programs.** The stock ARB and GLSL program families are
-  implemented; any other program, such as a mod's own shader, is skipped and
-  logged.
-- **HDR auto-exposure and the float scene target** (`r_hdrAutoExposure`,
-  `r_hdrSceneTarget`). OpenGL only uses them with its opt-in modern executor,
-  which has no Vulkan version. The classic post-processing chain, which both
-  renderers use by default, ignores them on either.
+- **Some mod material programs.** Mods' GLSL and ARB programs run, but a
+  program that relies on state a material stage does not have is skipped and
+  logged once: fixed-function lighting, fog or texture-generation state,
+  program environment values the engine never sets for material stages,
+  ARB `RECT`, `1D` or `3D` textures, the `ARB_fog_*` options, or NVIDIA program
+  options. OpenGL would draw those with leftover state rather than a defined
+  result.
 - **Advanced renderer parity.** Vulkan's opt-in PBR path supports a narrower
-  material subset than OpenGL; authored reflection probes, clustered decals,
-  exact rigid-object TAA motion vectors, and translucent moment shadows remain
-  incomplete. These are separate from the stock effects listed above.
+  material subset than OpenGL, and clustered decals and translucent moment
+  shadows are OpenGL-only. All of these are default-off experimental features,
+  separate from the stock effects listed above.
+- **VR.** The [OpenXR VR mode](vr.md) needs the OpenGL renderer.
 - **Pixel readbacks in the debug views.** A Vulkan frame cannot stop halfway
   to read pixels back, so the overdraw averages that `r_showLightCount 3` and
   `r_showShadowCount 2` to `4` print arrive a frame or two late, and

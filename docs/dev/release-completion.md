@@ -2,6 +2,21 @@
 
 ## 0.13.2 release candidate
 
+- [x] Make the experimental Vulkan renderer survive what used to stop it:
+  a GPU or driver reset during play now restarts the renderer automatically
+  and carries on (three times per session, `r_vkPresentationRecoveries`)
+  instead of leaving a frozen window; a lost window surface is rebuilt in
+  place; a display change that removes a typed vsync mode keeps presenting;
+  minimizing no longer spins the device; live window resizes keep the render
+  size in step; and changing shadow quality mid-game can no longer invalidate
+  the frame being recorded. Vulkan also runs mods' ARB assembly material
+  programs (translated to GLSL and matched against OpenGL), samples rendered
+  textures the right way up in authored programs, and gains `r_showShadows`,
+  `r_enhancedMaterials`, the renderer-owned sharpened and nearest
+  `r_resolutionScaleMode` upscales, and a `benchmark` command that times GPU
+  work. See [material programs](vulkan-material-programs.md) and the
+  [gap-closure ledger](plans/2026-09-20-vulkan-gap-closure.md).
+
 - [ ] Add an experimental OpenXR VR mode for the OpenGL client on Windows and
   Linux: a statically built Khronos loader, off-axis per-eye rendering through
   a redirected default framebuffer (render API 21, game API 50), the HUD as a

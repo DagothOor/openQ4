@@ -145,6 +145,10 @@ void	VK_ShadowMap_AbandonPreparedLights( void );
 // rendering scope; it issues its own viewport and restores the view scissor.
 void	VK_ShadowMap_DebugOverlayDraw( const viewDef_t *viewDef );
 
+// Applies a shadow resource resize deferred from a recording frame; called
+// before the next frame begins recording.
+void	VK_ShadowMap_BeginFrame( void );
+
 // device-shutdown hook (device idle by contract)
 void	VK_ShadowMap_Shutdown( void );
 

@@ -87,6 +87,7 @@
 #include "vk_ShadowMap.h"
 
 // vk_GuiExecutor.cpp narrow accessors (vkExec stays file-static there)
+bool VK_GuiExecutor_FrameIsOpen( void );
 VkCommandBuffer VK_Exec_ActiveCmd( void );
 int VK_Exec_ActiveFrameSlot( void );
 bool VK_Exec_BindTriGeometry( VkCommandBuffer cmd, int slot, const srfTriangles_t *tri );
@@ -236,6 +237,11 @@ typedef struct vkShadowMapState_s {
 	// which would otherwise leave the previous view's lights readable.
 	const viewDef_t *	preparedView;
 	int					preparedFrame;
+	// A size cvar changed while a frame was recording. The atlas and point
+	// cubes are reached through descriptor sets the open command buffer may
+	// already have bound, so they are rebuilt at the next frame boundary;
+	// shadowed lights fall back for the remainder of this frame.
+	bool				resizePending;
 	vkShadowLightState_t lights[ VK_SHADOW_MAX_LIGHTS ];
 } vkShadowMapState_t;
 
@@ -481,12 +487,17 @@ void VK_ShadowMap_AbandonPreparedLights( void ) {
 Resources
 ====================
 */
-static void VK_ShadowMap_DestroyProjectedCaches( void ) {
+static void VK_ShadowMap_DestroyProjectedCaches( bool deferred = false ) {
 	if ( vkCtx.device != VK_NULL_HANDLE ) {
 		for ( int i = 0 ; i < VK_SHADOW_MAX_CACHE_SLOTS ; i++ ) {
 			vkProjectedShadowCacheEntry_t &entry =
 					vkShadow.projectedCache[ i ];
-			if ( entry.image != VK_NULL_HANDLE ) {
+			if ( entry.image == VK_NULL_HANDLE ) {
+				continue;
+			}
+			if ( deferred ) {
+				VK_Device_DeferDestroy( entry.image, VK_NULL_HANDLE, VK_NULL_HANDLE, entry.allocation );
+			} else {
 				vmaDestroyImage( vkCtx.allocator, entry.image,
 						entry.allocation );
 			}
@@ -558,6 +569,34 @@ static void VK_ShadowMap_DestroyPointCubes( void ) {
 	vkShadow.pointCubeFaceSize = 0;
 }
 
+static int VK_ShadowMap_AtlasSizeValue( void );
+static int VK_ShadowMap_PointSizeValue( void );
+
+void VK_ShadowMap_BeginFrame( void ) {
+	if ( vkCtx.device == VK_NULL_HANDLE || VK_GuiExecutor_FrameIsOpen() ) {
+		return;
+	}
+	// Size cvars change between frames (console, settings menu). Seen here,
+	// before anything records, the resize needs no fallback frame.
+	if ( vkShadow.atlasImage != VK_NULL_HANDLE && vkShadow.atlasSize != VK_ShadowMap_AtlasSizeValue() ) {
+		vkShadow.resizePending = true;
+	}
+	if ( vkShadow.pointCubeFaceSize != 0 && vkShadow.pointCubeFaceSize != VK_ShadowMap_PointSizeValue() ) {
+		vkShadow.resizePending = true;
+	}
+	if ( !vkShadow.resizePending ) {
+		return;
+	}
+	vkShadow.resizePending = false;
+	// No command buffer is recording; idle the frames still in flight, then
+	// let the next shadow pass rebuild everything at the new sizes.
+	vkDeviceWaitIdle( vkCtx.device );
+	VK_Exec_UpdateShadowAtlasDescriptors( VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE );
+	VK_ShadowMap_DestroyAtlas();
+	VK_ShadowMap_DestroyPointCubes();
+	vkShadow.pointCubeFaceSize = 0;
+}
+
 void VK_ShadowMap_Shutdown( void ) {
 	VK_ShadowGpuTiming_Shutdown();
 	vkShadowProjectedResourcesOkGeneration = -1;
@@ -581,16 +620,21 @@ void VK_ShadowMap_Shutdown( void ) {
 // the hardware-compare and raw-depth samplers, then points the executor's
 // shadow descriptor sets at both. Failure leaves every light on retained
 // stencil for the view; publishing both receiver families is atomic.
-static bool VK_ShadowMap_EnsureResources( void ) {
-	if ( !vkCtx.initialized || vkCtx.shadowDepthFormat == VK_FORMAT_UNDEFINED ) {
-		return false;
-	}
-
+static int VK_ShadowMap_AtlasSizeValue( void ) {
 	int wantedSize = idMath::ClampInt( 2048, 8192, r_shadowMapAtlasSize.GetInteger() );
 	const int maxDim = (int)vkCtx.deviceProperties.limits.maxImageDimension2D;
 	if ( maxDim > 0 && wantedSize > maxDim ) {
 		wantedSize = maxDim;
 	}
+	return wantedSize;
+}
+
+static bool VK_ShadowMap_EnsureResources( void ) {
+	if ( !vkCtx.initialized || vkCtx.shadowDepthFormat == VK_FORMAT_UNDEFINED ) {
+		return false;
+	}
+
+	const int wantedSize = VK_ShadowMap_AtlasSizeValue();
 
 	if ( vkShadow.atlasImage != VK_NULL_HANDLE &&
 			vkShadow.atlasSize == wantedSize &&
@@ -603,7 +647,13 @@ static bool VK_ShadowMap_EnsureResources( void ) {
 
 	if ( vkShadow.atlasImage != VK_NULL_HANDLE ) {
 		// size change: frames in flight may still reference the old atlas and
-		// its descriptor writes; this is a rare cvar path, wait it out
+		// its descriptor writes; this is a rare cvar path, wait it out. The
+		// recording frame may have bound those descriptors too, so a change
+		// seen mid-frame is applied at the next frame boundary instead.
+		if ( VK_GuiExecutor_FrameIsOpen() ) {
+			vkShadow.resizePending = true;
+			return false;
+		}
 		vkDeviceWaitIdle( vkCtx.device );
 		VK_Exec_UpdateShadowAtlasDescriptors( VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE );
 		VK_ShadowMap_DestroyAtlas();
@@ -734,7 +784,12 @@ static bool VK_ShadowMap_EnsurePointConfiguration( void ) {
 	if ( vkShadow.pointCubeFaceSize != 0 && vkShadow.pointCubeFaceSize != wantedSize ) {
 		// Scratch and resident cubes share one size contract. A cvar change is
 		// rare and may leave descriptors/images in flight, so retire them only
-		// after the device becomes idle.
+		// after the device becomes idle -- and never under a recording frame,
+		// which may already have bound their descriptor sets.
+		if ( VK_GuiExecutor_FrameIsOpen() ) {
+			vkShadow.resizePending = true;
+			return false;
+		}
 		vkDeviceWaitIdle( vkCtx.device );
 		VK_ShadowMap_DestroyPointCubes();
 	}
@@ -1320,8 +1375,9 @@ static bool VK_ShadowMap_EnsureProjectedCacheConfiguration(
 	}
 	if ( vkShadow.projectedCacheTileSize != 0
 			&& vkShadow.projectedCacheTileSize != tileSize ) {
-		vkDeviceWaitIdle( vkCtx.device );
-		VK_ShadowMap_DestroyProjectedCaches();
+		// Earlier views of the recording frame may have copied from these
+		// images; the deferred queue retires them after that frame's fence.
+		VK_ShadowMap_DestroyProjectedCaches( true );
 	}
 	vkShadow.projectedCacheTileSize = tileSize;
 	return true;
@@ -1341,9 +1397,10 @@ static bool VK_ShadowMap_EnsureProjectedCacheImage( const int index,
 			vkShadow.projectedCache[ index ];
 	if ( entry.image != VK_NULL_HANDLE
 			&& entry.blockSize != blockSize ) {
-		vkDeviceWaitIdle( vkCtx.device );
-		vmaDestroyImage( vkCtx.allocator, entry.image,
-				entry.allocation );
+		// The reservation flags are per view, so the least-recently-used slot
+		// can be one an earlier view of this same frame recorded copies with.
+		// Retire it behind the frame fence rather than under that recording.
+		VK_Device_DeferDestroy( entry.image, VK_NULL_HANDLE, VK_NULL_HANDLE, entry.allocation );
 		entry.image = VK_NULL_HANDLE;
 		entry.allocation = NULL;
 		entry.layout = VK_IMAGE_LAYOUT_UNDEFINED;

@@ -2828,6 +2828,7 @@ if build_renderer_vk and build_engine
 
   material_compiler = static_library('openq4-material-compiler',
     'src/renderer/materialprogram/GLSLCompiler.cpp',
+    'src/renderer/materialprogram/ARBTranslator.cpp',
     dependencies: glslang_deps, install: false)
   material_compiler_dep = declare_dependency(link_with: material_compiler,
     dependencies: glslang_deps)
@@ -2836,6 +2837,10 @@ if build_renderer_vk and build_engine
       'tools/tests/native/MaterialCompilerTest.cpp',
       dependencies: material_compiler_dep, install: false)
     test('openq4-material-compiler', material_compiler_test, timeout: 60)
+    arb_translator_test = executable('openq4-arb-translator-test',
+      'tools/tests/native/ARBTranslatorTest.cpp',
+      dependencies: material_compiler_dep, install: false)
+    test('openq4-arb-translator', arb_translator_test, timeout: 60)
   endif
 
   renderer_vk_source_discovery = run_command(

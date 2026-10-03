@@ -16,6 +16,7 @@ COMMITTED = SHADER_DIR / "temporal_resolve_spv.h"
 SHADERS = [
     SHADER_DIR / "temporal_resolve.vert",
     SHADER_DIR / "temporal_resolve.frag",
+    SHADER_DIR / "scene_scale.frag",
 ]
 
 

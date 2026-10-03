@@ -1,11 +1,12 @@
 # Authored Vulkan material programs
 
-Status: native drawing is implemented for an initial subset of authored GLSL
-ambient and per-light stages. Unknown program names now load and compile their actual source
+Status: native drawing is implemented for authored GLSL ambient and per-light
+stages and for authored ARB assembly material stages, which are translated to
+GLSL. Unknown program names now load and compile their actual source
 pair. Stock-name overrides also use their actual source; an embedded stock
 implementation requires a reviewed source fingerprint or a canonical name with
-no source files. Vulkan remains experimental, and the
-full custom-program requirement is still open.
+no source files. Vulkan remains experimental; the remaining work below covers
+broader language and state coverage.
 
 ## Compiler contract
 
@@ -48,8 +49,14 @@ runtime draw interface is:
 | Vertex inputs | Locations 0–5 | Position, color, normal, tangent, bitangent, UV |
 
 The uniform block contains 32 parameter vectors, model-view and projection
-matrices, eight texture matrices, stage color, four draw controls and two
-CPU-composed model-view-projection matrices. Matrices are column-major. Authored
+matrices, eight texture matrices, stage color, four draw controls, two
+CPU-composed model-view-projection matrices and a texture-orientation word
+(1,328 bytes). Matrices are column-major. Images that Vulkan rendered keep
+top-down rows; every authored 2D lookup on a declared sampler goes through a
+generated helper that flips the coordinate (and the Y gradients) for the
+slots the orientation word marks, so render targets sample the way OpenGL's
+bottom-up rows do. A sampler passed through a function parameter keeps the
+plain lookup. Authored
 matrix operations retain GL clip coordinates; the generated vertex entry point
 converts clip depth to Vulkan's range. Unmodified `ftransform()` or legacy MVP
 positions use the same CPU-converted matrix as depth fill, preserving equal-depth
@@ -131,6 +138,52 @@ an image already has a mip chain. This matches OpenGL's sampler behavior across
 image reload. The lighting investigation also repaired OpenGL's material texture
 table: unused declared array slots now receive valid material images instead of
 retaining a comparison-enabled shadow texture from a previous pass.
+
+## Authored ARB assembly
+
+`src/renderer/materialprogram/ARBTranslator.cpp` translates
+`ARB_vertex_program` and `ARB_fragment_program` 1.0 material programs into the
+compatibility GLSL above, so they reuse the same compiler, descriptor layout,
+pipeline cache and draw path. The section is chosen exactly as
+`R_LoadARBProgram` chooses it (the first `!!ARBvp`/`!!ARBfp` up to the first
+`END`), so a program OpenGL truncates is rejected the same way. Every
+instruction of both languages is supported, including `_SAT`, `KIL`, `SWZ`,
+`TXP`/`TXB`, `ARL` relative addressing, `PARAM` arrays and ranges, `ALIAS`,
+`OUTPUT` and `ARB_position_invariant` (which keeps the depth fill's exact
+position). Matrix state binds the model-view, projection, MVP and texture
+matrices with their `inverse`/`transpose`/`invtrans` rows. A stage with only
+one program gets the fixed-function stage it replaces: identity texture
+matrices with unit 0's coordinates, or the interpolated color.
+
+The parameters are the ones `draw_common.cpp` gives ARB material stages:
+`vertexParm` feeds both programs' locals unless `fragmentParm` is present;
+locals the material does not set read zero. The vertex environment is env 0
+(current-render scale), env 1 (global eye) and env 5-8 (local eye and model
+rows); the fragment environment is env 0 and env 1 (window-to-texture scale).
+Textures bind by unit from `fragmentMap`, with their own sampler state.
+Anything a material stage has no defined value for is rejected with a
+diagnostic rather than replaced: fixed-function lighting, fog, texture
+generation and other legacy state, other environment indices, `vertex.weight`
+and attributes the engine does not supply, `1D`/`3D`/`RECT` targets, a unit
+used with two targets, `ARB_fog_*` and NV options.
+
+Programs without a reviewed native family are translated automatically, as
+are pairs mixing families or naming an authored program on either side.
+`r_vkARBTranslation 0` restores the old skip; `2` also translates the stock
+families, as a diagnostic comparison against their native implementations.
+`reportShaderPrograms` lists each registered program as native, translated or
+unsupported.
+
+The native `openq4-arb-translator` test translates and compiles original
+fixtures covering every instruction, the fixed-function counterparts and 28
+rejection cases, and with `--arb-dir` the installed game's own `.vfp` files
+(their material programs translate; the interaction programs are correctly
+refused). `tools/tests/renderer_vulkan_arb_programs.py` draws eight original
+programs in the PBR laboratory on both backends: every one of its 15 controls,
+including image and shader reload and partial and full restart, matches
+OpenGL's native ARB execution within one display level. The retail
+`heatHazeWithMask.vfp` translated with `r_vkARBTranslation 2` also draws
+validation-clean on `game/airdefense1`.
 
 ## Validation and remaining work
 
@@ -263,13 +316,14 @@ Remaining work includes:
   The generic evaluator now handles the per-light semantics above in addition
   to numeric registers, view origin, current render viewport/scale and supported
   post-process size/color-space bindings. Full-scene shadow parity remains open.
-- Implement sampling from flipped render textures; current generic draws reject
-  those images explicitly. Qualify offscreen/HDR, texture generation, alpha and
-  blend state, vertex colors, decals and animated geometry.
+- Qualify offscreen/HDR, texture generation, alpha and blend state, vertex
+  colors, decals and animated geometry for authored programs, including
+  flipped render-texture sampling in a real capture scene.
 - Extend the GLSL language subset and qualify descriptor/pipeline/uniform/cache
   exhaustion, repeated source edits and device-failure recovery.
-- Implement and qualify authored ARB assembly programs. The GLSL compatibility
-  compiler is not an ARB assembly translator.
+- Qualify translated ARB programs against real mod content and the
+  `_currentRender` contract on a post-process scene (the laboratory renders
+  through the fast no-post path, so its fixtures do not sample it).
 
 The broader HDR/PBR/shadow, filtering, performance, CI, hardware and release
 requirements in the [gap-closure plan](plans/2026-09-20-vulkan-gap-closure.md)

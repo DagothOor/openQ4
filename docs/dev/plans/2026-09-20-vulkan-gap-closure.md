@@ -13,9 +13,9 @@ underwater effects, and debug views have already landed.
 
 | Area | Remaining work | Evidence required for closure |
 |---|---|---|
-| Continuous runtime validation | Exercise Vulkan on push/PR, require the module and working validation layers, and fail on skipped or missing required cases. | Harness regression tests, actual startup/rendering and failure drills, and successful hosted workflow artifacts. Software Vulkan is regression evidence, not physical GPU qualification. |
-| Startup recovery | Implemented and locally verified for window, surface, swapchain and mandatory renderer resources. Full owner teardown precedes module unload; OpenGL starts in the same process. | All four deterministic failure cases pass repeatedly with clean shutdown, intact ordered logs, and unchanged Vulkan startup. Resource-failure SP/MP stock gameplay also passes. Hosted/platform coverage remains part of the separate qualification requirement. |
-| Custom material programs | Execute supported authored ARB and GLSL material programs beyond the recognised stock families, with explicit diagnostics for invalid source. | Compiled shader fixtures and rendered comparisons against OpenGL for real custom programs, including parameter bindings, textures, vertex outputs, and custom lighting. |
+| Continuous runtime validation | Implemented: Linux x64/ARM64 push and ARM64 PR jobs run the lavapipe startup, probe, HDR, temporal, fallback and four recovery cases with active validation layers, and pass (run 37124801663). | Keep the hosted cases green. Software Vulkan is regression evidence, not physical GPU qualification. |
+| Startup and runtime recovery | Startup: implemented and locally verified for window, surface, swapchain and mandatory renderer resources; full owner teardown precedes module unload and OpenGL starts in the same process. Runtime (2026-10-03): a latched device queues an automatic renderer restart (budget `r_vkPresentationRecoveries`), surface loss rebuilds the surface in place, and the drill `r_vkPresentationFailureTest` exercises both. | All four deterministic failure cases pass repeatedly with clean shutdown, intact ordered logs, and unchanged Vulkan startup. Resource-failure SP/MP stock gameplay also passes. Hosted/platform coverage remains part of the separate qualification requirement. |
+| Custom material programs | Implemented for authored GLSL (v50-v53) and authored ARB assembly (2026-10-03, translated to GLSL), with explicit diagnostics for unsupported state. Remaining: broader GLSL language/state coverage and real mod content. | Compiled shader fixtures and rendered comparisons against OpenGL for real custom programs, including parameter bindings, textures, vertex outputs, and custom lighting. |
 | HDR scene and exposure | Bounded linear scene composition, bloom/exposure, scaled GL comparisons, HDR-off preview fog/blend parity and native linear screenshots are implemented. Extend admission to declined material, baked-lighting, portal/capture and post-effect combinations; complete remaining presentation comparisons. | Complete-scope render-target/radiance verification, OpenGL comparisons, validation-clean gameplay and captures, and reset/resize/admission-failure tests. |
 | PBR, probes, and clustered decals | Reach the supported OpenGL material, environment/probe, and decal feature scope on Vulkan. | Authored fixture execution, equivalent visible results, resource lifecycle/admission tests, and fallback evidence for exhausted or invalid resources. |
 | Temporal motion | The exact eligible rigid-object velocity path is implemented. Complete visible temporal-AA qualification and retain explicit reactive handling for unsupported geometry. | Moving-object and camera-cut fixtures, history invalidation, visible TAA comparisons, and validation-clean runtime evidence. |
@@ -26,6 +26,30 @@ underwater effects, and debug views have already landed.
 | Promotion | Implement the Vulkan-specific evidence/sign-off gate and reconcile all status/usage/release documentation. | Gate negative tests, exact evidence provenance, explicit sign-off, and a requirement-by-requirement completion audit before changing `best` or support status. |
 
 ## Work record
+
+- 2026-10-03 closes the remaining stock-independent implementation gaps and the
+  runtime-robustness defects an audit of the module found. Authored ARB
+  assembly material programs are translated to compatibility GLSL
+  (`ARBTranslator.cpp`) and drawn through the authored-program path; all 15
+  controls of the new `renderer_vulkan_arb_programs.py` laboratory, including
+  reload and restarts, match OpenGL's native ARB execution within one display
+  level, and the 32-case native translator test passes. Authored 2D lookups now
+  flip for top-down render targets instead of refusing them; the GLSL
+  laboratory (20 controls) and reload suite (16) still match OpenGL within one
+  level. A latched device now queues an automatic renderer restart instead of
+  freezing the window; surface loss rebuilds the surface; a failed swapchain
+  create no longer reuses the retired swapchain; a lost strict present mode
+  presents with FIFO; acquisition is bounded; minimized windows skip the
+  per-frame device wait; live resizes update `glConfig`; a submitted frame's
+  out-of-date present no longer escalates a partial `vid_restart`; persistent
+  `SUBOPTIMAL` no longer recreates every frame; and shadow-cache, atlas and
+  point-cube resizes never retire resources under a recording frame. Drills for
+  device and surface loss and mid-game shadow resizes run validation-clean on
+  `game/airdefense1`, and all 11 local Vulkan matrix cases pass. Vulkan also
+  gains `r_showShadows`, `r_enhancedMaterials` (same on/off delta as OpenGL),
+  the renderer-owned `r_resolutionScaleMode` 2/3 upscales, a benchmark command
+  that waits for GPU work, and a load-only `GetMaterialStageImageInfo`.
+  Evidence is under `.tmp/vk-stable/` in the working tree that produced it.
 
 - v61 hardens the preliminary device inventory through the same compiled
   selection library. Complete physical-device and extension lists, bounded

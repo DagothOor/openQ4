@@ -116,6 +116,8 @@ vec3 SafeNormalize(vec3 value) {
     return value * inversesqrt(max(dot(value, value), 1.0e-8));
 }
 
+#include "enhanced_material.glsl"
+
 vec3 ApplyFlatDiffuseSweep(vec3 diffuse, float localZ) {
     if (inter.flatDiffuseParams.x <= 0.0) {
         return diffuse;
@@ -500,7 +502,8 @@ void main() {
         outColor = vec4(packed, PBRTransparentAlpha(diffuseTexCoord));
         return;
     }
-    vec3 localNormal = vec3(bumpSample.a, bumpSample.g, bumpSample.b) * 2.0 - 1.0;
+    vec3 localNormal = EnhancedMaterialActive() ? EnhancedLocalNormal(bumpSample)
+        : vec3(bumpSample.a, bumpSample.g, bumpSample.b) * 2.0 - 1.0;
 
     vec3 lightDir = (pc.a.z > 0.5) ? pc.b.xyz : SafeNormalize(vLightVector);
     float ndotl = max(dot(lightDir, localNormal), 0.0);
@@ -518,10 +521,17 @@ void main() {
     diffuse = ApplyFlatDiffuseSweep(diffuse, vLightFalloffTexCoord.z);
 
     vec3 halfAngle = SafeNormalize(vHalfAngleVector);
-    float specularDot = clamp(dot(halfAngle, localNormal), 0.0, 1.0);
-    float specularTerm = texture(specularTableMap, vec2(specularDot, 0.5)).r * 2.0;
-    specularTerm = CelSpecularTerm(specularTerm * 0.5) * 2.0;
-    vec3 specular = texture(specularMap, specularTexCoord).rgb * inter.specularColor.rgb * specularTerm;
+    vec3 specularSample = texture(specularMap, specularTexCoord).rgb;
+    float specularTerm;
+    if (EnhancedMaterialActive()) {
+        // shadow_interaction.fs InteractionSpecular: no legacy doubling.
+        specularTerm = CelSpecularTerm(EnhancedSpecularTerm(halfAngle, SafeNormalize(vViewVector), localNormal, specularSample));
+    } else {
+        float specularDot = clamp(dot(halfAngle, localNormal), 0.0, 1.0);
+        specularTerm = texture(specularTableMap, vec2(specularDot, 0.5)).r * 2.0;
+        specularTerm = CelSpecularTerm(specularTerm * 0.5) * 2.0;
+    }
+    vec3 specular = specularSample * inter.specularColor.rgb * specularTerm;
 
     light = CelQuantizeLight(light);
     outColor = vec4((diffuse + specular) * light * vVertexColor, 0.0);

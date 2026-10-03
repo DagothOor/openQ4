@@ -874,8 +874,9 @@ void idRenderSystemLocal::DrawStretchPic( float x, float y, float w, float h, fl
 =============
 GetMaterialStageImageInfo
 
-Binds the stage's image and reports its uploaded format facts so engine-side
-self-tests never need renderer-internal image types.
+Loads the stage's image and reports its uploaded format facts so engine-side
+self-tests never need renderer-internal image types. Only the upload is
+needed: a texture-unit bind is OpenGL state the Vulkan module does not have.
 =============
 */
 bool idRenderSystemLocal::GetMaterialStageImageInfo( const idMaterial *material, int stageIndex, materialImageInfo_t &info ) {
@@ -888,7 +889,9 @@ bool idRenderSystemLocal::GetMaterialStageImageInfo( const idMaterial *material,
 		return false;
 	}
 	idImage *image = stage->texture.image;
-	image->Bind();
+	if ( !image->IsLoaded() ) {
+		image->ActuallyLoadImage( true );
+	}
 	const idImageOpts &opts = image->GetOpts();
 	info.numLevels = opts.numLevels;
 	info.isDXT1Compressed = ( opts.format == FMT_DXT1 );

@@ -5624,10 +5624,11 @@ def validate_csm_static_cache_contract() -> None:
     require_order(
         ensure_image,
         (
-            # a slot reused at a different block edge retires its image first
+            # a slot reused at a different block edge retires its image first,
+            # behind the frame fence: an earlier view of the recording frame
+            # may have copied with it, and a device wait cannot cover that
             "if ( entry.image != VK_NULL_HANDLE && entry.blockSize != blockSize )",
-            "vkDeviceWaitIdle( vkCtx.device );",
-            "vmaDestroyImage( vkCtx.allocator, entry.image, entry.allocation );",
+            "VK_Device_DeferDestroy( entry.image, VK_NULL_HANDLE, VK_NULL_HANDLE, entry.allocation );",
             "VK_ShadowMap_ClearProjectedEntryMetadata( entry );",
             "ici.extent.width = (uint32_t)blockSize;",
             "ici.extent.height = (uint32_t)blockSize;",

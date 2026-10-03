@@ -2,6 +2,8 @@
 #ifndef OPENQ4_VK_MATERIALPROGRAMS_H
 #define OPENQ4_VK_MATERIALPROGRAMS_H
 #include "../materialprogram/GLSLCompiler.h"
+#include "../materialprogram/ARBTranslator.h"
+#include <vector>
 
 vkGLSLProgramFamily_t VK_MaterialPrograms_NativeFamily( const char *program );
 bool VK_MaterialPrograms_Validate( const newShaderStage_t *stage );
@@ -11,6 +13,20 @@ bool VK_Exec_BuildAuthoredMaterialUniforms( const viewDef_t *viewDef, const draw
 bool VK_MaterialPrograms_Bind( const newShaderStage_t *stage,
     const oq4material::UniformBlock &uniforms, int stateBits, bool separateColor,
     const drawInteraction_t *interaction = NULL );
+
+// Authored ARB assembly. File names are the glprogs-relative names the
+// material declared; either may be NULL for the fixed-function stage it
+// replaces. The parameter list says which uniform slot carries which
+// program.local/program.env value. NULL means the pair cannot be drawn.
+const std::vector<oq4material::ARBParameter> *VK_MaterialPrograms_ARBParameters(
+    const char *vertexFile, const char *fragmentFile );
+bool VK_MaterialPrograms_BindARB( const char *vertexFile, const char *fragmentFile,
+    const newShaderStage_t *stage, const oq4material::UniformBlock &uniforms, int stateBits, bool separateColor );
+// The declared glprogs file name of a registered ARB program (vk_Backend.cpp).
+const char *VK_MaterialProgramFileName( unsigned int target, unsigned int handle );
+// Whether one ARB program, on its own, translates for this backend.
+bool VK_MaterialPrograms_ARBTranslatable( unsigned int target, const char *file );
+
 void VK_MaterialPrograms_Reload();
 void VK_MaterialPrograms_Report();
 void VK_MaterialPrograms_BeginFrame( int slot );

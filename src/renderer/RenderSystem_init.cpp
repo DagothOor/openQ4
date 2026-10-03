@@ -2566,10 +2566,21 @@ static int R_BenchmarkPercentileIndex( int count, int percentile ) {
 	return idMath::ClampInt( 0, count - 1, rank - 1 );
 }
 
+// Each benchmark sample must include its GPU work. glFinish is an inert stub
+// in the Vulkan module, so that backend waits for its submitted frames.
+static void R_BenchmarkFinish( void ) {
+#ifdef OPENQ4_RENDERER_VK_MODULE
+	extern void VK_Device_WaitIdleForTiming( void );
+	VK_Device_WaitIdleForTiming();
+#else
+	glFinish();
+#endif
+}
+
 static renderingFPSResult_t R_RenderingFPS( const renderView_t *renderView ) {
 	renderingFPSResult_t result;
 	memset( &result, 0, sizeof( result ) );
-	glFinish();
+	R_BenchmarkFinish();
 
 	int		start = Sys_Milliseconds();
 	static const int SAMPLE_MSEC = 1000;
@@ -2585,7 +2596,7 @@ static renderingFPSResult_t R_RenderingFPS( const renderView_t *renderView ) {
 		renderSystem->BeginFrame( glConfig.vidWidth, glConfig.vidHeight );
 		tr.primaryWorld->RenderScene( renderView );
 		renderSystem->EndFrame( NULL, NULL );
-		glFinish();
+		R_BenchmarkFinish();
 		const int frameEnd = Sys_Milliseconds();
 		if ( frameSampleCount < MAX_FRAME_SAMPLES ) {
 			frameTimes[frameSampleCount++] = Max( 0, frameEnd - frameStart );

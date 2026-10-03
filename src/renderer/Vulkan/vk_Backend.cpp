@@ -49,6 +49,8 @@
 #include "vk_HDRScene.h"
 #include "vk_PBRProbes.h"
 #include "vk_MaterialPrograms.h"
+#include <chrono>
+#include <thread>
 
 // the back-end state object normally defined by tr_backend.cpp
 backEndState_t	backEnd;
@@ -441,6 +443,8 @@ bool GLimp_SetScreenParms( glimpParms_t parms ) {
 }
 
 void GLimp_SwapBuffers( void ) {
+	// A latched device queues its own recovery restart (VulkanDevice.cpp).
+	VK_Device_ServicePresentationRecovery();
 	// live window-state poll, mirroring the GL seam
 	if ( vkBackendServices != NULL && vkBackendServices->RefreshNativeWindowHandles != NULL ) {
 		const unsigned long long windowBegin = r_rendererMetrics.GetInteger() > 0 ? R_RendererMetrics_CpuClock() : 0;
@@ -468,6 +472,12 @@ void GLimp_SwapBuffers( void ) {
 
 	// present whatever the frame holds; a frame with no draws still clears
 	VK_GuiExecutor_SetClearColor( vkClearColor );
+	if ( vkCtx.surfaceExtentZero && !VK_GuiExecutor_FrameIsOpen() && !VK_Device_RecreateSwapchain() ) {
+		// Minimized: there is nothing to present into. Pace the loop the way a
+		// blocking vsync present would instead of spinning at com_maxfps.
+		std::this_thread::sleep_for( std::chrono::milliseconds( 16 ) );
+		return;
+	}
 	if ( VK_GuiExecutor_EnsureFrameOpen() ) {
 		// Screenshot/capture readback consumes the completed swapchain image
 		// before presentation.  The GL backend observes the same
@@ -1063,7 +1073,8 @@ void RB_GetShaderTextureMatrix( const float *shaderRegisters, const textureStage
 static const int VK_MAX_MATERIAL_PROGRAMS = 256;
 typedef struct vkMaterialProgramRecord_s {
 	unsigned int	target;
-	char			name[ MAX_OSPATH ];
+	char			name[ MAX_OSPATH ];		// extension stripped, for matching
+	char			fileName[ MAX_OSPATH ];	// as declared, for loading
 	vkMaterialProgramFamily_t family;
 	bool			supported;
 } vkMaterialProgramRecord_t;
@@ -1153,12 +1164,23 @@ int R_FindARBProgram( unsigned int target, const char *program ) {
 	memset( &record, 0, sizeof( record ) );
 	record.target = target;
 	idStr::Copynz( record.name, normalized.c_str(), sizeof( record.name ) );
+	idStr fileName = program;
+	fileName.BackSlashesToSlashes();
+	idStr::Copynz( record.fileName, fileName.c_str(), sizeof( record.fileName ) );
 	record.family = VK_MaterialProgramCanonicalFamily( record.name );
 	record.supported = VK_MaterialProgramHasNativeImplementation( target, record.name );
 	vkNumMaterialPrograms++;
 	// A stable nonzero identity preserves newShaderStage_t in the material
-	// parser even when the native implementation is still pending.
+	// parser; programs without a native implementation are translated.
 	return vkNumMaterialPrograms;
+}
+
+const char *VK_MaterialProgramFileName( unsigned int target, unsigned int handle ) {
+	if ( handle == 0 || handle > (unsigned int)vkNumMaterialPrograms ) {
+		return NULL;
+	}
+	const vkMaterialProgramRecord_t &record = vkMaterialPrograms[ handle - 1 ];
+	return record.target == target ? record.fileName : NULL;
 }
 
 /*
@@ -1420,7 +1442,9 @@ void R_ReportShaderPrograms_f( const idCmdArgs &args ) {
 		const vkMaterialProgramRecord_t &record = vkMaterialPrograms[ i ];
 		common->Printf( "  %3d  %s  %s  %s\n", i + 1,
 				record.target == GL_VERTEX_PROGRAM_ARB ? "vertex  " : "fragment",
-				record.supported ? "native     " : "unsupported",
+				record.supported ? "native     "
+					: VK_MaterialPrograms_ARBTranslatable( record.target, record.fileName ) ? "translated "
+					: "unsupported",
 				record.name );
 	}
 }
@@ -1484,7 +1508,10 @@ bool R_IsARBProgramValid( unsigned int target, unsigned int handle ) {
 		return false;
 	}
 	const vkMaterialProgramRecord_t &record = vkMaterialPrograms[ handle - 1 ];
-	return record.target == target && record.supported;
+	if ( record.target != target ) {
+		return false;
+	}
+	return record.supported || VK_MaterialPrograms_ARBTranslatable( target, record.fileName );
 }
 
 vkMaterialProgramFamily_t R_GetARBProgramFamily( unsigned int target, unsigned int handle ) {

@@ -83,10 +83,15 @@ def validate_stock_bump_sampling_contract() -> None:
         fragment,
         (
             "vec4 bumpSample = texture(bumpMap, bumpTexCoord);",
-            "vec3 localNormal = vec3(bumpSample.a, bumpSample.g, bumpSample.b)",
+            # r_enhancedMaterials replaces only the decode and the specular
+            # term (enhanced_material.glsl); the stock pair stays verbatim.
+            "vec3 localNormal = EnhancedMaterialActive() ? EnhancedLocalNormal(bumpSample)",
+            ": vec3(bumpSample.a, bumpSample.g, bumpSample.b) * 2.0 - 1.0;",
             "float ndotl = max(dot(lightDir, localNormal), 0.0);",
-            "float specularTerm = texture(specularTableMap",
-            "vec3 specular = texture(specularMap",
+            "vec3 specularSample = texture(specularMap, specularTexCoord).rgb;",
+            "specularTerm = EnhancedSpecularTerm(halfAngle, SafeNormalize(vViewVector), localNormal, specularSample);",
+            "specularTerm = texture(specularTableMap, vec2(specularDot, 0.5)).r * 2.0;",
+            "vec3 specular = specularSample * inter.specularColor.rgb * specularTerm;",
             "outColor = vec4((diffuse + specular) * light * vVertexColor, 0.0);",
         ),
         "stock interaction fragment math",

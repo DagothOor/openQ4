@@ -45,7 +45,9 @@ static std::vector<std::string> calls;
 static VkResult queueResult=VK_SUCCESS,presentResult=VK_SUCCESS,endResult=VK_SUCCESS,
     flushResult=VK_SUCCESS,waitResult=VK_SUCCESS,resetResult=VK_SUCCESS,beginResult=VK_SUCCESS,
     resetFenceResult=VK_SUCCESS,idleResult=VK_SUCCESS,acquireResult=VK_SUCCESS,uploadResult=VK_SUCCESS;
-static bool recreateOkay=true,executorOkay=true;
+static bool recreateOkay=true,executorOkay=true,recoverOkay=true,surfaceExtentChanged=false;
+static int recoverCalls=0;
+static VkExtent2D surfaceExtent{1280,720};
 struct Cvar {
     bool modified=false; int value=1;
     bool IsModified(){return modified;} void ClearModified(){modified=false;}
@@ -69,6 +71,7 @@ struct { int frameCount=1; } tr;
 constexpr int VK_FRAMES_IN_FLIGHT=2;
 struct Context {
     bool initialized=true,presentationBlocked=false,uploadBatchOpen=false,uploadBatchInFlight=false;
+    bool surfaceLost=false,surfaceExtentZero=false;
     VkDevice device=handle<VkDevice>(1); VkQueue graphicsQueue=handle<VkQueue>(2);
     VkPhysicalDevice physicalDevice=handle<VkPhysicalDevice>(30); VkSurfaceKHR surface=handle<VkSurfaceKHR>(31);
     VmaAllocator allocator=(void*)1;
@@ -109,6 +112,14 @@ struct Executor {
 PIPELINE_FIELDS
 } vkExec;
 static bool VK_GuiExecutor_FrameIsOpen(){return vkExec.frameOpen;}
+// Surface recovery rebuilds the surface and swapchain (VulkanDevice.cpp); the
+// double records the request and clears the loss when the window cooperates.
+static bool VK_Device_RecoverSurface(){calls.emplace_back("recover-surface");++recoverCalls;if(recoverOkay)vkCtx.surfaceLost=false;return recoverOkay;}
+static bool VK_Device_SurfaceExtentChanged(){return surfaceExtentChanged;}
+static void VK_ShadowMap_BeginFrame(){}
+static VkResult vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice,VkSurfaceKHR,VkSurfaceCapabilitiesKHR* caps){
+    std::memset(caps,0,sizeof(*caps));caps->currentExtent=surfaceExtent;return VK_SUCCESS;
+}
 static void VK_PBRProbes_BeginFrame(int){}
 static void VK_Exec_PrintStencilReadbacks(int){}
 static void VK_Exec_ConsumeHDRReadback(int){}
@@ -162,7 +173,13 @@ static bool VK_Device_CreateSwapchain(){
     if(!recreateOkay)return false;
     const int interval=VK_Device_RequestedSwapInterval();
     VkPresentModeKHR mode=VK_PRESENT_MODE_FIFO_KHR;
-    if(!VK_Device_SelectPresentMode(interval,strict||vkCtx.strictSwapInterval,mode))return false;
+    if(!VK_Device_SelectPresentMode(interval,strict||vkCtx.strictSwapInterval,mode)){
+        // Mirrors the production fallback asserted below: only an explicit
+        // restart request fails on a missing mode; a typed interval presents
+        // with FIFO and keeps ownership.
+        if(strict||!vkCtx.strictSwapInterval)return false;
+        mode=VK_PRESENT_MODE_FIFO_KHR;
+    }
     VK_Device_RecordSwapInterval(interval);
     R_DisplayPresentationParameters(0,mode==VK_PRESENT_MODE_FIFO_RELAXED_KHR?-1:mode==VK_PRESENT_MODE_FIFO_KHR?1:0,mode,7);
     return true;
@@ -199,7 +216,8 @@ CASES = r'''
 static renderDisplayPresentation_t snapshot(){renderDisplayPresentation_t s{};R_GetDisplayPresentation(&s);return s;}
 static void reset(){
     queueResult=presentResult=endResult=flushResult=waitResult=resetResult=beginResult=resetFenceResult=idleResult=acquireResult=uploadResult=VK_SUCCESS;
-    recreateOkay=executorOkay=true; calls.clear();recreateCalls=submitCalls=presentCalls=acquireCalls=waitCalls=timingFailures=0;
+    recreateOkay=executorOkay=recoverOkay=true;surfaceExtentChanged=false;surfaceExtent={1280,720};
+    calls.clear();recreateCalls=submitCalls=presentCalls=acquireCalls=waitCalls=timingFailures=recoverCalls=0;
     r_swapInterval={};request={};strict=loadingBypass=false;
     supportedModes={VK_PRESENT_MODE_FIFO_KHR,VK_PRESENT_MODE_IMMEDIATE_KHR,VK_PRESENT_MODE_FIFO_RELAXED_KHR};
     vkCtx={};vkExec={}; R_DisplayPresentationBeginDevice();R_DisplayPresentationReady();
@@ -240,15 +258,46 @@ int main(){
     reset();baseline=snapshot();open();presentResult=VK_ERROR_OUT_OF_HOST_MEMORY;
     assert(!VK_GuiExecutor_SubmitFrame(true));s=snapshot();
     assert(s.submittedSequence==baseline.submittedSequence+1 && s.presentedSequence==baseline.presentedSequence && s.outcome==RDP_PRESENT_FAILED);stopped();
+    // The frame was submitted whatever the presentation engine reports, so
+    // submission succeeds; only the image's display is lost. A partial
+    // vid_restart must not escalate that into a full device restart.
     for(bool recreate:{false,true}){
         reset();baseline=snapshot();open();presentResult=VK_ERROR_OUT_OF_DATE_KHR;recreateOkay=recreate;
-        assert(!VK_GuiExecutor_SubmitFrame(true));s=snapshot();
+        assert(VK_GuiExecutor_SubmitFrame(true));s=snapshot();
         assert(recreateCalls==1 && s.generation>baseline.generation && s.presentedSequence==baseline.presentedSequence && s.failureSequence>baseline.failureSequence);
-        assert(s.available==recreate);
+        assert(s.available==recreate && !vkCtx.presentationBlocked);
+        // A suboptimal surface at an unchanged size presents and is left alone:
+        // some surfaces stay suboptimal, and recreating each frame idles the device.
         reset();baseline=snapshot();open();presentResult=VK_SUBOPTIMAL_KHR;recreateOkay=recreate;
-        assert(VK_GuiExecutor_SubmitFrame(true)==recreate);s=snapshot();
-        assert(s.presentedSequence==baseline.presentedSequence+1 && s.generation>baseline.generation && s.outcome!=RDP_PRESENTED);
+        assert(VK_GuiExecutor_SubmitFrame(true));s=snapshot();
+        assert(s.presentedSequence==baseline.presentedSequence+1 && recreateCalls==0 && s.outcome==RDP_PRESENTED);
+        reset();baseline=snapshot();open();presentResult=VK_SUBOPTIMAL_KHR;recreateOkay=recreate;surfaceExtentChanged=true;
+        assert(VK_GuiExecutor_SubmitFrame(true));s=snapshot();
+        assert(s.presentedSequence==baseline.presentedSequence+1 && recreateCalls==1 && s.generation>baseline.generation && s.outcome!=RDP_PRESENTED);
+        assert(s.available==recreate);
     }
+    // Surface loss rebuilds the surface instead of latching the device, at
+    // present, at acquisition (where nothing was acquired) and when a surface
+    // query or create reported it.
+    reset();open();presentResult=VK_ERROR_SURFACE_LOST_KHR;
+    assert(VK_GuiExecutor_SubmitFrame(true) && recoverCalls==1 && !vkCtx.presentationBlocked);
+    reset();acquireResult=VK_ERROR_SURFACE_LOST_KHR;
+    assert(!VK_GuiExecutor_BeginFrame() && recoverCalls==1 && !vkCtx.presentationBlocked && !vkExec.frameOpen);
+    acquireResult=VK_SUCCESS;open();assert(VK_GuiExecutor_SubmitFrame(true));
+    reset();vkCtx.surfaceLost=true;open();assert(recoverCalls==1 && !vkCtx.surfaceLost);assert(VK_GuiExecutor_SubmitFrame(true));
+    // An acquisition timeout acquired and signaled nothing: skip the frame,
+    // never latch, and acquire normally on the next one.
+    for(VkResult skipped:{VK_TIMEOUT,VK_NOT_READY}){
+        reset();acquireResult=skipped;baseline=snapshot();
+        assert(!VK_GuiExecutor_BeginFrame() && !vkCtx.presentationBlocked && !vkExec.frameOpen && submitCalls==0);
+        assert(snapshot().outcome==RDP_ACQUIRE_FAILED);
+        acquireResult=VK_SUCCESS;open();assert(VK_GuiExecutor_SubmitFrame(true));
+    }
+    // A minimized window reports a zero extent: recreation declines without
+    // idling the device until the surface has a size again.
+    reset();vkCtx.surfaceExtentZero=true;surfaceExtent={0,0};
+    assert(!VK_Device_RecreateSwapchain() && recreateCalls==0);for(const auto& call:calls)assert(call!="idle");
+    surfaceExtent={1280,720};assert(VK_Device_RecreateSwapchain() && recreateCalls==1);
     reset();open();endResult=VK_ERROR_DEVICE_LOST;assert(!VK_GuiExecutor_SubmitFrame(true));
     assert(snapshot().outcome==RDP_RECORD_FAILED && submitCalls==0);stopped();
     reset();open();vkExec.vertexRings[0].mapped=(void*)1;vkExec.vertexRings[0].cursor=16;flushResult=VK_ERROR_DEVICE_LOST;
@@ -273,7 +322,7 @@ int main(){
     reset();strict=true;request.swapInterval=0;assert(VK_Device_RecreateSwapchain());strict=false;
     assert(vkCtx.strictSwapInterval && vkCtx.swapInterval==0 && r_swapInterval.value==1);
     open();assert(recreateCalls==1);presentResult=VK_ERROR_OUT_OF_DATE_KHR;
-    assert(!VK_GuiExecutor_SubmitFrame(true) && recreateCalls==2 && snapshot().swapInterval==0);
+    assert(VK_GuiExecutor_SubmitFrame(true) && recreateCalls==2 && snapshot().swapInterval==0);
     presentResult=VK_SUCCESS;open();assert(recreateCalls==2);assert(VK_GuiExecutor_SubmitFrame(true));
     assert(VK_Device_RecreateSwapchain() && recreateCalls==3 && snapshot().swapInterval==0);
     assert(r_swapInterval.value==1 && vkCtx.strictSwapInterval);
@@ -288,12 +337,15 @@ int main(){
     r_swapInterval.value=1;open();assert(!vkCtx.strictSwapInterval && snapshot().swapInterval==0);
     assert(VK_GuiExecutor_SubmitFrame(true));loadingBypass=false;
     open();assert(snapshot().swapInterval==1);assert(VK_GuiExecutor_SubmitFrame(true));
-    // Adaptive strict requests keep exact present-mode validation on later
-    // recreations; a missing mode must fail rather than fall back to FIFO.
+    // Adaptive strict requests keep exact present-mode validation on the
+    // explicit restart that applies them. A later recreation (display or
+    // surface change) that loses the mode presents with FIFO instead of
+    // stopping every frame, and keeps ownership so the mode resumes.
     strict=true;request.swapInterval=-1;assert(VK_Device_RecreateSwapchain());strict=false;
     assert(VK_Device_RecreateSwapchain() && snapshot().swapInterval==-1);
-    supportedModes={VK_PRESENT_MODE_FIFO_KHR};baseline=snapshot();
-    assert(!VK_Device_RecreateSwapchain() && !snapshot().available && snapshot().failureSequence>baseline.failureSequence);
+    supportedModes={VK_PRESENT_MODE_FIFO_KHR};
+    strict=true;assert(!VK_Device_RecreateSwapchain());strict=false;
+    assert(VK_Device_RecreateSwapchain() && snapshot().available && snapshot().swapInterval==1);
     assert(vkCtx.strictSwapInterval && r_swapInterval.value==1);
     supportedModes={VK_PRESENT_MODE_FIFO_KHR,VK_PRESENT_MODE_FIFO_RELAXED_KHR};
     assert(VK_Device_RecreateSwapchain() && snapshot().swapInterval==-1);
@@ -316,7 +368,7 @@ def main():
     device = (RENDERER / "Vulkan/VulkanDevice.cpp").read_text(encoding="utf-8")
     gl = (RENDERER / "OpenGL/gl_ContextSDL3.cpp").read_text(encoding="utf-8")
     fields = "\n".join(f"    int num{name}=0; Pipeline {name[0].lower()+name[1:]}[2]{{}};" for name in
-                       ("Pipelines", "ScreenPipelines", "CubePipelines", "EnvPipelines", "ProgramPipelines", "SpecialPipelines", "BlendLightPipelines", "TemporalResolvePipelines", "PostPipelines"))
+                       ("Pipelines", "ScreenPipelines", "CubePipelines", "EnvPipelines", "ProgramPipelines", "SpecialPipelines", "BlendLightPipelines", "TemporalResolvePipelines", "SceneScalePipelines", "PostPipelines"))
     source = SUPPORT.replace("PIPELINE_FIELDS", fields)
     source += method(device, "int VK_Device_RequestedSwapInterval( void )")
     source += method(device, "static void VK_Device_RecordSwapInterval( int interval )")
@@ -346,6 +398,10 @@ def main():
     create = method(device, "static bool VK_Device_CreateSwapchain( void )")
     assert create.index("VK_Device_RequestedSwapInterval()") < create.index("VK_Device_SelectPresentMode(")
     assert "R_IsRecoverableRendererRestart() || vkCtx.strictSwapInterval" in create
+    # The double above mirrors this fallback; keep them in step.
+    fallback = create.split("if ( !VK_Device_SelectPresentMode( requestedInterval, strict, presentMode ) ) {", 1)[1].split("}", 1)[0]
+    assert "R_IsRecoverableRendererRestart() || !vkCtx.strictSwapInterval" in fallback
+    assert "presentMode = VK_PRESENT_MODE_FIFO_KHR;" in fallback and "strictSwapInterval = false" not in fallback
     assert create.index("VK_Device_CreateDepthImages()") < create.index("VK_Device_RecordSwapInterval( requestedInterval )")
     # renderer-vk compiles against the vendored SDK headers, which every
     # checkout has before Meson provisions SDL3 or any system SDK is installed.

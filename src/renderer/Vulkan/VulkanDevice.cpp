@@ -42,6 +42,7 @@
 #include "VulkanDevice.h"
 #include "vk_ExecutorHooks.h"
 #include "../RendererMetrics.h"
+#include "../RendererModule.h"
 
 vkDeviceContext_t vkCtx;
 
@@ -57,6 +58,58 @@ void VK_Device_BlockPresentation( renderDisplayOutcome_t outcome, VkResult error
 	R_DisplayPresentationFailed( outcome, static_cast<int32_t>( error ) );
 	R_DisplayPresentationShutdown();
 	common->Warning( "Vulkan: %s failed (%d); presentation requires a full device restart", operation, (int)error );
+}
+
+// A latched device (device loss, or a submit/present/record failure that
+// leaves semaphores and queue state unknown) cannot draw another frame. The
+// full renderer restart vid_restart performs releases the whole device and
+// builds a new one, so it is queued automatically. A device that keeps
+// failing ends in the same next-launch OpenGL recovery a failed restart uses,
+// instead of a frozen window. The budget is per process: the module, and
+// this counter, survive renderer restarts.
+static idCVar r_vkPresentationRecoveries( "r_vkPresentationRecoveries", "3", CVAR_RENDERER | CVAR_INTEGER,
+	"automatic renderer restarts allowed per session when Vulkan presentation fails (device loss); 0 disables", 0, 16 );
+static idCVar r_vkPresentationFailureTest( "r_vkPresentationFailureTest", "0", CVAR_RENDERER | CVAR_INTEGER,
+	"diagnostic: 1 latches the next frame as a lost device, 2 reports the surface lost, to exercise Vulkan recovery", 0, 2 );
+static int vkPresentationRecoveries = 0;
+
+void VK_Device_ServicePresentationRecovery( void ) {
+	if ( !vkCtx.initialized ) {
+		return;
+	}
+	const int drill = r_vkPresentationFailureTest.GetInteger();
+	if ( drill != 0 && !vkCtx.presentationBlocked ) {
+		r_vkPresentationFailureTest.SetInteger( 0 );
+		if ( drill == 1 ) {
+			VK_Device_BlockPresentation( RDP_SUBMIT_FAILED, VK_ERROR_DEVICE_LOST, "simulated device loss" );
+		} else {
+			// Serviced where a real loss is: before the next acquire.
+			common->Printf( "Vulkan: simulated surface loss\n" );
+			vkCtx.surfaceLost = true;
+		}
+	}
+	if ( !vkCtx.presentationBlocked || vkCtx.presentationRecoveryQueued ) {
+		return;
+	}
+	vkCtx.presentationRecoveryQueued = true;
+	const int budget = r_vkPresentationRecoveries.GetInteger();
+	if ( vkPresentationRecoveries < budget ) {
+		++vkPresentationRecoveries;
+		common->Warning( "Vulkan: restarting the renderer to recover presentation (%d of %d this session)",
+			vkPresentationRecoveries, budget );
+		// Ahead of anything already queued (a running script, a quit), so
+		// rendering returns before the next queued command needs it.
+		cmdSystem->BufferCommandText( CMD_EXEC_INSERT, "vid_restart\n" );
+		return;
+	}
+	if ( budget <= 0 ) {
+		common->Warning( "Vulkan: automatic presentation recovery is disabled (r_vkPresentationRecoveries 0); use vid_restart" );
+		return;
+	}
+	const bool nextLaunchUsesGL = R_RendererModule_ResetApiAfterDeviceFailure();
+	common->FatalError( "Vulkan presentation failed again after %d renderer restarts; %s", vkPresentationRecoveries,
+		nextLaunchUsesGL ? "r_renderApi has been reset to gl, so the next launch uses OpenGL"
+			: "launch with +set r_renderApi gl to use OpenGL" );
 }
 
 extern idCVar r_vkValidation;
@@ -567,8 +620,12 @@ static bool VK_Device_SelectPresentMode( int requestedInterval, bool strict, VkP
 
 static bool VK_Device_CreateSwapchain( void ) {
 	VkSurfaceCapabilitiesKHR caps;
-	if ( vkGetPhysicalDeviceSurfaceCapabilitiesKHR( vkCtx.physicalDevice, vkCtx.surface, &caps ) != VK_SUCCESS ) {
-		common->Warning( "Vulkan: vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed" );
+	const VkResult capsResult = vkGetPhysicalDeviceSurfaceCapabilitiesKHR( vkCtx.physicalDevice, vkCtx.surface, &caps );
+	if ( capsResult != VK_SUCCESS ) {
+		common->Warning( "Vulkan: vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed (%d)", (int)capsResult );
+		if ( capsResult == VK_ERROR_SURFACE_LOST_KHR ) {
+			vkCtx.surfaceLost = true;
+		}
 		return false;
 	}
 
@@ -594,7 +651,16 @@ static bool VK_Device_CreateSwapchain( void ) {
 	const int requestedInterval = VK_Device_RequestedSwapInterval();
 	const bool strict = R_IsRecoverableRendererRestart() || vkCtx.strictSwapInterval;
 	VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
-	if ( !VK_Device_SelectPresentMode( requestedInterval, strict, presentMode ) ) return false;
+	if ( !VK_Device_SelectPresentMode( requestedInterval, strict, presentMode ) ) {
+		// An explicit device request reports its unsupported interval. A typed
+		// interval that a later display or surface change can no longer
+		// provide must not stop every frame: present with FIFO, which every
+		// surface supports. The request keeps ownership, so a later recreation
+		// that finds its mode again resumes it.
+		if ( R_IsRecoverableRendererRestart() || !vkCtx.strictSwapInterval ) return false;
+		common->Warning( "Vulkan: swap interval %d is not available on this surface; presenting with vertical sync until it is", requestedInterval );
+		presentMode = VK_PRESENT_MODE_FIFO_KHR;
+	}
 
 	VkExtent2D extent = caps.currentExtent;
 	if ( extent.width == 0xFFFFFFFFu ) {
@@ -621,8 +687,10 @@ static bool VK_Device_CreateSwapchain( void ) {
 	}
 	if ( extent.width == 0 || extent.height == 0 ) {
 		// minimized window; keep the old swapchain until a real size shows up
+		vkCtx.surfaceExtentZero = true;
 		return false;
 	}
+	vkCtx.surfaceExtentZero = false;
 
 	uint32_t imageCount = caps.minImageCount + 1;
 	if ( caps.maxImageCount > 0 && imageCount > caps.maxImageCount ) {
@@ -658,6 +726,13 @@ static bool VK_Device_CreateSwapchain( void ) {
 	if ( res != VK_SUCCESS ) {
 		common->Warning( "Vulkan: vkCreateSwapchainKHR failed (%d)", (int)res );
 		R_DisplayPresentationFailed( RDP_RECREATE_FAILED, (int32_t)res );
+		// The old swapchain is retired even when the create fails, so it can
+		// neither present nor be passed as oldSwapchain again. Callers only get
+		// here with an idle device and no open frame; the next frame rebuilds.
+		VK_Device_DestroySwapchainObjects();
+		if ( res == VK_ERROR_SURFACE_LOST_KHR ) {
+			vkCtx.surfaceLost = true;
+		}
 		return false;
 	}
 
@@ -732,6 +807,11 @@ static bool VK_Device_CreateSwapchain( void ) {
 	if ( !vkCtx.swapchainTransferSrc ) {
 		common->Warning( "Vulkan: swapchain does not support transfer-source captures; screenshots and backbuffer feedback are unavailable" );
 	}
+	// Acquire/present recreation after a live resize happens inside the
+	// executor; the front end sizes its views from glConfig, so publish the
+	// new drawable size here for every recreation path.
+	glConfig.vidWidth = (int)extent.width;
+	glConfig.vidHeight = (int)extent.height;
 	const int actualInterval = presentMode == VK_PRESENT_MODE_FIFO_RELAXED_KHR ? -1 :
 		presentMode == VK_PRESENT_MODE_FIFO_KHR ? 1 : 0;
 	VK_Device_RecordSwapInterval( requestedInterval );
@@ -864,6 +944,21 @@ static void VK_Device_SavePipelineCache( void ) {
 	Mem_Free( blob );
 }
 
+void VK_Device_WaitIdleForTiming( void ) {
+	if ( vkCtx.initialized && vkCtx.device != VK_NULL_HANDLE && !vkCtx.presentationBlocked ) {
+		vkDeviceWaitIdle( vkCtx.device );
+	}
+}
+
+bool VK_Device_SurfaceExtentChanged( void ) {
+	if ( !vkCtx.initialized || vkCtx.surface == VK_NULL_HANDLE ) return false;
+	VkSurfaceCapabilitiesKHR caps;
+	if ( vkGetPhysicalDeviceSurfaceCapabilitiesKHR( vkCtx.physicalDevice, vkCtx.surface, &caps ) != VK_SUCCESS ) return true;
+	if ( caps.currentExtent.width == 0xFFFFFFFFu ) return false;	// window-driven; the swap-time poll owns it
+	return caps.currentExtent.width != vkCtx.swapchainExtent.width
+		|| caps.currentExtent.height != vkCtx.swapchainExtent.height;
+}
+
 /*
 ====================
 VK_Device_RecreateSwapchain
@@ -872,6 +967,19 @@ VK_Device_RecreateSwapchain
 bool VK_Device_RecreateSwapchain( void ) {
 	if ( !vkCtx.initialized || vkCtx.presentationBlocked ) {
 		return false;
+	}
+	if ( vkCtx.surfaceLost ) {
+		return VK_Device_RecoverSurface();
+	}
+	// A minimized window keeps reporting a zero extent. Check that cheaply
+	// before idling the device; each frame (and each view) would otherwise
+	// repeat a full device wait for nothing.
+	if ( vkCtx.surfaceExtentZero ) {
+		VkSurfaceCapabilitiesKHR caps;
+		if ( vkGetPhysicalDeviceSurfaceCapabilitiesKHR( vkCtx.physicalDevice, vkCtx.surface, &caps ) == VK_SUCCESS
+				&& ( caps.currentExtent.width == 0 || caps.currentExtent.height == 0 ) ) {
+			return false;
+		}
 	}
 	// Waiting for the device only covers submitted work. Retiring attachment
 	// views while an executor scope is still recording invalidates that
@@ -886,6 +994,49 @@ bool VK_Device_RecreateSwapchain( void ) {
 	R_RendererMetrics_ResetGpuFrameTiming( "Vulkan swapchain recreation" );
 	if ( !VK_Device_CreateSwapchain() ) return false;
 	presentation.Succeeded(); return true;
+}
+
+/*
+====================
+VK_Device_RecoverSurface
+
+VK_ERROR_SURFACE_LOST_KHR leaves the window but not its surface. The swapchain
+belongs to the surface, so both are rebuilt; the device, its resources and
+the game state survive. A window that cannot provide a new surface latches
+presentation, which queues the full renderer restart.
+====================
+*/
+bool VK_Device_RecoverSurface( void ) {
+	if ( !vkCtx.initialized || vkCtx.presentationBlocked ) return false;
+	if ( VK_GuiExecutor_FrameIsOpen() ) return false;
+	if ( vkWindowServices == NULL || vkWindowServices->CreateVulkanSurface == NULL ) {
+		VK_Device_BlockPresentation( RDP_RECREATE_FAILED, VK_ERROR_SURFACE_LOST_KHR, "surface recovery" );
+		return false;
+	}
+	const VkResult waited = vkDeviceWaitIdle( vkCtx.device );
+	if ( waited != VK_SUCCESS ) { VK_Device_BlockPresentation( RDP_WAIT_FAILED, waited, "surface recovery idle wait" ); return false; }
+	VK_Device_DestroySwapchainObjects();
+	if ( vkCtx.surface != VK_NULL_HANDLE ) {
+		vkDestroySurfaceKHR( vkCtx.instance, vkCtx.surface, NULL );
+		vkCtx.surface = VK_NULL_HANDLE;
+	}
+	unsigned long long surfaceHandle = 0;
+	VkBool32 presentable = VK_FALSE;
+	if ( !vkWindowServices->CreateVulkanSurface( (void *)vkCtx.instance, &surfaceHandle ) || surfaceHandle == 0 ) {
+		VK_Device_BlockPresentation( RDP_RECREATE_FAILED, VK_ERROR_SURFACE_LOST_KHR, "surface recreation" );
+		return false;
+	}
+	vkCtx.surface = (VkSurfaceKHR)surfaceHandle;
+	if ( vkGetPhysicalDeviceSurfaceSupportKHR( vkCtx.physicalDevice, vkCtx.graphicsQueueFamily, vkCtx.surface, &presentable ) != VK_SUCCESS
+			|| !presentable ) {
+		VK_Device_BlockPresentation( RDP_RECREATE_FAILED, VK_ERROR_SURFACE_LOST_KHR, "recreated surface presentation support" );
+		return false;
+	}
+	vkCtx.surfaceExtentZero = false;
+	vkCtx.surfaceLost = false;
+	common->Printf( "Vulkan: surface recreated after surface loss\n" );
+	// A zero extent here is a minimized window; the next frame retries.
+	return VK_Device_CreateSwapchain();
 }
 
 /*
@@ -1173,10 +1324,13 @@ bool VK_Device_Init( const renderWindowServices_s *windowServices ) {
 	// the debug tools' glLineWidth / glPointSize; they draw at 1 without these
 	features2.features.wideLines = supported.wideLines;
 	features2.features.largePoints = supported.largePoints;
+	// r_showShadows 1/3 draws the volumes as wireframe, like GLS_POLYMODE_LINE
+	features2.features.fillModeNonSolid = supported.fillModeNonSolid;
 	vkCtx.depthClampSupported = supported.depthClamp == VK_TRUE;
 	vkCtx.depthBoundsSupported = supported.depthBounds == VK_TRUE;
 	vkCtx.textureCompressionBCSupported = supported.textureCompressionBC == VK_TRUE;
 	vkCtx.wideLinesSupported = supported.wideLines == VK_TRUE;
+	vkCtx.fillModeNonSolidSupported = supported.fillModeNonSolid == VK_TRUE;
 	vkCtx.largePointsSupported = supported.largePoints == VK_TRUE;
 	common->Printf( "Vulkan: optional depth features clamp=%d bounds=%d, BC texture compression=%d\n",
 			vkCtx.depthClampSupported ? 1 : 0,
