@@ -14154,12 +14154,6 @@ static void RB_STD_SetLightGridDrawState( const bool inlineSurface ) {
 	} else {
 		glEnable( GL_BLEND );
 		glBlendFunc( GL_ONE, GL_ONE );
-		// Max instead of add: the baked bounce light only fills pixels that the
-		// lamps left darker than it, so lit surfaces keep their authored
-		// brightness and a surface drawn once per albedo stage is not counted twice.
-		if ( r_lightGridBlendMax.GetBool() ) {
-			glBlendEquation( GL_MAX );
-		}
 	}
 	glDepthMask( GL_FALSE );
 	if ( disableHardwareDepth ) {
@@ -14187,7 +14181,6 @@ static void RB_STD_FinishLightGridDrawState( const bool inlineSurface ) {
 		( r_lightGridDepthBiasFactor.GetFloat() != 0.0f || r_lightGridDepthBiasUnits.GetFloat() != 0.0f );
 
 	glUseProgramObjectARB( 0 );
-	glBlendEquation( GL_FUNC_ADD );
 	if ( useLightGridDepthBias ) {
 		glDisable( GL_POLYGON_OFFSET_FILL );
 	}

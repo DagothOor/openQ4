@@ -1441,7 +1441,6 @@ extern idCVar r_lightGridIntensity;		// scales baked light-grid indirect diffuse
 extern idCVar r_lightGridVisibilityFloor;	// minimum light-grid probe visibility after falloff
 extern idCVar r_lightGridIrradianceGamma;	// gamma decode for baked LDR light-grid irradiance
 extern idCVar r_lightGridMaxContribution;	// maximum light-grid contribution before bloom/HDR
-extern idCVar r_lightGridBlendMax;		// max() instead of add for the light-grid indirect pass
 extern idCVar r_lightGridReport;		// print light-grid receiver statistics every N frames while enabled
 extern idCVar r_lightGridDebug;			// debug baked light-grid indirect pass output
 extern idCVar r_lightGridDepthBiasFactor;	// polygon offset factor for light-grid overlay
