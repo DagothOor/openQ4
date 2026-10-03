@@ -108,6 +108,9 @@ openQ4 avoids moving your view in ways your body doesn't feel:
 
 - there is no view bob, weapon kick or screen shake in VR;
 - turning is done in steps (snap turn) by default;
+- while the stick moves you or turns you smoothly, the edges of your view
+  darken around a clear centre (the comfort vignette), because that motion is
+  what your body doesn't feel; walking about your room never triggers it;
 - in-game cinematics play on the floating screen instead of moving your view.
 
 In single player you can walk around your room: step and your character
@@ -126,6 +129,7 @@ You can change these settings:
 | `vr_smoothTurnSpeed` | 120 | smooth turn speed, degrees per second |
 | `vr_moveDirection` | 0 | 0 walk where you look, 1 walk where the off-hand controller points |
 | `vr_stickDeadzone` | 0.2 | thumbstick deadzone |
+| `vr_comfortVignette` | 0.5 | how strongly the comfort vignette narrows your view, from 0 (off) to 1 (a black edge around a 60 degree clear centre) |
 | `vr_roomScale` | 1 | 1 your character follows your steps about the room (single player), 0 it stays put |
 | `vr_headOffsetLimit` | 16 | how far you can lean from your character before the view stops (game units) |
 

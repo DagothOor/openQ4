@@ -118,10 +118,15 @@ def check_engine() -> None:
             "other builds run the null system")
     require(system, 'idCVar vr_enable( "vr_enable", "0",', "VR is off by default")
     require(system, 'idCVar vr_aimLaser( "vr_aimLaser", "1",', "the aim dot is on by default")
+    require(system, 'idCVar vr_comfortVignette( "vr_comfortVignette", "0.5",', "the comfort vignette is on by default")
     for module in ("src/game/PlayerView.cpp", "src/mpgame/PlayerView.cpp"):
-        require(read(module), "\t\tSingleView( hud, &eyeView, RF_NO_GUI | RF_PRIMARY_VIEW );\n\t\tif ( drawAimMarker ) {\n"
+        require(read(module), "\t\tSingleView( hud, &eyeView, RF_NO_GUI | RF_PRIMARY_VIEW );\n"
+                              "\t\tVR_DrawComfortVignette( eyeView, vignette, vignetteMaterial );\n\t\tif ( drawAimMarker ) {\n"
                               "\t\t\tVR_DrawAimMarker( eyeView, aimMarker, vrFrame.aimLaser, aimMaterial );\n\t\t}\n\t\tScreenFade();",
-                f"{module} marks the aim in each eye over its 3D pass, under its fade")
+                f"{module} vignettes and marks the aim in each eye over its 3D pass, under its fade")
+        # the vignette follows artificial motion only, read from the engine's cvar
+        require(read(module), 'cvarSystem->GetCVarFloat( "vr_comfortVignette" )',
+                f"{module} reads the vignette setting without touching the frame state")
 
     openxr = read("src/sys/openxr/OpenXRSystem.cpp")
     for banned in ("SendInput", "keybd_event", "mouse_event", "XTest"):
@@ -172,7 +177,7 @@ def check_documents() -> None:
             raise AssertionError(f"missing {relative}")
     guide = read("docs/user/vr.md")
     for cvar in ("vr_enable", "vr_aimMode", "vr_aimLaser", "vr_hapticStrength", "vr_turnMode", "vr_recenter",
-                 "vr_restart"):
+                 "vr_restart", "vr_twoHanded", "vr_comfortVignette"):
         require(guide, cvar, "the VR guide documents the settings players use")
 
 

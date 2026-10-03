@@ -153,6 +153,9 @@ def main(argv: list[str] | None = None) -> None:
         f"when {marker('two_off')} capture {profile / 'xr_two_off'}",
         f"when {marker('two_dot')} capture {profile / 'xr_two_dot'}",
         f"when {marker('two_release')} button left squeeze 0",
+        f"when {marker('smooth')} stick right 1 0",
+        f"when {marker('vignette')} capture {profile / 'xr_vignette'}",
+        f"when {marker('smooth_stop')} stick right 0 0",
         f"when {marker('laser_done')} hand right 0.2 1.25 -0.35 0 0 0",
         f"when {marker('laser_done')} hand left -0.2 1.25 -0.35 0 0 0",
         f"when {marker('fire')} button right trigger 1",
@@ -195,7 +198,12 @@ def main(argv: list[str] | None = None) -> None:
         "condump vr_marker_two_squeeze.txt", "waitMsec 500", "vr_aimLaser 0", "waitMsec 500",
         "condump vr_marker_two_off.txt", "waitMsec 500", "vr_aimLaser 1", "waitMsec 500",
         "condump vr_marker_two_dot.txt", "waitMsec 500",
-        "condump vr_marker_two_release.txt", "waitMsec 400", "echo VR_TWO_HANDS_DONE", "g_stopTime 0",
+        "condump vr_marker_two_release.txt", "waitMsec 400", "echo VR_TWO_HANDS_DONE",
+        # comfort: a smooth turn darkens each eye's edges around a clear centre
+        "vr_turnMode 1", "vr_comfortVignette 1", "condump vr_marker_smooth.txt", "waitMsec 600",
+        "condump vr_marker_vignette.txt", "waitMsec 300",
+        "condump vr_marker_smooth_stop.txt", "waitMsec 300", "vr_turnMode 0", "vr_comfortVignette 0.5",
+        "g_stopTime 0",
         "condump vr_marker_laser_done.txt", "waitMsec 500",
         # the right trigger's default binding fires the weapon
         "echo VR_FIRE", "condump vr_marker_fire.txt", "waitMsec 400",
@@ -315,13 +323,13 @@ def main(argv: list[str] | None = None) -> None:
     for e in events:
         if e.get("event") == "capture":
             stage = next(s for s in ("gameplay", "turned", "menu", "laser_off", "laser_dot", "laser_beam",
-                                     "two_off", "two_dot")
+                                     "two_off", "two_dot", "vignette")
                          if f"xr_{s}_" in Path(e["path"]).name)
             captures[f"{stage}_{e['layer']}"] = e
     for name in ("gameplay_left", "gameplay_right", "gameplay_quad1", "turned_left", "turned_right", "menu_quad1",
                  "laser_off_left", "laser_off_right", "laser_dot_left", "laser_dot_right",
                  "laser_beam_left", "laser_beam_right", "two_off_left", "two_off_right", "two_dot_left",
-                 "two_dot_right"):
+                 "two_dot_right", "vignette_left", "vignette_right"):
         assert name in captures and captures[name]["written"], f"missing capture {name}: {sorted(captures)}"
     for name in ("gameplay_left", "gameplay_right", "turned_left", "turned_right"):
         assert captures[name]["lit_fraction"] > 0.2, f"eye capture {name} is mostly black: {captures[name]}"
@@ -390,6 +398,19 @@ def main(argv: list[str] | None = None) -> None:
         _, two_y = eye_tangents(eye, x, y, 1200, 1320)
         assert two_y > dots[eye][1] + 0.05, \
             f"holding the gun in both hands should raise the {eye} eye's aim ({dots[eye][1]:.3f} to {two_y:.3f})"
+
+    # the comfort vignette: turning smoothly at full strength blacks out the
+    # top corners, which show sky without it, and leaves the centre clear
+    for eye in ("left", "right"):
+        plain, vignette = image("xr_laser_dot", eye).convert("L"), image("xr_vignette", eye).convert("L")
+        w, h = vignette.size
+        corners = [(0, 0, w // 10, h // 10), (w - w // 10, 0, w, h // 10)]
+        plain_corner = min(ImageStat.Stat(plain.crop(box)).mean[0] for box in corners)
+        dark_corner = max(ImageStat.Stat(vignette.crop(box)).mean[0] for box in corners)
+        centre = ImageStat.Stat(vignette.crop((w * 3 // 10, h * 3 // 10, w * 7 // 10, h * 7 // 10))).mean[0]
+        assert plain_corner > 10.0, f"the {eye} eye's top corners should show sky before the vignette ({plain_corner:.1f})"
+        assert dark_corner < 3.0, f"a smooth turn should black out the {eye} eye's corners ({dark_corner:.1f})"
+        assert centre > 10.0, f"the vignette must leave the {eye} eye's centre clear ({centre:.1f})"
 
     with Image.open(profile / "xr_gameplay_quad1.tga") as hud:
         alpha = hud.convert("RGBA").getchannel("A")

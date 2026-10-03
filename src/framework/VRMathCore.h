@@ -318,6 +318,34 @@ inline vrVec3_t VR_MultiplyRows( const vrVec3_t &v, const vrVec3_t rows[3] ) {
 
 /*
 ====================
+Comfort vignette
+
+How much artificial motion should narrow the view, 0..1: from the player's
+speed in units per second (Quake 4 walks at 80 and runs at 160, so a run is
+full strength and a slow drift nothing) and from a smooth turn's rate in
+degrees per second (120, the default smooth-turn speed, is full strength).
+====================
+*/
+inline float VR_ComfortMotion( float speed, float turnDegreesPerSecond ) {
+	const float move = ( speed - 15.0f ) / 145.0f;
+	const float turn = ( std::fabs( turnDegreesPerSecond ) - 10.0f ) / 110.0f;
+	const float strongest = move > turn ? move : turn;
+	return strongest < 0.0f ? 0.0f : ( strongest > 1.0f ? 1.0f : strongest );
+}
+
+// Eases the vignette towards its target: in within about a tenth of a second,
+// so it is there as motion starts, and out over about a third, so a stop does
+// not flash the edges open.
+inline float VR_ComfortEase( float current, float target, float seconds ) {
+	if ( seconds <= 0.0f ) {
+		return current;
+	}
+	const float settle = target > current ? 0.08f : 0.35f;
+	return current + ( target - current ) * ( 1.0f - std::exp( -seconds / settle ) );
+}
+
+/*
+====================
 Two-handed aim
 
 The off hand steadies the gun when its palm closes in front of the weapon

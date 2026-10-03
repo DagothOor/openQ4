@@ -49,6 +49,9 @@ idPlayerView::idPlayerView() {
 // openQ4 BEGIN
 	liquidViewAmount = 0.0f;
 	liquidViewContents = 0;
+	vrComfort = 0.0f;
+	vrComfortYaw = 0.0f;
+	vrComfortTime = 0;
 // openQ4 END
 }
 
@@ -997,6 +1000,9 @@ void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const
 	vrAimMarker_t aimMarker;
 	const bool drawAimMarker = vrFrame.aimLaser != VR_AIM_LASER_OFF && player->GetVRAimMarker( aimMarker );
 	const idMaterial *aimMaterial = drawAimMarker ? declManager->FindMaterial( "_white" ) : NULL;
+	// the edges of each eye darken while the stick moves or turns the player
+	const float vignette = VRComfortVignette( vrFrame );
+	const idMaterial *vignetteMaterial = vignette > 0.01f ? declManager->FindMaterial( "_white" ) : NULL;
 
 	for ( int eye = 0; eye < VR_NUM_EYES; eye++ ) {
 		if ( !renderSystem->SetVRRenderTarget( eye ) ) {
@@ -1005,6 +1011,7 @@ void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const
 		renderView_t eyeView = *view;
 		VR_BuildEyeView( vrFrame, eye, eyeOrigin, trackingYaw, eyeView );
 		SingleView( hud, &eyeView, RF_NO_GUI | RF_PRIMARY_VIEW );
+		VR_DrawComfortVignette( eyeView, vignette, vignetteMaterial );
 		if ( drawAimMarker ) {
 			VR_DrawAimMarker( eyeView, aimMarker, vrFrame.aimLaser, aimMaterial );
 		}
@@ -1013,6 +1020,35 @@ void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const
 	renderSystem->SetVRRenderTarget( -1 );
 
 	SingleView( hud, view, RF_GUI_ONLY );
+}
+
+/*
+===================
+idPlayerView::VRComfortVignette
+
+openQ4 VR: how strongly to vignette this frame (vr_comfortVignette). It
+follows artificial motion only: the stick's walking and running (the
+player's velocity, which a room-scale step leaves alone) and smooth turning
+(the rate of the tracking yaw). A change of more than 15 degrees in one frame
+is a snap turn or a recentre, a cut rather than motion, and is ignored.
+===================
+*/
+float idPlayerView::VRComfortVignette( const vrFrameState_t &vrFrame ) {
+	const float setting = idMath::ClampFloat( 0.0f, 1.0f, cvarSystem->GetCVarFloat( "vr_comfortVignette" ) );
+	const int now = Sys_Milliseconds();
+	const float seconds = vrComfortTime > 0 ? idMath::ClampFloat( 0.0f, 0.25f, ( now - vrComfortTime ) * 0.001f ) : 0.0f;
+	float turnRate = 0.0f;
+	if ( seconds > 0.0f ) {
+		const float delta = idMath::AngleNormalize180( vrFrame.bodyYaw - vrComfortYaw );
+		if ( idMath::Fabs( delta ) < 15.0f ) {
+			turnRate = delta / seconds;
+		}
+	}
+	vrComfortYaw = vrFrame.bodyYaw;
+	vrComfortTime = now;
+	const float target = setting > 0.0f ? VR_ComfortMotion( player->GetPhysics()->GetLinearVelocity().Length(), turnRate ) : 0.0f;
+	vrComfort = VR_ComfortEase( vrComfort, target, seconds );
+	return vrComfort * setting;
 }
 
 /*

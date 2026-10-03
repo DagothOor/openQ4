@@ -59,7 +59,8 @@
   walks after the head with collision), weapons held at full size by each
   model's own grip with the barrel along the aim (measured from its idle
   pose; every stock weapon checked; earlier builds' archived offsets reset
-  once), two-handed aim with the off hand on the foregrip, and a Virtual
+  once), two-handed aim with the off hand on the foregrip, a comfort
+  vignette during stick movement and smooth turning, and a Virtual
   Reality section in
   Settings > Game Options (nine rows, twelve languages). Building that section
   fixed the Game Options and display section selectors, which ignored clicks.

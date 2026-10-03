@@ -99,6 +99,12 @@ private:
 	void				LiquidOverlay( int liquidContents );
 	float				liquidViewAmount;	// eased 0-1 so breaking the surface does not cut
 	int					liquidViewContents;	// remembered while fading back out
+
+	// openQ4 VR: the comfort vignette, eased, and the tracking yaw it last saw
+	float				VRComfortVignette( const vrFrameState_t &vrFrame );
+	float				vrComfort;
+	float				vrComfortYaw;
+	int					vrComfortTime;
 // openQ4 END
 
 	screenBlob_t *		GetScreenBlob();

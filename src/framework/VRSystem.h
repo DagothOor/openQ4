@@ -372,4 +372,54 @@ ID_INLINE void VR_DrawAimMarker( const renderView_t &view, const vrAimMarker_t &
 	renderSystem->SetUseUIViewportFor2D( previousUIViewportMode );
 }
 
+/*
+===============================================================================
+
+	The comfort vignette (vr_comfortVignette), drawn into each eye.
+
+	While the stick moves the player or turns them smoothly, each eye darkens
+	towards its edges, where the eye notices motion the body does not feel,
+	around a clear centre on the eye's own axis; both eyes' axes are parallel,
+	so the pair fuses at infinity. strength is 0..1: at 1 the clear centre
+	narrows to 60 degrees across and the edge goes black.
+
+===============================================================================
+*/
+ID_INLINE void VR_DrawComfortVignette( const renderView_t &view, float strength, const idMaterial *material ) {
+	if ( material == NULL || strength <= 0.01f ) {
+		return;
+	}
+	strength = Min( strength, 1.0f );
+	// tangents of the angle off the eye's axis: where the darkening starts, how
+	// far it ramps, and an outer edge beyond any lens's corner
+	const float clear = idMath::Tan( DEG2RAD( 58.0f - 28.0f * strength ) );
+	const float ramp = 0.5f;
+	const float outside = 6.0f;
+	const int rings = 24;
+	const int segments = 32;
+	for ( int ring = 0; ring <= rings; ring++ ) {
+		const float inner = clear + ramp * static_cast<float>( ring ) / static_cast<float>( rings );
+		const float outer = ring < rings ? clear + ramp * static_cast<float>( ring + 1 ) / static_cast<float>( rings ) : outside;
+		// a smoothstep ramp in fine rings, so bright skies show no bands
+		const float t = ( static_cast<float>( ring ) + 0.5f ) / static_cast<float>( rings );
+		const float alpha = ring < rings ? strength * t * t * ( 3.0f - 2.0f * t ) : strength;
+		renderSystem->SetColor4( 0.0f, 0.0f, 0.0f, alpha );
+		float s0 = 0.0f, c0 = 1.0f;
+		for ( int i = 1; i <= segments; i++ ) {
+			float s1, c1;
+			idMath::SinCos( idMath::TWO_PI * static_cast<float>( i ) / static_cast<float>( segments ), s1, c1 );
+			// counter-clockwise in tangent space, which the 2D pass keeps
+			const idVec2 a = VR_EyeCanvasPoint( view, inner * c0, inner * s0 );
+			const idVec2 b = VR_EyeCanvasPoint( view, outer * c0, outer * s0 );
+			const idVec2 c = VR_EyeCanvasPoint( view, outer * c1, outer * s1 );
+			const idVec2 d = VR_EyeCanvasPoint( view, inner * c1, inner * s1 );
+			renderSystem->DrawStretchTri( a, b, c, vec2_origin, vec2_origin, vec2_origin, material );
+			renderSystem->DrawStretchTri( a, c, d, vec2_origin, vec2_origin, vec2_origin, material );
+			s0 = s1;
+			c0 = c1;
+		}
+	}
+	renderSystem->SetColor4( 1.0f, 1.0f, 1.0f, 1.0f );
+}
+
 #endif /* !__VRSYSTEM_H__ */

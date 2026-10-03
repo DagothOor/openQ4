@@ -153,6 +153,25 @@ static void TestRotationBetween( void ) {
 	Check( NearVec( VR_MultiplyRows( VR_Vec3( 0.2f, 0.3f, 0.4f ), rows ), VR_Vec3( 0.2f, 0.3f, 0.4f ) ), "parallel vectors leave everything alone" );
 }
 
+static void TestComfortVignette( void ) {
+	Check( VR_ComfortMotion( 0.0f, 0.0f ) == 0.0f, "standing still needs no vignette" );
+	Check( VR_ComfortMotion( 10.0f, 5.0f ) == 0.0f, "a drift or a slow turn needs none" );
+	Check( Near( VR_ComfortMotion( 160.0f, 0.0f ), 1.0f ), "a run is full strength" );
+	Check( VR_ComfortMotion( 80.0f, 0.0f ) > 0.4f && VR_ComfortMotion( 80.0f, 0.0f ) < 0.5f, "a walk is about half" );
+	Check( Near( VR_ComfortMotion( 0.0f, -120.0f ), 1.0f ), "a full smooth turn either way is full strength" );
+	Check( Near( VR_ComfortMotion( 400.0f, 400.0f ), 1.0f ), "strength stops at 1" );
+	Check( Near( VR_ComfortMotion( 80.0f, 120.0f ), 1.0f ), "the stronger motion wins" );
+	float v = 0.0f;
+	for ( int i = 0; i < 9; i++ ) {
+		v = VR_ComfortEase( v, 1.0f, 1.0f / 90.0f );
+	}
+	Check( v > 0.6f, "the vignette is mostly in within a tenth of a second" );
+	const float in = v;
+	v = VR_ComfortEase( v, 0.0f, 0.1f );
+	Check( v > in * 0.6f, "it eases out more slowly than in" );
+	Check( VR_ComfortEase( 0.3f, 1.0f, 0.0f ) == 0.3f, "no time, no change" );
+}
+
 static void TestTwoHandedAim( void ) {
 	const float upm = 40.0f;	// units per metre
 	const vrVec3_t palm = VR_Vec3( 10.0f, -8.0f, -14.0f );
@@ -245,6 +264,7 @@ int main() {
 	TestEyeImage();
 	TestRotationBetween();
 	TestTwoHandedAim();
+	TestComfortVignette();
 	TestTurning();
 	TestOffsets();
 	TestQuad();
