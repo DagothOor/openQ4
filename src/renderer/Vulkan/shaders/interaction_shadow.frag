@@ -23,6 +23,10 @@ layout(set = 4, binding = 0) uniform sampler2D diffuseMap;
 layout(set = 5, binding = 0) uniform sampler2D specularMap;
 layout(set = 7, binding = 0) uniform sampler2DShadow shadowCompareMap;
 layout(set = 7, binding = 2) uniform sampler2D shadowRawMap;
+// r_shadowMapTranslucentMoments: the moment atlas, one map per color channel
+layout(set = 7, binding = 3) uniform sampler2D shadowMomentMapR;
+layout(set = 7, binding = 4) uniform sampler2D shadowMomentMapG;
+layout(set = 7, binding = 5) uniform sampler2D shadowMomentMapB;
 
 layout(push_constant) uniform InteractionPushConstants {
     mat4 mvp;
@@ -69,7 +73,13 @@ layout(set = 7, binding = 1, std140) uniform ShadowBlock {
     vec4 filterParams; // x: radius, y: taps, z: mode, w: hardware compare
     vec4 pcssParams;   // x: light radius, y: max radius, z: effective radius, w: receiver-plane bias
     vec4 debugParams;  // x: r_shadowMapDebugMode, y: receiver fallback reason
+    // Translucent moments live in a separate atlas whose blocks mirror the
+    // depth-atlas blocks at a uniform scale: momentUV = depthUV * x + yz.
+    vec4 momentAtlas;  // x: scale (<= 0: no moments for this light), yz: bias, w: 1 / moment atlas size
+    vec4 momentParams; // x: density, y: min variance, z: bleed reduction, w: filter radius in texels
 } shadow;
+
+#include "shadow_moment_resolve.glsl"
 
 layout(location = 0) in vec2 vBumpTexCoord;
 layout(location = 1) in vec2 vDiffuseTexCoord;
@@ -486,6 +496,102 @@ float SampleShadowFactor() {
         blend);
 }
 
+// GL SampleFilteredMoments: the center plus four half-offset taps, all
+// clamped inside the tile.
+vec4 SampleFilteredMoments(sampler2D momentMap, vec2 uv, vec2 clampMin,
+        vec2 clampMax, vec2 tap) {
+    vec4 moments = texture(momentMap, uv);
+    if (tap.x <= 0.0) {
+        return moments;
+    }
+    moments += texture(momentMap, clamp(uv + vec2(-0.5, -0.5) * tap, clampMin, clampMax));
+    moments += texture(momentMap, clamp(uv + vec2(0.5, -0.5) * tap, clampMin, clampMax));
+    moments += texture(momentMap, clamp(uv + vec2(-0.5, 0.5) * tap, clampMin, clampMax));
+    moments += texture(momentMap, clamp(uv + vec2(0.5, 0.5) * tap, clampMin, clampMax));
+    return moments * 0.2;
+}
+
+// GL SampleTranslucentShadowCascade. The tile-local lookup, guard band and
+// filter footprint are formed in depth-atlas UV exactly as GL forms them in
+// its moment target, then mapped into the moment atlas, where the clamp also
+// keeps every bilinear footprint inside this light's moment tile.
+vec3 SampleTranslucentShadowCascade(vec4 shadowCoord, vec4 atlasRect) {
+    vec2 localUv;
+    float depth;
+    if (!ProjectShadowCoord(shadowCoord, localUv, depth)) {
+        return vec3(1.0);
+    }
+    if (localUv.x <= 0.0 || localUv.x >= 1.0
+            || localUv.y <= 0.0 || localUv.y >= 1.0) {
+        return vec3(1.0);
+    }
+    if (depth <= 0.0 || depth >= 1.0) {
+        return vec3(1.0);
+    }
+
+    vec2 uv = mix(atlasRect.xy, atlasRect.zw, localUv);
+    vec2 rectMin = min(atlasRect.xy, atlasRect.zw);
+    vec2 rectMax = max(atlasRect.xy, atlasRect.zw);
+    float guardRadius = ShadowDebugModeIs(kShadowDebugPCFOff)
+        ? 0.5 : max(0.5, shadow.pcssParams.z + 0.75);
+    vec2 guardBand = abs(shadow.texelSize.xy) * guardRadius;
+    vec2 clampMin = min(rectMin + guardBand, rectMax - guardBand);
+    vec2 clampMax = rectMax - guardBand;
+    uv = clamp(uv, clampMin, clampMax);
+
+    float scale = shadow.momentAtlas.x;
+    vec2 bias = shadow.momentAtlas.yz;
+    vec2 halfTexel = vec2(0.5 * shadow.momentAtlas.w);
+    vec2 momentMin = max(clampMin * scale + bias, rectMin * scale + bias + halfTexel);
+    vec2 momentMax = min(clampMax * scale + bias, rectMax * scale + bias - halfTexel);
+    momentMin = min(momentMin, momentMax);
+    vec2 momentUv = clamp(uv * scale + bias, momentMin, momentMax);
+
+    float filterRadius = ShadowDebugModeIs(kShadowDebugPCFOff)
+        ? 0.0 : shadow.momentParams.w;
+    vec2 tap = filterRadius > 0.0
+        ? abs(shadow.texelSize.xy) * max(filterRadius, 0.5) * scale : vec2(0.0);
+    return vec3(
+        ResolveTranslucentShadowMoments(SampleFilteredMoments(shadowMomentMapR,
+            momentUv, momentMin, momentMax, tap), depth, shadow.momentParams),
+        ResolveTranslucentShadowMoments(SampleFilteredMoments(shadowMomentMapG,
+            momentUv, momentMin, momentMax, tap), depth, shadow.momentParams),
+        ResolveTranslucentShadowMoments(SampleFilteredMoments(shadowMomentMapB,
+            momentUv, momentMin, momentMax, tap), depth, shadow.momentParams));
+}
+
+vec3 SampleTranslucentCascadeByIndex(int cascadeIndex) {
+    return SampleTranslucentShadowCascade(ShadowCoordByIndex(cascadeIndex),
+        AtlasRectByIndex(cascadeIndex));
+}
+
+// GL SampleTranslucentShadow: the opaque cascade selection and split-band
+// blend, applied to the colored transmittance.
+vec3 SampleTranslucentShadow() {
+    if (shadow.momentAtlas.x <= 0.0) {
+        return vec3(1.0);
+    }
+    int cascadeIndex = SelectShadowCascade(vViewDepth);
+    vec3 transmittance = SampleTranslucentCascadeByIndex(cascadeIndex);
+    int lastInteriorIndex = ShadowCascadeCount() - 2;
+    float cascadeBlend = shadow.biasParams.z;
+    if (cascadeIndex > lastInteriorIndex || cascadeBlend <= 0.0) {
+        return transmittance;
+    }
+
+    float previousSplit = cascadeIndex == 0 ? 0.0
+        : CascadeComponent(shadow.splitDepths, cascadeIndex - 1);
+    float currentSplit = CascadeComponent(shadow.splitDepths, cascadeIndex);
+    float blendWidth = max(1.0,
+        (currentSplit - previousSplit) * cascadeBlend);
+    float blendStart = currentSplit - blendWidth;
+    if (vViewDepth <= blendStart) {
+        return transmittance;
+    }
+    float blend = clamp((vViewDepth - blendStart) / blendWidth, 0.0, 1.0);
+    return mix(transmittance, SampleTranslucentCascadeByIndex(cascadeIndex + 1), blend);
+}
+
 vec4 CascadeDebugColor(int cascadeIndex) {
     if (cascadeIndex <= 0) {
         return vec4(1.0, 0.2, 0.2, 1.0);
@@ -749,6 +855,9 @@ void main() {
             outColor = ShadowDebugOutput();
             return;
         }
+        // Direct radiance is linear in the light color, so the colored
+        // translucent transmittance can filter the evaluated result.
+        packed *= SampleTranslucentShadow();
         outColor = vec4(packed, PBRTransparentAlpha(diffuseTexCoord));
         return;
     }
@@ -766,6 +875,7 @@ void main() {
         outColor = ShadowDebugOutput();
         return;
     }
+    light *= SampleTranslucentShadow();
 
     vec3 diffuse = texture(diffuseMap, diffuseTexCoord).rgb * inter.diffuseColor.rgb;
     diffuse = ApplyFlatDiffuseSweep(diffuse, vLightFalloffTexCoord.z);

@@ -242,6 +242,25 @@ typedef struct vkShadowMapState_s {
 	// already have bound, so they are rebuilt at the next frame boundary;
 	// shadowed lights fall back for the remainder of this frame.
 	bool				resizePending;
+
+	// r_shadowMapTranslucentMoments: the moment atlas (one RGBA16F image per
+	// color channel) and the cleared 1x1 placeholder that stands in for it.
+	// Every shadow set names one or the other, so both change only at a
+	// frame boundary with the device idle, and both stay in shader-read
+	// layout outside the shadow scope.
+	VkImage				momentImages[ 3 ];
+	VmaAllocation		momentAllocations[ 3 ];
+	VkImageView			momentViews[ 3 ];
+	int					momentAtlasSize;	// 0 = no atlas
+	int					momentAtlasFailedSize;	// creation failed at this size; translucent casters stay binary
+	VkImage				momentPlaceholderImage;
+	VmaAllocation		momentPlaceholderAllocation;
+	VkImageView			momentPlaceholderView;
+	VkSampler			momentSampler;
+	// per-view moment block allocation (VK_ShadowMap_AllocateMomentBlocks)
+	int					momentPasses;
+	int					momentShift;	// blocks are depth blocks scaled by 1 / 2^shift
+	int					momentDropped;	// passes that did not fit even at the smallest scale
 	vkShadowLightState_t lights[ VK_SHADOW_MAX_LIGHTS ];
 } vkShadowMapState_t;
 
@@ -569,6 +588,298 @@ static void VK_ShadowMap_DestroyPointCubes( void ) {
 	vkShadow.pointCubeFaceSize = 0;
 }
 
+/*
+====================
+Translucent shadow moments (r_shadowMapTranslucentMoments)
+
+GL RB_RenderTranslucentShadowMap draws one light at a time into a reused
+moment target just before that light's receivers. Vulkan renders every
+light's maps up front and keeps them for the whole view, deferred translucent
+receivers included, so each ownership pass with translucent casters takes a
+block of one shared moment atlas: three RGBA16F images, one per color
+channel, whose blocks mirror the depth-atlas blocks (a 3x2 block of face
+tiles for a point light) at a uniform scale chosen per view.
+====================
+*/
+bool VK_Exec_MomentCasterModulesReady( void );
+VkPipeline VK_Exec_MomentCasterPipeline( bool pointLight );
+VkPipelineLayout VK_Exec_MomentCasterPipelineLayout( void );
+VkDescriptorSet VK_Exec_InteractionUniformSet( void );
+int VK_Exec_InteractionUniformAlloc( const void *data, int bytes );
+bool VK_Exec_SetShadowMomentViews( const VkImageView views[ 3 ], VkSampler sampler );
+void VK_Exec_RefreshShadowMomentSets( VkDescriptorSet sets[ VK_FRAMES_IN_FLIGHT ] );
+
+static const VkFormat VK_SHADOW_MOMENT_FORMAT = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+static bool VK_ShadowMap_MomentsRequested( void ) {
+	return r_shadowMapTranslucentMoments.GetBool() && r_useShadowMap.GetBool();
+}
+
+bool VK_ShadowMap_TranslucentMomentsAvailable( void ) {
+	return VK_ShadowMap_MomentsRequested() && vkCtx.initialized
+		&& vkShadow.momentAtlasFailedSize == 0 && VK_Exec_MomentCasterModulesReady();
+}
+
+// GL sizes its moment target as one projected block: an r_shadowMapSize
+// tile, or the 2x2 cascade block of a CSM light.
+static int VK_ShadowMap_MomentAtlasSizeValue( void ) {
+	int size = idMath::ClampInt( 512, 4096, 2 * r_shadowMapSize.GetInteger() );
+	const int maxDim = (int)vkCtx.deviceProperties.limits.maxImageDimension2D;
+	if ( maxDim > 0 && size > maxDim ) {
+		size = maxDim;
+	}
+	return size;
+}
+
+typedef struct vkMomentClear_s {
+	VkImage				images[ 3 ];
+	int					count;
+} vkMomentClear_t;
+
+// Upload-batch commands: zero moments everywhere, then shader-read layout,
+// so a receiver whose light drew no moments resolves to full transmittance.
+static void VK_ShadowMap_RecordMomentClear( VkCommandBuffer cmd, void *user ) {
+	const vkMomentClear_t *clear = static_cast<const vkMomentClear_t *>( user );
+	VkImageSubresourceRange range;
+	memset( &range, 0, sizeof( range ) );
+	range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	range.levelCount = 1;
+	range.layerCount = 1;
+	VkImageMemoryBarrier2 barriers[ 3 ];
+	memset( barriers, 0, sizeof( barriers ) );
+	for ( int i = 0 ; i < clear->count ; i++ ) {
+		barriers[ i ].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+		barriers[ i ].srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+		barriers[ i ].dstStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
+		barriers[ i ].dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+		barriers[ i ].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		barriers[ i ].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		barriers[ i ].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barriers[ i ].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barriers[ i ].image = clear->images[ i ];
+		barriers[ i ].subresourceRange = range;
+	}
+	VkDependencyInfo dep;
+	memset( &dep, 0, sizeof( dep ) );
+	dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	dep.imageMemoryBarrierCount = (uint32_t)clear->count;
+	dep.pImageMemoryBarriers = barriers;
+	vkCmdPipelineBarrier2( cmd, &dep );
+
+	VkClearColorValue zero;
+	memset( &zero, 0, sizeof( zero ) );
+	for ( int i = 0 ; i < clear->count ; i++ ) {
+		vkCmdClearColorImage( cmd, clear->images[ i ], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				&zero, 1, &range );
+		barriers[ i ].srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
+		barriers[ i ].srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+		barriers[ i ].dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+		barriers[ i ].dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+		barriers[ i ].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		barriers[ i ].newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	}
+	vkCmdPipelineBarrier2( cmd, &dep );
+}
+
+static bool VK_ShadowMap_CreateMomentImage( const int size, const bool attachment,
+		VkImage &image, VmaAllocation &allocation, VkImageView &view ) {
+	VkImageCreateInfo ici;
+	memset( &ici, 0, sizeof( ici ) );
+	ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	ici.imageType = VK_IMAGE_TYPE_2D;
+	ici.format = VK_SHADOW_MOMENT_FORMAT;
+	ici.extent.width = (uint32_t)size;
+	ici.extent.height = (uint32_t)size;
+	ici.extent.depth = 1;
+	ici.mipLevels = 1;
+	ici.arrayLayers = 1;
+	ici.samples = VK_SAMPLE_COUNT_1_BIT;
+	ici.tiling = VK_IMAGE_TILING_OPTIMAL;
+	ici.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
+			| ( attachment ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : 0 );
+	VmaAllocationCreateInfo vaci;
+	memset( &vaci, 0, sizeof( vaci ) );
+	vaci.usage = VMA_MEMORY_USAGE_AUTO;
+	if ( vmaCreateImage( vkCtx.allocator, &ici, &vaci, &image, &allocation, NULL ) != VK_SUCCESS ) {
+		image = VK_NULL_HANDLE;
+		allocation = NULL;
+		return false;
+	}
+	VkImageViewCreateInfo ivci;
+	memset( &ivci, 0, sizeof( ivci ) );
+	ivci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	ivci.image = image;
+	ivci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	ivci.format = VK_SHADOW_MOMENT_FORMAT;
+	ivci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	ivci.subresourceRange.levelCount = 1;
+	ivci.subresourceRange.layerCount = 1;
+	if ( vkCreateImageView( vkCtx.device, &ivci, NULL, &view ) != VK_SUCCESS ) {
+		vmaDestroyImage( vkCtx.allocator, image, allocation );
+		image = VK_NULL_HANDLE;
+		allocation = NULL;
+		view = VK_NULL_HANDLE;
+		return false;
+	}
+	return true;
+}
+
+static void VK_ShadowMap_DestroyMomentAtlas( void ) {
+	for ( int i = 0 ; i < 3 ; i++ ) {
+		if ( vkShadow.momentViews[ i ] != VK_NULL_HANDLE ) {
+			vkDestroyImageView( vkCtx.device, vkShadow.momentViews[ i ], NULL );
+		}
+		if ( vkShadow.momentImages[ i ] != VK_NULL_HANDLE ) {
+			vmaDestroyImage( vkCtx.allocator, vkShadow.momentImages[ i ], vkShadow.momentAllocations[ i ] );
+		}
+		vkShadow.momentViews[ i ] = VK_NULL_HANDLE;
+		vkShadow.momentImages[ i ] = VK_NULL_HANDLE;
+		vkShadow.momentAllocations[ i ] = NULL;
+	}
+	vkShadow.momentAtlasSize = 0;
+}
+
+static void VK_ShadowMap_DestroyMomentPlaceholder( void ) {
+	if ( vkShadow.momentPlaceholderView != VK_NULL_HANDLE ) {
+		vkDestroyImageView( vkCtx.device, vkShadow.momentPlaceholderView, NULL );
+	}
+	if ( vkShadow.momentPlaceholderImage != VK_NULL_HANDLE ) {
+		vmaDestroyImage( vkCtx.allocator, vkShadow.momentPlaceholderImage, vkShadow.momentPlaceholderAllocation );
+	}
+	if ( vkShadow.momentSampler != VK_NULL_HANDLE ) {
+		vkDestroySampler( vkCtx.device, vkShadow.momentSampler, NULL );
+	}
+	vkShadow.momentPlaceholderView = VK_NULL_HANDLE;
+	vkShadow.momentPlaceholderImage = VK_NULL_HANDLE;
+	vkShadow.momentPlaceholderAllocation = NULL;
+	vkShadow.momentSampler = VK_NULL_HANDLE;
+}
+
+// Names the moment atlas (or the placeholder) in every shadow set. Only
+// called before any of those sets can be bound, or with the device idle.
+static bool VK_ShadowMap_PublishMomentViews( void ) {
+	if ( vkShadow.momentPlaceholderView == VK_NULL_HANDLE || vkShadow.momentSampler == VK_NULL_HANDLE ) {
+		return false;
+	}
+	const bool atlas = vkShadow.momentAtlasSize > 0;
+	VkImageView views[ 3 ];
+	for ( int i = 0 ; i < 3 ; i++ ) {
+		views[ i ] = atlas ? vkShadow.momentViews[ i ] : vkShadow.momentPlaceholderView;
+	}
+	if ( !VK_Exec_SetShadowMomentViews( views, vkShadow.momentSampler ) ) {
+		return false;
+	}
+	for ( int i = 0 ; i < VK_SHADOW_MAX_POINT_CUBES ; i++ ) {
+		VK_Exec_RefreshShadowMomentSets( vkShadow.pointCubes[ i ].sets );
+	}
+	for ( int i = 0 ; i < VK_SHADOW_MAX_CACHE_SLOTS ; i++ ) {
+		VK_Exec_RefreshShadowMomentSets( vkShadow.pointCache[ i ].cube.sets );
+	}
+	return true;
+}
+
+// The first frame begin creates the placeholder before any shadow resource
+// exists, so the atlas and cube sets are complete from their first write.
+static bool VK_ShadowMap_EnsureMomentPlaceholder( void ) {
+	if ( vkShadow.momentPlaceholderView != VK_NULL_HANDLE ) {
+		return true;
+	}
+	if ( vkShadow.momentSampler == VK_NULL_HANDLE ) {
+		VkSamplerCreateInfo sci;
+		memset( &sci, 0, sizeof( sci ) );
+		sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		sci.magFilter = VK_FILTER_LINEAR;
+		sci.minFilter = VK_FILTER_LINEAR;
+		sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+		sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		sci.maxLod = 0.25f;
+		if ( vkCreateSampler( vkCtx.device, &sci, NULL, &vkShadow.momentSampler ) != VK_SUCCESS ) {
+			vkShadow.momentSampler = VK_NULL_HANDLE;
+			return false;
+		}
+	}
+	if ( !VK_ShadowMap_CreateMomentImage( 1, false, vkShadow.momentPlaceholderImage,
+			vkShadow.momentPlaceholderAllocation, vkShadow.momentPlaceholderView ) ) {
+		VK_ShadowMap_DestroyMomentPlaceholder();
+		return false;
+	}
+	vkMomentClear_t clear;
+	memset( &clear, 0, sizeof( clear ) );
+	clear.images[ 0 ] = vkShadow.momentPlaceholderImage;
+	clear.count = 1;
+	if ( !VK_Device_BatchedUpload( VK_ShadowMap_RecordMomentClear, &clear, VK_NULL_HANDLE, NULL, 0 ) ) {
+		VK_ShadowMap_DestroyMomentPlaceholder();
+		return false;
+	}
+	if ( !VK_ShadowMap_PublishMomentViews() ) {
+		// The upload batch may still reference the image; let it retire first.
+		VK_Device_DeferDestroy( vkShadow.momentPlaceholderImage, vkShadow.momentPlaceholderView,
+				VK_NULL_HANDLE, vkShadow.momentPlaceholderAllocation );
+		vkShadow.momentPlaceholderImage = VK_NULL_HANDLE;
+		vkShadow.momentPlaceholderView = VK_NULL_HANDLE;
+		vkShadow.momentPlaceholderAllocation = NULL;
+		return false;
+	}
+	return true;
+}
+
+static bool VK_ShadowMap_CreateMomentAtlas( const int size ) {
+	for ( int i = 0 ; i < 3 ; i++ ) {
+		if ( !VK_ShadowMap_CreateMomentImage( size, true, vkShadow.momentImages[ i ],
+				vkShadow.momentAllocations[ i ], vkShadow.momentViews[ i ] ) ) {
+			VK_ShadowMap_DestroyMomentAtlas();
+			return false;
+		}
+	}
+	vkMomentClear_t clear;
+	memset( &clear, 0, sizeof( clear ) );
+	for ( int i = 0 ; i < 3 ; i++ ) {
+		clear.images[ i ] = vkShadow.momentImages[ i ];
+	}
+	clear.count = 3;
+	if ( !VK_Device_BatchedUpload( VK_ShadowMap_RecordMomentClear, &clear, VK_NULL_HANDLE, NULL, 0 ) ) {
+		VK_ShadowMap_DestroyMomentAtlas();
+		return false;
+	}
+	vkShadow.momentAtlasSize = size;
+	return true;
+}
+
+// Frame-boundary moment atlas lifecycle. Every shadow set names the atlas,
+// so it is created, resized and released only with the device idle.
+static void VK_ShadowMap_UpdateMomentAtlas( void ) {
+	if ( !VK_ShadowMap_EnsureMomentPlaceholder() ) {
+		return;
+	}
+	const int wantedSize = VK_ShadowMap_MomentsRequested() && VK_Exec_MomentCasterModulesReady()
+		? VK_ShadowMap_MomentAtlasSizeValue() : 0;
+	if ( wantedSize != vkShadow.momentAtlasFailedSize ) {
+		vkShadow.momentAtlasFailedSize = 0;
+	}
+	if ( wantedSize == vkShadow.momentAtlasSize || vkShadow.momentAtlasFailedSize != 0 ) {
+		return;
+	}
+	vkDeviceWaitIdle( vkCtx.device );
+	if ( vkShadow.momentAtlasSize > 0 ) {
+		// Point every set back at the placeholder before the views go away.
+		vkShadow.momentAtlasSize = 0;
+		VK_ShadowMap_PublishMomentViews();
+		VK_ShadowMap_DestroyMomentAtlas();
+	}
+	if ( wantedSize > 0 ) {
+		if ( VK_ShadowMap_CreateMomentAtlas( wantedSize ) ) {
+			common->Printf( "Vulkan: translucent shadow moment atlas %dx%d (3 x RGBA16F)\n", wantedSize, wantedSize );
+		} else {
+			vkShadow.momentAtlasFailedSize = wantedSize;
+			common->Warning( "Vulkan: translucent shadow moment atlas creation failed (%dx%d); "
+				"translucent casters keep binary shadows", wantedSize, wantedSize );
+		}
+		VK_ShadowMap_PublishMomentViews();
+	}
+}
+
 static int VK_ShadowMap_AtlasSizeValue( void );
 static int VK_ShadowMap_PointSizeValue( void );
 
@@ -576,6 +887,7 @@ void VK_ShadowMap_BeginFrame( void ) {
 	if ( vkCtx.device == VK_NULL_HANDLE || VK_GuiExecutor_FrameIsOpen() ) {
 		return;
 	}
+	VK_ShadowMap_UpdateMomentAtlas();
 	// Size cvars change between frames (console, settings menu). Seen here,
 	// before anything records, the resize needs no fallback frame.
 	if ( vkShadow.atlasImage != VK_NULL_HANDLE && vkShadow.atlasSize != VK_ShadowMap_AtlasSizeValue() ) {
@@ -607,6 +919,8 @@ void VK_ShadowMap_Shutdown( void ) {
 	}
 	VK_ShadowMap_DestroyAtlas();
 	VK_ShadowMap_DestroyPointCubes();
+	VK_ShadowMap_DestroyMomentAtlas();
+	VK_ShadowMap_DestroyMomentPlaceholder();
 	if ( vkShadow.compareSampler != VK_NULL_HANDLE ) {
 		vkDestroySampler( vkCtx.device, vkShadow.compareSampler, NULL );
 	}
@@ -1804,10 +2118,22 @@ static bool VK_ShadowMap_AllocTileBlock( const int blockSize,
 	return true;
 }
 
+// The translucent chains are only populated when the front end admitted the
+// moment tier (VK_ShadowMap_TranslucentMomentsAvailable).
+static bool VK_ShadowMap_PassHasTranslucentCasters( const viewLight_t *vLight,
+		const vkShadowReceiverPass_t receiverPass ) {
+	return vLight->globalTranslucentShadowMapCasters != NULL
+		|| ( receiverPass == VK_SHADOW_RECEIVER_GLOBAL
+			&& vLight->localTranslucentShadowMapCasters != NULL );
+}
+
+// GL RB_ShadowMapRunPass also maps a pass whose only casters are
+// translucent: an empty depth map plus their moments.
 static bool VK_ShadowMap_PassHasCasters( const viewLight_t *vLight,
 		const vkShadowReceiverPass_t receiverPass ) {
 	if ( vLight->globalShadowMapCasters != NULL
-			|| vLight->globalShadowMapDynamicCasters != NULL ) {
+			|| vLight->globalShadowMapDynamicCasters != NULL
+			|| VK_ShadowMap_PassHasTranslucentCasters( vLight, receiverPass ) ) {
 		return true;
 	}
 	return receiverPass == VK_SHADOW_RECEIVER_GLOBAL
@@ -2081,6 +2407,121 @@ static void VK_ShadowMap_AliasPass( vkShadowLightState_t &light,
 		const vkShadowReceiverPass_t resourcePass ) {
 	light.passes[ receiverPass ] = light.passes[ resourcePass ];
 	light.passes[ receiverPass ].resourcePass = resourcePass;
+}
+
+// One shelf-packing attempt of this view's moment blocks with every depth
+// block scaled by 1 / 2^shift. A projected block mirrors its depth block; a
+// point block is a 3x2 grid of face tiles. Returns the requests that did not
+// fit; commit records the placements and receiver mappings.
+static int VK_ShadowMap_PackMomentBlocks( const int shift, const bool commit ) {
+	const int atlas = vkShadow.momentAtlasSize;
+	const float invMoment = 1.0f / (float)atlas;
+	int nextX = 0;
+	int nextY = 0;
+	int rowHeight = 0;
+	int dropped = 0;
+	for ( int i = 0 ; i < vkShadow.numLights ; i++ ) {
+		vkShadowLightState_t &light = vkShadow.lights[ i ];
+		if ( !light.valid || light.vLight == NULL ) {
+			continue;
+		}
+		const int atlasDiv = light.pointLight ? 1
+			: idMath::ClampInt( 1, 2, light.projectedState.atlasDiv );
+		for ( int passIndex = 0 ; passIndex < VK_SHADOW_RECEIVER_PASS_COUNT ; passIndex++ ) {
+			const vkShadowReceiverPass_t receiverPass = (vkShadowReceiverPass_t)passIndex;
+			vkShadowPassState_t &pass = light.passes[ passIndex ];
+			if ( !pass.valid || pass.resourcePass != receiverPass
+					|| !VK_ShadowMap_PassHasTranslucentCasters( light.vLight, receiverPass ) ) {
+				continue;
+			}
+			const int tile = Max( 1, light.tileSize >> shift );
+			const int width = light.pointLight ? 3 * tile : tile * atlasDiv;
+			const int height = light.pointLight ? 2 * tile : tile * atlasDiv;
+			if ( nextX + width > atlas ) {
+				nextX = 0;
+				nextY += rowHeight;
+				rowHeight = 0;
+			}
+			if ( width > atlas || nextY + height > atlas ) {
+				dropped++;
+				continue;
+			}
+			if ( commit ) {
+				pass.momentValid = true;
+				pass.momentX = nextX;
+				pass.momentY = nextY;
+				pass.momentTile = tile;
+				if ( light.pointLight ) {
+					pass.momentAtlas[ 0 ] = (float)nextX * invMoment;
+					pass.momentAtlas[ 1 ] = (float)nextY * invMoment;
+					pass.momentAtlas[ 2 ] = (float)tile * invMoment;
+				} else {
+					// momentUV = depthUV * k + b maps the depth block onto this
+					// one; both draw with the same viewport convention.
+					const float scale = (float)tile / (float)Max( 1, light.tileSize );
+					pass.momentAtlas[ 0 ] = scale * (float)vkShadow.atlasSize * invMoment;
+					pass.momentAtlas[ 1 ] = ( (float)nextX - (float)pass.tileX * scale ) * invMoment;
+					pass.momentAtlas[ 2 ] = ( (float)nextY - (float)pass.tileY * scale ) * invMoment;
+				}
+				pass.momentAtlas[ 3 ] = invMoment;
+			}
+			nextX += width;
+			rowHeight = Max( rowHeight, height );
+		}
+	}
+	return dropped;
+}
+
+// Places every translucent ownership's moment block at the largest scale
+// (1, 1/2, 1/4 or 1/8 of its depth block) at which all of them fit. A
+// request that does not fit even at 1/8 casts no translucent shadow this
+// view; a light whose map failed outright never gets here.
+static void VK_ShadowMap_AllocateMomentBlocks( void ) {
+	vkShadow.momentPasses = 0;
+	vkShadow.momentShift = 0;
+	vkShadow.momentDropped = 0;
+	for ( int i = 0 ; i < vkShadow.numLights ; i++ ) {
+		for ( int passIndex = 0 ; passIndex < VK_SHADOW_RECEIVER_PASS_COUNT ; passIndex++ ) {
+			vkShadowPassState_t &pass = vkShadow.lights[ i ].passes[ passIndex ];
+			pass.momentValid = false;
+			memset( pass.momentAtlas, 0, sizeof( pass.momentAtlas ) );
+		}
+	}
+	if ( vkShadow.momentAtlasSize <= 0 || vkShadow.atlasSize <= 0 ) {
+		return;
+	}
+
+	int shift = 0;
+	while ( shift < 3 && VK_ShadowMap_PackMomentBlocks( shift, false ) > 0 ) {
+		shift++;
+	}
+	vkShadow.momentDropped = VK_ShadowMap_PackMomentBlocks( shift, true );
+	vkShadow.momentShift = shift;
+
+	for ( int i = 0 ; i < vkShadow.numLights ; i++ ) {
+		vkShadowLightState_t &light = vkShadow.lights[ i ];
+		for ( int passIndex = 0 ; passIndex < VK_SHADOW_RECEIVER_PASS_COUNT ; passIndex++ ) {
+			vkShadowPassState_t &pass = light.passes[ passIndex ];
+			if ( !pass.valid ) {
+				continue;
+			}
+			if ( pass.resourcePass != (vkShadowReceiverPass_t)passIndex ) {
+				// An aliased ownership shares its resource pass's moments.
+				const vkShadowPassState_t &resource = light.passes[ pass.resourcePass ];
+				pass.momentValid = resource.momentValid;
+				pass.momentX = resource.momentX;
+				pass.momentY = resource.momentY;
+				pass.momentTile = resource.momentTile;
+				memcpy( pass.momentAtlas, resource.momentAtlas, sizeof( pass.momentAtlas ) );
+			} else if ( pass.momentValid ) {
+				vkShadow.momentPasses++;
+			}
+		}
+	}
+	if ( vkShadow.momentDropped > 0 ) {
+		common->DPrintf( "Vulkan: %d translucent shadow moment block(s) did not fit the %d moment atlas\n",
+				vkShadow.momentDropped, vkShadow.momentAtlasSize );
+	}
 }
 
 // Approximate resident shadow GPU memory (RB_ShadowMapResidentBytes
@@ -2559,6 +3000,8 @@ int VK_ShadowMap_PrepareViewLights( const viewDef_t *viewDef,
 	vkShadow.pointCasterFaceCulled = 0;
 	vkShadow.budgetFallbacks = 0;
 	vkShadow.subviewFallbacks = 0;
+	vkShadow.momentPasses = 0;
+	vkShadow.momentDropped = 0;
 
 	if ( viewDef == NULL || !r_useShadowMap.GetBool() || !r_shadows.GetBool() ) {
 		return 0;
@@ -2858,6 +3301,7 @@ int VK_ShadowMap_PrepareViewLights( const viewDef_t *viewDef,
 	}
 	}
 
+	VK_ShadowMap_AllocateMomentBlocks();
 	return prepared;
 }
 
@@ -4387,6 +4831,510 @@ static void VK_ShadowMap_FinalizeCachePasses(
 	}
 }
 
+/*
+====================
+Translucent moment casters
+
+The stage analysis ports the GL RB_TranslucentShadowStage* helpers
+(draw_arb2.cpp) unchanged, cube maps always being available here. Vulkan
+only draws a stage whose images are static: cinematic and dynamic images
+would need their per-frame upload and ownership path inside the shadow
+scope, so such a stage contributes nothing.
+====================
+*/
+typedef enum vkMomentStageMode_e {
+	VK_MOMENT_STAGE_NONE = 0,
+	VK_MOMENT_STAGE_TEXTURE_ALPHA,
+	VK_MOMENT_STAGE_TEXTURE_ADDITIVE,
+	VK_MOMENT_STAGE_CUBEMAP_ADDITIVE
+} vkMomentStageMode_t;
+
+// std140 mirror of shadow_moment_stage.glsl (9 vec4, in a 256B ring slice)
+typedef struct vkMomentStageBlock_s {
+	float			alphaS[ 4 ];
+	float			alphaT[ 4 ];
+	float			coverageS[ 4 ];
+	float			coverageT[ 4 ];
+	float			stageColor[ 4 ];
+	float			coverageStageColor[ 4 ];
+	float			modes[ 4 ];
+	float			coverageTest[ 4 ];
+	float			vertexAlpha[ 4 ];
+} vkMomentStageBlock_t;
+
+typedef struct vkMomentCasterPush_s {
+	float			mvp[ 16 ];
+	float			depthRow[ 4 ];
+} vkMomentCasterPush_t;
+
+static_assert( sizeof( vkMomentStageBlock_t ) == 144, "moment stage block must remain 9 vec4s" );
+static_assert( sizeof( vkMomentCasterPush_t ) <= 128, "moment caster push must fit the shared 128B block" );
+
+static bool VK_ShadowMap_MomentTextureBindable( const textureStage_t *texture ) {
+	return texture != NULL && ( texture->image != NULL || texture->cinematic != NULL );
+}
+
+static vkMomentStageMode_t VK_ShadowMap_MomentStageMode( const shaderStage_t *pStage ) {
+	if ( pStage == NULL || pStage->newStage != NULL ) {
+		return VK_MOMENT_STAGE_NONE;
+	}
+	const int blendBits = pStage->drawStateBits & ( GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS );
+	if ( blendBits == ( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA )
+			|| blendBits == ( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA ) ) {
+		return VK_ShadowMap_MomentTextureBindable( &pStage->texture ) && pStage->texture.texgen == TG_EXPLICIT
+			? VK_MOMENT_STAGE_TEXTURE_ALPHA : VK_MOMENT_STAGE_NONE;
+	}
+	if ( blendBits == ( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE ) ) {
+		if ( VK_ShadowMap_MomentTextureBindable( &pStage->texture ) && pStage->texture.texgen == TG_EXPLICIT ) {
+			return VK_MOMENT_STAGE_TEXTURE_ADDITIVE;
+		}
+		if ( VK_ShadowMap_MomentTextureBindable( &pStage->texture ) && pStage->texture.texgen == TG_REFLECT_CUBE ) {
+			return VK_MOMENT_STAGE_CUBEMAP_ADDITIVE;
+		}
+	}
+	return VK_MOMENT_STAGE_NONE;
+}
+
+static bool VK_ShadowMap_MomentStageCanProvideCoverage( const shaderStage_t *pStage, const float *regs ) {
+	return pStage != NULL && regs != NULL && pStage->newStage == NULL
+		&& regs[ pStage->conditionRegister ] != 0.0f
+		&& VK_ShadowMap_MomentTextureBindable( &pStage->texture )
+		&& pStage->texture.texgen == TG_EXPLICIT;
+}
+
+static const shaderStage_t *VK_ShadowMap_FindMomentCoverageStage( const idMaterial *shader, const float *regs ) {
+	if ( shader == NULL || regs == NULL ) {
+		return NULL;
+	}
+	const shaderStage_t *bestStage = NULL;
+	int bestPriority = -1;
+	for ( int stage = 0 ; stage < shader->GetNumStages() ; ++stage ) {
+		const shaderStage_t *pStage = shader->GetStage( stage );
+		if ( !VK_ShadowMap_MomentStageCanProvideCoverage( pStage, regs ) ) {
+			continue;
+		}
+		int priority = 100;
+		if ( pStage->hasAlphaTest ) {
+			priority += 400;
+		}
+		const vkMomentStageMode_t mode = VK_ShadowMap_MomentStageMode( pStage );
+		if ( mode == VK_MOMENT_STAGE_TEXTURE_ALPHA ) {
+			priority += 300;
+		} else if ( mode == VK_MOMENT_STAGE_TEXTURE_ADDITIVE ) {
+			priority += 150;
+		}
+		if ( pStage->lighting == SL_AMBIENT ) {
+			priority += 20;
+		}
+		if ( priority > bestPriority ) {
+			bestPriority = priority;
+			bestStage = pStage;
+		}
+	}
+	return bestStage;
+}
+
+static float VK_ShadowMap_MomentStageOpacityScale( const shaderStage_t *pStage, const float *regs,
+		const vkMomentStageMode_t mode ) {
+	if ( pStage == NULL || regs == NULL ) {
+		return 0.0f;
+	}
+	const float colorLuma = regs[ pStage->color.registers[ 0 ] ] * 0.2126f
+		+ regs[ pStage->color.registers[ 1 ] ] * 0.7152f
+		+ regs[ pStage->color.registers[ 2 ] ] * 0.0722f;
+	if ( mode == VK_MOMENT_STAGE_TEXTURE_ALPHA ) {
+		return regs[ pStage->color.registers[ 3 ] ];
+	}
+	if ( mode == VK_MOMENT_STAGE_CUBEMAP_ADDITIVE ) {
+		return Max( 0.0f, 1.0f - idMath::ClampFloat( 0.0f, 1.0f, colorLuma ) );
+	}
+	return Max( regs[ pStage->color.registers[ 3 ] ], colorLuma );
+}
+
+static float VK_ShadowMap_MomentCoverageScale( const shaderStage_t *pStage, const float *regs ) {
+	if ( pStage == NULL || regs == NULL ) {
+		return 1.0f;
+	}
+	const vkMomentStageMode_t mode = VK_ShadowMap_MomentStageMode( pStage );
+	if ( mode != VK_MOMENT_STAGE_NONE ) {
+		return VK_ShadowMap_MomentStageOpacityScale( pStage, regs, mode );
+	}
+	return Max( regs[ pStage->color.registers[ 3 ] ], 0.0f );
+}
+
+static float VK_ShadowMap_MomentVertexColorMode( const shaderStage_t *pStage ) {
+	if ( pStage != NULL && pStage->vertexColor == SVC_MODULATE ) {
+		return 1.0f;
+	}
+	if ( pStage != NULL && pStage->vertexColor == SVC_INVERSE_MODULATE ) {
+		return 2.0f;
+	}
+	return 0.0f;
+}
+
+static void VK_ShadowMap_MomentVertexAlphaParams( const shaderStage_t *pStage, float params[ 2 ] ) {
+	params[ 0 ] = 0.0f;
+	params[ 1 ] = 1.0f;
+	if ( pStage != NULL && pStage->vertexColor == SVC_MODULATE ) {
+		params[ 0 ] = 1.0f;
+		params[ 1 ] = 0.0f;
+	} else if ( pStage != NULL && pStage->vertexColor == SVC_INVERSE_MODULATE ) {
+		params[ 0 ] = -1.0f;
+		params[ 1 ] = 1.0f;
+	}
+}
+
+static void VK_ShadowMap_MomentStageColor( const shaderStage_t *pStage, const float *regs, float color[ 4 ] ) {
+	for ( int i = 0 ; i < 4 ; i++ ) {
+		color[ i ] = ( pStage != NULL && regs != NULL ) ? regs[ pStage->color.registers[ i ] ] : 1.0f;
+	}
+}
+
+// RB_ShadowMapSetTexCoordUniforms: the S and T rows of the stage matrix.
+static void VK_ShadowMap_MomentTexCoordRows( const float *regs, const textureStage_t *texture,
+		float rowS[ 4 ], float rowT[ 4 ] ) {
+	rowS[ 0 ] = 1.0f; rowS[ 1 ] = 0.0f; rowS[ 2 ] = 0.0f; rowS[ 3 ] = 0.0f;
+	rowT[ 0 ] = 0.0f; rowT[ 1 ] = 1.0f; rowT[ 2 ] = 0.0f; rowT[ 3 ] = 0.0f;
+	if ( regs == NULL || texture == NULL || !texture->hasMatrix ) {
+		return;
+	}
+	float matrix[ 16 ];
+	RB_GetShaderTextureMatrix( regs, texture, matrix );
+	rowS[ 0 ] = matrix[ 0 ]; rowS[ 1 ] = matrix[ 4 ]; rowS[ 2 ] = matrix[ 8 ]; rowS[ 3 ] = matrix[ 12 ];
+	rowT[ 0 ] = matrix[ 1 ]; rowT[ 1 ] = matrix[ 5 ]; rowT[ 2 ] = matrix[ 9 ]; rowT[ 3 ] = matrix[ 13 ];
+}
+
+// RB_ShadowMapAlphaTestModeValue, the translucent caster's encoding.
+static float VK_ShadowMap_MomentAlphaTestMode( const int alphaTestMode ) {
+	if ( alphaTestMode == GL_LESS ) {
+		return -1.0f;
+	}
+	if ( alphaTestMode == GL_EQUAL ) {
+		return 0.0f;
+	}
+	return 1.0f;
+}
+
+// A static 2D stage image, loaded on demand as the material walk does.
+static VkDescriptorSet VK_ShadowMap_MomentStageImageSet( const textureStage_t *texture ) {
+	if ( texture == NULL || texture->cinematic != NULL || texture->dynamic != DI_STATIC
+			|| texture->image == NULL ) {
+		return VK_NULL_HANDLE;
+	}
+	idImage *image = texture->image;
+	if ( !image->IsLoaded() ) {
+		image->ActuallyLoadImage( true );
+	}
+	return image->IsLoaded() ? VK_Exec_ImageDescriptor( image->GetDeviceHandle(), true ) : VK_NULL_HANDLE;
+}
+
+typedef struct vkMomentPassCtx_s {
+	VkCommandBuffer		cmd;
+	int					slot;
+	VkPipelineLayout	layout;
+	VkDescriptorSet		whiteSet;
+	VkDescriptorSet		uniformSet;
+	int					draws;
+	bool				skippedStage;
+} vkMomentPassCtx_t;
+
+// GL RB_ShadowMapDrawTranslucentCasterChain over one bound tile: every
+// supported stage of every caster adds its moments.
+static void VK_ShadowMap_DrawMomentChain( vkMomentPassCtx_t &ctx, const vkMomentCasterPush_t &basePush,
+		const vkShadowLightState_t &light, const int cascadeIndex, const float clipMatrix[ 16 ],
+		const float faceViewMatrix[ 16 ], const int cubeFace, const drawSurf_t *surf ) {
+	const float minAlpha = r_shadowMapTranslucentMinAlpha.GetFloat();
+	for ( ; surf != NULL ; surf = surf->nextOnLight ) {
+		if ( surf->space == NULL || surf->material == NULL || surf->shaderRegisters == NULL ) {
+			continue;
+		}
+		srfTriangles_t *casterGeo = VK_ShadowMap_ResolveCasterGeo( surf );
+		if ( casterGeo == NULL ) {
+			continue;
+		}
+		if ( light.pointLight ) {
+			if ( R_ShadowMapCasterOutsidePointFace( light.vLight, surf->space->modelMatrix,
+					casterGeo->bounds[ 0 ].ToFloatPtr(), casterGeo->bounds[ 1 ].ToFloatPtr(), cubeFace ) ) {
+				continue;
+			}
+		} else if ( VK_ShadowMap_CasterOutsideCascade( light, surf, casterGeo, cascadeIndex ) ) {
+			continue;
+		}
+
+		const idMaterial *shader = surf->material;
+		const float *regs = surf->shaderRegisters;
+		const shaderStage_t *coverageStage = VK_ShadowMap_FindMomentCoverageStage( shader, regs );
+		bool boundGeometry = false;
+		for ( int stage = 0 ; stage < shader->GetNumStages() ; stage++ ) {
+			const shaderStage_t *pStage = shader->GetStage( stage );
+			if ( regs[ pStage->conditionRegister ] == 0.0f ) {
+				continue;
+			}
+			const vkMomentStageMode_t mode = VK_ShadowMap_MomentStageMode( pStage );
+			if ( mode == VK_MOMENT_STAGE_NONE ) {
+				continue;
+			}
+			const shaderStage_t *stageCoverage =
+				VK_ShadowMap_MomentStageCanProvideCoverage( pStage, regs ) ? pStage : coverageStage;
+			const float combinedScale = VK_ShadowMap_MomentStageOpacityScale( pStage, regs, mode )
+				* VK_ShadowMap_MomentCoverageScale( stageCoverage, regs );
+			if ( combinedScale <= minAlpha ) {
+				continue;
+			}
+
+			// the cube-map additive mode reads only its stage color
+			const VkDescriptorSet alphaSet = mode == VK_MOMENT_STAGE_CUBEMAP_ADDITIVE
+				? ctx.whiteSet : VK_ShadowMap_MomentStageImageSet( &pStage->texture );
+			const VkDescriptorSet coverageSet = stageCoverage != NULL
+				? VK_ShadowMap_MomentStageImageSet( &stageCoverage->texture ) : ctx.whiteSet;
+			if ( alphaSet == VK_NULL_HANDLE || coverageSet == VK_NULL_HANDLE ) {
+				ctx.skippedStage = true;
+				continue;
+			}
+
+			vkMomentStageBlock_t block;
+			memset( &block, 0, sizeof( block ) );
+			if ( mode == VK_MOMENT_STAGE_CUBEMAP_ADDITIVE ) {
+				VK_ShadowMap_MomentTexCoordRows( NULL, NULL, block.alphaS, block.alphaT );
+			} else {
+				VK_ShadowMap_MomentTexCoordRows( regs, &pStage->texture, block.alphaS, block.alphaT );
+			}
+			VK_ShadowMap_MomentTexCoordRows( regs, stageCoverage != NULL ? &stageCoverage->texture : NULL,
+					block.coverageS, block.coverageT );
+			VK_ShadowMap_MomentStageColor( pStage, regs, block.stageColor );
+			VK_ShadowMap_MomentStageColor( stageCoverage, regs, block.coverageStageColor );
+			block.modes[ 0 ] = mode == VK_MOMENT_STAGE_TEXTURE_ADDITIVE ? 1.0f
+				: mode == VK_MOMENT_STAGE_CUBEMAP_ADDITIVE ? 2.0f : 0.0f;
+			block.modes[ 1 ] = VK_ShadowMap_MomentVertexColorMode( pStage );
+			block.modes[ 2 ] = stageCoverage == NULL ? 0.0f
+				: ( stageCoverage->hasAlphaTest
+					|| VK_ShadowMap_MomentStageMode( stageCoverage ) == VK_MOMENT_STAGE_TEXTURE_ALPHA ) ? 1.0f : 2.0f;
+			block.modes[ 3 ] = VK_ShadowMap_MomentVertexColorMode( stageCoverage );
+			const bool alphaTested = stageCoverage != NULL && stageCoverage->hasAlphaTest;
+			block.coverageTest[ 0 ] = alphaTested ? regs[ stageCoverage->alphaTestRegister ] : 0.0f;
+			block.coverageTest[ 1 ] = alphaTested ? VK_ShadowMap_MomentAlphaTestMode( stageCoverage->alphaTestMode ) : 1.0f;
+			block.coverageTest[ 2 ] = alphaTested ? 1.0f : 0.0f;
+			block.coverageTest[ 3 ] = minAlpha;
+			VK_ShadowMap_MomentVertexAlphaParams( pStage, &block.vertexAlpha[ 0 ] );
+			VK_ShadowMap_MomentVertexAlphaParams( stageCoverage, &block.vertexAlpha[ 2 ] );
+
+			const int uniformOffset = VK_Exec_InteractionUniformAlloc( &block, (int)sizeof( block ) );
+			if ( uniformOffset < 0 ) {
+				ctx.skippedStage = true;
+				continue;
+			}
+			if ( !boundGeometry ) {
+				if ( !VK_Exec_BindTriGeometry( ctx.cmd, ctx.slot, casterGeo ) ) {
+					break;
+				}
+				vkMomentCasterPush_t push = basePush;
+				if ( light.pointLight ) {
+					myGlMultMatrix( surf->space->modelMatrix, faceViewMatrix, push.mvp );
+				} else {
+					float mvpGL[ 16 ];
+					myGlMultMatrix( surf->space->modelMatrix, clipMatrix, mvpGL );
+					VK_FixupClipSpaceZ( push.mvp, mvpGL );
+					idPlane localDepthPlane;
+					R_GlobalPlaneToLocal( surf->space->modelMatrix,
+							light.projectedState.clipPlanes[ cascadeIndex ][ 2 ], localDepthPlane );
+					memcpy( push.depthRow, localDepthPlane.ToFloatPtr(), sizeof( push.depthRow ) );
+				}
+				vkCmdPushConstants( ctx.cmd, ctx.layout,
+						VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), &push );
+				boundGeometry = true;
+			}
+			const VkDescriptorSet sets[ 2 ] = { alphaSet, coverageSet };
+			vkCmdBindDescriptorSets( ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx.layout, 0, 2, sets, 0, NULL );
+			const uint32_t dynamicOffset = (uint32_t)uniformOffset;
+			vkCmdBindDescriptorSets( ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx.layout, 2, 1,
+					&ctx.uniformSet, 1, &dynamicOffset );
+			VK_Device_CountDrawIndexed( (int)casterGeo->numIndexes, (int)casterGeo->numVerts );
+			vkCmdDrawIndexed( ctx.cmd, (uint32_t)casterGeo->numIndexes, 1, 0, 0, 0 );
+			ctx.draws++;
+		}
+	}
+}
+
+static void VK_ShadowMap_MomentBarrier( VkCommandBuffer cmd, const bool toAttachment ) {
+	VkImageMemoryBarrier2 barriers[ 3 ];
+	memset( barriers, 0, sizeof( barriers ) );
+	for ( int i = 0 ; i < 3 ; i++ ) {
+		barriers[ i ].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+		if ( toAttachment ) {
+			barriers[ i ].srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+			barriers[ i ].srcAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+			barriers[ i ].dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			barriers[ i ].dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+			barriers[ i ].oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			barriers[ i ].newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		} else {
+			barriers[ i ].srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			barriers[ i ].srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+			barriers[ i ].dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+			barriers[ i ].dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+			barriers[ i ].oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			barriers[ i ].newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		}
+		barriers[ i ].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barriers[ i ].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barriers[ i ].image = vkShadow.momentImages[ i ];
+		barriers[ i ].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barriers[ i ].subresourceRange.levelCount = 1;
+		barriers[ i ].subresourceRange.layerCount = 1;
+	}
+	VkDependencyInfo dep;
+	memset( &dep, 0, sizeof( dep ) );
+	dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	dep.imageMemoryBarrierCount = 3;
+	dep.pImageMemoryBarriers = barriers;
+	vkCmdPipelineBarrier2( cmd, &dep );
+}
+
+// GL RB_RenderTranslucentShadowMap / RB_RenderPointTranslucentShadowMap for
+// every moment block of the view, in one scope over the moment atlas: clear
+// to zero, ONE/ONE accumulation, no depth test, back faces culled. Runs
+// after the depth maps and before main rendering resumes; the atlas ends in
+// shader-read layout whatever happens.
+static void VK_ShadowMap_RenderMoments( VkCommandBuffer cmd, const int slot, VkDescriptorSet whiteSet ) {
+	if ( vkShadow.momentPasses <= 0 || vkShadow.momentAtlasSize <= 0 ) {
+		return;
+	}
+	vkMomentPassCtx_t ctx;
+	memset( &ctx, 0, sizeof( ctx ) );
+	ctx.cmd = cmd;
+	ctx.slot = slot;
+	ctx.layout = VK_Exec_MomentCasterPipelineLayout();
+	ctx.whiteSet = whiteSet;
+	ctx.uniformSet = VK_Exec_InteractionUniformSet();
+	const VkPipeline projectedPipeline = VK_Exec_MomentCasterPipeline( false );
+	const VkPipeline pointPipeline = VK_Exec_MomentCasterPipeline( true );
+	if ( ctx.layout == VK_NULL_HANDLE || ctx.uniformSet == VK_NULL_HANDLE || whiteSet == VK_NULL_HANDLE
+			|| projectedPipeline == VK_NULL_HANDLE || pointPipeline == VK_NULL_HANDLE ) {
+		// No moments this view: receivers see full transmittance.
+		for ( int i = 0 ; i < vkShadow.numLights ; i++ ) {
+			for ( int passIndex = 0 ; passIndex < VK_SHADOW_RECEIVER_PASS_COUNT ; passIndex++ ) {
+				vkShadow.lights[ i ].passes[ passIndex ].momentValid = false;
+			}
+		}
+		vkShadow.momentPasses = 0;
+		return;
+	}
+
+	VK_ShadowMap_MomentBarrier( cmd, true );
+	VkRenderingAttachmentInfo colors[ 3 ];
+	memset( colors, 0, sizeof( colors ) );
+	for ( int i = 0 ; i < 3 ; i++ ) {
+		colors[ i ].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+		colors[ i ].imageView = vkShadow.momentViews[ i ];
+		colors[ i ].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		colors[ i ].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		colors[ i ].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	}
+	VkRenderingInfo ri;
+	memset( &ri, 0, sizeof( ri ) );
+	ri.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	ri.renderArea.extent.width = (uint32_t)vkShadow.momentAtlasSize;
+	ri.renderArea.extent.height = (uint32_t)vkShadow.momentAtlasSize;
+	ri.layerCount = 1;
+	ri.colorAttachmentCount = 3;
+	ri.pColorAttachments = colors;
+	vkCmdBeginRendering( cmd, &ri );
+	vkCmdSetDepthTestEnable( cmd, VK_FALSE );
+	vkCmdSetDepthWriteEnable( cmd, VK_FALSE );
+	vkCmdSetDepthCompareOp( cmd, VK_COMPARE_OP_ALWAYS );
+	vkCmdSetDepthBiasEnable( cmd, VK_FALSE );
+	vkCmdSetDepthBias( cmd, 0.0f, 0.0f, 0.0f );
+	vkCmdSetStencilTestEnable( cmd, VK_FALSE );
+	vkCmdSetCullMode( cmd, VK_CULL_MODE_BACK_BIT );
+
+	for ( int i = 0 ; i < vkShadow.numLights ; i++ ) {
+		const vkShadowLightState_t &light = vkShadow.lights[ i ];
+		if ( !light.valid || light.vLight == NULL ) {
+			continue;
+		}
+		const viewLight_t *vLight = light.vLight;
+		for ( int passIndex = 0 ; passIndex < VK_SHADOW_RECEIVER_PASS_COUNT ; passIndex++ ) {
+			const vkShadowReceiverPass_t receiverPass = (vkShadowReceiverPass_t)passIndex;
+			const vkShadowPassState_t &pass = light.passes[ passIndex ];
+			if ( !pass.valid || !pass.momentValid || pass.resourcePass != receiverPass ) {
+				continue;
+			}
+			const drawSurf_t *localChain = receiverPass == VK_SHADOW_RECEIVER_GLOBAL
+				? vLight->localTranslucentShadowMapCasters : NULL;
+			const int tile = pass.momentTile;
+			vkMomentCasterPush_t basePush;
+			memset( &basePush, 0, sizeof( basePush ) );
+			if ( light.pointLight ) {
+				// the depth cube's face projection and positive-height
+				// viewport (CLOCKWISE front faces in Vulkan terms)
+				vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pointPipeline );
+				vkCmdSetFrontFace( cmd, VK_FRONT_FACE_CLOCKWISE );
+				const float farClip = light.pointFar;
+				const float nearClip = 0.01f;
+				const float projA = -( farClip + nearClip ) / ( farClip - nearClip );
+				const float projB = -( 2.0f * farClip * nearClip ) / ( farClip - nearClip );
+				basePush.depthRow[ 0 ] = 0.5f * ( projA - 1.0f );
+				basePush.depthRow[ 1 ] = 0.5f * projB;
+				basePush.depthRow[ 2 ] = farClip;
+				const idVec3 origin( light.pointLightOrigin[ 0 ], light.pointLightOrigin[ 1 ],
+						light.pointLightOrigin[ 2 ] );
+				for ( int cubeFace = 0 ; cubeFace < 6 ; cubeFace++ ) {
+					float faceViewMatrix[ 16 ];
+					VK_ShadowMap_PointFaceViewMatrix( origin, cubeFace, faceViewMatrix );
+					const int x = pass.momentX + ( cubeFace % 3 ) * tile;
+					const int y = pass.momentY + ( cubeFace / 3 ) * tile;
+					VkViewport viewport = { (float)x, (float)y, (float)tile, (float)tile, 0.0f, 1.0f };
+					vkCmdSetViewport( cmd, 0, 1, &viewport );
+					VkRect2D scissor = { { x, y }, { (uint32_t)tile, (uint32_t)tile } };
+					vkCmdSetScissor( cmd, 0, 1, &scissor );
+					basePush.depthRow[ 3 ] = (float)cubeFace;
+					VK_ShadowMap_DrawMomentChain( ctx, basePush, light, 0, NULL, faceViewMatrix,
+							cubeFace, vLight->globalTranslucentShadowMapCasters );
+					VK_ShadowMap_DrawMomentChain( ctx, basePush, light, 0, NULL, faceViewMatrix,
+							cubeFace, localChain );
+				}
+			} else {
+				// the depth tiles' negative-height viewport (GL winding)
+				vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, projectedPipeline );
+				vkCmdSetFrontFace( cmd, VK_FRONT_FACE_COUNTER_CLOCKWISE );
+				const int atlasDiv = idMath::ClampInt( 1, 2, light.projectedState.atlasDiv );
+				const int cascadeCount = idMath::ClampInt( 1, SHADOWMAP_PROJECTED_MAX_CASCADES,
+						light.projectedState.cascadeCount );
+				for ( int cascadeIndex = 0 ; cascadeIndex < cascadeCount ; cascadeIndex++ ) {
+					float clipMatrix[ 16 ];
+					R_ShadowMapClipPlanesToGLMatrix( light.projectedState.clipPlanes[ cascadeIndex ], clipMatrix );
+					const int x = pass.momentX + ( cascadeIndex % atlasDiv ) * tile;
+					const int y = pass.momentY + ( cascadeIndex / atlasDiv ) * tile;
+					VkViewport viewport = { (float)x, (float)( y + tile ), (float)tile, -(float)tile, 0.0f, 1.0f };
+					vkCmdSetViewport( cmd, 0, 1, &viewport );
+					VkRect2D scissor = { { x, y }, { (uint32_t)tile, (uint32_t)tile } };
+					vkCmdSetScissor( cmd, 0, 1, &scissor );
+					VK_ShadowMap_DrawMomentChain( ctx, basePush, light, cascadeIndex, clipMatrix, NULL, 0,
+							vLight->globalTranslucentShadowMapCasters );
+					VK_ShadowMap_DrawMomentChain( ctx, basePush, light, cascadeIndex, clipMatrix, NULL, 0,
+							localChain );
+				}
+			}
+		}
+	}
+	vkCmdEndRendering( cmd );
+	VK_ShadowMap_MomentBarrier( cmd, false );
+
+	static bool loggedFirstMomentPass = false;
+	if ( !loggedFirstMomentPass ) {
+		loggedFirstMomentPass = true;
+		common->Printf( "Vulkan: first translucent shadow moment pass: %d block(s) at 1/%d scale, %d draw(s)\n",
+				vkShadow.momentPasses, 1 << vkShadow.momentShift, ctx.draws );
+	}
+	if ( ctx.skippedStage ) {
+		static int skipWarnings = 0;
+		if ( skipWarnings < 1 ) {
+			skipWarnings++;
+			common->DPrintf( "Vulkan: a translucent shadow caster stage with a cinematic or dynamic image adds no moments\n" );
+		}
+	}
+}
+
 bool VK_ShadowMap_RenderAtlas( const viewDef_t *viewDef ) {
 	const bool classicCommit = vkClassicShadowTransaction.ready
 		&& vkClassicShadowTransaction.view != NULL
@@ -5357,6 +6305,12 @@ bool VK_ShadowMap_RenderAtlas( const viewDef_t *viewDef ) {
 			}
 		}
 		VK_ShadowGpuTiming_EndPhase( cmd, VK_SHADOW_TIMING_MAP_RENDER );
+	}
+
+	// Translucent casters' moments, after every depth map. The shared
+	// transaction never commits a view with translucent casters.
+	if ( !classicCommit ) {
+		VK_ShadowMap_RenderMoments( cmd, ctx.slot, whiteSet );
 	}
 
 	// order the suspended main scope's color/depth attachment writes against

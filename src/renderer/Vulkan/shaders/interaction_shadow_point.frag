@@ -24,6 +24,11 @@ layout(set = 4, binding = 0) uniform sampler2D diffuseMap;
 layout(set = 5, binding = 0) uniform sampler2D specularMap;
 layout(set = 7, binding = 0) uniform samplerCubeShadow shadowCompareMap;
 layout(set = 7, binding = 2) uniform samplerCube shadowRawMap;
+// r_shadowMapTranslucentMoments: the moment atlas, one map per color channel;
+// a point light's six faces are a 3x2 block of face tiles in it
+layout(set = 7, binding = 3) uniform sampler2D shadowMomentMapR;
+layout(set = 7, binding = 4) uniform sampler2D shadowMomentMapG;
+layout(set = 7, binding = 5) uniform sampler2D shadowMomentMapB;
 
 layout(push_constant) uniform InteractionPushConstants {
     mat4 mvp;
@@ -63,7 +68,11 @@ layout(set = 7, binding = 1, std140) uniform ShadowBlock {
     vec4 filterParams;   // x: radius, y: taps, z: mode, w: cube texel scale
     vec4 samplingParams; // x: hardware compare enabled
     vec4 debugParams;    // x: r_shadowMapDebugMode, y: receiver fallback reason
+    vec4 momentRect;     // xy: face-block origin UV, z: face tile UV size (<= 0: no moments), w: 1 / moment atlas size
+    vec4 momentParams;   // x: density, y: min variance, z: bleed reduction, w: filter radius in texels
 } shadow;
+
+#include "shadow_moment_resolve.glsl"
 
 layout(location = 0) in vec2 vBumpTexCoord;
 layout(location = 1) in vec2 vDiffuseTexCoord;
@@ -261,6 +270,68 @@ float SamplePointShadowCompare(vec3 direction, float depth) {
 
 float RawPointShadowDepth(vec3 direction) {
     return texture(shadowRawMap, direction).r;
+}
+
+// The moment-atlas texel a cube lookup would reach. Face selection and face
+// coordinates follow the cube-map rules PointShadowCubeAxes encodes, and the
+// face tiles were drawn with the depth cube's own face transforms, so the
+// tile texel matches the cube texel. Each tap stays half a texel inside its
+// face tile, so filtering never reads a neighbouring face.
+vec2 PointMomentUv(vec3 direction) {
+    vec3 face, axisS, axisT;
+    PointShadowCubeAxes(direction, face, axisS, axisT);
+    vec2 st = vec2(dot(direction, axisS), dot(direction, axisT)) / dot(direction, face);
+    float faceIndex = face.x != 0.0 ? (face.x > 0.0 ? 0.0 : 1.0)
+        : face.y != 0.0 ? (face.y > 0.0 ? 2.0 : 3.0)
+        : (face.z > 0.0 ? 4.0 : 5.0);
+    vec2 cell = vec2(mod(faceIndex, 3.0), floor(faceIndex / 3.0));
+    float size = shadow.momentRect.z;
+    float halfTexel = 0.5 * shadow.momentRect.w;
+    vec2 faceUv = clamp((st * 0.5 + 0.5) * size, vec2(halfTexel), vec2(size - halfTexel));
+    return shadow.momentRect.xy + cell * size + faceUv;
+}
+
+// GL SamplePointTranslucentShadow with SampleFilteredPointMoments: the center
+// plus four half-offset taps around the receiver direction.
+vec3 SamplePointTranslucentShadow() {
+    float far = shadow.lightOriginFar.w;
+    if (shadow.momentRect.z <= 0.0 || !(far > 0.0)) {
+        return vec3(1.0);
+    }
+    float depth = PointShadowRadialDepth(vPointShadowVector, far);
+    if (depth <= 0.0 || depth >= 1.0) {
+        return vec3(1.0);
+    }
+
+    vec3 direction = SafeNormalize(vPointShadowVector);
+    vec2 uv = PointMomentUv(direction);
+    vec4 momentsR = texture(shadowMomentMapR, uv);
+    vec4 momentsG = texture(shadowMomentMapG, uv);
+    vec4 momentsB = texture(shadowMomentMapB, uv);
+    float filterRadius = ShadowDebugModeIs(kShadowDebugPCFOff)
+        ? 0.0 : shadow.momentParams.w;
+    float texelScale = shadow.filterParams.w;
+    if (filterRadius > 0.0 && texelScale > 0.0) {
+        vec3 up = abs(direction.z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+        vec3 tangent = SafeNormalize(cross(up, direction));
+        vec3 bitangent = cross(direction, tangent);
+        float tap = texelScale * max(filterRadius, 0.5);
+        for (int i = 0; i < 4; i++) {
+            vec2 offset = vec2((i & 1) != 0 ? 0.5 : -0.5, (i & 2) != 0 ? 0.5 : -0.5);
+            vec2 tapUv = PointMomentUv(SafeNormalize(direction
+                + (tangent * offset.x + bitangent * offset.y) * tap));
+            momentsR += texture(shadowMomentMapR, tapUv);
+            momentsG += texture(shadowMomentMapG, tapUv);
+            momentsB += texture(shadowMomentMapB, tapUv);
+        }
+        momentsR *= 0.2;
+        momentsG *= 0.2;
+        momentsB *= 0.2;
+    }
+    return vec3(
+        ResolveTranslucentShadowMoments(momentsR, depth, shadow.momentParams),
+        ResolveTranslucentShadowMoments(momentsG, depth, shadow.momentParams),
+        ResolveTranslucentShadowMoments(momentsB, depth, shadow.momentParams));
 }
 
 float SampleShadowFactor() {
@@ -499,6 +570,9 @@ void main() {
             outColor = PointShadowDebugOutput();
             return;
         }
+        // Direct radiance is linear in the light color, so the colored
+        // translucent transmittance can filter the evaluated result.
+        packed *= SamplePointTranslucentShadow();
         outColor = vec4(packed, PBRTransparentAlpha(diffuseTexCoord));
         return;
     }
@@ -516,6 +590,7 @@ void main() {
         outColor = PointShadowDebugOutput();
         return;
     }
+    light *= SamplePointTranslucentShadow();
 
     vec3 diffuse = texture(diffuseMap, diffuseTexCoord).rgb * inter.diffuseColor.rgb;
     diffuse = ApplyFlatDiffuseSweep(diffuse, vLightFalloffTexCoord.z);

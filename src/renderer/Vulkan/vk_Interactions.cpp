@@ -208,10 +208,10 @@ typedef struct vkInteractionBlock_s {
 	float			celParams[ 4 ];		// RB_SetCelInteractionUniform; zero = no banding
 } vkInteractionBlock_t;
 
-// std140 mirror of the projected set-7 ShadowBlock (29 vec4 = 464 bytes in
-// its own 512B ring slice). Every cascade row is localized per receiver
-// space; the atlas rects already include the ownership block origin and the
-// Vulkan inverted-v tile convention.
+// std140 mirror of the projected set-7 ShadowBlock (32 vec4, filling its
+// 512B ring slice). Every cascade row is localized per receiver space; the
+// atlas rects already include the ownership block origin and the Vulkan
+// inverted-v tile convention.
 typedef struct vkShadowBlock_s {
 	float			shadowRow0[ SHADOWMAP_PROJECTED_MAX_CASCADES ][ 4 ];
 	float			shadowRow1[ SHADOWMAP_PROJECTED_MAX_CASCADES ][ 4 ];
@@ -228,6 +228,8 @@ typedef struct vkShadowBlock_s {
 	float			filterParams[ 4 ];	// x: radius, y: taps, z: mode, w: hardware compare
 	float			pcssParams[ 4 ];	// x: light radius, y: max radius, z: effective radius, w: receiver-plane bias
 	float			debugParams[ 4 ];	// x: r_shadowMapDebugMode, y: receiver fallback reason
+	float			momentAtlas[ 4 ];	// translucent moments: depth->moment UV scale (0 = none), bias u, v, 1 / moment atlas size
+	float			momentParams[ 4 ];	// x: density, y: min variance, z: bleed reduction, w: filter radius
 } vkShadowBlock_t;
 
 // r_shadowMapDebugMode reaches both receiver shaders through the shadow ABI
@@ -241,7 +243,7 @@ static float VK_ShadowMap_DebugModeValue( void ) {
 }
 
 // std140 mirror of the point variant's set-7 ShadowBlock (Phase F2b,
-// 7 vec4 = 112 bytes; rewritten per space — the rows are the model matrix)
+// 10 vec4 = 160 bytes; rewritten per space — the rows are the model matrix)
 typedef struct vkPointShadowBlock_s {
 	float			modelRow0[ 4 ];		// model -> world matrix rows
 	float			modelRow1[ 4 ];
@@ -251,15 +253,17 @@ typedef struct vkPointShadowBlock_s {
 	float			filterParams[ 4 ];	// x: radius, y: taps, z: mode, w: cube texel scale
 	float			samplingParams[ 4 ];	// x: hardware compare enabled
 	float			debugParams[ 4 ];	// x: r_shadowMapDebugMode, y: receiver fallback reason
+	float			momentRect[ 4 ];	// translucent moments: face block origin u, v, face tile UV size (0 = none), 1 / moment atlas size
+	float			momentParams[ 4 ];	// x: density, y: min variance, z: bleed reduction, w: filter radius
 } vkPointShadowBlock_t;
 
 // VK_Exec_ShadowUniformAlloc rejects anything past its 512-byte ring
-// slice, so the projected block has two vec4s of headroom left. Growing
-// it further needs a larger slice, not just a bigger struct.
-static_assert( sizeof( vkShadowBlock_t ) == 480,
-		"projected shadow std140 block must remain 30 vec4s" );
-static_assert( sizeof( vkPointShadowBlock_t ) == 128,
-		"point shadow std140 block must remain 8 vec4s" );
+// slice, which the projected block now fills exactly. Growing it further
+// needs a larger slice, not just a bigger struct.
+static_assert( sizeof( vkShadowBlock_t ) == 512,
+		"projected shadow std140 block must remain 32 vec4s" );
+static_assert( sizeof( vkPointShadowBlock_t ) == 160,
+		"point shadow std140 block must remain 10 vec4s" );
 static_assert( sizeof( vkInteractionBlock_t ) == 256,
 		"interaction std140 block must remain 16 vec4s" );
 static_assert( sizeof( vkShadowBlock_t ) <= 512 &&
@@ -3567,6 +3571,16 @@ the global light origin + far envelope, and the point bias scalars. Returns
 the dynamic offset or -1 on ring overflow.
 ====================
 */
+// r_shadowMapTranslucent*: the GL uTranslucentShadow* resolve uniforms. A
+// negative translucent radius inherits the light's opaque filter radius.
+static void VK_Inter_MomentParams( float params[ 4 ], const float opaqueFilterRadius ) {
+	params[ 0 ] = r_shadowMapTranslucentDensity.GetFloat();
+	params[ 1 ] = r_shadowMapTranslucentMinVariance.GetFloat();
+	params[ 2 ] = r_shadowMapTranslucentBleedReduction.GetFloat();
+	const float radius = r_shadowMapTranslucentFilterRadius.GetFloat();
+	params[ 3 ] = radius >= 0.0f ? radius : opaqueFilterRadius;
+}
+
 static int VK_Inter_WriteShadowSlice( const viewEntity_t *space ) {
 	const vkShadowLightState_t *state = interPass.shadowState;
 	const vkShadowPassState_t *passState = interPass.shadowPassState;
@@ -3602,6 +3616,10 @@ static int VK_Inter_WriteShadowSlice( const viewEntity_t *space ) {
 		pointBlock.samplingParams[ 0 ] =
 				r_shadowMapPointDepthCompare.GetBool() ? 1.0f : 0.0f;
 		pointBlock.debugParams[ 0 ] = VK_ShadowMap_DebugModeValue();
+		if ( passState->momentValid ) {
+			memcpy( pointBlock.momentRect, passState->momentAtlas, sizeof( pointBlock.momentRect ) );
+			VK_Inter_MomentParams( pointBlock.momentParams, pointBlock.filterParams[ 0 ] );
+		}
 		return VK_Exec_ShadowUniformAlloc( &pointBlock,
 				sizeof( pointBlock ) );
 	}
@@ -3681,6 +3699,10 @@ static int VK_Inter_WriteShadowSlice( const viewEntity_t *space ) {
 	block.pcssParams[ 3 ] =
 			r_shadowMapReceiverPlaneBias.GetBool() ? 1.0f : 0.0f;
 	block.debugParams[ 0 ] = VK_ShadowMap_DebugModeValue();
+	if ( passState->momentValid ) {
+		memcpy( block.momentAtlas, passState->momentAtlas, sizeof( block.momentAtlas ) );
+		VK_Inter_MomentParams( block.momentParams, filterSettings.filterRadius );
+	}
 
 	return VK_Exec_ShadowUniformAlloc( &block, sizeof( block ) );
 }

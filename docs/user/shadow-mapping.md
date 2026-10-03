@@ -246,7 +246,7 @@ Behavior:
 - Implemented as an additional experimental translucent shadow overlay on top of the main shadow map.
 
 Current limits:
-- Translucent moments are an OpenGL experiment; enabling the CVar on Vulkan does not establish equivalent translucent shadowing.
+- OpenGL and the experimental Vulkan renderer both draw these shadows, with matching results in openQ4's test scene. Vulkan keeps every shadowed light's translucent shadows in one shared buffer, so when many such lights share a view it lowers their resolution to make them fit, and it skips translucent stages whose texture is a video or a generated image.
 - Supported stages currently include old-style alpha and premultiplied-alpha stages with explicit ST texture coordinates, plus common additive `blend add` / `GL_ONE, GL_ONE` stages.
 - When a translucent shell/tint stage is layered on top of a separate explicit-ST coverage stage, openQ4 now reuses that coverage stage, including its alpha-test threshold when present, so layered pickup-orb and similar materials can cast shaped transmitted shadows instead of only uniform blobs.
 - Supported translucent casters now derive colored transmission from the material inputs available to that stage: texture alpha, sampled texture RGB, stage color, and applicable vertex color.

@@ -138,11 +138,13 @@ and gamma, MSAA alpha-to-coverage, the classic post-processing chain, cel
 shading, the underwater view, multiplayer player outlines, and the `r_show*`
 debug views, `r_showShadows` included. Mods' own material programs run too:
 GLSL programs compile as written, and ARB assembly programs are translated to
-GLSL. `r_enhancedMaterials` and the sharpened and nearest
-`r_resolutionScaleMode` upscales work as they do on OpenGL. On the development
-machine (an NVIDIA RTX 4060 laptop on Windows) it runs clean under the Vulkan
-validation layers. It stays experimental because it has been tried on very few
-GPUs and drivers. Linux CI runs software-Vulkan startup, render-target,
+GLSL. `r_enhancedMaterials`, the sharpened and nearest `r_resolutionScaleMode`
+upscales and the experimental colored translucent shadows
+(`r_shadowMapTranslucentMoments`) work as they do on OpenGL. On the development
+laptop, a Windows machine with an NVIDIA RTX 4060 and Intel Iris Xe graphics,
+all 29 stock single-player maps load and draw their opening view clean under the
+Vulkan validation layers on both GPUs. It stays experimental because it has
+been tried on few GPUs and drivers. Linux CI runs software-Vulkan startup, render-target,
 recovery and fallback checks on every push. Physical GPU coverage and the gaps
 under [What Vulkan does not do yet](#what-vulkan-does-not-do-yet) remain.
 OpenGL remains the recommended renderer for normal play.
@@ -201,9 +203,10 @@ Notes:
   options. OpenGL would draw those with leftover state rather than a defined
   result.
 - **Advanced renderer parity.** Vulkan's opt-in PBR path supports a narrower
-  material subset than OpenGL, and clustered decals and translucent moment
-  shadows are OpenGL-only. All of these are default-off experimental features,
-  separate from the stock effects listed above.
+  material subset than OpenGL. It is a default-off experimental feature,
+  separate from the stock effects listed above. `r_rendererClusteredDecals`
+  only changes how OpenGL's modern path routes decals, not how they look;
+  Vulkan draws the same decals, so the setting changes nothing there.
 - **VR.** The [OpenXR VR mode](vr.md) needs the OpenGL renderer.
 - **Pixel readbacks in the debug views.** A Vulkan frame cannot stop halfway
   to read pixels back, so the overdraw averages that `r_showLightCount 3` and
@@ -286,7 +289,7 @@ Notes:
 - On SDL3 builds, video startup retries lower MSAA requests if the window or GL context rejects the requested sample count (`16 -> 8 -> 4 -> 2 -> off`) and logs the requested, selected, and driver-reported multisample attributes.
 - The game scene target is validated separately from the window framebuffer. If a driver rejects the RGBA8 + depth/stencil offscreen target at the selected sample count, openQ4 retries lower samples down to `0`; if even the single-sample target is unavailable, it keeps running through the direct-render fallback and logs the exact framebuffer status and attachment details.
 - `gfxInfo` reports the active AA summary, including requested/effective MSAA, `GL_MAX_SAMPLES`, alpha-to-coverage, post AA mode, screen fraction, and supersampling state. Once a map is drawing, the effective MSAA count is the one the 3D scene actually rendered with, so after an `r_multiSamples` change it keeps showing the old count until `vid_restart` or the next map load applies the new one.
-- On Vulkan, MSAA applies to the 3D scene, not the window, and stops at 8x: `16` renders at 8x, or at the highest count your GPU supports. `gfxInfo` shows the count in use.
+- On Vulkan, MSAA applies to the 3D scene, not the window, and stops at 8x: `16` renders at 8x, or at the highest count your GPU supports. `gfxInfo` shows the count in use. GPUs that can move their sample positions per pipeline place them where OpenGL does; the others, such as Intel integrated graphics, keep their own standard pattern, which can shift edge antialiasing by a fraction of a pixel.
 - On a Mac using OpenGL's 2.1 compatibility mode, offscreen render targets cannot use MSAA, so MSAA reaches the 3D scene only while it is drawn straight to the window. Temporal AA, bloom, tone mapping, SSAO, motion blur, resolution scaling and the other post-processing effects each route the scene through an offscreen target, and MSAA then no longer applies. Post AA cannot run in that mode and leaves the scene on the window, so the `balanced`, `quality` and `ultra` presets, which turn it on, keep their MSAA there. `gfxInfo` shows which route the scene took: `reason=default-framebuffer` with the window's sample count, or `effective=0 reason=texture-msaa-unavailable`.
 - The Post AA startup/runtime log records the active SMAA edge mode, threshold, search steps, and local contrast scale so quality captures can be compared without guessing which shader contract was active.
 - Changing `r_multiSamples` should be followed by `vid_restart`.

@@ -1244,7 +1244,14 @@ bool VK_Device_Init( const renderWindowServices_s *windowServices ) {
 		query.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
 		query.pNext = &locations;
 		vkGetPhysicalDeviceProperties2( vkCtx.physicalDevice, &query );
-		for ( int shift = 1; shift <= 3; ++shift ) {
+		// Without variable sample locations, pipeline locations must match the
+		// ones a render pass declared at begin (VUID 01525). Dynamic rendering
+		// has no such declaration, so those devices keep their native pattern.
+		const int maxShift = locations.variableSampleLocations == VK_TRUE ? 3 : 0;
+		if ( maxShift == 0 ) {
+			common->Printf( "Vulkan: MSAA sample locations stay native (no variableSampleLocations for dynamic rendering)\n" );
+		}
+		for ( int shift = 1; shift <= maxShift; ++shift ) {
 			const VkSampleCountFlagBits samples = (VkSampleCountFlagBits)( 1u << shift );
 			const unsigned int precision = shift + 1;
 			const float minimum = 1.0f / (float)( 1u << precision );

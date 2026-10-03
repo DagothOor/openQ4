@@ -109,10 +109,10 @@ static bool R_CachedInteractionShadowLODAdmitted( surfaceInteraction_t *sint, id
 }
 
 static bool R_TranslucentShadowMapMomentsSupportedForLight( const idRenderLightLocal *lightDef ) {
-	// The Vulkan backend does not own the experimental moment attachments or
-	// their translucent caster chains. Reject that tier explicitly so stale
-	// OpenGL capability state can never admit casters Vulkan would omit; its
-	// stock translucent shadow casters instead use binary stencil-parity depth.
+	// The Vulkan backend owns its own moment atlas and answers for itself
+	// (vk_ShadowMap.cpp), so stale OpenGL capability state never decides it.
+	// Without that tier its translucent shadow casters use binary
+	// stencil-parity depth.
 	// r_actualRenderApi is CVAR_ROM, set once at renderer-module selection;
 	// re-resolve the by-name lookup at most once per frame instead of per call.
 	static int cachedApiFrame = -1;
@@ -126,7 +126,12 @@ static bool R_TranslucentShadowMapMomentsSupportedForLight( const idRenderLightL
 		cachedApiFrame = tr.frameCount;
 	}
 	if ( cachedVulkanApi ) {
+#ifdef OPENQ4_RENDERER_VK_MODULE
+		extern bool VK_ShadowMap_TranslucentMomentsAvailable( void );
+		return VK_ShadowMap_TranslucentMomentsAvailable();
+#else
 		return false;
+#endif
 	}
 	return r_shadowMapTranslucentMoments.GetBool() &&
 		glConfig.GLSLProgramAvailable &&

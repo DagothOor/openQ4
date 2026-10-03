@@ -402,6 +402,10 @@ typedef struct vkGuiExecutor_s {
 	VkShaderModule		casterFragModule;
 	VkShaderModule		pointCasterVertModule;
 	VkShaderModule		pointCasterFragModule;
+	VkShaderModule		momentCasterVertModule;
+	VkShaderModule		momentCasterFragModule;
+	VkShaderModule		pointMomentCasterVertModule;
+	VkShaderModule		pointMomentCasterFragModule;
 	VkShaderModule		stencilShadowVertModule;
 	VkShaderModule		stencilShadowFragModule;
 	VkShaderModule		shadowOverlayVertModule;
@@ -447,6 +451,12 @@ typedef struct vkGuiExecutor_s {
 	VkPipelineLayout	fogBlendPipelineLayout;
 	VkPipeline			casterPipeline;			// lazily built; depth-only atlas caster
 	VkPipeline			pointCasterPipeline;	// lazily built; depth-only cube-face caster
+	VkPipeline			momentCasterPipeline;	// lazily built; translucent moments, projected
+	VkPipeline			pointMomentCasterPipeline;	// lazily built; translucent moments, point faces
+	// r_shadowMapTranslucentMoments: what bindings 3-5 of every shadow set
+	// name, the moment atlas or vk_ShadowMap's cleared placeholder
+	VkImageView			shadowMomentViews[ 3 ];
+	VkSampler			shadowMomentSampler;
 	vkSpecialPipeline_t	specialPipelines[ VK_MAX_SPECIAL_PIPELINES ];
 	int					numSpecialPipelines;
 	vkGuiPipeline_t		pipelines[ VK_MAX_GUI_PIPELINES ];
@@ -2293,6 +2303,72 @@ VkPipeline VK_Exec_PointCasterPipeline( void ) {
 	return vkExec.pointCasterPipeline;
 }
 
+// Translucent shadow moments (r_shadowMapTranslucentMoments, GL
+// RB_RenderTranslucentShadowMap / RB_RenderPointTranslucentShadowMap): three
+// RGBA16F moment targets with ONE/ONE blending and no depth attachment. The
+// casters read the vertex color, unlike the depth-only casters. The
+// fog/blend layout already has the two image sets and the ring UBO set the
+// stage analysis needs, plus the shared 128B push block.
+bool VK_Exec_MomentCasterModulesReady( void ) {
+	return vkExec.momentCasterVertModule != VK_NULL_HANDLE
+		&& vkExec.momentCasterFragModule != VK_NULL_HANDLE
+		&& vkExec.pointMomentCasterVertModule != VK_NULL_HANDLE
+		&& vkExec.pointMomentCasterFragModule != VK_NULL_HANDLE
+		&& vkExec.fogBlendPipelineLayout != VK_NULL_HANDLE;
+}
+
+VkPipelineLayout VK_Exec_MomentCasterPipelineLayout( void ) {
+	return vkExec.fogBlendPipelineLayout;
+}
+
+VkPipeline VK_Exec_MomentCasterPipeline( bool pointLight ) {
+	VkPipeline &pipeline = pointLight ? vkExec.pointMomentCasterPipeline : vkExec.momentCasterPipeline;
+	if ( pipeline != VK_NULL_HANDLE ) {
+		return pipeline;
+	}
+	if ( !VK_Exec_MomentCasterModulesReady() ) {
+		return VK_NULL_HANDLE;
+	}
+
+	VkVertexInputBindingDescription binding;
+	memset( &binding, 0, sizeof( binding ) );
+	binding.stride = sizeof( idDrawVert );
+	binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	VkVertexInputAttributeDescription attrs[ 3 ];
+	memset( attrs, 0, sizeof( attrs ) );
+	attrs[ 0 ].location = 0;
+	attrs[ 0 ].format = VK_FORMAT_R32G32B32_SFLOAT;
+	attrs[ 0 ].offset = (uint32_t)offsetof( idDrawVert, xyz );
+	attrs[ 1 ].location = 1;
+	attrs[ 1 ].format = VK_FORMAT_R32G32_SFLOAT;
+	attrs[ 1 ].offset = (uint32_t)offsetof( idDrawVert, st );
+	attrs[ 2 ].location = 2;
+	attrs[ 2 ].format = VK_FORMAT_R8G8B8A8_UNORM;
+	attrs[ 2 ].offset = (uint32_t)offsetof( idDrawVert, color );
+	VkPipelineVertexInputStateCreateInfo vertexInput;
+	memset( &vertexInput, 0, sizeof( vertexInput ) );
+	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInput.vertexBindingDescriptionCount = 1;
+	vertexInput.pVertexBindingDescriptions = &binding;
+	vertexInput.vertexAttributeDescriptionCount = 3;
+	vertexInput.pVertexAttributeDescriptions = attrs;
+
+	vkPipelineTarget_t target = {};
+	target.colorCount = 3;
+	for ( int i = 0; i < 3; i++ ) {
+		target.colorFormats[ i ] = VK_FORMAT_R16G16B16A16_SFLOAT;
+	}
+	target.depthFormat = VK_FORMAT_UNDEFINED;
+	target.stencilFormat = VK_FORMAT_UNDEFINED;
+	target.samples = VK_SAMPLE_COUNT_1_BIT;
+	pipeline = VK_Exec_CreatePipeline(
+			pointLight ? vkExec.pointMomentCasterVertModule : vkExec.momentCasterVertModule,
+			pointLight ? vkExec.pointMomentCasterFragModule : vkExec.momentCasterFragModule,
+			&vertexInput, GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE, vkExec.fogBlendPipelineLayout,
+			false, false, target );
+	return pipeline;
+}
+
 // stencil shadow volume pipeline (Phase G1): the shadowCache_t vec4 stream
 // (one attribute, stride 16), color writes masked off (GLS_COLORMASK |
 // GLS_ALPHAMASK — a pipeline-level variant), blend irrelevant. Depth
@@ -3135,6 +3211,28 @@ static bool VK_GuiExecutor_Init( void ) {
 		common->Warning( "Vulkan: point shadow caster fragment shader module creation failed" );
 		return false;
 	}
+	// translucent shadow moments (r_shadowMapTranslucentMoments): optional,
+	// so a failure only leaves translucent casters on the binary path
+	{
+		const struct {
+			const unsigned char *code;
+			unsigned int size;
+			VkShaderModule *module;
+		} momentModules[] = {
+			{ vk_shadow_moment_caster_vert_spv, vk_shadow_moment_caster_vert_spv_size, &vkExec.momentCasterVertModule },
+			{ vk_shadow_moment_caster_frag_spv, vk_shadow_moment_caster_frag_spv_size, &vkExec.momentCasterFragModule },
+			{ vk_shadow_point_moment_caster_vert_spv, vk_shadow_point_moment_caster_vert_spv_size, &vkExec.pointMomentCasterVertModule },
+			{ vk_shadow_point_moment_caster_frag_spv, vk_shadow_point_moment_caster_frag_spv_size, &vkExec.pointMomentCasterFragModule },
+		};
+		for ( int i = 0; i < (int)( sizeof( momentModules ) / sizeof( momentModules[ 0 ] ) ); i++ ) {
+			smci.codeSize = momentModules[ i ].size;
+			smci.pCode = (const uint32_t *)momentModules[ i ].code;
+			if ( vkCreateShaderModule( vkCtx.device, &smci, NULL, momentModules[ i ].module ) != VK_SUCCESS ) {
+				common->Warning( "Vulkan: translucent shadow moment shader module creation failed" );
+				*momentModules[ i ].module = VK_NULL_HANDLE;
+			}
+		}
+	}
 	smci.codeSize = vk_shadow_volume_vert_spv_size;
 	smci.pCode = (const uint32_t *)vk_shadow_volume_vert_spv;
 	if ( vkCreateShaderModule( vkCtx.device, &smci, NULL, &vkExec.stencilShadowVertModule ) != VK_SUCCESS ) {
@@ -3235,7 +3333,9 @@ static bool VK_GuiExecutor_Init( void ) {
 	// shadow receiver set: compare sampler, per-space shadow block, and raw
 	// depth sampler. Both sampler families are always valid so a cvar can
 	// choose hardware or manual comparisons without a pipeline variant.
-	VkDescriptorSetLayoutBinding shadowBindings[ 3 ];
+	// Bindings 3-5 are the translucent moment atlas (R, G, B), or a cleared
+	// placeholder, so they are valid in every set as well.
+	VkDescriptorSetLayoutBinding shadowBindings[ 6 ];
 	memset( shadowBindings, 0, sizeof( shadowBindings ) );
 	shadowBindings[ 0 ].binding = 0;
 	shadowBindings[ 0 ].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -3249,7 +3349,13 @@ static bool VK_GuiExecutor_Init( void ) {
 	shadowBindings[ 2 ].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	shadowBindings[ 2 ].descriptorCount = 1;
 	shadowBindings[ 2 ].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-	dslci.bindingCount = 3;
+	for ( int momentBinding = 3; momentBinding < 6; momentBinding++ ) {
+		shadowBindings[ momentBinding ].binding = (uint32_t)momentBinding;
+		shadowBindings[ momentBinding ].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		shadowBindings[ momentBinding ].descriptorCount = 1;
+		shadowBindings[ momentBinding ].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	}
+	dslci.bindingCount = 6;
 	dslci.pBindings = shadowBindings;
 	if ( vkCreateDescriptorSetLayout( vkCtx.device, &dslci, NULL, &vkExec.shadowSetLayout ) != VK_SUCCESS ) {
 		common->Warning( "Vulkan: shadow descriptor set layout creation failed" );
@@ -3258,14 +3364,14 @@ static bool VK_GuiExecutor_Init( void ) {
 	dslci.bindingCount = 1;
 
 	// Shadow-set budget: the atlas set plus scratch and identity-resident
-	// point-cache cubes per frame slot. Each set is two combined image
-	// samplers plus one dynamic UBO.
+	// point-cache cubes per frame slot. Each set is five combined image
+	// samplers (compare, raw, three moment maps) plus one dynamic UBO.
 	const int shadowSetBudget = ( 1 + VK_SHADOW_MAX_POINT_CUBES
 			+ VK_SHADOW_MAX_CACHE_SLOTS ) * VK_FRAMES_IN_FLIGHT;
 	const int retiredSetBudget = VK_MAX_RETIRED_SETS * VK_FRAMES_IN_FLIGHT;
 	VkDescriptorPoolSize poolSizes[ 3 ];
 	poolSizes[ 0 ].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	poolSizes[ 0 ].descriptorCount = VK_MAX_DESCRIPTOR_SETS + 2 * shadowSetBudget + retiredSetBudget;
+	poolSizes[ 0 ].descriptorCount = VK_MAX_DESCRIPTOR_SETS + 5 * shadowSetBudget + retiredSetBudget;
 	poolSizes[ 1 ].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 	poolSizes[ 1 ].descriptorCount = VK_FRAMES_IN_FLIGHT + shadowSetBudget;
 	poolSizes[ 2 ].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -3528,6 +3634,12 @@ void VK_GuiExecutor_Shutdown( void ) {
 	if ( vkExec.pointCasterPipeline != VK_NULL_HANDLE ) {
 		vkDestroyPipeline( vkCtx.device, vkExec.pointCasterPipeline, NULL );
 	}
+	if ( vkExec.momentCasterPipeline != VK_NULL_HANDLE ) {
+		vkDestroyPipeline( vkCtx.device, vkExec.momentCasterPipeline, NULL );
+	}
+	if ( vkExec.pointMomentCasterPipeline != VK_NULL_HANDLE ) {
+		vkDestroyPipeline( vkCtx.device, vkExec.pointMomentCasterPipeline, NULL );
+	}
 	for ( int i = 0; i < vkExec.numBlendLightPipelines; i++ ) {
 		if ( vkExec.blendLightPipelines[ i ].pipeline != VK_NULL_HANDLE ) {
 			vkDestroyPipeline( vkCtx.device, vkExec.blendLightPipelines[ i ].pipeline, NULL );
@@ -3707,6 +3819,15 @@ void VK_GuiExecutor_Shutdown( void ) {
 	}
 	if ( vkExec.pointCasterFragModule != VK_NULL_HANDLE ) {
 		vkDestroyShaderModule( vkCtx.device, vkExec.pointCasterFragModule, NULL );
+	}
+	VkShaderModule momentModules[ 4 ] = {
+		vkExec.momentCasterVertModule, vkExec.momentCasterFragModule,
+		vkExec.pointMomentCasterVertModule, vkExec.pointMomentCasterFragModule
+	};
+	for ( int i = 0; i < 4; i++ ) {
+		if ( momentModules[ i ] != VK_NULL_HANDLE ) {
+			vkDestroyShaderModule( vkCtx.device, momentModules[ i ], NULL );
+		}
 	}
 	if ( vkExec.stencilShadowVertModule != VK_NULL_HANDLE ) {
 		vkDestroyShaderModule( vkCtx.device, vkExec.stencilShadowVertModule, NULL );
@@ -8940,6 +9061,66 @@ int VK_Exec_ShadowUniformAlloc( const void *data, int bytes ) {
 			: -1;
 }
 
+// Points bindings 3-5 of one shadow set at the published moment views. A
+// set is written only before it is first bound, or with the device idle.
+static void VK_Exec_WriteShadowMomentBindings( VkDescriptorSet set ) {
+	if ( set == VK_NULL_HANDLE || vkExec.shadowMomentSampler == VK_NULL_HANDLE ) {
+		return;
+	}
+	VkDescriptorImageInfo imageInfos[ 3 ];
+	VkWriteDescriptorSet writes[ 3 ];
+	memset( imageInfos, 0, sizeof( imageInfos ) );
+	memset( writes, 0, sizeof( writes ) );
+	for ( int i = 0; i < 3; i++ ) {
+		if ( vkExec.shadowMomentViews[ i ] == VK_NULL_HANDLE ) {
+			return;
+		}
+		imageInfos[ i ].sampler = vkExec.shadowMomentSampler;
+		imageInfos[ i ].imageView = vkExec.shadowMomentViews[ i ];
+		imageInfos[ i ].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		writes[ i ].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[ i ].dstSet = set;
+		writes[ i ].dstBinding = (uint32_t)( 3 + i );
+		writes[ i ].descriptorCount = 1;
+		writes[ i ].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writes[ i ].pImageInfo = &imageInfos[ i ];
+	}
+	vkUpdateDescriptorSets( vkCtx.device, 3, writes, 0, NULL );
+}
+
+// vk_ShadowMap publishes the translucent moment views (the moment atlas, or
+// its cleared placeholder) before it creates any shadow resource, and again
+// with the device idle whenever the atlas comes or goes. Every frame slot's
+// atlas set is rewritten here; the shadow module rewrites its cube sets.
+bool VK_Exec_SetShadowMomentViews( const VkImageView views[ 3 ], VkSampler sampler ) {
+	if ( views == NULL || sampler == VK_NULL_HANDLE ) {
+		return false;
+	}
+	for ( int i = 0; i < 3; i++ ) {
+		if ( views[ i ] == VK_NULL_HANDLE ) {
+			return false;
+		}
+		vkExec.shadowMomentViews[ i ] = views[ i ];
+	}
+	vkExec.shadowMomentSampler = sampler;
+	if ( vkExec.initialized ) {
+		for ( int i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
+			VK_Exec_WriteShadowMomentBindings( vkExec.shadowSets[ i ] );
+		}
+	}
+	return true;
+}
+
+bool VK_Exec_ShadowMomentViewsPublished( void ) {
+	return vkExec.shadowMomentSampler != VK_NULL_HANDLE;
+}
+
+void VK_Exec_RefreshShadowMomentSets( VkDescriptorSet sets[ VK_FRAMES_IN_FLIGHT ] ) {
+	for ( int i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
+		VK_Exec_WriteShadowMomentBindings( sets[ i ] );
+	}
+}
+
 // the frame slot's shadow set (atlas compare/raw samplers + shadow-block
 // ring), or NULL until both atlas descriptors have been written
 VkDescriptorSet VK_Exec_ShadowDescriptorSet( void ) {
@@ -8957,7 +9138,8 @@ bool VK_Exec_UpdateShadowAtlasDescriptors( VkImageView view,
 			rawSampler == VK_NULL_HANDLE ) {
 		return true;
 	}
-	if ( !vkExec.initialized ) {
+	// A bindable set needs valid moment bindings too.
+	if ( !vkExec.initialized || !VK_Exec_ShadowMomentViewsPublished() ) {
 		return false;
 	}
 	for ( int i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
@@ -8985,6 +9167,7 @@ bool VK_Exec_UpdateShadowAtlasDescriptors( VkImageView view,
 			writes[ writeIndex ].pImageInfo = &imageInfos[ writeIndex ];
 		}
 		vkUpdateDescriptorSets( vkCtx.device, 2, writes, 0, NULL );
+		VK_Exec_WriteShadowMomentBindings( vkExec.shadowSets[ i ] );
 	}
 	vkExec.shadowSetsHaveAtlas = true;
 	return true;
@@ -9000,7 +9183,8 @@ bool VK_Exec_CreateShadowCubeSets( VkImageView cubeView,
 		VkDescriptorSet sets[ VK_FRAMES_IN_FLIGHT ] ) {
 	if ( !vkExec.initialized || cubeView == VK_NULL_HANDLE ||
 			compareSampler == VK_NULL_HANDLE ||
-			rawSampler == VK_NULL_HANDLE ) {
+			rawSampler == VK_NULL_HANDLE ||
+			!VK_Exec_ShadowMomentViewsPublished() ) {
 		return false;
 	}
 	for ( int i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
@@ -9052,6 +9236,7 @@ bool VK_Exec_CreateShadowCubeSets( VkImageView cubeView,
 			writes[ writeIndex ].pImageInfo = &imageInfos[ writeIndex ];
 		}
 		vkUpdateDescriptorSets( vkCtx.device, 2, writes, 0, NULL );
+		VK_Exec_WriteShadowMomentBindings( sets[ i ] );
 	}
 	return true;
 }

@@ -22,6 +22,18 @@
   and `renderer_native_ui_output.py` pin the routing, refusals and filter
   restore.
 
+- [x] Bring translucent moment shadows (`r_shadowMapTranslucentMoments`) to
+  the experimental Vulkan renderer: a frame-boundary RGBA16F moment atlas
+  whose blocks mirror the depth-atlas blocks, the GL caster stage analysis and
+  resolve, and both receivers. In a laboratory scene with a cyan translucent
+  pane under a shadowing light the moment contribution matches OpenGL (95% of
+  399k pixels within one display level) on NVIDIA and Intel. Running Vulkan on
+  Intel Iris Xe graphics also fixed pipeline sample locations used without
+  `variableSampleLocations`; all 11 local Vulkan matrix cases then pass there,
+  and all 29 stock SP maps load validation-clean on Vulkan/NVIDIA,
+  Vulkan/Intel and OpenGL. See the
+  [gap-closure ledger](plans/2026-09-20-vulkan-gap-closure.md).
+
 - [x] Make the experimental Vulkan renderer survive what used to stop it:
   a GPU or driver reset during play now restarts the renderer automatically
   and carries on (three times per session, `r_vkPresentationRecoveries`)

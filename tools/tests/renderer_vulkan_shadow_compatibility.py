@@ -1709,12 +1709,15 @@ def validate_shadow_descriptor_abi() -> None:
             "shadowBindings[ 1 ].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;",
             "shadowBindings[ 2 ].binding = 2;",
             "shadowBindings[ 2 ].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;",
-            "dslci.bindingCount = 3;",
+            "for ( int momentBinding = 3; momentBinding < 6; momentBinding++ ) {",
+            "shadowBindings[ momentBinding ].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;",
+            "dslci.bindingCount = 6;",
+            "VK_MAX_DESCRIPTOR_SETS + 5 * shadowSetBudget + retiredSetBudget;",
             "interactionSetLayouts[ 7 ] = vkExec.shadowSetLayout;",
             "bufferInfo.range = VK_SHADOW_UNIFORM_SLICE_BYTES;",
             "write.dstBinding = 1;",
         ),
-        "set-7 compare/UBO/raw descriptor layout",
+        "set-7 compare/UBO/raw/moment descriptor layout",
     )
 
     shadow_alloc = braced_body(
@@ -5150,15 +5153,20 @@ def validate_fail_closed_target_and_stencil_behavior() -> None:
         "static bool R_TranslucentShadowMapMomentsSupportedForLight(",
         "translucent shadow moment backend gate",
     )
+    # Vulkan answers the moment tier from its own capability, never from
+    # stale OpenGL state; the GL module keeps its GLSL/draw-buffer gate.
     require_order(
         moments_support,
         (
             'cvarSystem->GetCVarString( "r_actualRenderApi" )',
             'idStr::Icmp( activeRenderApi, "vulkan" ) == 0',
+            "#ifdef OPENQ4_RENDERER_VK_MODULE",
+            "return VK_ShadowMap_TranslucentMomentsAvailable();",
+            "#else",
             "return false;",
             "r_shadowMapTranslucentMoments.GetBool()",
         ),
-        "explicit Vulkan translucent-moment rejection",
+        "Vulkan translucent-moment tier answered by the Vulkan module",
     )
     require_order(
         frontend,
@@ -5739,15 +5747,15 @@ def validate_shadow_debug_mode_contract() -> None:
     )
     require_compact(
         interactions,
-        """static_assert( sizeof( vkShadowBlock_t ) == 480,
-            "projected shadow std140 block must remain 30 vec4s" );""",
-        "projected block size follows the debug selector",
+        """static_assert( sizeof( vkShadowBlock_t ) == 512,
+            "projected shadow std140 block must remain 32 vec4s" );""",
+        "projected block size follows the debug selector and moments",
     )
     require_compact(
         interactions,
-        """static_assert( sizeof( vkPointShadowBlock_t ) == 128,
-            "point shadow std140 block must remain 8 vec4s" );""",
-        "point block size follows the debug selector",
+        """static_assert( sizeof( vkPointShadowBlock_t ) == 160,
+            "point shadow std140 block must remain 10 vec4s" );""",
+        "point block size follows the debug selector and moments",
     )
 
     # Every block writer uploads it: the sealed stream and the legacy walker,
@@ -6900,6 +6908,95 @@ def validate_live_cutout_and_point_culling_contract() -> None:
                   "completed-view reports work with visual overlay disabled")
 
 
+def validate_translucent_moment_contract() -> None:
+    """r_shadowMapTranslucentMoments on Vulkan: the GL moment caster and
+    resolve, a frame-boundary moment atlas, and both receivers."""
+    shadow_map = read("src/renderer/Vulkan/vk_ShadowMap.cpp")
+    executor = read("src/renderer/Vulkan/vk_GuiExecutor.cpp")
+    interactions = read("src/renderer/Vulkan/vk_Interactions.cpp")
+
+    available = braced_body(shadow_map, "bool VK_ShadowMap_TranslucentMomentsAvailable(",
+                            "Vulkan moment tier")
+    for token in ("VK_ShadowMap_MomentsRequested()", "vkShadow.momentAtlasFailedSize == 0",
+                  "VK_Exec_MomentCasterModulesReady()"):
+        require(available, token, "Vulkan moment tier")
+    require(braced_body(shadow_map, "static bool VK_ShadowMap_MomentsRequested(", "moment request"),
+            "r_shadowMapTranslucentMoments.GetBool()", "moment request")
+
+    # Every shadow set names the atlas, so it changes only idle, at a frame
+    # boundary, and its views are swapped out before they are destroyed.
+    lifecycle = braced_body(shadow_map, "static void VK_ShadowMap_UpdateMomentAtlas(",
+                            "moment atlas lifecycle")
+    require_order(lifecycle, (
+        "VK_ShadowMap_EnsureMomentPlaceholder()",
+        "vkDeviceWaitIdle( vkCtx.device );",
+        "VK_ShadowMap_PublishMomentViews();",
+        "VK_ShadowMap_DestroyMomentAtlas();",
+        "VK_ShadowMap_CreateMomentAtlas( wantedSize )",
+        "VK_ShadowMap_PublishMomentViews();",
+    ), "moment atlas lifecycle")
+    require_order(braced_body(shadow_map, "void VK_ShadowMap_BeginFrame(", "shadow frame begin"), (
+        "VK_GuiExecutor_FrameIsOpen()",
+        "VK_ShadowMap_UpdateMomentAtlas();",
+    ), "moment atlas at the frame boundary")
+    require(braced_body(shadow_map, "static void VK_ShadowMap_RecordMomentClear(", "moment clear"),
+            "VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL", "moment images start cleared and sampleable")
+
+    # GL RB_RenderTranslucentShadowMap state: clear, ONE/ONE, no depth, back
+    # faces culled, after the depth maps and before main rendering resumes.
+    render = braced_body(shadow_map, "static void VK_ShadowMap_RenderMoments(", "moment pass")
+    require_order(render, (
+        "VK_ShadowMap_MomentBarrier( cmd, true );",
+        "colors[ i ].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;",
+        "vkCmdSetDepthTestEnable( cmd, VK_FALSE );",
+        "vkCmdSetCullMode( cmd, VK_CULL_MODE_BACK_BIT );",
+        "VK_FRONT_FACE_CLOCKWISE",
+        "VK_FRONT_FACE_COUNTER_CLOCKWISE",
+        "vkCmdEndRendering( cmd );",
+        "VK_ShadowMap_MomentBarrier( cmd, false );",
+    ), "moment pass state")
+    require_order(braced_body(shadow_map, "bool VK_ShadowMap_RenderAtlas(", "shadow atlas render"), (
+        "VK_Exec_EndMainRendering();",
+        "VK_ShadowMap_RenderMoments( cmd, ctx.slot, whiteSet );",
+        "VK_Exec_BeginMainRendering( false );",
+    ), "moments between the depth maps and the resumed scope")
+    require(braced_body(shadow_map, "static bool VK_ShadowMap_PassHasCasters(", "pass casters"),
+            "VK_ShadowMap_PassHasTranslucentCasters( vLight, receiverPass )",
+            "a translucent-only pass still maps (GL RB_ShadowMapRunPass)")
+    require(braced_body(shadow_map, "int VK_ShadowMap_PrepareViewLights(", "prepare lights"),
+            "VK_ShadowMap_AllocateMomentBlocks();", "moment blocks per view")
+    require(shadow_map, "pass.momentAtlas[ 0 ] = scale * (float)vkShadow.atlasSize * invMoment;",
+            "projected moment blocks mirror their depth blocks")
+
+    pipeline = braced_body(executor, "VkPipeline VK_Exec_MomentCasterPipeline(", "moment pipeline")
+    for token in ("target.colorCount = 3;", "VK_FORMAT_R16G16B16A16_SFLOAT",
+                  "GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE, vkExec.fogBlendPipelineLayout",
+                  "offsetof( idDrawVert, color )"):
+        require(pipeline, token, "moment caster pipeline")
+    for writer in ("bool VK_Exec_UpdateShadowAtlasDescriptors(", "bool VK_Exec_CreateShadowCubeSets("):
+        body = braced_body(executor, writer, writer)
+        require(body, "VK_Exec_ShadowMomentViewsPublished()", writer)
+        require(body, "VK_Exec_WriteShadowMomentBindings(", writer)
+
+    for writer_token in ("memcpy( block.momentAtlas, passState->momentAtlas",
+                         "memcpy( pointBlock.momentRect, passState->momentAtlas"):
+        require(interactions, writer_token, "receiver moment mapping")
+
+    caster = read("src/renderer/Vulkan/shaders/shadow_moment_caster.glsl")
+    require_compact(caster, "outMomentR = vec4(tau.r, tau.r * d, tau.r * d2, tau.r * d2 * d);",
+                    "GL moment layout")
+    resolve = read("src/renderer/Vulkan/shaders/shadow_moment_resolve.glsl")
+    require_compact(resolve, "return exp(-min(tau * max(params.x, 0.0), 16.0));", "GL moment resolve")
+    projected = read("src/renderer/Vulkan/shaders/interaction_shadow.frag")
+    point = read("src/renderer/Vulkan/shaders/interaction_shadow_point.frag")
+    require(projected, "layout(set = 7, binding = 5) uniform sampler2D shadowMomentMapB;", "projected moments")
+    require(projected, "light *= SampleTranslucentShadow();", "projected classic receiver")
+    require(projected, "packed *= SampleTranslucentShadow();", "projected PBR receiver")
+    require(point, "layout(set = 7, binding = 5) uniform sampler2D shadowMomentMapB;", "point moments")
+    require(point, "light *= SamplePointTranslucentShadow();", "point classic receiver")
+    require(point, "packed *= SamplePointTranslucentShadow();", "point PBR receiver")
+
+
 def validate_ci_registration() -> None:
     validator = read("tools/validation/openq4_validate.py")
     commit = read(".github/workflows/commit-validation.yml")
@@ -6945,6 +7042,7 @@ def main() -> None:
     validate_gl_shadow_coverage_contract()
     validate_map_investigation_repairs()
     validate_live_cutout_and_point_culling_contract()
+    validate_translucent_moment_contract()
     validate_ci_registration()
     print("renderer_vulkan_shadow_compatibility: ok")
 

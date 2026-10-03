@@ -15,7 +15,9 @@ diagnosability of the OpenGL path. Out of scope: translucent shadow
 moments (`r_shadowMapTranslucentMoments`, experimental, default 0 — the
 Phase F closure deliberately excludes it on Vulkan), the modern
 clustered receiver path (`ModernClusteredLighting`, GL-only by design),
-and the `r_useShadowMap` default flip (separate, user-gated).
+and the `r_useShadowMap` default flip (separate, user-gated). Translucent
+moments landed on Vulkan later, on 2026-10-03; see the
+[gap-closure ledger](2026-09-20-vulkan-gap-closure.md).
 
 ## Audit ground truth (2026-09-02)
 

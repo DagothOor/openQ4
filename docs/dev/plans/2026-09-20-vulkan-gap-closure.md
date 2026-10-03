@@ -17,15 +17,37 @@ underwater effects, and debug views have already landed.
 | Startup and runtime recovery | Startup: implemented and locally verified for window, surface, swapchain and mandatory renderer resources; full owner teardown precedes module unload and OpenGL starts in the same process. Runtime (2026-10-03): a latched device queues an automatic renderer restart (budget `r_vkPresentationRecoveries`), surface loss rebuilds the surface in place, and the drill `r_vkPresentationFailureTest` exercises both. | All four deterministic failure cases pass repeatedly with clean shutdown, intact ordered logs, and unchanged Vulkan startup. Resource-failure SP/MP stock gameplay also passes. Hosted/platform coverage remains part of the separate qualification requirement. |
 | Custom material programs | Implemented for authored GLSL (v50-v53) and authored ARB assembly (2026-10-03, translated to GLSL), with explicit diagnostics for unsupported state. Remaining: broader GLSL language/state coverage and real mod content. | Compiled shader fixtures and rendered comparisons against OpenGL for real custom programs, including parameter bindings, textures, vertex outputs, and custom lighting. |
 | HDR scene and exposure | Bounded linear scene composition, bloom/exposure, scaled GL comparisons, HDR-off preview fog/blend parity and native linear screenshots are implemented. Extend admission to declined material, baked-lighting, portal/capture and post-effect combinations; complete remaining presentation comparisons. | Complete-scope render-target/radiance verification, OpenGL comparisons, validation-clean gameplay and captures, and reset/resize/admission-failure tests. |
-| PBR, probes, and clustered decals | Reach the supported OpenGL material, environment/probe, and decal feature scope on Vulkan. | Authored fixture execution, equivalent visible results, resource lifecycle/admission tests, and fallback evidence for exhausted or invalid resources. |
+| PBR, probes, and clustered decals | Reach the supported OpenGL material and environment/probe scope on Vulkan. Clustered decals need no port: they are an OpenGL modern-path routing transaction whose decal mode draws the classic decal result, which Vulkan already draws natively. | Authored fixture execution, equivalent visible results, resource lifecycle/admission tests, and fallback evidence for exhausted or invalid resources. |
 | Temporal motion | The exact eligible rigid-object velocity path is implemented. Complete visible temporal-AA qualification and retain explicit reactive handling for unsupported geometry. | Moving-object and camera-cut fixtures, history invalidation, visible TAA comparisons, and validation-clean runtime evidence. |
-| Shadows | Close the translucent-moment extension and remaining complete mapped/stencil/hybrid qualification. | Controlled transparent-caster comparisons plus stock projected, point, CSM, dynamic, cutout, constrained-budget, and fallback gameplay captures. |
+| Shadows | Translucent moments implemented 2026-10-03 (moment atlas, GL caster/resolve ports, both receivers) and matched against OpenGL in a controlled transparent-caster scene. Remaining: complete mapped/stencil/hybrid qualification. | Controlled transparent-caster comparisons plus stock projected, point, CSM, dynamic, cutout, constrained-budget, and fallback gameplay captures. |
 | Render targets and tools | Cubemap faces, depth-only targets and multiple color attachments are implemented; finish capture/debug parity qualification, documenting intentional asynchronous diagnostic latency. | Every cube face/aspect, nested capture, resolve, resize and resource-lifetime tests; engine-generated screenshot comparisons. |
 | Optimization | Audit the planned indirect/culling, command recording, upload overlap, pipeline warm-up, descriptors, and barriers; implement the remaining applicable Vulkan paths. | Measured CPU/GPU pass times and memory use, performance validation, and correctness comparisons for each enabled path. |
-| Release qualification | Complete at least five-run OpenGL/Vulkan comparisons per required scene/preset, SP/MP and long-session testing, clean staged-package evidence, and physical GPU/driver/platform coverage. | Retained provenance-bound reports, engine captures, user visual/soak sign-off, and Windows/Linux/MoltenVK hardware records. No synthetic claim for unavailable hardware. |
+| Release qualification | Windows physical coverage now spans two vendors (NVIDIA RTX 4060, Intel Iris Xe); all 29 stock SP maps load validation-clean on both. Remaining: five-run OpenGL/Vulkan comparisons per required scene/preset, MP and long-session testing, clean staged-package evidence, and Linux/MoltenVK hardware coverage. | Retained provenance-bound reports, engine captures, user visual/soak sign-off, and Windows/Linux/MoltenVK hardware records. No synthetic claim for unavailable hardware. |
 | Promotion | Implement the Vulkan-specific evidence/sign-off gate and reconcile all status/usage/release documentation. | Gate negative tests, exact evidence provenance, explicit sign-off, and a requirement-by-requirement completion audit before changing `best` or support status. |
 
 ## Work record
+
+- 2026-10-03 (second batch) adds translucent moment shadows and a second
+  physical GPU. `r_shadowMapTranslucentMoments` no longer stops at the
+  front-end gate on Vulkan: each ownership pass with translucent casters takes
+  a block of a three-image RGBA16F moment atlas whose blocks mirror the
+  depth-atlas blocks (a 3x2 face grid for point lights) at one per-view scale,
+  rendered after the depth maps with the GL caster's stage analysis, ONE/ONE
+  accumulation and back-face culling. The atlas and its cleared placeholder
+  are named by every set-7 shadow set, so they change only at a frame boundary
+  with the device idle. In a laboratory scene (the PBR lab plus a cyan
+  translucent pane under the shadowing key light) the moment contribution
+  matches OpenGL with per-channel means of (-54.77, -17.78, 0) against
+  (-54.83, -17.80, 0) and 95% of the 399k affected pixels within one display
+  level, on NVIDIA and on Intel. A 29-map sweep with moments on stays
+  validation-clean. Running Vulkan on the Intel Iris Xe (driver 101.5590)
+  exposed VUID-vkCmdBindPipeline-variableSampleLocations-01525: pipeline sample
+  locations need `variableSampleLocations` under dynamic rendering, so devices
+  without it keep their native pattern. With that fixed, all 11 local Vulkan
+  matrix cases pass on Intel, and all 29 stock SP maps load and draw their
+  opening view validation-clean on Vulkan/NVIDIA, Vulkan/Intel and OpenGL (87
+  runs) with no warning that OpenGL does not also log. Evidence is under
+  `.tmp/vk-stable/` (`sweep-sp`, `sweep-mom`, `matrix-intel`, `momlab-*`).
 
 - 2026-10-03 closes the remaining stock-independent implementation gaps and the
   runtime-robustness defects an audit of the module found. Authored ARB

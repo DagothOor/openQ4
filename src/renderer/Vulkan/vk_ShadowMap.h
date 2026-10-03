@@ -68,6 +68,15 @@ typedef struct vkShadowPassState_s {
 	VkDescriptorSet		pointSet;		// cube set-7 descriptor set for the active frame slot (pointLight only)
 	float				atlasRects[ SHADOWMAP_PROJECTED_MAX_CASCADES ][ 4 ];
 										// composed per-cascade UV rects; v spans inverted
+	// r_shadowMapTranslucentMoments: this ownership's translucent casters
+	// accumulated into a moment-atlas block (GL RB_RenderTranslucentShadowMap)
+	bool				momentValid;
+	int					momentX;		// block origin in the moment atlas (image coordinates)
+	int					momentY;
+	int					momentTile;		// projected: cascade tile edge; point: cube face tile edge
+	float				momentAtlas[ 4 ];	// receiver mapping. Projected: depth-atlas UV to
+										// moment UV scale, bias u, bias v. Point: face block
+										// origin u, v and face tile UV size. w: 1 / moment atlas size
 } vkShadowPassState_t;
 
 // Per-view, per-light shared state plus the two ownership-specific maps the
@@ -145,9 +154,16 @@ void	VK_ShadowMap_AbandonPreparedLights( void );
 // rendering scope; it issues its own viewport and restores the view scissor.
 void	VK_ShadowMap_DebugOverlayDraw( const viewDef_t *viewDef );
 
-// Applies a shadow resource resize deferred from a recording frame; called
-// before the next frame begins recording.
+// Applies a shadow resource resize deferred from a recording frame, and
+// creates or releases the translucent moment atlas as
+// r_shadowMapTranslucentMoments asks; called before the next frame begins
+// recording.
 void	VK_ShadowMap_BeginFrame( void );
+
+// The front end's translucent-moment tier (Interaction.cpp): true when the
+// cvar is on and this device can accumulate moments, so translucent casters
+// join the translucent chains instead of the binary depth path.
+bool	VK_ShadowMap_TranslucentMomentsAvailable( void );
 
 // device-shutdown hook (device idle by contract)
 void	VK_ShadowMap_Shutdown( void );
