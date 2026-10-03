@@ -4,7 +4,7 @@
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "e242f927cc0fe252ab8438d2348c5b03d98ca727",
+    "engine_revision": "9605f1dbbefc953b4c22af1650d5bf69e34e63cc",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -120,7 +120,7 @@
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/input-routing.md",
       "scope": "Semantic button/device ownership fixtures; no full widget, text, touch or platform acceptance.",
-      "sha256": "e967c46002356597b6b89f25e5e9be539a3e83b030083a24ee56b55ee84ef157"
+      "sha256": "d352b1ad749f177093d1b88b73dbd7c1b7879f3d6c736d22ed96d56d54ee42b6"
     },
     "interaction-foundation": {
       "kind": "implementation_checkpoint",
@@ -827,6 +827,12 @@
       "path": "docs/dev/ui/system-resolution-rows.md",
       "scope": "The retained SYSTEM page gains Display Resolution and Refresh Rate over the published lists, one exclusive mode rule for every display path, Vulkan MSAA and fixes for stale tuples, exclusive-mode monitor identity and native Wayland; it stays opt-in while presets and typed sizes are incomplete. Qualified by the native page tests across seven languages, the Meson suite, the gate, route, service and builder tests, an SDL 3.4.16 differential, a mutation pass, a frame probe and an in-game Vulkan run.",
       "sha256": "dda12cb39453e01e62e9cda7f33c4f4936d0ae1f8d90f803cbd12d196967b494"
+    },
+    "controller-menu-pump": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/input-routing.md",
+      "scope": "The controller menu pump pairs each navigation step with its release on every retained input target, so a stick push no longer leaves focus moving on the Single Player, Campaign and SYSTEM pages. Qualified by a compiled pump test, a mutation pass and the session tests.",
+      "sha256": "d352b1ad749f177093d1b88b73dbd7c1b7879f3d6c736d22ed96d56d54ee42b6"
     }
   },
   "groups": {
@@ -3776,7 +3782,8 @@
       "current_evidence": [
         "input-foundation",
         "presentation-alias-foundation",
-        "native-sink-driver"
+        "native-sink-driver",
+        "controller-menu-pump"
       ],
       "acceptance_evidence": [],
       "remaining": "Native and adapter button checks cover matched releases, multiple sources and cancellation when ancestor eligibility changes. The complete widget/device matrix, including supported-host gamepad/pointer scenarios, remains unaccepted."
@@ -3803,7 +3810,8 @@
       "status": "partial",
       "current_evidence": [
         "input-foundation",
-        "value-controls-foundation"
+        "value-controls-foundation",
+        "controller-menu-pump"
       ],
       "acceptance_evidence": [],
       "remaining": "The time-driven semantic repeat foundation now also drives stepped value changes and constrained option navigation, with selection remaining an immutable proposal to authoritative readback. Complete and qualify irregular-time/held-source/disabled-option behavior across the entire device and widget set; the recorded native and normal-route semantic checks do not establish full physical-device qualification.",

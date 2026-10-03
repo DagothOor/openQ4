@@ -234,9 +234,10 @@ static void PumpControllerMenuNavigation( idSessionLocal *session ) {
 	event.evValue2 = 1;
 
 	session->MenuEvent( &event );
-	if ( session->RetainedHomePresenting() ) {
-		// Retained controls pair every press with its release; this pump emits
-		// one navigation step per repeat, so complete the step at once.
+	if ( session->RetainedInputTarget() ) {
+		// Retained controls pair every press with its release, and repeat a
+		// press until it is released; the stick never sends a release. This
+		// pump emits one navigation step per repeat, so complete it at once.
 		event.evValue2 = 0;
 		session->MenuEvent( &event );
 	}
@@ -1745,6 +1746,16 @@ void idSessionLocal::ExitMenu( void ) {
 // The SYSTEM button opens the retained page while it is enabled (by its own
 // opt-in, or by the gate once complete) and has not fallen back to the stock
 // page this session.
+bool idSessionLocal::RetainedInputTarget() const {
+	if ( guiActive == NULL ) {
+		return false;
+	}
+	if ( guiRetainedHome != NULL && guiActive == guiMainMenu ) {
+		return true;
+	}
+	return UI_IsRetainedPath( guiActive->Name() );
+}
+
 bool idSessionLocal::RetainedSystemAvailable() const {
 	return Session_RetainedSystemEnabled() && retainedStock.FindIndex( RETAINED_SYSTEM_GUI ) < 0;
 }

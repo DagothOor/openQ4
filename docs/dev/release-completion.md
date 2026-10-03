@@ -597,6 +597,12 @@
   with the new `si_motd` server variable (up to 256 bytes, wrapped to three
   lines). The multiplayer menus remain in development.
 
+- On the modern Single Player and Campaign pages and the opt-in SYSTEM page,
+  the controller's stick now moves the selection one step per push, and
+  steadily while held, and stops when the stick is released. The selection
+  could keep moving on its own after a push, as it never saw the stick
+  released.
+
 - The opt-in SYSTEM page adds **Preload Light Grids** under Irradiance Volumes.
   Apply saves it without a Keep/Revert question, since it takes effect when the
   next map loads, and a line under it says whether the current map preloads or

@@ -221,6 +221,9 @@ public:
 	// its home state; its pages stay legacy and are reached by hand-off.
 	void				UpdateRetainedHome();
 	bool				RetainedHomePresenting() const { return guiRetainedHome != NULL; }
+	// Whether menu input reaches a retained view: the home screen over the
+	// legacy menu, or an active retained document such as the SYSTEM page.
+	bool				RetainedInputTarget() const;
 	bool				RetainedHomeInputBlocked() const;
 	void				RetainedHomeFrameEvent();
 	void				DrawRetainedHome( int presentationTime );

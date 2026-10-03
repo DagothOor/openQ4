@@ -56,6 +56,20 @@ one navigation step per subsequent frame. Stick navigation uses 50/38 press/
 release thresholds in the existing normalized -127..127 range and requires
 neutral after opening or resuming input.
 
+Documents the session routes (the home screen, the SYSTEM, Single Player and
+Campaign pages) do not read the stick themselves. The session's controller
+pump turns a deflected stick, like a held D-pad direction or shoulder button,
+into menu key presses at its own cadence: a stick step at once, a held button
+after 320 ms, then one step every 110 ms. The stick never sends a release, and the
+adapter repeats a held key until its release, so on any retained input target
+the pump sends each step's release straight after its press
+(`idSessionLocal::RetainedInputTarget`, checked by
+`tools/tests/ui_controller_menu_pump.py`). Legacy GUIs still receive the
+presses alone.
+
+Evidence: `.tmp/ui/controller-menu-pump/validation-evidence.json`, SHA-256
+`90860f636950012e402d58132f0f8c0c2d4834633005a15d59bdca33bcb0c94c`.
+
 Cancellation reaches the runtime before logical releases. Document replacement
 keeps held sources blocked until release; focus loss forgets physical sources
 whose releases may happen outside the application and rejects orphan OS repeats.
