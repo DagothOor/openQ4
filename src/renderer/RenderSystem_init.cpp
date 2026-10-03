@@ -30,6 +30,7 @@ If you have questions concerning this license or the applicable additional terms
 
 
 #include "tr_local.h"
+#include "OpenGL/FramebufferSamples.h"
 #include "LevelShotDepth.h"
 #include "RendererResourceSettings.h"
 #include "../imagetools/DXT/DXTCodec.h"
@@ -4337,7 +4338,12 @@ static int R_GfxInfoGLMaxSamples( bool &available ) {
 	int maxSamples = 0;
 
 #ifdef GL_MAX_SAMPLES
-	if ( glConfig.isInitialized && ( GLEW_ARB_texture_multisample || GLEW_VERSION_3_2 ) ) {
+	// GL_MAX_SAMPLES comes with framebuffer multisampling, not with multisample
+	// textures. Ask the context: under glewExperimental GLEW's flags only say
+	// the entry points resolved.
+	if ( glConfig.isInitialized && ( glConfig.backendCaps.glVersion >= 3.0f
+			|| GLCapabilityProbe_HasExtension( "GL_ARB_framebuffer_object" )
+			|| GLCapabilityProbe_HasExtension( "GL_EXT_framebuffer_multisample" ) ) ) {
 		glGetIntegerv( GL_MAX_SAMPLES, &maxSamples );
 		available = maxSamples > 0;
 	}
@@ -4358,7 +4364,14 @@ static void R_GfxInfoPrintAAState( void ) {
 #ifndef OPENQ4_RENDERER_VK_MODULE
 	const bool modernVisiblePost = R_ModernGLExecutor_ModernVisibleRequestedForPost()
 		&& R_ModernGLExecutor_Stats().modernVisibleExecuted;
-	const bool textureMSAAAvailable = ( GLEW_ARB_texture_multisample || GLEW_VERSION_3_2 ) != 0;
+	// The test idImage::AllocImage makes before it allocates a multisample
+	// texture. GLEW cannot answer it: macOS resolves the GL 3.2 entry points
+	// for its GL 2.1 legacy context, which has no multisample textures.
+	const bool textureMSAAAvailable = glTexImage2DMultisample != NULL
+		&& ( glConfig.backendCaps.glVersion >= 3.2f
+			|| GLCapabilityProbe_HasExtension( "GL_ARB_texture_multisample" ) );
+	const bool mainSceneDrewToWindow = backEnd.mainSceneTargetContext == tr.glContextGeneration
+		&& backEnd.mainSceneTargetIsWindow;
 #endif
 
 	int effectiveMSAA = 0;
@@ -4377,7 +4390,17 @@ static void R_GfxInfoPrintAAState( void ) {
 		} else if ( supersamplingActive ) {
 			msaaReason = "supersampling";
 		} else if ( !textureMSAAAvailable ) {
-			msaaReason = "texture-msaa-unavailable";
+			// Every render texture is single-sample here, including the game's
+			// forward target, so the scene got MSAA only if its last view drew
+			// straight into the window: the route with every post effect off.
+			// The window carries the samples SDL reported.
+			const int windowSamples = mainSceneDrewToWindow ? R_DefaultFramebufferSamples() : 0;
+			if ( windowSamples > 1 ) {
+				effectiveMSAA = windowSamples;
+				msaaReason = "default-framebuffer";
+			} else {
+				msaaReason = mainSceneDrewToWindow ? "default-framebuffer-single-sample" : "texture-msaa-unavailable";
+			}
 		} else {
 			effectiveMSAA = requestedMSAA;
 			msaaReason = "active";

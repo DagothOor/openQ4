@@ -45,6 +45,22 @@
   an Apple-shaped Mesa 2.1 context reproduces it, and all four pass there with
   the fix.
 
+- [x] Make `gfxInfo` report the MSAA macOS OpenGL actually delivers. On Apple's
+  GL 2.1 legacy context it printed `MSAA requested=8 effective=8 reason=active`
+  while the same log said every multisample texture had been refused: it read
+  GLEW's experimental flags, which macOS sets for that context too. It now asks
+  the context, as texture allocation does. Offscreen targets cannot multisample
+  there, so the scene gets MSAA only when it draws straight into the window, and
+  `gfxInfo` names where it drew: `reason=default-framebuffer` with the window's
+  sample count, or `effective=0 reason=texture-msaa-unavailable`.
+  `GL_MAX_SAMPLES` is read whenever the context has framebuffer multisampling.
+  Rendering is unchanged. On an Apple-shaped Mesa 2.1 context the renderer
+  self-tests now report `effective=0 reason=texture-msaa-unavailable` instead
+  of `effective=4 reason=gl-max-clamp`, and Air Defense 1 reports the window
+  route with Post AA off and the offscreen route with it on, where the old
+  report claimed 4x both times; the GL 4.5 report is unchanged. See
+  [display settings](../user/display-settings.md).
+
 - [x] Turn shadow maps on in the `quality` and `ultra` performance presets and
   default projected-light filtering to PCSS-lite (`r_shadowMapFilterMode 2`)
   with a 2-texel minimum radius (`r_shadowMapFilterRadius 2.0`). Lower presets

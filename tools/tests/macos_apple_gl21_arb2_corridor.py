@@ -629,7 +629,8 @@ def validate_multisample_gates_ask_the_context() -> None:
     """glewExperimental sets GLEW_VERSION_3_2 and GLEW_ARB_texture_multisample
     whenever their entry points resolve, and macOS resolves them for its 2.1
     legacy context. A limit query gated on them raised GL_INVALID_ENUM at every
-    Apple startup and failed the renderer matrix on both macOS legs."""
+    Apple startup and failed the renderer matrix on both macOS legs, and
+    gfxInfo reported MSAA the context could not deliver."""
 
     graph_source = read("src/renderer/RenderGraphResources.cpp")
     graph_init = function_body(
@@ -650,12 +651,33 @@ def validate_multisample_gates_ask_the_context() -> None:
         "multisample texture allocation gate",
     )
 
+    # gfxInfo printed "MSAA ... effective=8 reason=active" on that context while
+    # the same log said every multisample texture had been refused.
+    init_source = read("src/renderer/RenderSystem_init.cpp")
+    gfxinfo_aa = function_body(init_source, "static void R_GfxInfoPrintAAState( void ) {")
+    gfxinfo_max_samples = function_body(init_source, "static int R_GfxInfoGLMaxSamples( bool &available ) {")
+    for token in (
+        "const bool textureMSAAAvailable = glTexImage2DMultisample != NULL",
+        "glConfig.backendCaps.glVersion >= 3.2f",
+        'GLCapabilityProbe_HasExtension( "GL_ARB_texture_multisample" )',
+    ):
+        require(gfxinfo_aa, token, "gfxInfo texture MSAA gate")
+    # GL_MAX_SAMPLES is a framebuffer-multisample limit; Apple's 2.1 context
+    # has it through EXT_framebuffer_multisample and ARB_framebuffer_object.
+    for token in (
+        "glConfig.backendCaps.glVersion >= 3.0f",
+        'GLCapabilityProbe_HasExtension( "GL_ARB_framebuffer_object" )',
+        'GLCapabilityProbe_HasExtension( "GL_EXT_framebuffer_multisample" )',
+    ):
+        require(gfxinfo_max_samples, token, "gfxInfo GL_MAX_SAMPLES gate")
+
     for body, context in (
         (graph_init, "render graph multisample limit gate"),
         (alloc_image, "multisample texture allocation gate"),
+        (gfxinfo_aa, "gfxInfo texture MSAA gate"),
+        (gfxinfo_max_samples, "gfxInfo GL_MAX_SAMPLES gate"),
     ):
-        for token in ("GLEW_VERSION_3_2", "GLEW_ARB_texture_multisample"):
-            reject(body, token, context)
+        reject(body, "GLEW_", context)
 
 
 def main() -> None:

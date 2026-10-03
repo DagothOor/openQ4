@@ -15401,6 +15401,14 @@ void	RB_STD_DrawView( void ) {
 		backEnd.renderTexture->MakeCurrent();
 	}
 
+	// gfxInfo reports the MSAA this scene got. Without multisample textures
+	// (Apple's GL 2.1 context) every render texture is single-sample, so only
+	// a scene drawn straight into the window framebuffer is multisampled.
+	if ( RB_IsMainScenePostProcessView( backEnd.viewDef ) ) {
+		backEnd.mainSceneTargetContext = tr.glContextGeneration;
+		backEnd.mainSceneTargetIsWindow = ( backEnd.renderTexture == NULL );
+	}
+
 	RB_DisplaySpecialEffects( backEnd.viewDef->viewEntitys, true );
 
 	// clear the z buffer, set the projection matrix, etc

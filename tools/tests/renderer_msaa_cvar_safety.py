@@ -68,6 +68,19 @@ def test_gfxinfo_reports_effective_aa_state():
                 "a rejected modern transaction must not suppress native AA reporting")
     assert_true("texture-msaa-unavailable" in init_cpp, "gfxInfo should explain unavailable texture MSAA")
     assert_true("gl-max-clamp" in init_cpp, "gfxInfo should report GL max sample clamping")
+    # Without multisample textures (Apple's GL 2.1 context) every render texture
+    # is single-sample, so the scene is multisampled only when its view drew
+    # straight into the window; report that instead of the requested count.
+    assert_true('"default-framebuffer"' in init_cpp and '"default-framebuffer-single-sample"' in init_cpp,
+                "gfxInfo should report window MSAA when the scene drew into the default framebuffer")
+    assert_true("mainSceneDrewToWindow ? R_DefaultFramebufferSamples() : 0" in init_cpp,
+                "gfxInfo should read the window's samples only for a scene that drew there")
+    draw_common = read_repo_file(Path("src") / "renderer" / "draw_common.cpp")
+    draw_view = draw_common[draw_common.find("void\tRB_STD_DrawView( void ) {"):]
+    target_chosen = draw_view.find("backEnd.renderTexture = rbSceneRenderTexture;")
+    target_recorded = draw_view.find("backEnd.mainSceneTargetIsWindow = ( backEnd.renderTexture == NULL );")
+    assert_true(0 <= target_chosen < target_recorded,
+                "the main view should record its target after the renderer picks its own scene target")
     assert_true(
         "Renderer AA: MSAA requested=%d effective=%d reason=%s GL_MAX_SAMPLES=%s alphaToCoverage=%d PostAA=%d(%s) postAAEffective=%d postAAReason=%s screenFraction=%d%% supersampling=%s resolutionScaleMode=%d" in init_cpp,
         "gfxInfo should print the AA summary fields",

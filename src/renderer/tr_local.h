@@ -751,6 +751,10 @@ typedef struct {
 	idVec4				postProcessSourceColorSpace;	// x = contract enum, y = display gamma, z/w reserved
 	idVec4				postProcessSMAAQuality;	// x = edge mode, y = threshold, z = search steps, w = local contrast
 
+	// where the last main scene view drew, for gfxInfo's effective MSAA
+	int					mainSceneTargetContext;	// tr.glContextGeneration when recorded, 0 = none yet
+	bool				mainSceneTargetIsWindow;	// true = the default framebuffer, false = a render texture
+
 	const viewEntity_t *currentSpace;		// for detecting when a matrix must change
 	idScreenRect		currentScissor;
 	// for scissor clipping, local inside renderView viewport
