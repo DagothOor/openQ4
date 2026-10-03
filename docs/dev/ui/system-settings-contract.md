@@ -129,6 +129,12 @@ coupled selection against a current capability snapshot and detect topology
 changes; a previously displayed ordinal is not a durable display identifier.
 See [host enumeration and mode application](https://github.com/themuffinator/openQ4/blob/15e35beaf11a1f1942ba25e9431211f64c1ef7f1/src/framework/Session_menu.cpp#L260).
 
+The settings service now builds these lists for the retained page from one
+cached topology capture: the [SYSTEM display lists](system-display-catalog.md).
+A pick names the list's token and writes these same settings; a display picked
+from the list must still be that monitor at Apply. The rows that read the
+lists follow in their own increments.
+
 `fromMp_toSystem` targets desktop page 22. On entry, the menu issues
 `refreshSystemSettings`, which refreshes display data, inverse quality booleans
 and renderer capabilities, then calls `StateChanged`. `forceAspect0` selects the

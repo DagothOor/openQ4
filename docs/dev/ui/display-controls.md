@@ -48,8 +48,12 @@ regressing, overflowing or throwing clock observations retain recovery
 ownership. The 20-second readiness limit, fresh owner/presentation checks and
 15-second user confirmation remain unchanged.
 
-The full SYSTEM migration still needs dynamic display/resolution/refresh
-catalogs, dimension editors, dependent-setting presentation, Defaults,
+The settings service now builds the display, resolution and refresh lists
+([SYSTEM display lists](system-display-catalog.md)). That page records two
+deliberate departures: display names are cut to 48 code points, and the
+refresh list does not add the desktop rate to every size. The full SYSTEM
+migration still needs the rows that read those lists, dimension editors,
+dependent-setting presentation, Defaults,
 complete effect/preset execution, native text entry, complete artwork and
 motion qualification, and the editor round trip. Visible fullscreen,
 borderless, window-manager and multiple-monitor behavior require separate

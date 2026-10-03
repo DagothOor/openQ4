@@ -368,6 +368,9 @@ int				Sys_GetSystemRam( void );
 int				Sys_GetVideoRam( void );
 // queries the current desktop resolution for the active display selection
 bool			Sys_GetDesktopResolution( int *width, int *height );
+// counts display topology changes (SDL display events and a window moving to
+// another display or scale), so cached display lists know when to recapture
+unsigned long long	Sys_DisplayTopologyGeneration( void );
 
 // returns amount of drive space in path
 int				Sys_GetDriveFreeSpace( const char *path );

@@ -3,7 +3,8 @@
 
 Selections only edit the existing typed draft. Apply/Keep/Revert and display
 recovery remain owned by the settings service, including unsupported requests.
-Dynamic display/resolution catalogs are a separate outstanding part of SYSTEM.
+The pass also declares the display list keys the service publishes
+(system_display_catalog.py); the rows that read them are still to come.
 """
 from __future__ import annotations
 import argparse
@@ -11,6 +12,7 @@ import copy
 import json
 from pathlib import Path
 from update_system_presets import allowed, length, load, nodes, renamed, typed
+import system_display_catalog
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / 'content/baseoq4/pak0/guis/menu/settings/system.q4ui'
@@ -31,6 +33,7 @@ def compose(document):
     result['presentationVariables']['msaaAvailable'] = {
         'type': 'boolean', 'initial': False, 'value': {'state': 'settings.msaaAvailable'}}
     result['aliases']['msaaAvailable'] = {'variable': 'msaaAvailable'}
+    system_display_catalog.declare(result)
     for ident, key, label, original, alias, labels, options in FIELDS:
         field = renamed(index[original], original, ident)
         control = field['control']
@@ -85,7 +88,8 @@ def compose(document):
     body['children'].insert(position, column)
     result['extensions']['openq4']['displayControls'] = {
         'scope': 'Fullscreen, borderless, fullscreen policy and MSAA edit the existing draft. Apply uses owned Keep/Revert recovery; unsupported device requests do not bypass validation.',
-        'remaining': 'Dynamic display/resolution/refresh catalogs, dimension editors, full settings effects and screen acceptance remain required.',
+        'remaining': 'The display device, span, resolution and refresh rows over the published display lists, dimension editors, full settings effects and screen acceptance remain required.',
+        'displayLists': 'settings.display.* keys from system_display_catalog.py: owner-only lists the settings service builds from the display topology.',
         'msaaAvailability': 'Read-only active-backend observation. Vulkan and unavailable renderers disable MSAA; strict Apply still checks supported GL sample counts.',
         'localization': ['#str_229900', '#str_200147', '#str_229909', '#str_229910', '#str_229911', '#str_41093', '#str_230020']}
     nodes(result['root'])

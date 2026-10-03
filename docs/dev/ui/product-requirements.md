@@ -515,6 +515,8 @@ On engine `f88d8c7cfdfc2c9c116b1a45d66c8b7a78f26d12` the renderer fallback gains
 
 On engine `3219f4e5fb0e88ca64cc6b58841fb0703d8a1517` the retained SYSTEM page gains Renderer Fallback: the choice drafts `r_renderer` (Auto or ARB2) where the renderer executor admits it, shows a notice while the renderer reports a fallback from an unavailable or retired request, and applies through the executor's checked restart. The service and host harnesses, native page tests across seven locales, sizes and densities, a mutation pass and in-game OpenGL, cold-recovery and Vulkan runs qualify it. `FLOW-002` and `BEH-002` gain partial evidence without a status change. Evidence: `.tmp/ui/system-renderer-fallback/validation-evidence.json`, SHA-256 `abf8cfcf300430ff6f2026b8eef18dff78a8869644bee56c1c6044ab8cf796a7`.
 
+On engine `1e457055bf2bda18b4c0a7477f0fd0727618b445` the settings service gains the SYSTEM display lists: the display device, resolution and refresh lists built from one cached topology capture with localized labels, published to the page owner, and picks checked against the list's token that become ordinary edits; a display picked from the list must still be that monitor at Apply. The builder, service, host and language harnesses, a mutation pass, the Meson suite and an in-game OpenGL run qualify it. `FLOW-002` and `BEH-002` gain partial evidence without a status change. Evidence: `.tmp/ui/system-display-catalog/validation-evidence.json`, SHA-256 `aaf2b08b88a32d8096460f8031f6b176f31974c5c67ce7ca548839f40f624e2f`.
+
 There are **87 partial, 252 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.

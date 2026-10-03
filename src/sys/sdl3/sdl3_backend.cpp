@@ -4673,6 +4673,13 @@ static const char *SDL3_DisplayEventName(SDL_EventType eventType) {
 	}
 }
 
+// Display lists cached by the settings service recapture when this moves.
+static unsigned long long sdl3DisplayTopologyGeneration = 1;
+
+unsigned long long Sys_DisplayTopologyGeneration( void ) {
+	return sdl3DisplayTopologyGeneration;
+}
+
 static void SDL3_HandleDisplayEvent(const SDL_DisplayEvent &event) {
 	// Display events are process-wide, not associated with one SDL window. A
 	// dock/undock, monitor hotplug, mode change, or compositor scale change can
@@ -4683,6 +4690,7 @@ static void SDL3_HandleDisplayEvent(const SDL_DisplayEvent &event) {
 		"SDL3: display %s (id %u); refreshing desktop, window, and input state.\n",
 		SDL3_DisplayEventName(event.type),
 		static_cast<unsigned int>(event.displayID));
+	++sdl3DisplayTopologyGeneration;
 	SDL3_InitDesktopMode();
 	SDL3_RefreshWindowPlacement();
 	SDL3_InvalidateMenuMouseRouting();
@@ -4753,6 +4761,7 @@ static void SDL3_HandleWindowEvent(const SDL_WindowEvent &event, int eventTime) 
 
 		case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
 		case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+			++sdl3DisplayTopologyGeneration;
 			SDL3_InitDesktopMode();
 			SDL3_RefreshWindowPlacement();
 			SDL3_InvalidateMenuMouseRouting();

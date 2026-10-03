@@ -35,6 +35,24 @@ using namespace openq4::ui;
 double Now() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
+// The SYSTEM display lists. One topology capture serves while the stamp holds
+// (the display topology, the window's display and the labels), and the lists
+// rebuild when the owner or a draft key they depend on changes. The token
+// names the pickable entries and their labels, so a pick applies only the
+// list the page showed; a change of selection alone keeps it.
+struct DisplayCatalogCache {
+    bool captured = false, inputValid = false;
+    SystemDisplayCatalogStamp stamp;
+    SystemDisplayCatalogInput input;
+    bool built = false;
+    std::uint64_t owner = 0, token = 0;
+    StateValues key;
+    SystemDisplayCatalog catalog;
+    // The display a pick chose, by descriptor, while that r_screen change is pending.
+    bool picked = false;
+    int pickedIndex = -1;
+    SystemDisplayDescriptor pickedDescriptor;
+};
 struct Service {
     SystemSettingsHost host;
     SettingsTransaction transaction{host};
@@ -49,6 +67,7 @@ struct Service {
     std::uint64_t receiptOwner = 0, receiptRequest = 0;
     struct ExitIdentity { std::uint64_t owner = 0, request = 0; };
     ExitIdentity exitIntent, exitReceipt;
+    DisplayCatalogCache catalog;
 };
 std::unique_ptr<Service>& Instance() { static std::unique_ptr<Service> service; return service; }
 Service& Settings() { auto& service=Instance(); if (!service) service=std::make_unique<Service>(); return *service; }
@@ -57,6 +76,9 @@ std::uint64_t nextOwner = 1; // Survives game/renderer/service shutdown, never r
 // earlier service can never match a later request. A receipt describes the
 // map on screen only for the latest token, issued after the last unload.
 std::uint64_t levelLoadToken = 0, levelUnloads = 0, unloadedToken = 0;
+// Display list tokens survive the service too, so a token is never reused.
+std::uint64_t catalogTokens = 0;
+const char* const CatalogDraftKeys[] = {"r_screen","r_mode","r_customWidth","r_customHeight","r_displayRefresh"};
 struct RenderFrame {
     unsigned depth = 0;
     bool valid = false, drawn = false, submitting = false;
@@ -86,6 +108,80 @@ bool RequestToken(const std::string& value, std::uint64_t& token) {
     const auto result=std::from_chars(value.data(),value.data()+value.size(),token);
     return result.ec==std::errc() && result.ptr==value.data()+value.size() && token!=0;
 }
+void RefreshCatalog(Service& service, std::uint64_t owner) {
+    auto& cache = service.catalog;
+    SystemDisplayCatalogStamp stamp;
+    service.device.CatalogStamp(stamp);
+    if (!cache.captured || !(cache.stamp == stamp)) {
+        std::string error;
+        cache.captured = true; cache.stamp = std::move(stamp);
+        cache.inputValid = service.device.CaptureCatalogInput(cache.stamp,cache.input,error);
+        cache.built = false;
+    }
+    const auto& draft = service.transaction.Draft();
+    StateValues key;
+    for (const char* name : CatalogDraftKeys) {
+        const auto value = draft.find(name);
+        if (value != draft.end()) key.emplace(name,value->second);
+    }
+    if (cache.built && cache.owner == owner && SettingsValuesEqual(cache.key,key)) return;
+    SystemDisplayCatalog catalog; std::string error;
+    if (!cache.inputValid || !BuildSystemDisplayCatalog(cache.input,draft,catalog,error)) catalog = {};
+    // Selections and the reserved slots are not entries a pick can name.
+    const auto mapping = [](SystemDisplayCatalog value) {
+        value.deviceSelected = value.modeSelected = value.refreshSelected = 0;
+        value.unlistedMode.clear(); value.unlistedRefresh.clear(); return value;
+    };
+    if (!cache.built || cache.owner != owner || !(mapping(catalog) == mapping(cache.catalog))) {
+        cache.token = ++catalogTokens;
+        if (cvarSystem->GetCVarBool("ui_retainedTrace"))
+            common->Printf("UI_SETTINGS_CATALOG token=%llu available=%d displays=%d devices=%d modes=%d refresh=%d\n",
+                static_cast<unsigned long long>(cache.token),catalog.available?1:0,catalog.count,static_cast<int>(catalog.devices.size()),
+                static_cast<int>(catalog.modes.size()),static_cast<int>(catalog.refresh.size()));
+    }
+    cache.catalog = std::move(catalog); cache.built = true; cache.owner = owner; cache.key = std::move(key);
+}
+// A display picked from the list must still be the monitor it named. The
+// record lasts while that pick is the pending r_screen change.
+bool PickedDisplayCurrent(Service& service, std::uint64_t owner) {
+    auto& cache = service.catalog;
+    const auto& draft = service.transaction.Draft(); const auto& baseline = service.transaction.Baseline();
+    const auto screen = draft.find("r_screen"), before = baseline.find("r_screen");
+    if (!cache.picked || screen == draft.end() || before == baseline.end() || SettingsValueEqual(screen->second,before->second) ||
+        !std::holds_alternative<double>(screen->second) || std::get<double>(screen->second) != double(cache.pickedIndex)) {
+        cache.picked = false; return true;
+    }
+    RefreshCatalog(service,owner);
+    const auto& displays = cache.input.topology.displays;
+    return cache.inputValid && cache.pickedIndex >= 0 && cache.pickedIndex < static_cast<int>(displays.size()) &&
+        SameSystemDisplay(displays[static_cast<size_t>(cache.pickedIndex)],cache.pickedDescriptor);
+}
+// The display lists for the page, owner-only. Slots past a list's count carry
+// empty labels; a list's reserved last slot names an unlisted current value.
+void DisplayCatalogStatus(Service& service, std::uint64_t owner, StateValues& values) {
+    RefreshCatalog(service,owner);
+    const auto& catalog = service.catalog.catalog;
+    values["settings.display.available"] = catalog.available;
+    values["settings.display.spanAvailable"] = catalog.spanAvailable;
+    values["settings.display.catalog"] = std::to_string(service.catalog.token);
+    values["settings.display.count"] = static_cast<double>(catalog.count);
+    values["settings.display.optionCount"] = static_cast<double>(1 + catalog.devices.size());
+    for (int i = 0; i < SystemDisplayDeviceSlots; ++i)
+        values["settings.display."+std::to_string(i)+".label"] = i < static_cast<int>(catalog.devices.size()) ? catalog.devices[size_t(i)] : std::string();
+    values["settings.display.mode.optionCount"] = static_cast<double>(catalog.modes.size());
+    values["settings.display.mode.selected"] = static_cast<double>(catalog.modeSelected);
+    for (int i = 0; i < SystemDisplayModeSlots; ++i)
+        values["settings.display.mode."+std::to_string(i)+".label"] = i < static_cast<int>(catalog.modes.size()) ? catalog.modes[size_t(i)].label :
+            i == SystemDisplayModeSlots-1 && !catalog.unlistedMode.empty() ? catalog.unlistedMode.front().label : std::string();
+    values["settings.display.refresh.optionCount"] = static_cast<double>(catalog.refresh.size());
+    values["settings.display.refresh.selected"] = static_cast<double>(catalog.refreshSelected);
+    for (int i = 0; i < SystemDisplayRefreshSlots; ++i)
+        values["settings.display.refresh."+std::to_string(i)+".label"] = i < static_cast<int>(catalog.refresh.size()) ? catalog.refresh[size_t(i)].label :
+            i == SystemDisplayRefreshSlots-1 && !catalog.unlistedRefresh.empty() ? catalog.unlistedRefresh.front().label : std::string();
+}
+bool DisplayOperation(const std::string& operation) {
+    return operation == "settings.system.display" || operation == "settings.system.displayMode" || operation == "settings.system.displayRefresh";
+}
 bool Supported(Service& service,std::uint64_t owner,bool* invalidDraft = nullptr,bool* mixed = nullptr) {
     if (invalidDraft) *invalidDraft = false;
     if (mixed) *mixed = false;
@@ -109,6 +205,10 @@ bool Supported(Service& service,std::uint64_t owner,bool* invalidDraft = nullptr
         break;
     case SystemApplyClass::Mixed: if (mixed) *mixed = true; return false;
     case SystemApplyClass::Unsupported: return false;
+    }
+    if (service.transaction.Owner() == owner && !PickedDisplayCurrent(service,owner)) {
+        if (invalidDraft) *invalidDraft = true;
+        return false;
     }
     std::string error;
     bool valid = false;
@@ -435,6 +535,10 @@ bool UI_SettingsOperation(const Action& action, std::string& error) {
         action.arguments.size()==1 && action.arguments.contains("request") && action.arguments.at("request").type==2) return true;
     if (action.operation=="settings.system.preset" && action.arguments.size()==1 &&
         action.arguments.contains("name") && action.arguments.at("name").type==2) return true;
+    // A display list pick: its slot index and the list token it saw.
+    if (DisplayOperation(action.operation) && action.arguments.size()==2 &&
+        action.arguments.contains("index") && action.arguments.at("index").type==0 &&
+        action.arguments.contains("catalog") && action.arguments.at("catalog").type==2) return true;
     if (action.operation == "settings.system.edit" && !action.arguments.empty()) {
         const auto& schema = SystemSettingsHost::Schema();
         for (const auto& [key,value] : action.arguments) {
@@ -489,9 +593,13 @@ bool UI_SettingsDispatch(std::uint64_t owner, const ActionInvocation& action, st
             }
             result = {SettingsCode::Busy,"Settings owner recovery is pending"};
         } else {
+            // A second begin while editing keeps the draft and its picked
+            // display; a new session starts without one.
+            const bool opening = transaction.Phase() == SettingsPhase::Closed;
             result = transaction.Begin(owner);
             if (result.code == SettingsCode::Ok) {
                 service.abandon = false;
+                if (opening) service.catalog.picked = false;
                 CancelExitIdentity(service.exitReceipt,service.exitReceipt.owner);
             }
         }
@@ -523,6 +631,34 @@ bool UI_SettingsDispatch(std::uint64_t owner, const ActionInvocation& action, st
             return true;
         });
     }
+    else if (DisplayOperation(action.operation)) {
+        const auto list = action.operation=="settings.system.display" ? SystemDisplayList::Device :
+            action.operation=="settings.system.displayMode" ? SystemDisplayList::Mode : SystemDisplayList::Refresh;
+        const double index = std::get<double>(action.arguments.at("index"));
+        std::uint64_t token = 0;
+        if (service.closing || service.abandon) result={SettingsCode::Busy,"Settings owner is closing"};
+        else if (transaction.Owner() != owner) result={SettingsCode::NotOpen,"Open settings before choosing a display"};
+        else if (!std::isfinite(index) || std::floor(index) != index || index < -1 || index >= SystemDisplayModeSlots)
+            result={SettingsCode::Invalid,"A display list pick names a whole slot"};
+        else {
+            RefreshCatalog(service,owner);
+            auto& cache = service.catalog;
+            // A pick names the list it saw; a list rebuilt since then is stale.
+            if (!RequestToken(std::get<std::string>(action.arguments.at("catalog")),token) || token != cache.token)
+                result={SettingsCode::Conflict,"The display list changed; choose again"};
+            else {
+                const auto catalog = cache.catalog;
+                result=transaction.EditGenerated(owner,[&](StateValues& patch,std::string& diagnostic){
+                    return SystemDisplaySelectionPatch(catalog,list,static_cast<int>(index),patch,diagnostic);
+                });
+                if (result.code==SettingsCode::Ok && list==SystemDisplayList::Device) {
+                    cache.picked = index >= 0 && index < catalog.count;
+                    cache.pickedIndex = static_cast<int>(index);
+                    cache.pickedDescriptor = cache.picked ? catalog.descriptors[static_cast<size_t>(index)] : SystemDisplayDescriptor{};
+                }
+            }
+        }
+    }
     else if (action.operation == "settings.system.edit") result = transaction.Edit(owner,action.arguments);
     else if (action.operation == "settings.system.defaults") result = transaction.Defaults(owner);
     else if (action.operation == "settings.system.cancel") {
@@ -532,9 +668,13 @@ bool UI_SettingsDispatch(std::uint64_t owner, const ActionInvocation& action, st
         // Display/startup/recovery and registered-owner checks still run above.
         result = !transaction.Owner() && transaction.Phase() == SettingsPhase::Closed ?
             SettingsResult{SettingsCode::Ok,{}} : transaction.Cancel(owner);
+        if (result.code == SettingsCode::Ok) service.catalog.picked = false;
     }
     else if (action.operation == "settings.system.confirm") result = transaction.Confirm(owner);
-    else if (action.operation == "settings.system.revert") result = transaction.Revert(owner);
+    else if (action.operation == "settings.system.revert") {
+        result = transaction.Revert(owner);
+        if (result.code == SettingsCode::Ok) service.catalog.picked = false;
+    }
     else if (action.operation == "settings.system.apply" || action.operation == "settings.system.applyExit") {
         if (transaction.Owner() == owner && transaction.Phase() == SettingsPhase::Editing &&
             !Supported(service,owner))
@@ -572,7 +712,14 @@ const std::map<std::string,std::size_t>& UI_SettingsStateSchema() {
             {"settings.request",2},{"settings.canConfirm",1},{"settings.canRevert",1},{"settings.canRetry",1},{"settings.remaining",0},{"settings.confirmationVisible",1},
             {"settings.lightGrid.committed",1},{"settings.lightGrid.mapLoaded",1},{"settings.lightGrid.consumed",1},
             {"settings.lightGrid.effective",1},{"settings.lightGrid.pending",1},
-            {"settings.renderer.available",1},{"settings.renderer.fallback",1}};
+            {"settings.renderer.available",1},{"settings.renderer.fallback",1},
+            {"settings.display.available",1},{"settings.display.spanAvailable",1},{"settings.display.catalog",2},
+            {"settings.display.count",0},{"settings.display.optionCount",0},
+            {"settings.display.mode.optionCount",0},{"settings.display.mode.selected",0},
+            {"settings.display.refresh.optionCount",0},{"settings.display.refresh.selected",0}};
+        for (int i = 0; i < SystemDisplayDeviceSlots; ++i) result.emplace("settings.display."+std::to_string(i)+".label",2);
+        for (int i = 0; i < SystemDisplayModeSlots; ++i) result.emplace("settings.display.mode."+std::to_string(i)+".label",2);
+        for (int i = 0; i < SystemDisplayRefreshSlots; ++i) result.emplace("settings.display.refresh."+std::to_string(i)+".label",2);
         for (const auto& [key,type] : SystemSettingsHost::Schema()) {
             result.emplace("settings.draft."+key,type);
             result.emplace("settings.baseline."+key,type);
@@ -625,6 +772,7 @@ bool UI_SettingsRead(std::uint64_t owner, StateValues& values) {
     if (own) {
         LightGridStatus(service,candidate);
         RendererStatus(service,candidate);
+        DisplayCatalogStatus(service,owner,candidate);
         for (const auto& [key,value] : transaction.Draft()) candidate.emplace("settings.draft."+key,value);
         for (const auto& [key,value] : transaction.Baseline()) candidate.emplace("settings.baseline."+key,value);
     }

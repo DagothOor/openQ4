@@ -347,6 +347,7 @@ jobs:
             tools/ui/update_system_choice_scrollbars.py \
             tools/ui/update_system_interface_settings.py \
             tools/ui/update_system_display_controls.py \
+            tools/ui/system_display_catalog.py \
             tools/ui/update_system_dimensions.py \
             tools/ui/update_system_text_layout.py \
             tools/ui/update_system_soft_focus.py \

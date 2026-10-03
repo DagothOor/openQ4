@@ -6,6 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <set>
+#include <variant>
 #if defined(USE_SDL3) && !defined(ID_DEDICATED)
 #include <SDL3/SDL.h>
 #endif
@@ -22,6 +23,9 @@ bool InspectDisplayRecovery(const StateValues&,SystemDisplayPlan&,SystemDisplayT
 bool ValidateDisplayRecoveryPair(const StateValues&,const StateValues&,const StateValues&,std::string& error) { return Unsupported(error); }
 bool ValidateDisplayPreserveActualPair(const StateValues&,const StateValues&,const StateValues&,const StateValues&,std::string& error) { return Unsupported(error); }
 bool ResolveDisplayRecovery(const StateValues&,const SystemDisplayTopology&,SystemDisplayPlan&,std::string& error) { return Unsupported(error); }
+bool BuildSystemDisplayCatalog(const SystemDisplayCatalogInput&,const StateValues&,SystemDisplayCatalog&,std::string& error) { return Unsupported(error); }
+bool SystemDisplaySelectionPatch(const SystemDisplayCatalog&,SystemDisplayList,int,StateValues&,std::string& error) { return Unsupported(error); }
+bool SameSystemDisplay(const SystemDisplayDescriptor&,const SystemDisplayDescriptor&) { return false; }
 #else
 namespace {
 constexpr int MaxDisplays = 32;
@@ -491,6 +495,197 @@ bool ResolveDisplayRecovery(const StateValues& saved,const SystemDisplayTopology
 	plan.request.displayIndex=plan.expected.displayIndex=int(selected-&topology.displays.front());
 	if (!RecoveryPlan(plan,topology,error)) return false;
 	output=std::move(plan); error.clear(); return true;
+}
+
+namespace {
+using FormatArgument=std::variant<int,std::string>;
+// Exactly the placeholders the arguments supply, in order; %% is a percent sign.
+bool FormatChecked(const std::string& format,const std::vector<FormatArgument>& arguments,std::string& output) {
+	std::string result; size_t next=0;
+	for (size_t i=0; i<format.size(); ++i) {
+		if (format[i]!='%') { result+=format[i]; continue; }
+		if (++i>=format.size()) return false;
+		if (format[i]=='%') { result+='%'; continue; }
+		if (next>=arguments.size()) return false;
+		const auto& argument=arguments[next++];
+		if (format[i]=='d' && std::holds_alternative<int>(argument)) result+=std::to_string(std::get<int>(argument));
+		else if (format[i]=='s' && std::holds_alternative<std::string>(argument)) result+=std::get<std::string>(argument);
+		else return false;
+	}
+	if (next!=arguments.size()) return false;
+	output=std::move(result); return true;
+}
+// A translation whose placeholders differ falls back to the English format.
+std::string Format(const std::string& localized,const char* english,const std::vector<FormatArgument>& arguments) {
+	std::string output;
+	if (FormatChecked(localized,arguments,output) && ValidStateValue(StateValue(output))) return output;
+	FormatChecked(english,arguments,output); return output;
+}
+std::string Label(const std::string& localized,const char* english) {
+	return !localized.empty() && localized.find('%')==std::string::npos && ValidStateValue(StateValue(localized)) ? localized : english;
+}
+// A display name cut at a code point boundary to 48 code points, the last an ellipsis.
+std::string DisplayName(const std::string& name) {
+	size_t points=0, cut=0;
+	for (size_t i=0; i<name.size(); ++i) {
+		if ((static_cast<unsigned char>(name[i])&0xC0)==0x80) continue;
+		if (points==47) cut=i;
+		if (++points>48) return name.substr(0,cut)+"\xE2\x80\xA6";
+	}
+	return name;
+}
+// The stock menu's aspect suffix: the nearest common ratio within 4%, else the
+// reduced ratio when it is small.
+std::string Aspect(int width,int height) {
+	static constexpr int Ratios[][2]={{5,4},{4,3},{3,2},{5,3},{16,10},{16,9},{21,9},{32,10},{32,9}};
+	const float aspect=float(width)/float(height);
+	int best=-1; float bestDelta=std::numeric_limits<float>::infinity();
+	for (int i=0; i<int(sizeof(Ratios)/sizeof(Ratios[0])); ++i) {
+		const float delta=std::fabs(aspect-float(Ratios[i][0])/float(Ratios[i][1]));
+		if (delta<bestDelta) { bestDelta=delta; best=i; }
+	}
+	if (best>=0 && bestDelta<=float(Ratios[best][0])/float(Ratios[best][1])*0.04f)
+		return std::to_string(Ratios[best][0])+":"+std::to_string(Ratios[best][1]);
+	int a=width, b=height;
+	while (b) { const int r=a%b; a=b; b=r; }
+	return a>0 && width/a<=64 && height/a<=64 ? std::to_string(width/a)+":"+std::to_string(height/a) : std::string{};
+}
+bool Integer(const StateValues& values,const char* key,int& output) {
+	const auto value=values.find(key);
+	if (value==values.end() || !std::holds_alternative<double>(value->second)) return false;
+	const double number=std::get<double>(value->second);
+	if (!std::isfinite(number) || std::floor(number)!=number || number<-1e9 || number>1e9) return false;
+	output=int(number); return true;
+}
+} // namespace
+
+bool SameSystemDisplay(const SystemDisplayDescriptor& a, const SystemDisplayDescriptor& b) { return SameMonitor(a,b); }
+
+bool BuildSystemDisplayCatalog(const SystemDisplayCatalogInput& input, const StateValues& draft,
+	SystemDisplayCatalog& output, std::string& error) {
+	int screen=0, mode=0, customWidth=0, customHeight=0, refresh=0;
+	if (!Integer(draft,"r_screen",screen) || !Integer(draft,"r_mode",mode) || !Integer(draft,"r_customWidth",customWidth) ||
+		!Integer(draft,"r_customHeight",customHeight) || !Integer(draft,"r_displayRefresh",refresh))
+		return Fail(error,"The display lists need the display settings draft");
+	if (!Topology(input.topology,error)) return false;
+	const auto& text=input.text;
+	const auto& displays=input.topology.displays;
+	SystemDisplayCatalog catalog; catalog.available=true; catalog.count=int(displays.size()); catalog.deviceSelected=screen;
+	// Devices: each connected display, then stale indices up to the draft's.
+	const int devices=(std::min)(SystemDisplayDeviceSlots,(std::max)(catalog.count,screen+1));
+	for (int i=0; i<devices; ++i)
+		catalog.devices.push_back(i<catalog.count ? Format(text.display,"%d: %s",{i+1,DisplayName(displays[i].name)}) :
+			Format(text.missing,"Display %d (not connected)",{i+1}));
+	catalog.descriptors=displays;
+	int x=0, y=0, width=0, height=0;
+	catalog.spanAvailable=catalog.count>1 && input.topology.absolutePlacement && Bounds(displays,x,y,width,height);
+	// The display the mode and refresh lists describe: the chosen index, or the
+	// window's display (else the primary) for Auto. A stale index has none.
+	const SystemDisplayDescriptor* display=screen>=0 ? (screen<catalog.count ? &displays[size_t(screen)] : nullptr) :
+		(Display(input.topology,input.currentDisplay) ? Display(input.topology,input.currentDisplay) : Display(input.topology,input.topology.primary));
+	const auto size=[&](int w,int h) { return Format(text.size,"%d \xC3\x97 %d",{w,h}); };
+	const auto sized=[&](int w,int h) {
+		const auto aspect=Aspect(w,h);
+		return aspect.empty() ? size(w,h) : Format(text.qualified,"%s (%s)",{size(w,h),aspect});
+	};
+	// Modes: Desktop Native, the sizes the display offers for exclusive
+	// fullscreen, then Custom; the draft selects as the stock menu does.
+	const int cw=std::clamp(customWidth,320,16384), ch=std::clamp(customHeight,240,16384);
+	int targetWidth=0, targetHeight=0; const bool preferCustom=mode==-1;
+	if (mode==-1) { targetWidth=cw; targetHeight=ch; }
+	else if (mode>=0 && !SystemSettingsHost::ResolveModeDimensions(mode,cw,ch,0,0,targetWidth,targetHeight)) targetWidth=targetHeight=0;
+	std::vector<std::pair<int,int>> sizes;
+	if (display) for (const auto& m:display->modes)
+		if (Dimensions(m.width,m.height) && std::find(sizes.begin(),sizes.end(),std::pair{m.width,m.height})==sizes.end())
+			sizes.emplace_back(m.width,m.height);
+	std::sort(sizes.begin(),sizes.end());
+	// On overflow keep the current size and the largest ones.
+	const size_t room=size_t(SystemDisplayModeSlots-3);
+	if (sizes.size()>room) {
+		const std::pair<int,int> current{targetWidth,targetHeight};
+		std::vector<std::pair<int,int>> kept(sizes.end()-std::ptrdiff_t(room),sizes.end());
+		if (std::find(sizes.begin(),sizes.end(),current)!=sizes.end() && std::find(kept.begin(),kept.end(),current)==kept.end()) {
+			kept.erase(kept.begin()); kept.insert(std::lower_bound(kept.begin(),kept.end(),current),current);
+		}
+		sizes=std::move(kept);
+	}
+	SystemDisplayModeSlot desktop; desktop.label=Label(text.desktop,"Desktop Native");
+	if (display) {
+		desktop.width=display->desktop.width; desktop.height=display->desktop.height;
+		desktop.label=Format(text.qualified,"%s (%s)",{desktop.label,size(desktop.width,desktop.height)});
+	}
+	catalog.modes.push_back(desktop);
+	for (const auto& [w,h]:sizes)
+		catalog.modes.push_back({SystemDisplayModeSlot::Kind::Size,w,h,SystemSettingsHost::LegacyModeForSize(w,h),sized(w,h)});
+	// Custom names the size it will write: the draft's, clamped to the range.
+	catalog.modes.push_back({SystemDisplayModeSlot::Kind::Custom,cw,ch,-1,Format(text.qualified,"%s (%s)",{Label(text.custom,"Custom"),size(cw,ch)})});
+	if (mode!=-2) {
+		int selected=-1;
+		for (int i=1; i+1<int(catalog.modes.size()); ++i)
+			if (catalog.modes[size_t(i)].width==targetWidth && catalog.modes[size_t(i)].height==targetHeight) { selected=i; break; }
+		if (selected<0 && preferCustom) selected=int(catalog.modes.size())-1;
+		if (selected<0 && Dimensions(targetWidth,targetHeight)) {
+			catalog.unlistedMode.push_back({SystemDisplayModeSlot::Kind::Unlisted,targetWidth,targetHeight,mode,sized(targetWidth,targetHeight)});
+			selected=SystemDisplayModeSlots-1;
+		}
+		catalog.modeSelected=(std::max)(selected,0);
+	}
+	// Refresh rates for the size the draft requests, rounded to whole hertz as
+	// the strict request matches them. The desktop rate is not added.
+	const int rateWidth=mode==-2 ? desktop.width : targetWidth, rateHeight=mode==-2 ? desktop.height : targetHeight;
+	std::vector<int> rates;
+	if (display) for (const auto& m:display->modes) {
+		const int rate=int(std::floor(m.refresh+.5));
+		if (m.width==rateWidth && m.height==rateHeight && rate>0 && std::find(rates.begin(),rates.end(),rate)==rates.end()) rates.push_back(rate);
+	}
+	std::sort(rates.begin(),rates.end());
+	const size_t rateRoom=size_t(SystemDisplayRefreshSlots-2);
+	if (rates.size()>rateRoom) {
+		std::vector<int> kept(rates.end()-std::ptrdiff_t(rateRoom),rates.end());
+		if (std::find(rates.begin(),rates.end(),refresh)!=rates.end() && std::find(kept.begin(),kept.end(),refresh)==kept.end()) {
+			kept.erase(kept.begin()); kept.insert(std::lower_bound(kept.begin(),kept.end(),refresh),refresh);
+		}
+		rates=std::move(kept);
+	}
+	catalog.refresh.push_back({0,Label(text.automatic,"Auto")});
+	for (int rate:rates) catalog.refresh.push_back({rate,Format(text.rate,"%d Hz",{rate})});
+	if (refresh!=0) {
+		const auto found=std::find_if(catalog.refresh.begin(),catalog.refresh.end(),[&](const auto& slot) { return slot.rate==refresh; });
+		if (found!=catalog.refresh.end()) catalog.refreshSelected=int(found-catalog.refresh.begin());
+		else {
+			catalog.unlistedRefresh.push_back({refresh,Format(text.rate,"%d Hz",{refresh})});
+			catalog.refreshSelected=SystemDisplayRefreshSlots-1;
+		}
+	}
+	output=std::move(catalog); error.clear(); return true;
+}
+
+bool SystemDisplaySelectionPatch(const SystemDisplayCatalog& catalog, SystemDisplayList list, int index,
+	StateValues& patch, std::string& error) {
+	if (!catalog.available) return Fail(error,"The display lists are unavailable");
+	StateValues result;
+	const int current=list==SystemDisplayList::Device ? catalog.deviceSelected :
+		list==SystemDisplayList::Mode ? catalog.modeSelected : catalog.refreshSelected;
+	if (index==current) { patch=std::move(result); error.clear(); return true; }
+	if (list==SystemDisplayList::Device) {
+		if (index<-1 || index>=(std::min)(catalog.count,int(catalog.devices.size()))) return Fail(error,"That display is not connected");
+		result["r_screen"]=double(index);
+	} else if (list==SystemDisplayList::Mode) {
+		if (index<0 || index>=int(catalog.modes.size())) return Fail(error,"That display size is not in the list");
+		const auto& slot=catalog.modes[size_t(index)];
+		if (slot.kind==SystemDisplayModeSlot::Kind::Desktop) result["r_mode"]=-2.0;
+		else if (slot.kind==SystemDisplayModeSlot::Kind::Custom) {
+			result["r_mode"]=-1.0; result["r_customWidth"]=double(slot.width); result["r_customHeight"]=double(slot.height);
+		} else {
+			// A listed size writes both dimensions and its legacy mode, else Custom.
+			result["r_customWidth"]=double(slot.width); result["r_customHeight"]=double(slot.height);
+			result["r_mode"]=double(slot.legacyMode);
+		}
+	} else {
+		if (index<0 || index>=int(catalog.refresh.size())) return Fail(error,"That refresh rate is not in the list");
+		result["r_displayRefresh"]=double(catalog.refresh[size_t(index)].rate);
+	}
+	patch=std::move(result); error.clear(); return true;
 }
 #endif // !ID_DEDICATED
 } // namespace openq4::ui

@@ -46,6 +46,33 @@ bool EngineSettingsDisplayHost::RendererSelection(renderRendererSelection_t& sel
 	std::uint64_t epoch = 0;
 	return R_RendererModule_QueryRendererSelection(selection,serial,epoch);
 }
+void EngineSettingsDisplayHost::CatalogStamp(SystemDisplayCatalogStamp& stamp) const {
+	SystemDisplayCatalogStamp result;
+#if defined(USE_SDL3)
+	result.generation = Sys_DisplayTopologyGeneration();
+#endif
+	rendererDisplayState_t state{};
+	if (R_RendererModule_QueryDisplay(&state) && state.windowValid) result.currentDisplay = state.window.displayId;
+	// Labels as the language tables now read; a string they lack keeps English.
+	const idLangDict* strings = common->GetLanguageDict();
+	const auto localized = [&](const char* key, std::string& value) {
+		const char* text = strings ? strings->GetString(key) : nullptr;
+		if (text && *text && idStr::Cmp(text,key) != 0) value = text;
+	};
+	localized("#str_229914",result.text.automatic); localized("#str_229973",result.text.desktop);
+	localized("#str_229974",result.text.custom); localized("#str_230083",result.text.size);
+	localized("#str_230084",result.text.qualified); localized("#str_230085",result.text.rate);
+	localized("#str_230086",result.text.display); localized("#str_230087",result.text.missing);
+	stamp = std::move(result);
+}
+bool EngineSettingsDisplayHost::CaptureCatalogInput(const SystemDisplayCatalogStamp& stamp, SystemDisplayCatalogInput& input, std::string& error) const {
+	SystemDisplayCatalogInput candidate;
+	if (!CaptureDisplayTopology(candidate.topology,error)) return false;
+	// Auto describes the window's display, else the primary.
+	candidate.currentDisplay = stamp.currentDisplay ? stamp.currentDisplay : candidate.topology.primary;
+	candidate.text = stamp.text;
+	input = std::move(candidate); error.clear(); return true;
+}
 bool EngineSettingsDisplayHost::RendererAgrees(const std::string& request, std::uint64_t& serial, std::string& error) const {
 	renderRendererSelection_t selection{}; std::uint64_t epoch = 0;
 	if (!R_RendererModule_QueryRendererSelection(selection,serial,epoch)) {

@@ -638,6 +638,20 @@ def validate_translated_tables() -> None:
                 assert set(map(ord, letters)) <= font_code_points(font), f"{font.name}: missing {language} glyphs"
 
 
+def validate_openq4_placeholders() -> None:
+    """Every language's openQ4 table keeps the English printf placeholders in
+    order, so a format the engine fills (the SYSTEM display lists) never reads
+    the wrong argument. Partly translated tables are checked for their keys."""
+    entry = re.compile(r'^\s*"(#str_\w+)"\s+"((?:\\.|[^"\\])*)"', re.MULTILINE)
+    formats = re.compile(r'%(?:[-+0#]*\d*(?:\.\d+)?(?:hh|ll|[hljztL])?[diuoxXfFeEgGaAcsp]|%)')
+    english = dict(entry.findall((STRINGS_DIR / "english_openq4.lang").read_text(encoding="utf-8")))
+    for path in sorted(STRINGS_DIR.glob("*_openq4.lang")):
+        for key, translated in entry.findall(path.read_text(encoding="utf-8")):
+            original = english.get(key)
+            if original is not None:
+                assert formats.findall(original) == formats.findall(translated),                     f"{path.name}: {key}: printf arguments changed"
+
+
 def validate_ci_smoke() -> None:
     push = read(".github/workflows/push-verification.yml")
     commit = read(".github/workflows/commit-validation.yml")
@@ -660,6 +674,7 @@ def main() -> None:
     validate_codepage_selection()
     validate_language_menu()
     validate_translated_tables()
+    validate_openq4_placeholders()
     validate_ci_smoke()
     print("lang_table_encoding: ok")
 

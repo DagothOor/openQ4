@@ -111,9 +111,14 @@ without Keep/Revert, and the next map load uses it. The following increment
 adds Renderer Fallback: the row drafts `r_renderer` (Auto or ARB2) and applies
 it through the renderer executor's checked restart. It is available where a
 presenting OpenGL renderer reports its selection, and a notice says when the
-renderer fell back from an unavailable or retired request. The display device,
-multi-monitor, refresh and resolution rows remain; `BEH-002` and `FLOW-002`
-stay partial.
+renderer fell back from an unavailable or retired request. The
+[display list increment](../ui/system-display-catalog.md) adds the service
+those rows will read. It builds the device, resolution and refresh lists from
+one cached topology capture, with localized labels, publishes them to the page
+owner and turns a pick checked against the list's token into settings. A
+display picked from the list must still be that monitor at Apply. The display
+device, multi-monitor, refresh and resolution rows remain; `BEH-002` and
+`FLOW-002` stay partial.
 
 The [retained screen increment](../ui/retained-screens.md) builds the title
 screen, the single-player pause menu and the stock loading screens from

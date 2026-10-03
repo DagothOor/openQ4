@@ -31,7 +31,14 @@ static int checks=0;
 static void Check(bool condition,const char* message) {
     ++checks;if(!condition){std::fprintf(stderr,"FAIL: %s\n",message);std::exit(1);}
 }
+static unsigned long long displayGeneration=1;
+unsigned long long Sys_DisplayTopologyGeneration(){return displayGeneration;}
+struct idLangDict {
+    std::map<std::string,std::string> strings;
+    const char* GetString(const char* key) const {const auto found=strings.find(key);return found==strings.end()?key:found->second.c_str();}
+} languageDict;
 struct Common { void Warning(const char*,...){trace.push_back("warning");}
+    const idLangDict* GetLanguageDict(){return &languageDict;}
     void Printf(const char* format,...){
         char text[512]{};va_list args;va_start(args,format);std::vsnprintf(text,sizeof(text),format,args);va_end(args);
         std::string line(text);if(!line.empty()&&line.back()=='\n')line.pop_back();trace.push_back("print:"+line);
@@ -650,6 +657,30 @@ static void RendererCases(){
      Check(!host.Startup(error) && writes==0 && files.contains(journalFile),"a renderer record contradicting its snapshots is refused before replay");host.Shutdown();}
 }
 
+// The display lists' inputs: the stamp, the topology, the window's display
+// (the primary without one) and the labels, English where a string is missing.
+static void CatalogInputCases(){
+    ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);
+    displayGeneration=7;
+    languageDict.strings={{"#str_229914","Automatisch"},{"#str_229973","Desktop nativ"},{"#str_229974","Benutzerdefiniert"},
+        {"#str_230083","%d x %d"},{"#str_230084","%s [%s]"},{"#str_230085","%d Hertz"},{"#str_230086","%d - %s"},{"#str_230087","#str_230087"}};
+    SystemDisplayCatalogStamp stamp;host.CatalogStamp(stamp);
+    Check(stamp.generation==7 && stamp.currentDisplay==2,"the stamp holds the topology generation and the window's display");
+    const auto& text=stamp.text;
+    Check(text.automatic=="Automatisch" && text.desktop=="Desktop nativ" && text.custom=="Benutzerdefiniert" && text.size=="%d x %d" &&
+          text.qualified=="%s [%s]" && text.rate=="%d Hertz" && text.display=="%d - %s" && text.missing=="Display %d (not connected)",
+          "each label reads its own string, and a missing one keeps English");
+    SystemDisplayCatalogInput input;
+    Check(host.CaptureCatalogInput(stamp,input,error) && input.topology.displays.size()==2 && input.currentDisplay==2 && input.text==stamp.text,
+          "the input holds the topology, the window's display and the stamp's labels");
+    actual.windowValid=false;host.CatalogStamp(stamp);
+    Check(stamp.currentDisplay==0 && host.CaptureCatalogInput(stamp,input,error) && input.currentDisplay==1,
+          "without a window the primary display describes Auto");
+    actual.windowValid=true;displayCount=0;input.currentDisplay=55;
+    Check(!host.CaptureCatalogInput(stamp,input,error) && input.currentDisplay==55,"a failed capture leaves the input alone");
+    displayCount=2;displayGeneration=1;languageDict.strings.clear();
+}
+
 // The renderer replay compares exactly too: a subnormal ambient rider under DAZ.
 static void RendererExactCases(){
     ExactMode mode;
@@ -688,7 +719,7 @@ static void EmitDeferredJournals(const std::string& directory){
 
 int main(){
     if(const char* directory=std::getenv("OPENQ4_EMIT_DEFERRED_JOURNALS")){EmitDeferredJournals(directory);std::printf("Deferred recovery journals emitted: %d checks\n",checks);return 0;}
-    MultisamplingCapability();ExactCatalogCases();RuntimeJournal();StartupCases();GeometryAndStartupFailures();StartupClockCases();CommitOwnershipCases();ReindexedStartupRetry();UnusedTopologyCases();DeferredCases();DeferredExactCases();RendererCases();RendererExactCases();std::printf("UI settings display service passed: %d checks\n",checks);}
+    MultisamplingCapability();ExactCatalogCases();RuntimeJournal();StartupCases();GeometryAndStartupFailures();StartupClockCases();CommitOwnershipCases();ReindexedStartupRetry();UnusedTopologyCases();DeferredCases();DeferredExactCases();RendererCases();RendererExactCases();CatalogInputCases();std::printf("UI settings display service passed: %d checks\n",checks);}
 
 '''
 
@@ -700,6 +731,9 @@ def main(production_mutations=(), emit_directory=None):
              "bool LexicalForms(", "bool Parse(", "bool ValidStateValue(", "bool ParseStateValues(")
     validation = '\n'.join(document[document.index(name):document.index('bool Parse(', document.index(name))] if name == 'bool LexicalForms(' else function_body(document, name) for name in names)
     support = host_test.SUPPORT.replace("static int writes=0;", "static std::vector<std::string> trace;\nstatic bool traceEnabled=false;\nstatic int writes=0;")
+    support = support.replace("struct idStr : std::string { using std::string::string; using std::string::operator=; };",
+                              "struct idStr : std::string { using std::string::string; using std::string::operator=; "
+                              "static int Cmp(const char* a,const char* b){return std::strcmp(a,b);} };")
     support = support.replace("++writes; if(key!=refuse)", '++writes;trace.push_back("cvar-write"); if(key!=refuse)')
     support = support.replace('idCVar* Find(const char* name)', 'bool GetCVarBool(const char* name){return traceEnabled && std::string(name)=="ui_retainedTrace";}\n    int GetCVarInteger(const char* name){return std::atoi(FindInternal(name)->value.c_str());}\n    idCVar* Find(const char* name)')
     support = support.replace("static int displayCount=2;", "static int displayCount=2;static std::vector<unsigned> displayOrder{1,2};")

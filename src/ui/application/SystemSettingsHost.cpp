@@ -362,6 +362,11 @@ bool SystemSettingsHost::ResolveModeDimensions(int mode, int customWidth, int cu
 	if (w<320 || w>16384 || h<240 || h>16384) return false;
 	width=w; height=h; return true;
 }
+int SystemSettingsHost::LegacyModeForSize(int width, int height) {
+	for (int mode=0; mode<int(sizeof(LegacyModes)/sizeof(LegacyModes[0])); ++mode)
+		if (LegacyModes[mode][0]==width && LegacyModes[mode][1]==height) return mode;
+	return -1;
+}
 bool SystemSettingsHost::BuildPreset(const std::string& name,StateValues& patch,std::string& error) {
  const auto* preset=openq4::FindPerformancePreset(name);
  if(!preset)return Fail(error,"com_performancePreset","unknown performance profile");

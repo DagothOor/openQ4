@@ -42,6 +42,12 @@ public:
 	bool SupportsRendererSelection() const;
 	// The renderer's latest selection report for its current module.
 	bool RendererSelection(renderRendererSelection_t& selection, std::uint64_t& serial) const;
+	// The display lists' inputs. The stamp moves with the display topology, the
+	// window's display and the labels in effect, so the settings service
+	// recaptures only when one of them changes; reading it is cheap.
+	void CatalogStamp(openq4::ui::SystemDisplayCatalogStamp& stamp) const;
+	bool CaptureCatalogInput(const openq4::ui::SystemDisplayCatalogStamp& stamp,
+		openq4::ui::SystemDisplayCatalogInput& input, std::string& error) const;
 
 private:
 	bool Paths(std::string& error);

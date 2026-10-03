@@ -186,7 +186,143 @@ static void RecoveryPairs(const StateValues& values,const rendererDisplayState_t
     assert(refreshCalls==0);
 #endif
 }
+
+// The SYSTEM display lists: pure builder and selection patches.
+static StateValues DisplayDraft(double screen,double mode,double customWidth,double customHeight,double refresh) {
+    return {{"r_screen",screen},{"r_mode",mode},{"r_customWidth",customWidth},{"r_customHeight",customHeight},{"r_displayRefresh",refresh}};
+}
+static size_t CodePoints(const std::string& text) {
+    size_t points=0;for(unsigned char c:text)if((c&0xC0)!=0x80)++points;return points;
+}
+static void Catalogs() {
+    SystemDisplayCatalogInput input;input.topology=Topo();input.currentDisplay=2;std::string error;
+    assert(SystemSettingsHost::LegacyModeForSize(1920,1080)==3 && SystemSettingsHost::LegacyModeForSize(640,480)==11 &&
+           SystemSettingsHost::LegacyModeForSize(1234,567)==-1);
+    SystemDisplayCatalog c;
+    // Two displays, the custom mode at a listed size: the stock menu selects the size.
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(-1,-1,1920,1080,0),c,error));
+    assert(c.available && c.count==2 && c.spanAvailable && c.devices.size()==2);
+    assert(c.devices[0]=="1: Primary monitor" && c.devices[1]=="2: Secondary monitor");
+    assert(c.modes.size()==5 && c.modes.front().kind==SystemDisplayModeSlot::Kind::Desktop && c.modes.back().kind==SystemDisplayModeSlot::Kind::Custom);
+    assert(c.modes[0].label=="Desktop Native (1920 \xC3\x97 1080)" && c.modes[1].label=="1280 \xC3\x97 720 (16:9)");
+    assert(c.modes[3].label=="3840 \xC3\x97 2160 (16:9)" && c.modes[4].label=="Custom (1920 \xC3\x97 1080)");
+    assert(c.modeSelected==2 && c.unlistedMode.empty());
+    // Refresh rounds 59.94 to 60 for the requested size; the desktop rate is not added.
+    assert(c.refresh.size()==2 && c.refresh[0].rate==0 && c.refresh[0].label=="Auto" && c.refresh[1].rate==60 && c.refresh[1].label=="60 Hz");
+    assert(c.refreshSelected==0);
+    // Several rates for one size, a listed rate selected.
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(0,8,1920,1080,144),c,error));
+    assert(c.modeSelected==3 && c.refresh.size()==3 && c.refresh[1].rate==60 && c.refresh[2].rate==144 && c.refreshSelected==2);
+    // An unlisted current refresh rate sits in the reserved last slot.
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(0,8,1920,1080,75),c,error));
+    assert(c.unlistedRefresh.size()==1 && c.unlistedRefresh[0].rate==75 && c.refreshSelected==SystemDisplayRefreshSlots-1);
+    // Desktop Native; Custom at an unlisted size; a legacy size the display lacks.
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(-1,-2,1000,700,0),c,error) && c.modeSelected==0 && c.unlistedMode.empty());
+    assert(c.refresh.size()==2 && c.refresh[1].rate==60);
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(-1,-1,1000,700,0),c,error) && c.modeSelected==int(c.modes.size())-1);
+    assert(c.modes.back().label=="Custom (1000 \xC3\x97 700)");
+    // A size the display does not offer has no rates; the desktop rate is not added.
+    assert(c.refresh.size()==1 && c.refresh[0].rate==0);
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(-1,11,1000,700,0),c,error));
+    assert(c.unlistedMode.size()==1 && c.unlistedMode[0].width==640 && c.unlistedMode[0].height==480 &&
+           c.unlistedMode[0].label=="640 \xC3\x97 480 (4:3)" && c.modeSelected==SystemDisplayModeSlots-1);
+    // Patches: a listed size writes both dimensions and its legacy mode; Custom
+    // writes the size it names; re-picking the current entry writes nothing.
+    StateValues patch;
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(1,-1,1000,700,0),c,error) && c.modeSelected==int(c.modes.size())-1 && c.deviceSelected==1);
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Mode,2,patch,error) &&
+           patch==StateValues({{"r_customWidth",1920.0},{"r_customHeight",1080.0},{"r_mode",3.0}}));
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Mode,0,patch,error) && patch==StateValues({{"r_mode",-2.0}}));
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Mode,int(c.modes.size())-1,patch,error) && patch.empty());
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Device,-1,patch,error) && patch==StateValues({{"r_screen",-1.0}}));
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Device,0,patch,error) && patch==StateValues({{"r_screen",0.0}}));
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Device,1,patch,error) && patch.empty());
+    // Re-picking the selected size writes nothing, so no same-size display restart.
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(1,-1,1920,1080,0),c,error) && c.modeSelected==2);
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Mode,2,patch,error) && patch.empty());
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Refresh,1,patch,error) && patch==StateValues({{"r_displayRefresh",60.0}}));
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Refresh,0,patch,error) && patch.empty());
+    // Custom writes the clamped size it names.
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(0,-2,100,20000,0),c,error) && c.modes.back().label=="Custom (320 \xC3\x97 16384)");
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Mode,int(c.modes.size())-1,patch,error) &&
+           patch==StateValues({{"r_mode",-1.0},{"r_customWidth",320.0},{"r_customHeight",16384.0}}));
+    patch={{"untouched",true}};
+    assert(!SystemDisplaySelectionPatch(c,SystemDisplayList::Device,2,patch,error) && patch.contains("untouched"));
+    assert(!SystemDisplaySelectionPatch(c,SystemDisplayList::Device,-2,patch,error));
+    assert(!SystemDisplaySelectionPatch(c,SystemDisplayList::Mode,SystemDisplayModeSlots-1,patch,error));
+    assert(!SystemDisplaySelectionPatch(c,SystemDisplayList::Refresh,int(c.refresh.size()),patch,error));
+    assert(!SystemDisplaySelectionPatch(SystemDisplayCatalog{},SystemDisplayList::Device,-1,patch,error));
+    // A non-legacy size picks Custom; sizes outside 320x240..16384x16384 are not listed.
+    input.topology.displays[0].modes={{1234,567,60},{20000,10000,60},{300,200,60},{2560,1440,120}};
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(0,-2,1000,700,0),c,error) && c.modes.size()==4);
+    assert(c.modes[1].width==1234 && c.modes[1].legacyMode==-1 && c.modes[2].width==2560 && c.modes[2].legacyMode==6);
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Mode,1,patch,error) && patch.at("r_mode")==StateValue(-1.0));
+    // A stale display index: connected displays, then numbered placeholders; it has no sizes.
+    input.topology=Topo();
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(4,-2,1000,700,0),c,error));
+    assert(c.count==2 && c.devices.size()==5 && c.devices[2]=="Display 3 (not connected)" && c.devices[4]=="Display 5 (not connected)");
+    assert(c.modes.size()==2 && c.modes[0].label=="Desktop Native" && c.refresh.size()==1);
+    // A display that is not connected cannot be picked; the stale current one re-picks as nothing.
+    assert(!SystemDisplaySelectionPatch(c,SystemDisplayList::Device,2,patch,error));
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Device,4,patch,error) && patch.empty());
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Device,1,patch,error) && patch==StateValues({{"r_screen",1.0}}));
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(40,-2,1000,700,0),c,error) && c.devices.size()==size_t(SystemDisplayDeviceSlots));
+    // One display: no span; the window's display, else the primary, describes Auto.
+    auto single=input;single.topology.displays.resize(1);single.currentDisplay=9;
+    assert(BuildSystemDisplayCatalog(single,DisplayDraft(-1,-2,1000,700,0),c,error) && c.count==1 && !c.spanAvailable && c.devices.size()==1);
+    assert(c.modes[0].label=="Desktop Native (1920 \xC3\x97 1080)");
+    // Auto describes the window's display, else the primary.
+    auto differing=input;differing.topology.displays[1].desktop={2560,1440,60};differing.topology.displays[1].modes={{2560,1440,60}};
+    differing.currentDisplay=2;
+    assert(BuildSystemDisplayCatalog(differing,DisplayDraft(-1,-2,1000,700,0),c,error) && c.modes[0].label=="Desktop Native (2560 \xC3\x97 1440)");
+    differing.currentDisplay=1;
+    assert(BuildSystemDisplayCatalog(differing,DisplayDraft(-1,-2,1000,700,0),c,error) && c.modes[0].label=="Desktop Native (1920 \xC3\x97 1080)");
+    differing.currentDisplay=9;
+    assert(BuildSystemDisplayCatalog(differing,DisplayDraft(-1,-2,1000,700,0),c,error) && c.modes[0].label=="Desktop Native (1920 \xC3\x97 1080)");
+    // The desktop rate is not added to the size's own rates, unlike the stock menu.
+    auto desktopRate=input;desktopRate.topology.displays[0].desktop={1920,1080,75};desktopRate.topology.displays[0].modes={{1920,1080,60}};
+    assert(BuildSystemDisplayCatalog(desktopRate,DisplayDraft(0,-2,1000,700,0),c,error) && c.refresh.size()==2 && c.refresh[1].rate==60);
+    // Spanning needs the displays together within 16384 pixels.
+    auto wide=input;for(auto& d:wide.topology.displays){d.width=9000;d.x=int(d.id-1)*9000;}
+    assert(BuildSystemDisplayCatalog(wide,DisplayDraft(-1,-2,1000,700,0),c,error) && c.count==2 && !c.spanAvailable);
+    auto positionless=input;positionless.topology.absolutePlacement=false;
+    assert(BuildSystemDisplayCatalog(positionless,DisplayDraft(-1,-2,1000,700,0),c,error) && !c.spanAvailable);
+    // Density 2: the topology's sizes are pixels.
+    auto dense=input;dense.topology.displays[0].desktop={3840,2160,60};dense.topology.displays[0].modes={{3840,2160,60},{2560,1440,60}};dense.currentDisplay=1;
+    assert(BuildSystemDisplayCatalog(dense,DisplayDraft(-1,-2,1000,700,0),c,error) && c.modes[0].label=="Desktop Native (3840 \xC3\x97 2160)");
+    // Long and multibyte names are cut at a code point to 48, the last an ellipsis.
+    auto named=input;std::string name;for(int i=0;i<60;++i)name+=i%2?"\xC3\xA9":"a";named.topology.displays[0].name=name;
+    assert(BuildSystemDisplayCatalog(named,DisplayDraft(-1,-2,1000,700,0),c,error));
+    assert(CodePoints(c.devices[0])==3+48 && c.devices[0].ends_with("\xE2\x80\xA6") && ValidStateValue(StateValue(c.devices[0])));
+    named.topology.displays[0].name=name.substr(0,48+24);
+    assert(BuildSystemDisplayCatalog(named,DisplayDraft(-1,-2,1000,700,0),c,error) && c.devices[0]=="1: "+name.substr(0,48+24));
+    // Overflow keeps Desktop, Custom, the current size and the largest sizes.
+    auto many=input;many.topology.displays[0].modes.clear();
+    for(int i=0;i<50;++i)many.topology.displays[0].modes.push_back({640+i*16,480,60});
+    assert(BuildSystemDisplayCatalog(many,DisplayDraft(0,-1,640,480,0),c,error));
+    assert(c.modes.size()==size_t(SystemDisplayModeSlots-1) && c.modes[1].width==640 && c.modes[2].width==640+14*16 && c.modes[c.modes.size()-2].width==640+49*16);
+    assert(c.modeSelected==1);
+    for(int i=0;i<20;++i)many.topology.displays[0].modes.push_back({1920,1080,double(30+i*10)});
+    assert(BuildSystemDisplayCatalog(many,DisplayDraft(0,3,1920,1080,40),c,error));
+    assert(c.refresh.size()==size_t(SystemDisplayRefreshSlots-1) && c.refresh[1].rate==40 && c.refresh.back().rate==220 && c.refreshSelected==1);
+    // A translation that changes a format's placeholders falls back to English.
+    auto translated=input;translated.text.size="%s x %d";translated.text.rate="%d Гц";translated.text.missing="Écran %d %d";translated.text.desktop="Bureau %s";
+    assert(BuildSystemDisplayCatalog(translated,DisplayDraft(3,-2,1000,700,60),c,error));
+    assert(c.modes[0].label=="Desktop Native" && c.devices[2]=="Display 3 (not connected)" && c.unlistedRefresh.at(0).label=="60 Гц");
+    assert(c.modes.back().label=="Custom (1000 \xC3\x97 700)");
+    // A capture without displays builds nothing and leaves the output alone.
+    auto empty=input;empty.topology.displays.clear();c.count=77;
+    assert(!BuildSystemDisplayCatalog(empty,DisplayDraft(-1,-2,1000,700,0),c,error) && c.count==77);
+    auto missing=DisplayDraft(-1,-2,1000,700,0);missing.erase("r_mode");
+    assert(!BuildSystemDisplayCatalog(input,missing,c,error) && c.count==77);
+    missing=DisplayDraft(-1,-2.5,1000,700,0);assert(!BuildSystemDisplayCatalog(input,missing,c,error) && c.count==77);
+    // Descriptors name monitors by name, bounds and desktop mode.
+    auto moved=Topo();assert(SameSystemDisplay(moved.displays[0],Topo().displays[0]));
+    moved.displays[0].x+=1;assert(!SameSystemDisplay(moved.displays[0],Topo().displays[0]));
+    assert(SameSystemDisplay(Topo().displays[0],Topo().displays[0]) && !SameSystemDisplay(Topo().displays[0],Topo().displays[1]));
+}
 int main() {
+    Catalogs();
     Seed();SystemSettingsHost host;StateValues values;std::string error;assert(host.Read(values,error));
     values["r_swapInterval"]=1.0;auto topology=Topo();auto actual=Actual();SystemDisplayPlan plan;
     RecoveryPairs(values,actual,topology);
@@ -256,14 +392,48 @@ int main() {
 #else
     SystemDisplayTopology captured;captured.primary=999;assert(!CaptureDisplayTopology(captured,error) && captured.primary==999);
 #endif
-    std::puts("SYSTEM display builders: pure pixel/policy requests, actual restore matching, strict portable recovery and topology rejection passed");
+    std::puts("SYSTEM display builders: pure pixel/policy requests, actual restore matching, strict portable recovery, topology rejection and the display lists passed");
 }
 '''
 
 
-def main():
+def check_catalog_declarations():
+    import sys
+    sys.path.insert(0, str(ROOT / 'tools/ui'))
+    import json
+    import system_display_catalog as catalog
+    header = (ROOT / 'src/ui/application/SystemDisplay.h').read_text(encoding='utf-8')
+    slots = f'SystemDisplayDeviceSlots = {catalog.DEVICE_SLOTS}, SystemDisplayModeSlots = {catalog.MODE_SLOTS}, SystemDisplayRefreshSlots = {catalog.REFRESH_SLOTS};'
+    assert slots in header, 'the page declares different display list slot counts from the builder'
+    # The page declares exactly these keys, with these types and initial values.
+    page = (ROOT / 'content/baseoq4/pak0/guis/menu/settings/system.q4ui').read_text(encoding='utf-8')
+    state = json.loads(page[page.index('{'):])['state']
+    declared = {key: value for key, value in state.items() if key.startswith(catalog.PREFIX)}
+    assert declared == catalog.keys(), 'the page declares different display list keys'
+    # The settings schema types each key the same way.
+    service = (ROOT / 'src/ui/SettingsService.cpp').read_text(encoding='utf-8')
+    types = {'boolean': 1, 'number': 0, 'string': 2}
+    for key, declaration in catalog.keys().items():
+        if not key.endswith('.label'):
+            assert '{"' + key + '",' + str(types[declaration['type']]) + '}' in service, f'{key} is not typed {declaration["type"]} in the settings schema'
+    for stem in ('settings.display.', 'settings.display.mode.', 'settings.display.refresh.'):
+        assert 'result.emplace("' + stem + '"+std::to_string(i)+".label",2);' in service, f'the settings schema lacks the {stem} labels'
+    # Display events, and the window moving to another display or scale,
+    # advance the topology generation the cached lists depend on.
+    sdl = (ROOT / 'src/sys/sdl3/sdl3_backend.cpp').read_text(encoding='utf-8').replace('\r\n', '\n')
+    assert '++sdl3DisplayTopologyGeneration;' in function_body(sdl, 'static void SDL3_HandleDisplayEvent('), 'display events must advance the topology generation'
+    window = 'case SDL_EVENT_WINDOW_DISPLAY_CHANGED:\n\t\tcase SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:\n\t\t\t++sdl3DisplayTopologyGeneration;'
+    assert window in sdl, 'a window moving display or scale must advance the topology generation'
+
+
+def main(production_mutations=()):
+    check_catalog_declarations()
     host = (ROOT / 'src/ui/application/SystemSettingsHost.cpp').read_text(encoding='utf-8')
     display = (ROOT / 'src/ui/application/SystemDisplay.cpp').read_text(encoding='utf-8')
+    for old, new in production_mutations:
+        if display.count(old) != 1:
+            raise RuntimeError('Production mutation anchor is not unique')
+        display = display.replace(old, new)
     cvars = (ROOT / 'src/framework/CVarSystem.cpp').read_text(encoding='utf-8')
     document = (ROOT / 'src/ui/retained/Document.cpp').read_text(encoding='utf-8')
     client = display[display.index('#else'):]
@@ -298,7 +468,11 @@ def main():
                           'assert(!openq4::ui::CaptureDisplayTopology(t,e)&&t.primary==9);'
                           'assert(!openq4::ui::InspectDisplayRecovery(v,p,t,e)&&p.request.parms.width==777&&t.primary==9);'
                           'assert(!openq4::ui::ValidateDisplayRecoveryPair(v,v,v,e));'
-                          'assert(!openq4::ui::ResolveDisplayRecovery(v,t,p,e)&&p.request.parms.width==777);}\n', encoding='utf-8')
+                          'assert(!openq4::ui::ResolveDisplayRecovery(v,t,p,e)&&p.request.parms.width==777);'
+                          'openq4::ui::SystemDisplayCatalogInput in;openq4::ui::SystemDisplayCatalog c;c.count=5;'
+                          'assert(!openq4::ui::BuildSystemDisplayCatalog(in,v,c,e)&&c.count==5);'
+                          'assert(!openq4::ui::SystemDisplaySelectionPatch(c,openq4::ui::SystemDisplayList::Device,-1,v,e));'
+                          'assert(!openq4::ui::SameSystemDisplay({},{}));}\n', encoding='utf-8')
         binary=temp/'dedicated.exe'
         subprocess.run([compiler,'-std=c++20','-I',str(ROOT),str(source),'-o',str(binary)],check=True,env=environment)
         subprocess.run([str(binary)],check=True,env=environment)

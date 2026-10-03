@@ -42,6 +42,8 @@ public:
 	static unsigned ChangedEffects(const StateValues& before, const StateValues& target);
 	static bool ResolveModeDimensions(int mode, int customWidth, int customHeight,
 		int desktopPixelWidth, int desktopPixelHeight, int& width, int& height);
+	// The persistent legacy r_mode for an exact pixel size, or -1.
+	static int LegacyModeForSize(int width, int height);
 	static bool ChangedRequiresDisplayRestart(const StateValues& before, const StateValues& target);
 	static SystemApplyClass ApplyClassOf(const StateValues& before, const StateValues& target);
 	static bool RequiresDeviceWork(const StateValues& before, const StateValues& target);

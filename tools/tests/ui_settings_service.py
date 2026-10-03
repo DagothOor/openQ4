@@ -40,6 +40,7 @@ SUPPORT = r'''
 #include "src/ui/SettingsService.h"
 #include "src/renderer/RendererSettingsReports.h"
 #include "src/ui/application/SystemSettingsHost.h"
+#include "src/ui/application/SystemDisplay.h"
 #include "src/ui/application/SettingsDisplayController.h"
 using namespace openq4::ui;
 static void Check(bool condition,const char* message) {
@@ -47,7 +48,7 @@ static void Check(bool condition,const char* message) {
 }
 static StateValues Initial() {
     return {{"r_brightness",1.0},{"r_lightGridPreload",false},{"r_mode",0.0},{"r_multiSamples",0.0},{"r_renderer",std::string("best")},{"r_shadows",true},
-            {"s_numberOfSpeakers",2.0}};
+            {"s_numberOfSpeakers",2.0},{"r_screen",-1.0},{"r_customWidth",1920.0},{"r_customHeight",1080.0},{"r_displayRefresh",0.0}};
 }
 static struct HostData {
     StateValues live=Initial(),defaults=Initial();
@@ -59,9 +60,13 @@ static struct HostData {
     bool unsupportedTuple=false,throwPreflight=false;
 } host;
 namespace openq4::ui {
+// The display builders compiled in below link the catalog; the service never reads it.
+const std::vector<SystemSettingDescriptor>& SystemSettingsHost::Catalog() {
+    static const std::vector<SystemSettingDescriptor> catalog;return catalog;
+}
 const std::map<std::string,size_t>& SystemSettingsHost::Schema() {
     static const std::map<std::string,size_t> schema={{"r_brightness",0},{"r_lightGridPreload",1},{"r_mode",0},{"r_multiSamples",0},{"r_renderer",2},{"r_shadows",1},
-        {"s_numberOfSpeakers",0}};
+        {"s_numberOfSpeakers",0},{"r_screen",0},{"r_customWidth",0},{"r_customHeight",0},{"r_displayRefresh",0}};
     return schema;
 }
 bool SystemSettingsHost::Read(StateValues& result,std::string& error) {
@@ -94,8 +99,12 @@ bool SystemSettingsHost::ValidateDraft(const StateValues&,const StateValues& tar
     }
     double brightness=std::get<double>(target.at("r_brightness")),mode=std::get<double>(target.at("r_mode"));
     const auto& renderer=std::get<std::string>(target.at("r_renderer"));
-    if(brightness<(host.allowNearZero?0:.5) || brightness>2 || mode<0 || mode>2 || mode!=std::floor(mode) ||
+    if(brightness<(host.allowNearZero?0:.5) || brightness>2 || mode<-2 || mode>74 || mode!=std::floor(mode) ||
        (renderer!="best" && renderer!="arb2")) { error="bounded range/choice";return false; }
+    const double screen=std::get<double>(target.at("r_screen")),width=std::get<double>(target.at("r_customWidth")),
+        height=std::get<double>(target.at("r_customHeight")),refresh=std::get<double>(target.at("r_displayRefresh"));
+    if(screen<-1 || screen>7 || width<320 || width>16384 || height<240 || height>16384 || refresh<0 || refresh>1000)
+        { error="bounded display range";return false; }
     return true;
 }
 bool SystemSettingsHost::Validate(const StateValues& before,const StateValues& target,std::string& error) {
@@ -120,11 +129,16 @@ bool SystemSettingsHost::Write(const StateValues& patch,std::string& error) {
     return true;
 }
 bool SystemSettingsHost::RequiresDeviceWork(const StateValues& before,const StateValues& target) {
-    return before.at("r_mode")!=target.at("r_mode") || before.at("r_multiSamples")!=target.at("r_multiSamples") || before.at("r_renderer")!=target.at("r_renderer");
+    return before.at("r_mode")!=target.at("r_mode") || before.at("r_multiSamples")!=target.at("r_multiSamples") || before.at("r_renderer")!=target.at("r_renderer") ||
+        before.at("r_screen")!=target.at("r_screen") || before.at("r_customWidth")!=target.at("r_customWidth") ||
+        before.at("r_customHeight")!=target.at("r_customHeight") || before.at("r_displayRefresh")!=target.at("r_displayRefresh");
 }
 unsigned SystemSettingsHost::ChangedEffects(const StateValues& before,const StateValues& target) {
     if(before.empty() || target.empty())return 0;
-    return (before.at("r_mode")!=target.at("r_mode") || before.at("r_multiSamples")!=target.at("r_multiSamples")?unsigned(SystemSettingDisplayRestart):0u) |
+    const bool display=before.at("r_mode")!=target.at("r_mode") || before.at("r_multiSamples")!=target.at("r_multiSamples") ||
+        before.at("r_screen")!=target.at("r_screen") || before.at("r_customWidth")!=target.at("r_customWidth") ||
+        before.at("r_customHeight")!=target.at("r_customHeight") || before.at("r_displayRefresh")!=target.at("r_displayRefresh");
+    return (display?unsigned(SystemSettingDisplayRestart):0u) |
         (before.at("r_renderer")!=target.at("r_renderer")?unsigned(SystemSettingRendererResources):0u) |
         (before.at("r_lightGridPreload")!=target.at("r_lightGridPreload")?unsigned(SystemSettingNextMap):0u) |
         (before.at("s_numberOfSpeakers")!=target.at("s_numberOfSpeakers")?unsigned(SystemSettingAudioRestart):0u);
@@ -202,11 +216,22 @@ struct idCommonLocal {
 
 // The engine adapter's platform edge is deliberately isolated. All sequencing,
 // request identities, transaction writes and service ownership use production.
+static SystemDisplayTopology CatalogTopology() {
+    SystemDisplayTopology t;t.primary=1;t.absolutePlacement=true;
+    for(unsigned id:{1u,2u}) {
+        SystemDisplayDescriptor d;d.id=id;d.name=id==1?"Primary monitor":"Secondary monitor";
+        d.x=int(id-1)*1920;d.width=1920;d.height=1080;d.desktop={1920,1080,60};
+        d.modes={{1280,720,double(59.94f)},{1920,1080,60},{3840,2160,144}};
+        t.displays.push_back(d);
+    }return t;
+}
 static struct DeviceData {
     SettingsDisplayObservation observation{1,1,0,0,0,true,false,true,false};
     bool held=false,startup=false,blocked=false,refusePrepare=false,refusePersist=false,refuseRestart=false,refuseFinish=false;
     bool msaaSupported=true,automaticReady=true,receiptValid=false,rendererSelection=false,selectionReported=false;
     renderLightGridLoadReceipt_t receipt{};std::uint64_t receiptSerial=0;renderRendererSelection_t selection{};
+    std::uint64_t topologyGeneration=1;bool captureFails=false;int captures=0;
+    SystemDisplayTopology topology=CatalogTopology();unsigned currentDisplay=2;SystemDisplayCatalogText text;
     int prepares=0,cancels=0,restarts=0,restores=0,observes=0,persists=0,finishes=0,startups=0,frames=0,shutdowns=0;
 } deviceData;
 class EngineSettingsDisplayHost final:public SettingsDisplayHost {
@@ -246,6 +271,11 @@ public:
     bool SupportsMultisampling()const{return deviceData.msaaSupported;}
     bool ReadyForAutomatic()const{return deviceData.automaticReady;}
     bool SupportsRendererSelection()const{return deviceData.rendererSelection;}
+    void CatalogStamp(SystemDisplayCatalogStamp& stamp)const{stamp={deviceData.topologyGeneration,deviceData.currentDisplay,deviceData.text};}
+    bool CaptureCatalogInput(const SystemDisplayCatalogStamp& stamp,SystemDisplayCatalogInput& input,std::string& error)const{
+        ++deviceData.captures;if(deviceData.captureFails){error="topology capture failed";return false;}
+        input={deviceData.topology,stamp.currentDisplay?stamp.currentDisplay:deviceData.topology.primary,stamp.text};return true;
+    }
     bool RendererSelection(renderRendererSelection_t& selection,std::uint64_t& serial)const{
         if(!deviceData.selectionReported)return false;selection=deviceData.selection;serial=1;return true;
     }
@@ -318,7 +348,12 @@ static std::uint64_t Pending() {
 }
 static void Validation() {
     const auto& schema=UI_SettingsStateSchema();
-    Check(schema.size()==34 && schema.at("settings.lightGrid.pending")==1 && schema.at("settings.lightGrid.mapLoaded")==1 && schema.at("settings.msaaAvailable")==1 && schema.at("settings.message")==2 && schema.at("settings.open")==1 &&
+    Check(schema.at("settings.display.available")==1 && schema.at("settings.display.catalog")==2 && schema.at("settings.display.count")==0 &&
+          schema.at("settings.display.7.label")==2 && !schema.contains("settings.display.8.label") && schema.at("settings.display.mode.39.label")==2 &&
+          !schema.contains("settings.display.mode.40.label") && schema.at("settings.display.refresh.selected")==0 &&
+          schema.at("settings.display.refresh.15.label")==2 && !schema.contains("settings.display.refresh.16.label"),"display list schema types");
+    // 20 status keys, 73 display list keys and the draft and baseline of 11 fixture settings.
+    Check(schema.size()==115 && schema.at("settings.lightGrid.pending")==1 && schema.at("settings.lightGrid.mapLoaded")==1 && schema.at("settings.msaaAvailable")==1 && schema.at("settings.message")==2 && schema.at("settings.open")==1 &&
           schema.at("settings.renderer.available")==1 && schema.at("settings.renderer.fallback")==1 &&
           schema.at("settings.phase")==0,"service status schema types");
     for(const auto& [key,type]:SystemSettingsHost::Schema())
@@ -901,6 +936,104 @@ static void LightGridStatus() {
     const auto other=UI_SettingsCreateOwner();StateValues values;
     Check(UI_SettingsRead(other,values) && !values.contains("settings.lightGrid.pending"),"other owners get no light-grid status");
 }
+// The display lists: owner-only, built from the draft, recaptured when the
+// topology, the window's display or the labels change, and picks checked
+// against the list token.
+static std::string CatalogToken(std::uint64_t owner) { return std::get<std::string>(Read(owner).at("settings.display.catalog")); }
+static StateValues CatalogPick(double index,const std::string& token) { return {{"index",index},{"catalog",token}}; }
+static void DisplayCatalog() {
+    const auto owner=Begin();auto values=Read(owner);
+    Check(values.at("settings.display.available")==StateValue(true) && values.at("settings.display.spanAvailable")==StateValue(true) &&
+          values.at("settings.display.count")==StateValue(2.0) && values.at("settings.display.optionCount")==StateValue(3.0) &&
+          values.at("settings.display.0.label")==StateValue(std::string("1: Primary monitor")) &&
+          values.at("settings.display.2.label")==StateValue(std::string()),"the owner reads the device list");
+    // r_mode 0 is 1280x720, which the Auto display (the window's) lists.
+    Check(values.at("settings.display.mode.optionCount")==StateValue(5.0) && values.at("settings.display.mode.selected")==StateValue(1.0) &&
+          values.at("settings.display.mode.1.label")==StateValue(std::string("1280 \xC3\x97 720 (16:9)")) &&
+          values.at("settings.display.mode.39.label")==StateValue(std::string()),"the mode list selects the draft's size");
+    Check(values.at("settings.display.refresh.optionCount")==StateValue(2.0) && values.at("settings.display.refresh.1.label")==StateValue(std::string("60 Hz")),
+          "the refresh list holds the size's rates");
+    const auto token=CatalogToken(owner);Check(!token.empty() && deviceData.captures==1,"one capture builds the lists");
+    const auto other=UI_SettingsCreateOwner();StateValues others;
+    Check(UI_SettingsRead(other,others) && !others.contains("settings.display.catalog") && !others.contains("settings.display.0.label"),
+          "other owners get no display lists");
+    for(const auto& arguments:std::vector<StateValues>{{},{{"index",1.0}},{{"catalog",token}},{{"index",1.0},{"catalog",token},{"extra",true}},
+        {{"index",std::string("1")},{"catalog",token}},{{"index",1.0},{"catalog",1.0}}})
+        Check(!Dispatch(owner,"display",arguments),"a pick takes exactly a slot index and the list token");
+    for(double index:{1.5,-2.0,40.0})Check(!Dispatch(owner,"display",CatalogPick(index,token)),"a pick names a whole slot");
+    Check(!Dispatch(owner,"display",CatalogPick(1,std::to_string(std::stoull(token)+1))) && !Dispatch(owner,"display",CatalogPick(1,"0"+token)),
+          "a pick from another list is refused");
+    Expect(owner,"message",std::string("#str_230011"));Expect(owner,"draft.r_screen",-1.0);Expect(owner,"dirty",false);
+    // Re-picking the current size writes nothing.
+    Check(Dispatch(owner,"displayMode",CatalogPick(1,CatalogToken(owner))),"re-pick the current size");Expect(owner,"dirty",false);
+    // Picks write the device, a listed size with its legacy mode, and a rate.
+    Check(Dispatch(owner,"display",CatalogPick(1,CatalogToken(owner))),"pick the second display");Expect(owner,"draft.r_screen",1.0);
+    Check(Dispatch(owner,"displayMode",CatalogPick(2,CatalogToken(owner))),"pick a listed size");
+    Expect(owner,"draft.r_mode",3.0);Expect(owner,"draft.r_customWidth",1920.0);Expect(owner,"draft.r_customHeight",1080.0);
+    Check(Dispatch(owner,"displayRefresh",CatalogPick(1,CatalogToken(owner))),"pick a rate");Expect(owner,"draft.r_displayRefresh",60.0);
+    Check(!Dispatch(owner,"displayRefresh",CatalogPick(2,CatalogToken(owner))),"a slot past the list is refused");
+    Expect(owner,"draft.r_displayRefresh",60.0);
+    // A selection that changes nothing a pick names keeps the token.
+    const auto kept=CatalogToken(owner);
+    Check(Dispatch(owner,"displayRefresh",CatalogPick(0,kept)) && CatalogToken(owner)==kept,"a selection-only change keeps the token");
+    Expect(owner,"display.refresh.selected",0.0);
+    Check(deviceData.captures==1,"the draft rebuilds the lists without recapturing");
+    // A pick that changes the lists moves the token; a pick with the old one is refused.
+    const auto before=CatalogToken(owner);
+    Check(Dispatch(owner,"displayMode",CatalogPick(3,before)) && CatalogToken(owner)!=before,"a pick that changes the lists moves the token");
+    Check(!Dispatch(owner,"displayRefresh",CatalogPick(1,before)),"a pick from the earlier list is refused");
+    Expect(owner,"draft.r_displayRefresh",0.0);
+    // The reserved last slots name a size and a rate the display lacks.
+    Check(Dispatch(owner,"edit",{{"r_mode",11.0},{"r_displayRefresh",75.0}}),"draft a size and a rate the display lacks");
+    values=Read(owner);
+    Check(values.at("settings.display.mode.selected")==StateValue(39.0) && values.at("settings.display.mode.39.label")==StateValue(std::string("640 \xC3\x97 480 (4:3)")) &&
+          values.at("settings.display.refresh.selected")==StateValue(15.0) && values.at("settings.display.refresh.15.label")==StateValue(std::string("75 Hz")),
+          "the reserved slots name the unlisted size and rate");
+    // The reserved slots cannot be picked, so they are not part of the token.
+    const auto reserved=CatalogToken(owner);
+    Check(Dispatch(owner,"edit",{{"r_displayRefresh",85.0}}) && CatalogToken(owner)==reserved,"another unlisted rate keeps the token");
+    // The window moving to another display recaptures, so Auto follows it.
+    const int captured=deviceData.captures;deviceData.currentDisplay=1;Read(owner);
+    Check(deviceData.captures==captured+1,"the window's display is part of the stamp");
+    // A topology change recaptures: the second display is gone.
+    deviceData.topologyGeneration=2;deviceData.topology.displays.resize(1);values=Read(owner);
+    Check(deviceData.captures==captured+2 && values.at("settings.display.catalog")!=StateValue(kept) &&
+          values.at("settings.display.1.label")==StateValue(std::string("Display 2 (not connected)")),"a topology change recaptures");
+    Check(!Dispatch(owner,"display",CatalogPick(0,kept)),"a pick from the old list is refused");
+    // So do new labels, as when the language tables change. The draft's
+    // custom size is now the 3840x2160 picked above.
+    deviceData.text.custom="Benutzerdefiniert";values=Read(owner);
+    Check(deviceData.captures==captured+3 && values.at("settings.display.mode.1.label")==StateValue(std::string("Benutzerdefiniert (3840 \xC3\x97 2160)")),
+          "new labels recapture the lists");
+    // A failed capture publishes no lists and refuses picks.
+    deviceData.captureFails=true;deviceData.topologyGeneration=3;values=Read(owner);
+    Check(values.at("settings.display.available")==StateValue(false) && values.at("settings.display.optionCount")==StateValue(1.0) &&
+          values.at("settings.display.mode.optionCount")==StateValue(0.0),"a failed capture publishes no lists");
+    Check(!Dispatch(owner,"display",CatalogPick(-1,CatalogToken(owner))),"no pick without lists");
+}
+// A display picked from the list must still be that monitor at Apply.
+static void DisplayPickDrift() {
+    const auto owner=Begin();UI_SettingsConfirmationDocument(owner,ConfirmationDocument());
+    Check(Dispatch(owner,"display",CatalogPick(1,CatalogToken(owner))),"pick the second display");Expect(owner,"canApply",true);
+    // A second begin while editing keeps the draft and the record.
+    Check(Dispatch(owner,"begin"),"begin again while editing");Expect(owner,"draft.r_screen",1.0);
+    deviceData.topologyGeneration=2;deviceData.topology.displays[1].name="Replacement monitor";
+    Expect(owner,"canApply",false);Expect(owner,"message",std::string("#str_230023"));
+    Check(!Dispatch(owner,"apply") && deviceData.prepares==0 && host.writes.empty(),"a pick whose monitor changed cannot apply");
+    // Choosing the selected display again records the monitor now there.
+    Check(Dispatch(owner,"display",CatalogPick(1,CatalogToken(owner))),"pick the replacement");Expect(owner,"canApply",true);
+    // Taking the change back clears the record; so does Cancel, and a new
+    // session starts without one however the last one closed.
+    Check(Dispatch(owner,"display",CatalogPick(-1,CatalogToken(owner))),"pick Auto");Expect(owner,"dirty",false);
+    Check(Dispatch(owner,"display",CatalogPick(1,CatalogToken(owner))),"pick again");
+    Check(Dispatch(owner,"cancel") && Dispatch(owner,"begin"),"cancel and reopen");
+    deviceData.topologyGeneration=3;deviceData.topology.displays[1].name="Third monitor";
+    Check(Dispatch(owner,"edit",{{"r_screen",1.0}}),"an ordinary edit records no monitor");Expect(owner,"canApply",true);
+    Check(Dispatch(owner,"display",CatalogPick(1,CatalogToken(owner))),"record the third monitor");
+    UI_SettingsCloseOwner(owner);Check(Dispatch(owner,"begin"),"close without cancelling and reopen");
+    deviceData.topologyGeneration=4;deviceData.topology.displays[1].name="Fourth monitor";
+    Check(Dispatch(owner,"edit",{{"r_screen",1.0}}),"edit the same display in the new session");Expect(owner,"canApply",true);
+}
 // The renderer row's status: whether the fallback can apply here, and whether
 // the running renderer reports a fallback to its automatic pick.
 static void RendererState(std::uint64_t owner,bool available,bool fallback,const char* why) {
@@ -1254,6 +1387,7 @@ int main(int argc,char** argv) {
     else if(name=="deferred_apply_exit_restore")DeferredApplyExitRestore();else if(name=="unsupported_effects")UnsupportedEffects();
     else if(name=="deferred_retry_renews")DeferredRetryRenews();else if(name=="light_grid_status")LightGridStatus();
     else if(name=="renderer_route")RendererRoute();else if(name=="renderer_status")RendererStatus();
+    else if(name=="display_catalog")DisplayCatalog();else if(name=="display_pick_drift")DisplayPickDrift();
     else if(name=="exit_immediate")ExitImmediate(false);else if(name=="exit_noop")ExitImmediate(true);
     else if(name.starts_with("exit_invalidate_"))ExitInvalidate(name.substr(16));
     else if(name.starts_with("exit_failure_"))ExitFailure(name.substr(13));
@@ -1279,6 +1413,7 @@ SCENARIOS = (
     'display_close_queued', 'display_close_written', 'startup_shutdown', 'stale_display_actions', 'level_load_policy', 'level_load_unreadable',
     'deferred_apply', 'deferred_mixed', 'deferred_not_ready', 'deferred_persist_failure', 'deferred_close', 'deferred_apply_exit',
     'deferred_apply_exit_restore', 'unsupported_effects', 'deferred_retry_renews', 'light_grid_status', 'renderer_route', 'renderer_status',
+    'display_catalog', 'display_pick_drift',
     'frame_outside','frame_skipped','frame_submit_only','frame_present_only',
     'frame_readback_before_draw','frame_readback_after_draw','frame_readback_during_end',
     'frame_nested','frame_aborted','frame_begin_aborted','frame_wrong_request','frame_shutdown',
@@ -1358,8 +1493,13 @@ def main(production_mutations=()):
     document = (ROOT / 'src/ui/retained/Document.cpp').read_text(encoding='utf-8')
     validation = '\n'.join(function_body(document, name) for name in (
         'bool Utf8(', 'bool ValidStateValue(', 'const Node* Find(', 'const Node* DocumentModel::FindNode('))
+    host_source = (ROOT / 'src/ui/application/SystemSettingsHost.cpp').read_text(encoding='utf-8')
+    legacy = host_source[host_source.index('constexpr int LegacyModes'):host_source.index('#if defined(USE_SDL3)', host_source.index('constexpr int LegacyModes'))]
+    display = ('namespace openq4::ui { namespace {\n' + legacy + '\n}\n' +
+               '\n'.join(function_body(host_source, name) for name in ('bool SystemSettingsHost::ResolveModeDimensions(', 'int SystemSettingsHost::LegacyModeForSize(')) +
+               '\n}\n#define Fail DisplayHelperFail\n' + without_includes((ROOT / 'src/ui/application/SystemDisplay.cpp').read_text(encoding='utf-8')) + '\n#undef Fail\n')
     code = (SUPPORT + '\nnamespace openq4::ui {\n' + validation + '\n}\n' +
-            service + '\n' + persistence_bodies() + '\n' + render_frame_body() + MAIN)
+            service + '\n' + display + persistence_bodies() + '\n' + render_frame_body() + MAIN)
     compiler = next((path for name in ('clang++', 'g++', 'c++') if (path := shutil.which(name))), None)
     if not compiler:
         raise RuntimeError('C++ compiler required')

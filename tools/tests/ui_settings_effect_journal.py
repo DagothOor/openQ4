@@ -45,7 +45,7 @@ def main():
   parsed=out/'parsed.cpp';parsed.write_text('#include "src/ui/retained/Document.h"\n#include <json/json.h>\n#include <cmath>\n#include <algorithm>\n#include <memory>\nnamespace openq4::ui { constexpr size_t MaxSourceBytes=16*1024*1024;\n'+parser+'\n}\n',encoding='utf-8')
   host=(app/'SystemSettingsHost.cpp').read_text(encoding='utf-8');legacy=host[host.index('constexpr int LegacyModes'):host.index('#if defined(USE_SDL3)',host.index('constexpr int LegacyModes'))]
   helpers=host[host.index('SystemSettingDescriptor Number('):host.index('bool Fail(')]+'\n'+'\n'.join(function_body(host,n) for n in ('bool SameValue(','bool Changed('))
-  bodies='\n'.join(function_body(host,n) for n in ('const std::vector<SystemSettingDescriptor>& SystemSettingsHost::Catalog()','const std::map<std::string, size_t>& SystemSettingsHost::Schema()','unsigned SystemSettingsHost::ChangedEffects(','bool SystemSettingsHost::ResolveModeDimensions('))
+  bodies='\n'.join(function_body(host,n) for n in ('const std::vector<SystemSettingDescriptor>& SystemSettingsHost::Catalog()','const std::map<std::string, size_t>& SystemSettingsHost::Schema()','unsigned SystemSettingsHost::ChangedEffects(','bool SystemSettingsHost::ResolveModeDimensions(','int SystemSettingsHost::LegacyModeForSize('))
   catalog=out/'catalog.cpp';catalog.write_text('#include "src/ui/application/SystemSettingsHost.h"\nnamespace openq4::ui { namespace {\n'+helpers+'\n'+legacy+'\n}\n'+bodies+'\n}\n',encoding='utf-8')
   display=(app/'SystemDisplay.cpp').read_text(encoding='utf-8').replace('#include "../../idlib/precompiled.h"','')
   display_path=out/'display.cpp';display_path.write_text(display,encoding='utf-8')

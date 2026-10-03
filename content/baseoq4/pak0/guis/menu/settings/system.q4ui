@@ -570,6 +570,298 @@
     "settings.renderer.fallback": {
       "type": "boolean",
       "initial": false
+    },
+    "settings.display.available": {
+      "type": "boolean",
+      "initial": false
+    },
+    "settings.display.spanAvailable": {
+      "type": "boolean",
+      "initial": false
+    },
+    "settings.display.catalog": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.count": {
+      "type": "number",
+      "initial": 0
+    },
+    "settings.display.optionCount": {
+      "type": "number",
+      "initial": 1
+    },
+    "settings.display.0.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.1.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.2.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.3.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.4.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.5.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.6.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.7.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.optionCount": {
+      "type": "number",
+      "initial": 0
+    },
+    "settings.display.mode.selected": {
+      "type": "number",
+      "initial": 0
+    },
+    "settings.display.mode.0.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.1.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.2.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.3.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.4.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.5.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.6.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.7.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.8.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.9.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.10.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.11.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.12.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.13.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.14.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.15.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.16.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.17.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.18.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.19.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.20.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.21.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.22.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.23.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.24.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.25.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.26.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.27.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.28.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.29.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.30.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.31.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.32.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.33.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.34.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.35.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.36.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.37.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.38.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.mode.39.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.optionCount": {
+      "type": "number",
+      "initial": 0
+    },
+    "settings.display.refresh.selected": {
+      "type": "number",
+      "initial": 0
+    },
+    "settings.display.refresh.0.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.1.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.2.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.3.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.4.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.5.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.6.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.7.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.8.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.9.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.10.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.11.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.12.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.13.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.14.label": {
+      "type": "string",
+      "initial": ""
+    },
+    "settings.display.refresh.15.label": {
+      "type": "string",
+      "initial": ""
     }
   },
   "actions": {
@@ -13029,7 +13321,8 @@
       },
       "displayControls": {
         "scope": "Fullscreen, borderless, fullscreen policy and MSAA edit the existing draft. Apply uses owned Keep/Revert recovery; unsupported device requests do not bypass validation.",
-        "remaining": "Dynamic display/resolution/refresh catalogs, dimension editors, full settings effects and screen acceptance remain required.",
+        "remaining": "The display device, span, resolution and refresh rows over the published display lists, dimension editors, full settings effects and screen acceptance remain required.",
+        "displayLists": "settings.display.* keys from system_display_catalog.py: owner-only lists the settings service builds from the display topology.",
         "msaaAvailability": "Read-only active-backend observation. Vulkan and unavailable renderers disable MSAA; strict Apply still checks supported GL sample counts.",
         "localization": [
           "#str_229900",
