@@ -3725,6 +3725,53 @@
       "default": "1",
       "restart_required": false,
       "accessibility": "Focusable choiceDef row. Controller pulses on each shot and hit."
+    },
+    {
+      "id": "game.vr_twohanded",
+      "pane": "Game Options",
+      "section": "Virtual Reality",
+      "path": "Settings > Game Options > Virtual Reality > Two-Handed Grip",
+      "source": "game",
+      "container": "set_game_vr_twohanded",
+      "widgets": [
+        "set_game_vr_twohanded_value"
+      ],
+      "widget_type": "choice",
+      "label_key": "#str_230137",
+      "choices_key": "#str_200246",
+      "values": [
+        "0",
+        "1"
+      ],
+      "target_type": "cvar",
+      "target": "vr_twoHanded",
+      "default": "1",
+      "restart_required": false,
+      "accessibility": "Focusable choiceDef row. The off-hand grip on the gun's foregrip holds it in both hands; elsewhere it opens the weapon wheel."
+    },
+    {
+      "id": "game.vr_vignette",
+      "pane": "Game Options",
+      "section": "Virtual Reality",
+      "path": "Settings > Game Options > Virtual Reality > Comfort Vignette",
+      "source": "game",
+      "container": "set_game_vr_vignette",
+      "widgets": [
+        "set_game_vr_vignette_value"
+      ],
+      "widget_type": "choice",
+      "label_key": "#str_230138",
+      "choices_key": "#str_230136",
+      "values": [
+        "0",
+        "0.5",
+        "1"
+      ],
+      "target_type": "cvar",
+      "target": "vr_comfortVignette",
+      "default": "0.5",
+      "restart_required": false,
+      "accessibility": "Focusable choiceDef row. Darkens the edges of each eye while the stick moves or smoothly turns the player."
     }
   ],
   "default_bind_sources": [

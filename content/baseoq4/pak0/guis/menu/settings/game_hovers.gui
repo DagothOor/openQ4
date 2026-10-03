@@ -1349,4 +1349,42 @@ windowDef set_game_weaponkick_hover
 				}
 			}
 		}
+		windowDef set_game_vr_twohanded_hover
+		{
+			rect	245,1669,361,20
+			visible	0
+
+			onMouseEnter {
+				if ("desktop::active" == 0) {
+					stoptransitions "set_game_vr_twohanded_background" ;
+					set "set_game_vr_twohanded_background::matcolor_w" "1" ;
+					set "cmd" "play main_menu_mouseover" ;
+				}
+			}
+
+			onMouseExit {
+				if ("desktop::active" == 0) {
+					transition "set_game_vr_twohanded_background::matcolor_w" "1" "0.4" "300" ;
+				}
+			}
+		}
+		windowDef set_game_vr_vignette_hover
+		{
+			rect	245,1693,361,20
+			visible	0
+
+			onMouseEnter {
+				if ("desktop::active" == 0) {
+					stoptransitions "set_game_vr_vignette_background" ;
+					set "set_game_vr_vignette_background::matcolor_w" "1" ;
+					set "cmd" "play main_menu_mouseover" ;
+				}
+			}
+
+			onMouseExit {
+				if ("desktop::active" == 0) {
+					transition "set_game_vr_vignette_background::matcolor_w" "1" "0.4" "300" ;
+				}
+			}
+		}
 	//==============================================================//

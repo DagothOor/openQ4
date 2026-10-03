@@ -16522,6 +16522,10 @@ windowDef Desktop
 			set "set_game_vr_aimlaser_hover::visible" "1" ;
 			set "set_game_vr_hapticstrength::visible" "1" ;
 			set "set_game_vr_hapticstrength_hover::visible" "1" ;
+			set "set_game_vr_twohanded::visible" "1" ;
+			set "set_game_vr_twohanded_hover::visible" "1" ;
+			set "set_game_vr_vignette::visible" "1" ;
+			set "set_game_vr_vignette_hover::visible" "1" ;
 			set "set_game_freelook_value::noevents" "0" ;
 			set "set_game_autoreload::noevents" "0" ;
 			set "set_game_autoswitch::noevents" "0" ;
@@ -16584,6 +16588,8 @@ windowDef Desktop
 			set "set_game_vr_roomscale::noevents" "0" ;
 			set "set_game_vr_aimlaser::noevents" "0" ;
 			set "set_game_vr_hapticstrength::noevents" "0" ;
+			set "set_game_vr_twohanded::noevents" "0" ;
+			set "set_game_vr_vignette::noevents" "0" ;
 	
 
 		}
@@ -16719,6 +16725,10 @@ windowDef Desktop
 			set "set_game_vr_aimlaser_hover::visible" "0" ;
 			set "set_game_vr_hapticstrength::visible" "0" ;
 			set "set_game_vr_hapticstrength_hover::visible" "0" ;
+			set "set_game_vr_twohanded::visible" "0" ;
+			set "set_game_vr_twohanded_hover::visible" "0" ;
+			set "set_game_vr_vignette::visible" "0" ;
+			set "set_game_vr_vignette_hover::visible" "0" ;
 			set "set_game_freelook_value::noevents" "1" ;
 			set "set_game_autoreload::noevents" "1" ;
 			set "set_game_autoswitch::noevents" "1" ;
@@ -16781,6 +16791,8 @@ windowDef Desktop
 			set "set_game_vr_roomscale::noevents" "1" ;
 			set "set_game_vr_aimlaser::noevents" "1" ;
 			set "set_game_vr_hapticstrength::noevents" "1" ;
+			set "set_game_vr_twohanded::noevents" "1" ;
+			set "set_game_vr_vignette::noevents" "1" ;
 			set "set_game_scroll_thumb::visible" "0" ;
 			set "set_game_scroll_thumb::noevents" "1" ;
 		}
@@ -18971,6 +18983,8 @@ windowDef Desktop
 				set "set_game_vr_roomscale_background::matcolor_w" "0.4" ;
 				set "set_game_vr_aimlaser_background::matcolor_w" "0.4" ;
 				set "set_game_vr_hapticstrength_background::matcolor_w" "0.4" ;
+				set "set_game_vr_twohanded_background::matcolor_w" "0.4" ;
+				set "set_game_vr_vignette_background::matcolor_w" "0.4" ;
 				if ( "gui::g_crosshairCustom" == 1 ) {
 					set "set_game_previewxhair_background::matcolor" "$desktop::corner" ;
 					set "set_game_previewxhair_description::forecolor" "$desktop::white_8" ;				

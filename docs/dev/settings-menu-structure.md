@@ -240,6 +240,8 @@ The Game Options pane is `p_settings_game` and is included from `content/baseoq4
 | Room Scale | `choiceDef` | `set_game_vr_roomscale_value` | `vr_roomScale` | `Disabled;Enabled` | Single player: the character walks after the player's steps. |
 | Laser Sight | `choiceDef` | `set_game_vr_aimlaser_value` | `vr_aimLaser` | `0 Off`, `1 Dot`, `2 Dot and Beam` | Marks where controller-aimed shots land, at the target's depth. |
 | Vibration | `choiceDef` | `set_game_vr_hapticstrength_value` | `vr_hapticStrength` | `0 Off`, `0.5 Low`, `1 Full` | Controller pulses on each shot and hit. |
+| Two-Handed Grip | `choiceDef` | `set_game_vr_twohanded_value` | `vr_twoHanded` | `Disabled;Enabled` | The off-hand grip on the gun's foregrip holds it in both hands; elsewhere it opens the weapon wheel. |
+| Comfort Vignette | `choiceDef` | `set_game_vr_vignette_value` | `vr_comfortVignette` | `0 Off`, `0.5 Low`, `1 Full` | Darkens the edges of each eye while the stick moves or smoothly turns the player. |
 
 ## System
 
