@@ -16503,6 +16503,25 @@ windowDef Desktop
 			set "set_game_cl_gun_z_hover::visible" "1" ;
 			set "set_game_weaponkick::visible" "1" ;
 			set "set_game_weaponkick_hover::visible" "1" ;
+			set "set_game_vr::visible" "1" ;
+			set "set_game_vr_enable::visible" "1" ;
+			set "set_game_vr_enable_hover::visible" "1" ;
+			set "set_game_vr_aimmode::visible" "1" ;
+			set "set_game_vr_aimmode_hover::visible" "1" ;
+			set "set_game_vr_lefthanded::visible" "1" ;
+			set "set_game_vr_lefthanded_hover::visible" "1" ;
+			set "set_game_vr_turnmode::visible" "1" ;
+			set "set_game_vr_turnmode_hover::visible" "1" ;
+			set "set_game_vr_snapturnangle::visible" "1" ;
+			set "set_game_vr_snapturnangle_hover::visible" "1" ;
+			set "set_game_vr_movedirection::visible" "1" ;
+			set "set_game_vr_movedirection_hover::visible" "1" ;
+			set "set_game_vr_roomscale::visible" "1" ;
+			set "set_game_vr_roomscale_hover::visible" "1" ;
+			set "set_game_vr_aimlaser::visible" "1" ;
+			set "set_game_vr_aimlaser_hover::visible" "1" ;
+			set "set_game_vr_hapticstrength::visible" "1" ;
+			set "set_game_vr_hapticstrength_hover::visible" "1" ;
 			set "set_game_freelook_value::noevents" "0" ;
 			set "set_game_autoreload::noevents" "0" ;
 			set "set_game_autoswitch::noevents" "0" ;
@@ -16556,6 +16575,15 @@ windowDef Desktop
 			set "set_game_cl_gun_y::noevents" "0" ;
 			set "set_game_cl_gun_z::noevents" "0" ;
 			set "set_game_weaponkick::noevents" "0" ;
+			set "set_game_vr_enable::noevents" "0" ;
+			set "set_game_vr_aimmode::noevents" "0" ;
+			set "set_game_vr_lefthanded::noevents" "0" ;
+			set "set_game_vr_turnmode::noevents" "0" ;
+			set "set_game_vr_snapturnangle::noevents" "0" ;
+			set "set_game_vr_movedirection::noevents" "0" ;
+			set "set_game_vr_roomscale::noevents" "0" ;
+			set "set_game_vr_aimlaser::noevents" "0" ;
+			set "set_game_vr_hapticstrength::noevents" "0" ;
 	
 
 		}
@@ -16672,6 +16700,25 @@ windowDef Desktop
 			set "set_game_cl_gun_z_hover::visible" "0" ;
 			set "set_game_weaponkick::visible" "0" ;
 			set "set_game_weaponkick_hover::visible" "0" ;
+			set "set_game_vr::visible" "0" ;
+			set "set_game_vr_enable::visible" "0" ;
+			set "set_game_vr_enable_hover::visible" "0" ;
+			set "set_game_vr_aimmode::visible" "0" ;
+			set "set_game_vr_aimmode_hover::visible" "0" ;
+			set "set_game_vr_lefthanded::visible" "0" ;
+			set "set_game_vr_lefthanded_hover::visible" "0" ;
+			set "set_game_vr_turnmode::visible" "0" ;
+			set "set_game_vr_turnmode_hover::visible" "0" ;
+			set "set_game_vr_snapturnangle::visible" "0" ;
+			set "set_game_vr_snapturnangle_hover::visible" "0" ;
+			set "set_game_vr_movedirection::visible" "0" ;
+			set "set_game_vr_movedirection_hover::visible" "0" ;
+			set "set_game_vr_roomscale::visible" "0" ;
+			set "set_game_vr_roomscale_hover::visible" "0" ;
+			set "set_game_vr_aimlaser::visible" "0" ;
+			set "set_game_vr_aimlaser_hover::visible" "0" ;
+			set "set_game_vr_hapticstrength::visible" "0" ;
+			set "set_game_vr_hapticstrength_hover::visible" "0" ;
 			set "set_game_freelook_value::noevents" "1" ;
 			set "set_game_autoreload::noevents" "1" ;
 			set "set_game_autoswitch::noevents" "1" ;
@@ -16725,6 +16772,15 @@ windowDef Desktop
 			set "set_game_cl_gun_y::noevents" "1" ;
 			set "set_game_cl_gun_z::noevents" "1" ;
 			set "set_game_weaponkick::noevents" "1" ;
+			set "set_game_vr_enable::noevents" "1" ;
+			set "set_game_vr_aimmode::noevents" "1" ;
+			set "set_game_vr_lefthanded::noevents" "1" ;
+			set "set_game_vr_turnmode::noevents" "1" ;
+			set "set_game_vr_snapturnangle::noevents" "1" ;
+			set "set_game_vr_movedirection::noevents" "1" ;
+			set "set_game_vr_roomscale::noevents" "1" ;
+			set "set_game_vr_aimlaser::noevents" "1" ;
+			set "set_game_vr_hapticstrength::noevents" "1" ;
 			set "set_game_scroll_thumb::visible" "0" ;
 			set "set_game_scroll_thumb::noevents" "1" ;
 		}
@@ -18906,6 +18962,15 @@ windowDef Desktop
 				set "set_game_cl_gun_y_background::matcolor_w" "0.4" ;
 				set "set_game_cl_gun_z_background::matcolor_w" "0.4" ;
 				set "set_game_weaponkick_background::matcolor_w" "0.4" ;
+				set "set_game_vr_enable_background::matcolor_w" "0.4" ;
+				set "set_game_vr_aimmode_background::matcolor_w" "0.4" ;
+				set "set_game_vr_lefthanded_background::matcolor_w" "0.4" ;
+				set "set_game_vr_turnmode_background::matcolor_w" "0.4" ;
+				set "set_game_vr_snapturnangle_background::matcolor_w" "0.4" ;
+				set "set_game_vr_movedirection_background::matcolor_w" "0.4" ;
+				set "set_game_vr_roomscale_background::matcolor_w" "0.4" ;
+				set "set_game_vr_aimlaser_background::matcolor_w" "0.4" ;
+				set "set_game_vr_hapticstrength_background::matcolor_w" "0.4" ;
 				if ( "gui::g_crosshairCustom" == 1 ) {
 					set "set_game_previewxhair_background::matcolor" "$desktop::corner" ;
 					set "set_game_previewxhair_description::forecolor" "$desktop::white_8" ;				

@@ -28,18 +28,21 @@ multiplayer, and needs no extra content beyond your Quake 4 install.
 ## Turning VR on
 
 1. Start your headset and its OpenXR runtime (for example SteamVR).
-2. In openQ4, open the console and enter:
-
-   ```
-   vr_enable 1
-   vr_restart
-   ```
+2. In openQ4, open **Settings > Game Options**, pick **VR** under Section,
+   and set **VR Mode** to Enabled. VR starts at once. From the console,
+   `vr_enable 1` does the same.
 
    The setting is saved, so the next launch starts in VR on its own. You can
    also launch with `+set vr_enable 1`.
 
 When VR is on, the desktop window shows what your left eye sees. To turn VR
-off again, enter `vr_enable 0` and `vr_restart`.
+off again, set VR Mode back to Disabled (you can point at it in the headset),
+or enter `vr_enable 0`.
+
+The same Virtual Reality section holds the settings players change most:
+aim with the controller or your head, weapon hand, snap or smooth turning,
+the snap angle, walk direction, room scale, the laser sight and vibration.
+The tables below list everything, including the console-only settings.
 
 If the headset isn't connected yet, openQ4 waits for it and starts VR as soon
 as it appears.

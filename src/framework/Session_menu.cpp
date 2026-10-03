@@ -50,7 +50,7 @@ extern glconfig_t glConfig;
 idCVar	idSessionLocal::gui_configServerRate( "gui_configServerRate", "0", CVAR_GUI | CVAR_ARCHIVE | CVAR_ROM | CVAR_INTEGER, "" );
 idCVar gui_set_sys_scroll( "gui_set_sys_scroll", "0", CVAR_GUI | CVAR_INTEGER, "display menu scroll step", 0, 28 );
 idCVar gui_set_audio_scroll( "gui_set_audio_scroll", "0", CVAR_GUI | CVAR_INTEGER, "audio menu scroll step", 0.0f, 0.0f );
-idCVar gui_set_game_scroll( "gui_set_game_scroll", "0", CVAR_GUI | CVAR_INTEGER, "game menu scroll step", 0, 48 );
+idCVar gui_set_game_scroll( "gui_set_game_scroll", "0", CVAR_GUI | CVAR_INTEGER, "game menu scroll step", 0, 58 );
 idCVar ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL, "use the in-development retained SYSTEM page, which ui_retained includes only once every stock setting works there" );
 idCVar ui_retainedMultiplayer( "ui_retainedMultiplayer", "0", CVAR_GUI | CVAR_BOOL, "use the in-development retained multiplayer menu card, which ui_retained includes only once all its pages are built" );
 // The single gate for the retained (RmlUi) interface, on by default. Each
@@ -3912,10 +3912,10 @@ static const mainMenuSettingsScrollPage_t MAINMENU_SETTINGS_SCROLL_PAGES[] = {
 		"game_section_choice",
 		21,
 		0,
-		48,
+		58,
 		-24,
 		-41,
-		1476,
+		1706,
 		24.0f
 	}
 };
@@ -3952,10 +3952,13 @@ static int MainMenuSettingsSectionChoiceForScroll( const mainMenuSettingsScrollP
 		if ( scrollValue < 45 ) {
 			return 3;
 		}
-		if ( scrollValue < 47 ) {
+		if ( scrollValue < 50 ) {
 			return 4;
 		}
-		return 5;
+		if ( scrollValue < 57 ) {
+			return 5;
+		}
+		return 6;
 	}
 
 	if ( idStr::Icmp( page.name, "system" ) == 0 ) {
@@ -4025,8 +4028,22 @@ static bool ApplyMainMenuSettingsScrollPage( idUserInterface *gui, const mainMen
 	const idStr contentRect = va( "%d,%d,640,%d", page.contentX, contentY, contentHeight );
 	const bool applied = MainMenuSetWindowVar( gui, page.contentRectState, contentRect.c_str() );
 
+	// The section selector follows the scroll whenever the scroll moves (wheel,
+	// drag, paging, a section jump). An unchanged scroll leaves it alone: a click
+	// on the selector steps it on the press and scrolls on the release, and
+	// deriving it again in between would undo the click.
 	if ( page.sectionChoiceState != NULL ) {
-		gui->SetStateInt( page.sectionChoiceState, MainMenuSettingsSectionChoiceForScroll( page, scrollValue ) );
+		static const int pageCount = static_cast<int>( sizeof( MAINMENU_SETTINGS_SCROLL_PAGES ) / sizeof( MAINMENU_SETTINGS_SCROLL_PAGES[ 0 ] ) );
+		static bool sectionScrollKnown[ pageCount ] = {};
+		static int sectionScroll[ pageCount ] = {};
+		const int pageIndex = static_cast<int>( &page - MAINMENU_SETTINGS_SCROLL_PAGES );
+		if ( pageIndex < 0 || pageIndex >= pageCount || !sectionScrollKnown[ pageIndex ] || sectionScroll[ pageIndex ] != scrollValue ) {
+			gui->SetStateInt( page.sectionChoiceState, MainMenuSettingsSectionChoiceForScroll( page, scrollValue ) );
+			if ( pageIndex >= 0 && pageIndex < pageCount ) {
+				sectionScrollKnown[ pageIndex ] = true;
+				sectionScroll[ pageIndex ] = scrollValue;
+			}
+		}
 	}
 
 	gui->StateChanged( common->GetPresentationTime(), true );

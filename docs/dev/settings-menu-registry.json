@@ -3514,6 +3514,217 @@
       "default": "1",
       "restart_required": false,
       "accessibility": "Standard focusable choiceDef row."
+    },
+    {
+      "id": "game.vr_enable",
+      "pane": "Game Options",
+      "section": "Virtual Reality",
+      "path": "Settings > Game Options > Virtual Reality > VR Mode",
+      "source": "game",
+      "container": "set_game_vr_enable",
+      "widgets": [
+        "set_game_vr_enable_value"
+      ],
+      "widget_type": "choice",
+      "label_key": "#str_230121",
+      "choices_key": "#str_200246",
+      "values": [
+        "0",
+        "1"
+      ],
+      "target_type": "cvar",
+      "target": "vr_enable",
+      "default": "0",
+      "restart_required": false,
+      "accessibility": "Focusable choiceDef row. Starts or ends the OpenXR session at once (OpenGL renderer)."
+    },
+    {
+      "id": "game.vr_aimmode",
+      "pane": "Game Options",
+      "section": "Virtual Reality",
+      "path": "Settings > Game Options > Virtual Reality > Aim With",
+      "source": "game",
+      "container": "set_game_vr_aimmode",
+      "widgets": [
+        "set_game_vr_aimmode_value"
+      ],
+      "widget_type": "choice",
+      "label_key": "#str_230122",
+      "choices_key": "#str_230123",
+      "values": [
+        "1",
+        "0"
+      ],
+      "target_type": "cvar",
+      "target": "vr_aimMode",
+      "default": "1",
+      "restart_required": false,
+      "accessibility": "Focusable choiceDef row. Controller aim hides the screen crosshair; the laser sight marks shots."
+    },
+    {
+      "id": "game.vr_lefthanded",
+      "pane": "Game Options",
+      "section": "Virtual Reality",
+      "path": "Settings > Game Options > Virtual Reality > Weapon Hand",
+      "source": "game",
+      "container": "set_game_vr_lefthanded",
+      "widgets": [
+        "set_game_vr_lefthanded_value"
+      ],
+      "widget_type": "choice",
+      "label_key": "#str_230124",
+      "choices_key": "#str_230125",
+      "values": [
+        "0",
+        "1"
+      ],
+      "target_type": "cvar",
+      "target": "vr_leftHanded",
+      "default": "0",
+      "restart_required": false,
+      "accessibility": "Focusable choiceDef row. Swaps the triggers, grips and sticks with the weapon."
+    },
+    {
+      "id": "game.vr_turnmode",
+      "pane": "Game Options",
+      "section": "Virtual Reality",
+      "path": "Settings > Game Options > Virtual Reality > Turning",
+      "source": "game",
+      "container": "set_game_vr_turnmode",
+      "widgets": [
+        "set_game_vr_turnmode_value"
+      ],
+      "widget_type": "choice",
+      "label_key": "#str_230126",
+      "choices_key": "#str_230127",
+      "values": [
+        "0",
+        "1"
+      ],
+      "target_type": "cvar",
+      "target": "vr_turnMode",
+      "default": "0",
+      "restart_required": false,
+      "accessibility": "Focusable choiceDef row. Weapon-hand stick left and right."
+    },
+    {
+      "id": "game.vr_snapturnangle",
+      "pane": "Game Options",
+      "section": "Virtual Reality",
+      "path": "Settings > Game Options > Virtual Reality > Snap Turn Angle",
+      "source": "game",
+      "container": "set_game_vr_snapturnangle",
+      "widgets": [
+        "set_game_vr_snapturnangle_value"
+      ],
+      "widget_type": "choice",
+      "label_key": "#str_230128",
+      "choices_key": "#str_230129",
+      "values": [
+        "30",
+        "45",
+        "60",
+        "90"
+      ],
+      "target_type": "cvar",
+      "target": "vr_snapTurnAngle",
+      "default": "45",
+      "restart_required": false,
+      "accessibility": "Focusable choiceDef row. Degrees per snap turn."
+    },
+    {
+      "id": "game.vr_movedirection",
+      "pane": "Game Options",
+      "section": "Virtual Reality",
+      "path": "Settings > Game Options > Virtual Reality > Walk Direction",
+      "source": "game",
+      "container": "set_game_vr_movedirection",
+      "widgets": [
+        "set_game_vr_movedirection_value"
+      ],
+      "widget_type": "choice",
+      "label_key": "#str_230130",
+      "choices_key": "#str_230131",
+      "values": [
+        "0",
+        "1"
+      ],
+      "target_type": "cvar",
+      "target": "vr_moveDirection",
+      "default": "0",
+      "restart_required": false,
+      "accessibility": "Focusable choiceDef row. What the off-hand stick's forward follows."
+    },
+    {
+      "id": "game.vr_roomscale",
+      "pane": "Game Options",
+      "section": "Virtual Reality",
+      "path": "Settings > Game Options > Virtual Reality > Room Scale",
+      "source": "game",
+      "container": "set_game_vr_roomscale",
+      "widgets": [
+        "set_game_vr_roomscale_value"
+      ],
+      "widget_type": "choice",
+      "label_key": "#str_230132",
+      "choices_key": "#str_200246",
+      "values": [
+        "0",
+        "1"
+      ],
+      "target_type": "cvar",
+      "target": "vr_roomScale",
+      "default": "1",
+      "restart_required": false,
+      "accessibility": "Focusable choiceDef row. Single player: the character walks after the player's steps."
+    },
+    {
+      "id": "game.vr_aimlaser",
+      "pane": "Game Options",
+      "section": "Virtual Reality",
+      "path": "Settings > Game Options > Virtual Reality > Laser Sight",
+      "source": "game",
+      "container": "set_game_vr_aimlaser",
+      "widgets": [
+        "set_game_vr_aimlaser_value"
+      ],
+      "widget_type": "choice",
+      "label_key": "#str_230133",
+      "choices_key": "#str_230134",
+      "values": [
+        "0",
+        "1",
+        "2"
+      ],
+      "target_type": "cvar",
+      "target": "vr_aimLaser",
+      "default": "1",
+      "restart_required": false,
+      "accessibility": "Focusable choiceDef row. Marks where controller-aimed shots land, at the target's depth."
+    },
+    {
+      "id": "game.vr_hapticstrength",
+      "pane": "Game Options",
+      "section": "Virtual Reality",
+      "path": "Settings > Game Options > Virtual Reality > Vibration",
+      "source": "game",
+      "container": "set_game_vr_hapticstrength",
+      "widgets": [
+        "set_game_vr_hapticstrength_value"
+      ],
+      "widget_type": "choice",
+      "label_key": "#str_230135",
+      "choices_key": "#str_230136",
+      "values": [
+        "0",
+        "0.5",
+        "1"
+      ],
+      "target_type": "cvar",
+      "target": "vr_hapticStrength",
+      "default": "1",
+      "restart_required": false,
+      "accessibility": "Focusable choiceDef row. Controller pulses on each shot and hit."
     }
   ],
   "default_bind_sources": [

@@ -6,20 +6,22 @@
   Linux: a statically built Khronos loader, off-axis per-eye rendering through
   a redirected default framebuffer (render API 21, game API 50), the HUD as a
   head-locked overlay, menus and cinematics on a world-locked screen with a
-  controller pointer, controller buttons through the gamepad bindings, and a
+  controller pointer, controller buttons through the gamepad bindings, a
   stereo-correct laser dot (optional beam) where controller-aimed shots land,
-  controller haptics on each shot and hit, and single-player room scale
-  (the body walks after the head with collision).
+  controller haptics on each shot and hit, single-player room scale (the body
+  walks after the head with collision), and a Virtual Reality section in
+  Settings > Game Options (nine rows, twelve languages). Building that section
+  fixed the Game Options and display section selectors, which ignored clicks.
   The VR math core passes natively and under ASan/UBSan on Linux; the source
-  contract and `openxr_vr_smoke.py` pass against the in-tree OpenXR test
-  runtime on Air Defense 1 (stereo parallax, head tracking, HUD alpha, snap
-  turn, the aim dot fusing on the shot's path, a shot pulsing the weapon hand,
-  a room-scale step walking the body,
-  trigger binding, pause menu
-  pointer and a click on Resume with the window unfocused, localised action names,
-  ending VR from the runtime); the Linux sources and
-  loader compile under GCC. A run on real headset hardware is still open. See
-  the [plan](plans/2026-10-02-openxr-vr.md) and [VR guide](../user/vr.md).
+  contract, `openxr_vr_smoke.py` and `openxr_vr_menu_smoke.py` pass against
+  the in-tree OpenXR test runtime on Air Defense 1 (stereo parallax, head
+  tracking, HUD alpha, snap turn, the aim dot fusing on the shot's path, a shot
+  pulsing the weapon hand, a room-scale step walking the body, trigger
+  binding, a click on Resume with the window unfocused, changing Laser Sight
+  in the Virtual Reality section by pointing, localised action names, ending
+  VR from the runtime); the Linux sources and loader compile under GCC. A run
+  on real headset hardware is still open. See the
+  [plan](plans/2026-10-02-openxr-vr.md) and [VR guide](../user/vr.md).
 
 - [x] Suppress startup splash windows for hidden-window, renderer-disabled and dedicated launches across Windows, Linux and macOS.
 

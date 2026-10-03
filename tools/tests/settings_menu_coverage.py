@@ -933,6 +933,15 @@ def main() -> None:
         "cl_gun_y",
         "cl_gun_z",
         "g_weaponMuzzleKick",
+        "vr_enable",
+        "vr_aimMode",
+        "vr_leftHanded",
+        "vr_turnMode",
+        "vr_snapTurnAngle",
+        "vr_moveDirection",
+        "vr_roomScale",
+        "vr_aimLaser",
+        "vr_hapticStrength",
     ]
     for cvar in game_cvars:
         require(game_gui, cvar, "Game Options settings")
@@ -949,10 +958,20 @@ def main() -> None:
         "set_game_cl_gun_y",
         "set_game_cl_gun_z",
         "set_game_weaponkick",
+        "set_game_vr",
+        "set_game_vr_enable",
+        "set_game_vr_aimmode",
+        "set_game_vr_lefthanded",
+        "set_game_vr_turnmode",
+        "set_game_vr_snapturnangle",
+        "set_game_vr_movedirection",
+        "set_game_vr_roomscale",
+        "set_game_vr_aimlaser",
+        "set_game_vr_hapticstrength",
     ]
     for row in game_rows:
         require(game_gui, f"windowDef {row}", "Game Options definitions")
-        if row != "set_game_viewweapon":
+        if row not in ("set_game_viewweapon", "set_game_vr"):
             require(mainmenu, f'{row}::visible', "Game Options show/hide events")
             require(game_hovers, f"windowDef {row}_hover", "Game Options hovers")
 
@@ -980,11 +999,11 @@ def main() -> None:
     for token in (
         "rect\t204,104,377,16",
         "rect\t0,128,640,256",
-        "rect\t-24,-41,640,1476",
+        "rect\t-24,-41,640,1706",
         "rect\t613,128,16,256",
-        "high\t48",
+        "high\t58",
         "cvar\tgui_set_game_scroll",
-        "640,1476",
+        "640,1706",
     ):
         require(game_gui + mainmenu, token, "Game Options scroll coverage")
     for token in (
@@ -998,7 +1017,8 @@ def main() -> None:
         'set "gui::gui_set_game_scroll" "21"',
         'set "gui::gui_set_game_scroll" "38"',
         'set "gui::gui_set_game_scroll" "45"',
-        'set "gui::gui_set_game_scroll" "48"',
+        'set "gui::gui_set_game_scroll" "51"',
+        'set "gui::gui_set_game_scroll" "58"',
         'set "cmd" "applySettingsScroll game"',
         "set_game_section_choice::noevents",
     ):
@@ -1011,7 +1031,7 @@ def main() -> None:
     reject(audio_gui + mainmenu, "set gui_set_audio_scroll", "Audio scroll cvar command")
     for token in (
         'gui_set_sys_scroll( "gui_set_sys_scroll", "0", CVAR_GUI | CVAR_INTEGER, "display menu scroll step", 0, 28 )',
-        'gui_set_game_scroll( "gui_set_game_scroll", "0", CVAR_GUI | CVAR_INTEGER, "game menu scroll step", 0, 48 )',
+        'gui_set_game_scroll( "gui_set_game_scroll", "0", CVAR_GUI | CVAR_INTEGER, "game menu scroll step", 0, 58 )',
         "HandleMainMenuSettingsScrollInput( guiActive, event->evValue )",
         'MainMenuWindowStateEqualsInt( gui, "desktop::curr", page.expectedPage )',
         "MainMenuSettingsPopupIsVisible( gui )",

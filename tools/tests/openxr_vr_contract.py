@@ -162,7 +162,8 @@ def check_strings() -> None:
 
 def check_documents() -> None:
     for relative in ("docs/user/vr.md", "docs/dev/plans/2026-10-02-openxr-vr.md", "docs/licenses/openxr-sdk.txt",
-                     "tools/tests/openxr_vr_smoke.py", "tools/tests/openxr/OpenXRTestRuntime.cpp",
+                     "tools/tests/openxr_vr_smoke.py", "tools/tests/openxr_vr_menu_smoke.py",
+                     "tools/tests/openxr/OpenXRTestRuntime.cpp",
                      "tools/tests/native/VRMathCoreTest.cpp"):
         if not (ROOT / relative).is_file():
             raise AssertionError(f"missing {relative}")

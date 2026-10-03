@@ -230,6 +230,16 @@ The Game Options pane is `p_settings_game` and is included from `content/baseoq4
 | Weapon Y Offset | `sliderDef` + `editDef` | `set_game_cl_gun_y_slider_bar`, `set_game_cl_gun_y_value` | `cl_gun_y` | `-5..5`, step `0.05` | Additive client-side forward offset. |
 | Weapon Z Offset | `sliderDef` + `editDef` | `set_game_cl_gun_z_slider_bar`, `set_game_cl_gun_z_value` | `cl_gun_z` | `-5..5`, step `0.05` | Additive client-side up offset. |
 | Weapon Kick | `choiceDef` | `set_game_weaponkick_value` | `g_weaponMuzzleKick` | `No;Yes` | View model kicks back and tilts when the weapon fires. Presentation only: it never moves aim or the shot origin. Multiplayer weapon defs zero the stock kick values, so the game restores each weapon's single-player kick when this is on. |
+| Virtual Reality | `windowDef` label | `set_game_vr` | N/A | N/A | Section label. |
+| VR Mode | `choiceDef` | `set_game_vr_enable_value` | `vr_enable` | `Disabled;Enabled` | Starts or ends the OpenXR session at once (OpenGL renderer). |
+| Aim With | `choiceDef` | `set_game_vr_aimmode_value` | `vr_aimMode` | `1 Controller`, `0 Head` | Controller aim hides the screen crosshair; the laser sight marks shots. |
+| Weapon Hand | `choiceDef` | `set_game_vr_lefthanded_value` | `vr_leftHanded` | `0 Right`, `1 Left` | Swaps the triggers, grips and sticks with the weapon. |
+| Turning | `choiceDef` | `set_game_vr_turnmode_value` | `vr_turnMode` | `0 Snap`, `1 Smooth` | Weapon-hand stick left and right. |
+| Snap Turn Angle | `choiceDef` | `set_game_vr_snapturnangle_value` | `vr_snapTurnAngle` | `30;45;60;90` degrees | Degrees per snap turn. |
+| Walk Direction | `choiceDef` | `set_game_vr_movedirection_value` | `vr_moveDirection` | `0 Head`, `1 Off Hand` | What the off-hand stick's forward follows. |
+| Room Scale | `choiceDef` | `set_game_vr_roomscale_value` | `vr_roomScale` | `Disabled;Enabled` | Single player: the character walks after the player's steps. |
+| Laser Sight | `choiceDef` | `set_game_vr_aimlaser_value` | `vr_aimLaser` | `0 Off`, `1 Dot`, `2 Dot and Beam` | Marks where controller-aimed shots land, at the target's depth. |
+| Vibration | `choiceDef` | `set_game_vr_hapticstrength_value` | `vr_hapticStrength` | `0 Off`, `0.5 Low`, `1 Full` | Controller pulses on each shot and hit. |
 
 ## System
 
