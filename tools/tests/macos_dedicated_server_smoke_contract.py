@@ -104,6 +104,22 @@ def main() -> None:
         "curated release notes macOS dedicated-server entry",
     )
 
+    # The macOS dedicated server shares the SDL client's source list, which
+    # drops the callback-free native input facade for the client's driver. It
+    # links only if it takes the facade back, and never takes the driver.
+    meson = read("meson.build")
+    snapshot = meson.index("openq4_dedicated_sources = openq4_engine_sources")
+    facade = meson.index("openq4_dedicated_sources += files('src/framework/NativeInputDispatchDisabled.cpp')")
+    driver = meson.index("'src/sys/sdl3/NativeInputDriver.cpp')")
+    guard = meson.rindex("if dedicated_shares_client_sources", 0, facade)
+    if not snapshot < guard < facade < driver:
+        raise AssertionError("macOS dedicated server: take back the disabled native input facade after the client snapshot")
+    for platform in ("  if windows_gl_free_ded\n", "  if host_system == 'linux'\n"):
+        block = meson[meson.index(platform, snapshot):facade]
+        require(block[:200], "dedicated_shares_client_sources = false", "dedicated targets with their own source list")
+    sources = read("tools/build/meson_sources.py")
+    require(sources, 'if args.target_kind == "client" and args.platform_backend == "sdl3":', "client-only facade removal")
+
     print("macos_dedicated_server_smoke_contract: ok")
 
 

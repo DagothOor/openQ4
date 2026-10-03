@@ -26,6 +26,10 @@
   Linux ARM64 cross-build guidance for the canonical in-tree SP/MP sources
   instead of requiring retired companion-repository setup.
 
+- [x] Fix the macOS dedicated-server build, which had stopped linking: it
+  shares the client's source list, which had dropped the dedicated server's
+  stand-in for the client-only native input driver.
+
 - [x] Turn shadow maps on in the `quality` and `ultra` performance presets and
   default projected-light filtering to PCSS-lite (`r_shadowMapFilterMode 2`)
   with a 2-texel minimum radius (`r_shadowMapFilterRadius 2.0`). Lower presets

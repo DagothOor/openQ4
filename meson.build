@@ -2193,8 +2193,10 @@ bse_library = disabler()
 
 if build_engine
   openq4_dedicated_sources = openq4_engine_sources
+  dedicated_shares_client_sources = true
   if windows_gl_free_ded
     # ded keeps the static renderer while the client sheds it
+    dedicated_shares_client_sources = false
     openq4_dedicated_sources = files(dedicated_engine_source_paths)
     openq4_dedicated_sources += [openq4_paks_generated_header, generated_version_header]
     if build_games
@@ -2203,6 +2205,7 @@ if build_engine
     openq4_dedicated_sources += openq4_version_resources
   endif
   if host_system == 'linux'
+    dedicated_shares_client_sources = false
     openq4_dedicated_sources = files(dedicated_engine_source_paths)
     openq4_dedicated_sources += [openq4_paks_generated_header, generated_version_header]
     if build_games
@@ -2213,6 +2216,11 @@ if build_engine
   # The inventory and transfers call the client owned-queue ledger. Keep them out of dedicated
   # sources, which deliberately do not link the client native queue library.
   if use_sdl3_backend
+    # The SDL client's list drops the callback-free input facade for this
+    # driver, so a dedicated target sharing that list (macOS) takes it back.
+    if dedicated_shares_client_sources
+      openq4_dedicated_sources += files('src/framework/NativeInputDispatchDisabled.cpp')
+    endif
     openq4_engine_sources += files(
       'src/sys/sdl3/NativeInputEmissionInventory.cpp',
       'src/sys/sdl3/NativeInputTransfers.cpp',
