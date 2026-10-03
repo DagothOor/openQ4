@@ -1645,6 +1645,14 @@ bool idImage::CopyDepthbuffer( int x, int y, int imageWidth, int imageHeight,
 
 		if ( r_copyDepthbufferFbo == 0 ) {
 			glGenFramebuffers( 1, &r_copyDepthbufferFbo );
+			// A new FBO reads from GL_COLOR_ATTACHMENT0, which this depth-only
+			// one never has. Before GL 4.1, without ARB_ES2_compatibility
+			// (Apple's GL 2.1 context), that leaves it incomplete and every
+			// blit into it raises GL_INVALID_FRAMEBUFFER_OPERATION. The
+			// glReadBuffer( GL_NONE ) below reaches only the source, so clear
+			// this FBO's own read buffer once, here.
+			glBindFramebuffer( GL_READ_FRAMEBUFFER, r_copyDepthbufferFbo );
+			glReadBuffer( GL_NONE );
 		}
 		const GLuint copyDepthFbo = r_copyDepthbufferFbo;
 

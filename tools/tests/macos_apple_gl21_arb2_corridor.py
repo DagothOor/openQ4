@@ -680,11 +680,54 @@ def validate_multisample_gates_ask_the_context() -> None:
         reject(body, "GLEW_", context)
 
 
+def validate_post_aa_request_keeps_the_window_route() -> None:
+    """Without multisample textures the window is the scene's only multisampled
+    target on Apple's 2.1 context. SMAA needs GLSL 1.30, so a Post AA request
+    the balanced, quality and ultra presets make sent the scene offscreen for
+    nothing and cost it its MSAA. The offscreen route then raised
+    GL_INVALID_FRAMEBUFFER_OPERATION every frame: the soft-particle depth copy
+    blitted into a depth-only framebuffer whose read buffer still named a
+    colour attachment, which GL before 4.1 without ARB_ES2_compatibility
+    calls incomplete."""
+
+    game_render = read("src/game/Game_render.cpp")
+    render_scene = function_body(
+        game_render,
+        "void idGameLocal::RenderScene(const renderView_t *view, idRenderWorld *renderWorld, idCamera* portalSky, int renderFlags) {",
+    )
+    fast_no_post = source_section(render_scene, "const bool canUseFastNoPost =", ";")
+    require(fast_no_post, "!useSMAA", "direct-route Post AA gate")
+    reject(fast_no_post, "wantsSMAA", "direct-route Post AA gate")
+    require(
+        render_scene,
+        "const bool useSMAA = PostAAModeUsesSMAA( postAASchedule.effectiveMode );",
+        "direct-route Post AA gate",
+    )
+
+    image_source = read("src/renderer/Image_load.cpp")
+    depth_copy = function_body(
+        image_source,
+        "bool idImage::CopyDepthbuffer( int x, int y, int imageWidth, int imageHeight,",
+    )
+    depth_fbo_setup = source_section(
+        depth_copy,
+        "if ( r_copyDepthbufferFbo == 0 ) {",
+        "const GLuint copyDepthFbo = r_copyDepthbufferFbo;",
+    )
+    for token in (
+        "glGenFramebuffers( 1, &r_copyDepthbufferFbo );",
+        "glBindFramebuffer( GL_READ_FRAMEBUFFER, r_copyDepthbufferFbo );",
+        "glReadBuffer( GL_NONE );",
+    ):
+        require(depth_fbo_setup, token, "depth-copy framebuffer setup")
+
+
 def main() -> None:
     validate_context_aware_apple_gl21_quirk()
     validate_corridor_lighting_contract()
     validate_framebuffer_and_profile_diagnostics()
     validate_multisample_gates_ask_the_context()
+    validate_post_aa_request_keeps_the_window_route()
     validate_simple_interaction_fail_closed()
     validate_arb_entrypoint_and_binding_audit()
     validate_upload_and_vertex_cache_static_coverage()

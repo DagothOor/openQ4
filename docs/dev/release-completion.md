@@ -63,6 +63,28 @@
   report claimed 4x both times; the GL 4.5 report is unchanged. See
   [display settings](../user/display-settings.md).
 
+- [x] Keep MSAA on macOS OpenGL's 2.1 legacy context when Post AA is on.
+  SMAA needs GLSL 1.30, which that context lacks, so it never ran there, but
+  asking for it still sent the scene through the game's offscreen targets,
+  which cannot multisample on that context. The `balanced`, `quality` and
+  `ultra` presets ask for it, so they got neither SMAA nor MSAA. Only SMAA that
+  will run now takes the scene offscreen; contexts that run SMAA or have
+  multisample render targets keep their route. The offscreen route there also
+  raised `GL_INVALID_FRAMEBUFFER_OPERATION` on every frame with a soft particle
+  in view: the copy of scene depth that soft particles fade against blitted
+  into a scratch depth-only framebuffer whose read buffer still named a colour
+  attachment it never has. OpenGL before 4.1 calls that incomplete unless
+  `ARB_ES2_compatibility` is present, and Apple's 2.1 context lacks it. That
+  framebuffer now reads from no colour buffer, so the copy works, including
+  from a multisampled window, which takes the same blit. On an Apple-shaped
+  Mesa 2.1 context Air Defense 1 with Post AA on now draws to the window
+  (`gfxInfo`: `default-framebuffer-single-sample`, as Xvfb's window has no
+  samples) with no GL errors, where it reported `texture-msaa-unavailable` and
+  71 to 96 errors a run; the depth-copy fix alone also clears the offscreen
+  route. GL 4.5 still runs SMAA, with and without MSAA. A Mac with a
+  multisampled window was not available. See
+  [display settings](../user/display-settings.md).
+
 - [x] Turn shadow maps on in the `quality` and `ultra` performance presets and
   default projected-light filtering to PCSS-lite (`r_shadowMapFilterMode 2`)
   with a 2-texel minimum radius (`r_shadowMapFilterRadius 2.0`). Lower presets

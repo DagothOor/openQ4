@@ -1457,11 +1457,14 @@ void idGameLocal::RenderScene(const renderView_t *view, idRenderWorld *renderWor
 			|| screenSpaceRequested )
 		&& gameRender.postProcessRT[1] != NULL;
 
+	// Only SMAA that will run needs the offscreen chain. A request the context
+	// cannot run (Apple's GL 2.1 context has no GLSL 1.30) keeps the direct
+	// route, the only one that reaches its multisampled window.
 	const bool canUseFastNoPost =
 		g_renderFastNoPost.GetBool() &&
 		gameRender.forwardRenderSamples <= 0 &&
 		!blurEnabled &&
-		!wantsSMAA &&
+		!useSMAA &&
 		!wantsCAS &&
 		!presentation.temporalAARequested &&
 		!screenSpaceRequested;
