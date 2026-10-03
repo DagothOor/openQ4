@@ -27,6 +27,9 @@ public:
 	int							ResolveSelection( int selectionIndex, int selectionTeam ) const;
 	void						ClearWindow( void );
 	int							GetSelectedClientNum( int* selectionIndexOut, int* selectionTeamOut );
+	// openQ4: asks the server for a client's stats, unless a request for them
+	// is already in flight
+	void						RequestStats( int clientNum );
 private:
 	idList<idPlayer*>			stroggPlayers;
 	idList<idPlayer*>			marinePlayers;

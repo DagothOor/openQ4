@@ -105,11 +105,14 @@ static const int RETAINED_MP_PROTOCOL = 1;
 // ui_retainedMultiplayer opts into the card. ui_retained_gate.py keeps this
 // list equal to the card's hand-off pages.
 static const char *const RETAINED_MP_ESCAPE_MISSING_PAGES[] = {
-	"players", "vote", "match", "settings", "voice", "admin", NULL
+	"vote", "match", "settings", "voice", "admin", NULL
 };
 // The Team page's action slots (card.team_action); the game derives each
 // slot's action again from the player's state when it is chosen.
 static const int RETAINED_MP_TEAM_SLOTS = 3;
+// The Players page names players by client number (card.client), which the
+// game checks against its lists again.
+static const int RETAINED_MP_CLIENTS = MAX_ASYNC_CLIENTS;
 // The stock menu buttons the card's hand-offs press, by the card's page
 // index (card.stock_page), in the generator's order.
 static const char *const RETAINED_MP_STOCK_PAGES[] = {
@@ -5636,8 +5639,10 @@ idSessionLocal::HandleRetainedMultiplayerRequest
 The card's verbs, each the stock menu's own command with its selection
 sound: Resume closes the menu, Main Menu leaves for the main menu with the
 match running, Disconnect (after the card's own confirmation) leaves the
-server, and a page still in development hands off to its stock page. Every
-other request is refused, as the card's own verbs are anywhere else.
+server, the Team page's actions and the Players page's selection, Mute and
+Friend go to the game, and a page still in development hands off to its
+stock page. Every other request is refused, as the card's own verbs are
+anywhere else.
 ===============
 */
 void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, const char *request ) {
@@ -5646,16 +5651,27 @@ void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, con
 		return;
 	}
 	const char *command = NULL;
-	idStr teamCommand;
-	if ( !idStr::Icmp( request, "mpTeamAction" ) ) {
+	idStr gameCommand;
+	const bool select = !idStr::Icmp( request, "mpSelectPlayer" ), mute = !idStr::Icmp( request, "mpMute" ),
+		befriend = !idStr::Icmp( request, "mpFriend" );
+	if ( select || mute || befriend ) {
+		const int client = gui->State().GetInt( "card.client", "-1" );
+		if ( client < 0 || client >= RETAINED_MP_CLIENTS ) {
+			common->Warning( "retained UI: the multiplayer card named client %d", client );
+			return;
+		}
+		// None of them closes the menu.
+		gameCommand = va( "play main_menu_selection ; retained %s %d", select ? "select" : mute ? "mute" : "friend", client );
+		command = gameCommand.c_str();
+	} else if ( !idStr::Icmp( request, "mpTeamAction" ) ) {
 		const int slot = gui->State().GetInt( "card.team_action", "-1" );
 		if ( slot < 0 || slot >= RETAINED_MP_TEAM_SLOTS ) {
 			common->Warning( "retained UI: the multiplayer card asked for team action %d", slot );
 			return;
 		}
 		// An action that is unavailable now keeps the menu open.
-		teamCommand = va( "play main_menu_selection ; retained team %d", slot );
-		command = teamCommand.c_str();
+		gameCommand = va( "play main_menu_selection ; retained team %d", slot );
+		command = gameCommand.c_str();
 	} else if ( !idStr::Icmp( request, "mpClose" ) ) {
 		command = "play main_menu_selection ; close";
 	} else if ( !idStr::Icmp( request, "mpMainMenu" ) ) {

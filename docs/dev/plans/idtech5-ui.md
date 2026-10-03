@@ -152,7 +152,8 @@ a fresh connection (an optional roster block after the connect response's
 server info). The [multiplayer Escape card](../ui/multiplayer-menus.md) now
 covers the game's in-match menu behind `ui_retainedMultiplayer`: the card,
 its header, the eight-tab strip, the prompt bar, the Disconnect confirmation
-and the softening, with every page still handing off to its stock page.
+and the softening, with the Team, Players and Server pages built and the other
+five still handing off to their stock pages.
 Event programs can move focus, and Q, E and the shoulders page a document's
 tabs. The Escape pages and the Welcome menu remain. No gate closes.
 

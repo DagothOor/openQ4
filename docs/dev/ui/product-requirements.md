@@ -531,6 +531,8 @@ On engine `8ad1fcac762283b29e76fb36f6fa7a251e73effb` the multiplayer Escape card
 
 On engine `a7db82f34de864059cf66441b2ad63dfce5cec14` the multiplayer Escape card gains its Team page, with the game's join, spectate and ready actions, their refusals and reasons, the team band and recent chat, and its Server page, with the server's message, rules and map rotation. The gate and native screens tests, a mutation pass and a live probe qualify it. `FLOW-007` moves from pending to partial and `FLOW-046` gains partial evidence. Evidence: `.tmp/ui/retained-mp-team-server/validation-evidence.json`, SHA-256 `470d27af66c563373136d5db16f862eb0d3f1c935e3b1dfe6609896f18b56fb3`.
 
+On engine `27a3cf97551dbb4d0caead0904985e702631e0ca` the multiplayer Escape card gains its Players page: the team lists and spectators in the scoreboard's rows beside the selected player's kills, deaths, score, accuracy per weapon and awards, with Mute and Friend. The gate and native screens tests, a mutation pass and live probes, one from a remote client, qualify it. `FLOW-046` gains partial evidence without a status change. Evidence: `.tmp/ui/retained-mp-players/validation-evidence.json`, SHA-256 `6ef9ecdea0cd0d453a3485185bdffa0562cd091d703969aa96244f2febccefb6`.
+
 There are **92 partial, 247 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.

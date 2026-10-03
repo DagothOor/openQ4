@@ -137,7 +137,7 @@ static void CheckSchema() {
 
 static const std::set<std::string> SessionCommands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
 	"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
-	"mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction"};
+	"mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction","mpSelectPlayer","mpMute","mpFriend"};
 
 static void CheckSessionActions(const Document& document) {
 	for (const auto& [id,action] : document.Model().actions) {
@@ -292,6 +292,27 @@ static void CheckEscape(ScreenHost& host, const char* path) {
 		Check(label.x >= box.x && label.x+label.width <= box.x+box.width+.5f,"a label stays inside its tab");
 	}
 	Check(text("tab-team-active","display") == "block" && text("tab-players-active","display") == "none","only the current tab rises");
+	// The game publishes the Players page: three Marines with the player's own
+	// row second, two Strogg and a spectator; the player's statistics show.
+	StateValues lists = {{"mp.players.a.shown",true},{"mp.players.a.title",std::string("MARINES")},{"mp.players.a.color",0.0},
+		{"mp.players.a.score",std::string("12")},{"mp.players.a.count",3.0},{"mp.players.b.shown",true},
+		{"mp.players.b.title",std::string("STROGG")},{"mp.players.b.color",1.0},{"mp.players.b.count",2.0},
+		{"mp.players.s.shown",true},{"mp.players.s.title",std::string("SPECTATORS")},{"mp.players.s.color",2.0},{"mp.players.s.count",1.0},
+		{"mp.stat.client",1.0},{"mp.stat.name",std::string("Kane")},{"mp.stat.color",0.0},{"mp.stat.kills",std::string("7")},
+		{"mp.stat.acc0",std::string("57%")},{"mp.stat.acc1",std::string("-")},{"mp.stat.award0",std::string("2")},
+		{"mp.stat.award1",std::string("0")},
+		{"mp.mute.shown",true},{"mp.mute.available",false},{"mp.mute.label",std::string("MUTE PLAYER")},
+		{"mp.mute.reason",std::string("You can't mute yourself.")},{"mp.friend.shown",true},{"mp.friend.available",false},
+		{"mp.friend.label",std::string("ADD FRIEND")},{"mp.friend.reason",std::string("You can't add yourself as a friend.")}};
+	const char* const names[] = {"Anderson","Kane","Rhodes","Makron","Gladiator","Voss"};
+	for (int client = 0; client < 6; ++client) {
+		const std::string row = client < 3 ? "mp.players.a"+std::to_string(client) : client < 5 ? "mp.players.b"+std::to_string(client-3) :
+			"mp.players.s0";
+		lists[row+".client"] = static_cast<double>(client); lists[row+".name"] = std::string(names[client]);
+		lists[row+".score"] = std::to_string(10-client); lists[row+".ping"] = std::to_string(20+client);
+		lists[row+".local"] = client == 1; lists[row+".friend"] = client == 0; lists[row+".muted"] = client == 2;
+	}
+	Check(runtime.SetState(lists,error,2.9),"publish the Players page");
 	// Q, E and the strip's keycaps: the next tab at once, its page cross-fading
 	// over 150 ms, the leaving page shown but out of reach meanwhile.
 	Check(runtime.RunEvent("onTabNext",3,effects,error),"E moves to the next tab");
@@ -301,13 +322,75 @@ static void CheckEscape(ScreenHost& host, const char* path) {
 	Check(text("page-team","display") == "block" && text("page-players","display") == "block","both pages show while they cross-fade");
 	Check(number("page-players","opacity") > .1f && number("page-players","opacity") < .9f && number("page-team","opacity") < .9f,
 		"one fades in as the other fades out");
-	Check(!runtime.CanActivateControl("page-team-open",3.075) && runtime.CanActivateControl("page-players-open",3.075),
+	Check(!runtime.CanActivateControl("team-slot-0",3.075) && runtime.CanActivateControl("players-a-1",3.075),
 		"the leaving page takes no input");
-	Check(runtime.FocusedControl() == "page-players-open","the arriving page's primary action has focus");
+	Check(runtime.FocusedControl() == "players-a-1","the arriving page focuses the player whose statistics show");
 	runtime.Frame(viewport,3.2);
 	Check(text("page-team","display") == "none" && Near(number("page-players","opacity"),1,.001f) &&
 		std::get<double>(runtime.GetState().at("card.leaving")) == -1,"the cross-fade ends with one page");
 	Check(text("tab-players-active","display") == "block" && text("tab-team-active","display") == "none","the new tab rises");
+	// The Players page: each list's rows in its band's color, the player's own
+	// row brighter with the marker, the selected player lit, the symbols.
+	Check(text("players-a-2","display") == "block" && text("players-a-3","display") == "none" && text("players-b-1","display") == "block" &&
+		text("players-b-2","display") == "none" && text("players-s-0","display") == "block" && text("players-s-1","display") == "none",
+		"each list shows its players' rows");
+	Check(text("players-a-band-0","display") == "block" && text("players-a-band-1","display") == "none" &&
+		text("players-b-band-1","display") == "block" && text("players-s-band","display") == "block","the bands take their teams' colors");
+	Check(text("players-a-1-marker","display") == "block" && text("players-a-0-marker","display") == "none" &&
+		Near(number("players-a-1-band","opacity"),.29f,.001f) && Near(number("players-a-0-band","opacity"),.08f,.001f),
+		"the player's own row is brighter and marked");
+	Check(text("players-a-1-chosen","display") == "block" && text("players-a-0-chosen","display") == "none","the selected player is lit");
+	Check(text("players-a-2-speaker-slash","display") == "block" && text("players-a-0-speaker-slash","display") == "none" &&
+		Near(number("players-a-0-friend","opacity"),1,.001f) && Near(number("players-a-2-friend","opacity"),.125f,.001f),
+		"muted players' speakers are crossed and friends lit");
+	const auto lists0 = bounds("players-lists"), stats0 = bounds("players-stats");
+	Check(lists0.x+lists0.width <= stats0.x,"the statistics stand beside the lists");
+	Check(Near(bounds("players-a-0").height,24,.01f) && bounds("players-a-1").y >= bounds("players-a-0").y+23.9f,"few players take the widest pitch");
+	// The statistics: a weapon that has not fired dims, flag awards only in flag modes.
+	Check(Near(number("stat-acc-0-icon","opacity"),1,.001f) && Near(number("stat-acc-1-icon","opacity"),.35f,.001f),
+		"a weapon that has not fired dims");
+	Check(Near(number("stat-award-0-icon","opacity"),1,.001f) && Near(number("stat-award-1-icon","opacity"),.35f,.001f),
+		"an award not earned dims");
+	Check(text("stat-award-4-cell","display") == "block" && text("stat-award-5-cell","display") == "none","flag awards only in flag modes");
+	Check(text("stat-band-0","display") == "block" && text("stat-band-2","display") == "none","the statistics take the player's team color");
+	// The player's own row offers neither Mute nor Friend, and says why.
+	Check(text("players-mute-reason","display") == "block" && text("players-mute-lock","display") == "block","Mute says why it is unavailable");
+	Check(runtime.RunEvent("players_mute",3.3,effects,error) && effects.actions.empty(),"an unavailable Mute asks nothing");
+	// Choosing a row asks the game for that player; the game answers with
+	// their statistics and makes Mute and Friend available.
+	Check(runtime.RunEvent("players_b1",3.4,effects,error) && effects.actions.size() == 1 &&
+		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpSelectPlayer" &&
+		std::get<double>(runtime.GetState().at("card.client")) == 4,"choosing a row asks for its player");
+	Check(runtime.SetState({{"mp.stat.client",4.0},{"mp.stat.color",1.0},{"mp.stat.flag_mode",true},{"mp.mute.available",true},
+		{"mp.friend.available",true}},error,3.45),"the game selects the player");
+	runtime.Frame(viewport,3.5);
+	Check(text("players-b-1-chosen","display") == "block" && text("players-a-1-chosen","display") == "none","the chosen player is lit");
+	Check(text("stat-band-1","display") == "block" && text("stat-award-5-cell","display") == "block","their team's color, and flag awards in flag modes");
+	Check(runtime.RunEvent("players_friend",3.6,effects,error) && effects.actions.size() == 1 &&
+		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpFriend" &&
+		std::get<double>(runtime.GetState().at("card.client")) == 4,"Friend asks for the selected player");
+	Check(runtime.RunEvent("players_mute",3.7,effects,error) && effects.actions.size() == 1 &&
+		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpMute","and so does Mute");
+	// Sixteen entries take the narrowest pitch and still fit the page.
+	StateValues full;
+	for (const auto& [list,count] : std::vector<std::pair<std::string,int>>{{"a",8},{"b",7},{"s",1}}) {
+		full["mp.players."+list+".count"] = static_cast<double>(count);
+		for (int row = 0; row < count; ++row) full["mp.players."+list+std::to_string(row)+".client"] = static_cast<double>(row+10);
+	}
+	Check(runtime.SetState(full,error,3.75),"sixteen players");
+	runtime.Frame(viewport,3.8);
+	const auto last = bounds("players-s-0"), page = bounds("page-players");
+	// 325 dp less the headings and three bands leaves 231 dp for sixteen rows.
+	Check(Near(bounds("players-a-0").height,231/16.f,.02f) && last.y+last.height <= page.y+page.height+.5f,
+		"sixteen players share what the bands leave and fit");
+	// Past sixteen clients the rows keep 14 dp and the last ones are clipped.
+	StateValues over = full;
+	over["mp.players.a.count"] = 16.0;
+	for (int row = 8; row < 16; ++row) over["mp.players.a"+std::to_string(row)+".client"] = static_cast<double>(row+30);
+	Check(runtime.SetState(over,error,3.8),"twenty-four clients");
+	runtime.Frame(viewport,3.82);
+	Check(Near(bounds("players-a-0").height,14,.02f),"rows never shrink below 14 dp");
+	Check(runtime.SetState(lists,error,3.85),"back to six players");
 	// The strip wraps both ways; choosing the current tab changes nothing.
 	Check(runtime.RunEvent("tab_admin",4,effects,error) && runtime.RunEvent("onTabNext",4.01,effects,error),"E past the last tab");
 	Check(std::get<double>(runtime.GetState().at("card.tab")) == 0,"wraps to the first");

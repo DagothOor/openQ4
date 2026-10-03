@@ -1237,6 +1237,7 @@ idMultiplayerGame::idMultiplayerGame() {
 	joinScreenPending = false;
 	retainedMenuCovered = false;
 	retainedMenuRevision = 0;
+	retainedStatClient = -1;
 	arenaEntranceCameraResolved = false;
 	arenaEntranceCameraIsEntrance = false;
 	arenaVictorLookLatched = false;
@@ -9750,6 +9751,10 @@ void idMultiplayerGame::Clear() {
 	SetJoinScreenSoftFocus( false );
 	joinScreenPending = false;
 	retainedMenuCovered = false;
+	retainedStatClient = -1;
+	for ( int list = 0; list < RETAINED_PLAYER_LISTS; list++ ) {
+		retainedPlayerOrder[ list ].Clear();
+	}
 		
 	pingUpdateTime = 0;
 	vote = VOTE_NONE;
@@ -15651,6 +15656,13 @@ void idMultiplayerGame::SetRetainedMenuCover( bool covered, idUserInterface *car
 	}
 	retainedMenuCovered = true;
 	retainedMenuPublished.Clear();
+	// The Players page opens on the player's own statistics, its lists sorted
+	// by score again.
+	idPlayer *local = gameLocal.GetLocalPlayer();
+	retainedStatClient = local != NULL ? local->entityNumber : -1;
+	for ( int list = 0; list < RETAINED_PLAYER_LISTS; list++ ) {
+		retainedPlayerOrder[ list ].Clear();
+	}
 	PublishRetainedMenu( card );
 }
 
@@ -15879,6 +15891,218 @@ void idMultiplayerGame::RetainedTeamSlots( retainedTeamSlot_t slots[ RETAINED_TE
 	}
 }
 
+/*
+================
+idMultiplayerGame::RetainedPlayerLists
+
+The Players page's lists in the scoreboard's ranking: in team modes the
+player's own team first (Marines while spectating), then the other team;
+outside them every player in one list; the spectators last. `colors` gives
+each list's band: 0 Marine, 1 Strogg, 2 spectators, 3 the deathmatch olive,
+-1 for a list the mode does not use.
+================
+*/
+void idMultiplayerGame::RetainedPlayerLists( idList<int> lists[ RETAINED_PLAYER_LISTS ], int colors[ RETAINED_PLAYER_LISTS ] ) {
+	idPlayer *local = gameLocal.GetLocalPlayer();
+	const bool teams = gameLocal.IsTeamGame();
+	int first = TEAM_MARINE;
+	if ( teams && local != NULL && !local->spectating && local->team == TEAM_STROGG ) {
+		first = TEAM_STROGG;
+	}
+	colors[ 0 ] = teams ? first : 3;
+	colors[ 1 ] = teams ? 1 - first : -1;
+	colors[ 2 ] = 2;
+	for ( int list = 0; list < RETAINED_PLAYER_LISTS; list++ ) {
+		lists[ list ].Clear();
+	}
+	for ( int i = 0; i < rankedPlayers.Num(); i++ ) {
+		const idPlayer *player = rankedPlayers[ i ].First();
+		if ( player == NULL ) {
+			continue;
+		}
+		if ( !teams || player->team == first ) {
+			lists[ 0 ].Append( player->entityNumber );
+		} else if ( player->team == 1 - first ) {
+			lists[ 1 ].Append( player->entityNumber );
+		}
+	}
+	for ( int i = 0; i < unrankedPlayers.Num(); i++ ) {
+		if ( unrankedPlayers[ i ] != NULL ) {
+			lists[ 2 ].Append( unrankedPlayers[ i ]->entityNumber );
+		}
+	}
+}
+
+/*
+================
+idMultiplayerGame::RetainedListed
+
+Whether `client` has a row on the Players page now.
+================
+*/
+bool idMultiplayerGame::RetainedListed( int client ) {
+	idList<int> lists[ RETAINED_PLAYER_LISTS ];
+	int colors[ RETAINED_PLAYER_LISTS ];
+	RetainedPlayerLists( lists, colors );
+	for ( int list = 0; list < RETAINED_PLAYER_LISTS; list++ ) {
+		if ( lists[ list ].FindIndex( client ) >= 0 ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/*
+================
+idMultiplayerGame::ToggleFriend
+
+Marks or unmarks `client` as the local player's friend. There is no friends
+service on PC (networkSystem's AddFriend does nothing), so the player's own
+mark is kept as well; the lists and the scoreboard show it while the map
+runs.
+================
+*/
+void idMultiplayerGame::ToggleFriend( int client ) {
+	idPlayer *local = gameLocal.GetLocalPlayer();
+	if ( local == NULL || client < 0 || client >= MAX_CLIENTS ) {
+		return;
+	}
+	const bool befriend = !local->IsFriend( client );
+	local->SetFriend( client, befriend );
+	if ( befriend ) {
+		networkSystem->AddFriend( client );
+	} else {
+		networkSystem->RemoveFriend( client );
+	}
+}
+
+// The Players page's accuracy row, in the stock statistics' order; the
+// document shows each weapon's icon (tools/ui/retained_mp_menus.py WEAPONS).
+static const char *const RETAINED_ACCURACY_WEAPONS[] = { "weapon_machinegun", "weapon_shotgun", "weapon_hyperblaster",
+	"weapon_grenadelauncher", "weapon_nailgun", "weapon_rocketlauncher", "weapon_railgun", "weapon_lightninggun", "weapon_dmg",
+	"weapon_napalmgun" };
+// The awards the stock statistics show, the last three only in flag modes
+// (tools/ui/retained_mp_menus.py AWARDS).
+static const inGameAward_t RETAINED_AWARDS[] = { IGA_EXCELLENT, IGA_IMPRESSIVE, IGA_HUMILIATION, IGA_COMBO_KILL, IGA_RAMPAGE,
+	IGA_CAPTURE, IGA_ASSIST, IGA_DEFENSE };
+
+/*
+================
+idMultiplayerGame::PublishRetainedPlayers
+
+The Players page (section 14.18): each list's band (title, color and team
+score) and rows (client, name, score, ping, and whether the row is the local
+player's, a friend's or a muted player's), then the statistics of the player
+the card selected, or of the local player once that player has left, and
+Mute and Friend for them. A remote client asks the server again for
+statistics older than five seconds, as the stock statistics page does.
+================
+*/
+void idMultiplayerGame::PublishRetainedPlayers( idUserInterface *card, bool &changed ) {
+	const auto publish = [&]( const char *key, const char *value ) { changed |= PublishRetainedValue( card, key, value ); };
+	idPlayer *local = gameLocal.GetLocalPlayer();
+	idList<int> lists[ RETAINED_PLAYER_LISTS ];
+	int colors[ RETAINED_PLAYER_LISTS ];
+	RetainedPlayerLists( lists, colors );
+	int scores[ MAX_CLIENTS ];
+	memset( scores, 0, sizeof( scores ) );
+	for ( int i = 0; i < rankedPlayers.Num(); i++ ) {
+		if ( rankedPlayers[ i ].First() != NULL && rankedPlayers[ i ].First()->entityNumber < MAX_CLIENTS ) {
+			scores[ rankedPlayers[ i ].First()->entityNumber ] = rankedPlayers[ i ].Second();
+		}
+	}
+	static const char *const listNames[ RETAINED_PLAYER_LISTS ] = { "a", "b", "s" };
+	static const char *const bandTitles[] = { "#str_200197", "#str_200199", "#str_200281", "#str_200038" };
+	bool selectedListed = false;
+	for ( int list = 0; list < RETAINED_PLAYER_LISTS; list++ ) {
+		// A list keeps its order until its players change, so a row never
+		// moves under the cursor while scores change.
+		idList<int> &order = retainedPlayerOrder[ list ];
+		bool same = order.Num() == lists[ list ].Num();
+		for ( int i = 0; same && i < lists[ list ].Num(); i++ ) {
+			same = order.FindIndex( lists[ list ][ i ] ) >= 0;
+		}
+		if ( !same ) {
+			order = lists[ list ];
+		}
+		selectedListed |= order.FindIndex( retainedStatClient ) >= 0;
+		const char *name = listNames[ list ];
+		const int color = colors[ list ];
+		const int count = Min( order.Num(), RETAINED_PLAYER_ROWS );
+		publish( va( "mp.players.%s.shown", name ), color >= 0 && ( list != 2 || count > 0 ) ? "1" : "0" );
+		publish( va( "mp.players.%s.title", name ), color >= 0 ? common->GetLocalizedString( bandTitles[ color ] ) : "" );
+		publish( va( "mp.players.%s.color", name ), va( "%d", color >= 0 ? color : 3 ) );
+		publish( va( "mp.players.%s.score", name ), color == TEAM_MARINE || color == TEAM_STROGG ? va( "%d", GetScoreForTeam( color ) ) : "" );
+		publish( va( "mp.players.%s.count", name ), va( "%d", count ) );
+		for ( int row = 0; row < RETAINED_PLAYER_ROWS; row++ ) {
+			const int client = row < count ? order[ row ] : -1;
+			idEntity *entity = client >= 0 ? gameLocal.entities[ client ] : NULL;
+			idPlayer *player = entity != NULL && entity->IsType( idPlayer::GetClassType() ) ? static_cast<idPlayer *>( entity ) : NULL;
+			// A copy: va() reuses its eight buffers within the row.
+			const idStr key = va( "mp.players.%s%d", name, row );
+			publish( va( "%s.client", key.c_str() ), va( "%d", player != NULL ? client : -1 ) );
+			publish( va( "%s.name", key.c_str() ), player != NULL ? MPRetainedPlainText( player->GetUserInfo()->GetString( "ui_name" ), 64, 1 ).c_str() : "" );
+			publish( va( "%s.score", key.c_str() ), player != NULL && list != 2 ? va( "%d", scores[ client ] ) : "" );
+			publish( va( "%s.ping", key.c_str() ), player != NULL ? va( "%d", playerState[ client ].ping ) : "" );
+			publish( va( "%s.local", key.c_str() ), player != NULL && player == local ? "1" : "0" );
+			publish( va( "%s.friend", key.c_str() ), player != NULL && local != NULL && local->IsFriend( client ) ? "1" : "0" );
+			publish( va( "%s.muted", key.c_str() ), player != NULL && local != NULL && local->IsPlayerMuted( client ) ? "1" : "0" );
+		}
+	}
+
+	// The statistics: the selected player's, or the local player's once the
+	// selected one has left.
+	if ( !selectedListed ) {
+		retainedStatClient = local != NULL ? local->entityNumber : -1;
+	}
+	const int selected = retainedStatClient;
+	idEntity *entity = selected >= 0 && selected < MAX_CLIENTS ? gameLocal.entities[ selected ] : NULL;
+	idPlayer *chosen = entity != NULL && entity->IsType( idPlayer::GetClassType() ) ? static_cast<idPlayer *>( entity ) : NULL;
+	publish( "mp.stat.client", va( "%d", chosen != NULL ? selected : -1 ) );
+	publish( "mp.stat.name", chosen != NULL ? MPRetainedPlainText( chosen->GetUserInfo()->GetString( "ui_name" ), 64, 1 ).c_str() : "" );
+	int statColor = 3;
+	if ( chosen != NULL && chosen->spectating ) {
+		statColor = 2;
+	} else if ( chosen != NULL && gameLocal.IsTeamGame() && chosen->team >= 0 && chosen->team < TEAM_MAX ) {
+		statColor = chosen->team;
+	}
+	publish( "mp.stat.color", va( "%d", statColor ) );
+	rvPlayerStat *stat = chosen != NULL ? statManager->GetPlayerStat( selected ) : NULL;
+	if ( stat != NULL && gameLocal.isClient && gameLocal.time - stat->lastUpdateTime > 5000 ) {
+		statManager->RequestPlayerStat( selected );
+	}
+	// A remote client knows a player's statistics once the server answered.
+	const bool known = stat != NULL && ( !gameLocal.isClient || stat->lastUpdateTime > 0 );
+	publish( "mp.stat.kills", known ? va( "%d", stat->kills ) : "-" );
+	publish( "mp.stat.deaths", known ? va( "%d", stat->deaths ) : "-" );
+	publish( "mp.stat.score", chosen != NULL ? va( "%d", gameLocal.IsTeamGame() ? GetTeamScore( selected ) + GetScore( selected ) : GetScore( selected ) ) : "-" );
+	for ( int i = 0; i < static_cast<int>( sizeof( RETAINED_ACCURACY_WEAPONS ) / sizeof( RETAINED_ACCURACY_WEAPONS[0] ) ); i++ ) {
+		const int weapon = local != NULL ? local->GetWeaponIndex( RETAINED_ACCURACY_WEAPONS[ i ] ) : 0;
+		idStr accuracy = "-";
+		if ( known && weapon > 0 && weapon < MAX_WEAPONS && stat->weaponShots[ weapon ] > 0 ) {
+			accuracy = va( "%d%%", static_cast<int>( static_cast<float>( stat->weaponHits[ weapon ] ) / stat->weaponShots[ weapon ] * 100.0f ) );
+		}
+		publish( va( "mp.stat.acc%d", i ), accuracy.c_str() );
+	}
+	for ( int i = 0; i < static_cast<int>( sizeof( RETAINED_AWARDS ) / sizeof( RETAINED_AWARDS[0] ) ); i++ ) {
+		publish( va( "mp.stat.award%d", i ), known ? va( "%d", stat->inGameAwards[ RETAINED_AWARDS[ i ] ] ) : "-" );
+	}
+	publish( "mp.stat.flag_mode", gameLocal.IsFlagGameType() ? "1" : "0" );
+	// Mute and Friend act on another player.
+	const bool other = chosen != NULL && local != NULL && chosen != local;
+	const bool muted = local != NULL && local->IsPlayerMuted( selected ), befriended = local != NULL && local->IsFriend( selected );
+	publish( "mp.mute.shown", chosen != NULL ? "1" : "0" );
+	publish( "mp.mute.available", other ? "1" : "0" );
+	publish( "mp.mute.label", common->GetLocalizedString( muted ? "#str_200251" : "#str_200250" ) );
+	publish( "mp.mute.reason", other ? "" : common->GetLocalizedString( "#str_231031" ) );
+	publish( "mp.mute.detail", "" );
+	publish( "mp.friend.shown", chosen != NULL ? "1" : "0" );
+	publish( "mp.friend.available", other ? "1" : "0" );
+	publish( "mp.friend.label", common->GetLocalizedString( befriended ? "#str_200249" : "#str_200248" ) );
+	publish( "mp.friend.reason", other ? "" : common->GetLocalizedString( "#str_231032" ) );
+	publish( "mp.friend.detail", "" );
+}
+
 bool idMultiplayerGame::PublishRetainedValue( idUserInterface *card, const char *key, const char *value ) {
 	if ( retainedMenuPublished.FindKey( key ) != NULL && !idStr::Cmp( retainedMenuPublished.GetString( key ), value ) ) {
 		return false;
@@ -15898,7 +16122,8 @@ the clock and the score: "MARINES 12 - 9 STROGG" with the player's team
 first in team modes, the player's place and score in the others. The Team
 page holds the player's band, three actions with what they would do or why
 they cannot, and the last three chat lines; the Server page the server's
-name, address and message, seven rules and the map rotation.
+name, address and message, seven rules and the map rotation; the Players
+page its lists and the selected player's statistics.
 ================
 */
 void idMultiplayerGame::PublishRetainedMenu( idUserInterface *card ) {
@@ -15924,7 +16149,8 @@ void idMultiplayerGame::PublishRetainedMenu( idUserInterface *card ) {
 		score = va( "%s %d - %d %s", common->GetLocalizedString( teamTitles[ first ] ), GetScoreForTeam( first ),
 			GetScoreForTeam( second ), common->GetLocalizedString( teamTitles[ second ] ) );
 	} else if ( playing ) {
-		score = GetPlayerRankText( player );
+		// The rank text carries the HUD's colour codes.
+		score = MPRetainedPlainText( GetPlayerRankText( player ), 96, 1 );
 	}
 	publish( "mp.score", score.c_str() );
 
@@ -16023,6 +16249,7 @@ void idMultiplayerGame::PublishRetainedMenu( idUserInterface *card ) {
 	}
 	publish( "mp.rotation_count", va( "%d", rotation ) );
 	publish( "mp.rotation_current", va( "%d", current ) );
+	PublishRetainedPlayers( card, changed );
 	if ( changed ) {
 		card->SetStateInt( "mp.revision", ++retainedMenuRevision );
 	}
@@ -16036,6 +16263,9 @@ The card's commands. "retained team <slot>" chooses one of the Team page's
 actions, derived again here from the player's state, never from the card;
 an action that is unavailable now does nothing and keeps the menu open.
 Joining, spectating and readying close the menu, as the stock buttons do.
+"retained select|mute|friend <client>" shows a player's statistics, or mutes
+or befriends them, for a client with a row on the Players page now; neither
+of the last two applies to the player's own row, and none closes the menu.
 ================
 */
 bool idMultiplayerGame::HandleRetainedMenuCommand( const idCmdArgs &args, int &icmd ) {
@@ -16064,6 +16294,28 @@ bool idMultiplayerGame::HandleRetainedMenuCommand( const idCmdArgs &args, int &i
 		}
 		DisableMenu();
 		return true;
+	}
+	if ( ( !sub.Icmp( "select" ) || !sub.Icmp( "mute" ) || !sub.Icmp( "friend" ) ) && args.Argc() - icmd >= 1 ) {
+		const idStr clientText = args.Argv( icmd++ );
+		bool digits = clientText.Length() >= 1 && clientText.Length() <= 2;
+		for ( int i = 0; digits && i < clientText.Length(); i++ ) {
+			digits = clientText[ i ] >= '0' && clientText[ i ] <= '9';
+		}
+		const int client = digits ? atoi( clientText.c_str() ) : -1;
+		if ( client < 0 || client >= MAX_CLIENTS || !RetainedListed( client ) ) {
+			return false;
+		}
+		idPlayer *local = gameLocal.GetLocalPlayer();
+		if ( !sub.Icmp( "select" ) ) {
+			retainedStatClient = client;
+		} else if ( local != NULL && client != local->entityNumber ) {
+			if ( !sub.Icmp( "mute" ) ) {
+				ClientVoiceMute( client, !local->IsPlayerMuted( client ) );
+			} else {
+				ToggleFriend( client );
+			}
+		}
+		return false;
 	}
 	return false;
 }
@@ -17331,14 +17583,9 @@ const char* idMultiplayerGame::HandleGuiCommands( const char *_menuCommand ) {
 				continue;
 			}
 
-			// un-mark this client as a friend
-			if( gameLocal.GetLocalPlayer() ) {
-				if( gameLocal.GetLocalPlayer()->IsFriend( client ) ) {
-					networkSystem->RemoveFriend( client );
-				} else {
-						networkSystem->AddFriend( client );
-				}
-			}
+			// openQ4: marks or unmarks the friend; PC has no friends service,
+			// so the player's own mark is what the page shows
+			ToggleFriend( client );
 			
 			// refresh with new info
 			statManager->SetupStatWindow( currentGui );

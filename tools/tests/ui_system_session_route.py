@@ -46,6 +46,7 @@ struct idCmdArgs {
     int Argc() const{return static_cast<int>(values.size());}
     const char* Argv(int index) const{return values.at(index).c_str();}
 };
+static const int MAX_ASYNC_CLIENTS = 32;
 static std::vector<std::string> events;
 static int checks=0;
 #define CHECK(x) do {++checks; if(!(x)){std::fprintf(stderr,"check failed line %d: %s\n",__LINE__,#x);std::abort();}} while(false)

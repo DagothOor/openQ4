@@ -1167,6 +1167,22 @@ private:
 	static const int RETAINED_TEAM_SLOTS = 3;
 	void			RetainedTeamSlots( retainedTeamSlot_t slots[ RETAINED_TEAM_SLOTS ] );
 	bool			PublishRetainedValue( idUserInterface *card, const char *key, const char *value );
+	// The Players page's lists: the player's own team (Marines while
+	// spectating, everyone outside team modes), the other team and the
+	// spectators, each up to the rows a server can hold. A list keeps its
+	// order while the menu stays open, and sorts again by score only when it
+	// opens or the list's players change. The page shows the statistics of
+	// retainedStatClient.
+	static const int RETAINED_PLAYER_LISTS = 3;
+	static const int RETAINED_PLAYER_ROWS = 16;
+	idList<int>		retainedPlayerOrder[ RETAINED_PLAYER_LISTS ];
+	int				retainedStatClient;
+	void			RetainedPlayerLists( idList<int> lists[ RETAINED_PLAYER_LISTS ], int colors[ RETAINED_PLAYER_LISTS ] );
+	bool			RetainedListed( int client );
+	void			PublishRetainedPlayers( idUserInterface *card, bool &changed );
+	// Marks or unmarks a friend: the platform's friends service where there is
+	// one, and the player's own mark, which the lists and scoreboard show.
+	void			ToggleFriend( int client );
 	bool			arenaEntranceCameraResolved;
 	// Which presentation the latched camera belongs to.  The entrance and the
 	// final tableau both latch a collision-safe anchor, but they resolve it

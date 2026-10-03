@@ -95,6 +95,7 @@ struct Common {
 // The installed files the session can find, and the Awakening content probe.
 struct idCampaignContentInfo { bool ready = true, present = true; idStr missing; };
 #define MAX_STRING_CHARS 1024
+static const int MAX_ASYNC_CLIENTS = 32;
 #define BASE_GAMEDIR "q4base"
 #define OPENQ4_GAMEDIR "baseoq4"
 struct idFile {};
@@ -810,6 +811,22 @@ int main() {
             card->state["card.team_action"] = slot; s.HandleRetainedSessionRequest(card, "mpTeamAction");
             CHECK(gameObject.guiCommands.size() == asked && s.guiRetainedMultiplayer == card &&
                   commonObject.warnings.back().find("team action") != std::string::npos);
+        }
+        // The Players page: the client a row or the statistics name reaches the
+        // game as "retained select|mute|friend <client>", none of which closes
+        // the menu; a client outside the server's slots is refused.
+        gameObject.answer = [](const char*) -> const char* { return "continue"; };
+        card->state["card.client"] = "4"; s.HandleRetainedSessionRequest(card, "mpSelectPlayer");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; retained select 4" && s.guiRetainedMultiplayer == card);
+        s.HandleRetainedSessionRequest(card, "mpMute");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; retained mute 4" && s.guiRetainedMultiplayer == card);
+        card->state["card.client"] = "31"; s.HandleRetainedSessionRequest(card, "mpFriend");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; retained friend 31" && s.guiRetainedMultiplayer == card);
+        const size_t named = gameObject.guiCommands.size();
+        for (const char* client : {"-1", "32"}) {
+            card->state["card.client"] = client; s.HandleRetainedSessionRequest(card, "mpSelectPlayer");
+            CHECK(gameObject.guiCommands.size() == named && s.guiRetainedMultiplayer == card &&
+                  commonObject.warnings.back().find("named client") != std::string::npos);
         }
         gameObject.answer = nullptr;
         for (const char* page : {"-1", "8"}) {
@@ -1549,6 +1566,32 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
         command.index('DisableMenu();')
     # HandleGuiCommands' _XENON branches defeat a brace count; pin the statement.
     assert mp_game.replace('\r\n', '\n').count('if ( HandleRetainedMenuCommand( args, icmd ) ) {\n\t\t\t\treturn NULL;') == 1
+    # The Players page: the session bounds the client to the server's slots,
+    # and the game acts only on a client with a row now, never mutes or
+    # befriends the player's own row, and keeps the menu open.
+    assert 'static const int RETAINED_MP_CLIENTS = MAX_ASYNC_CLIENTS;' in menu
+    assert 'if ( client < 0 || client >= RETAINED_MP_CLIENTS ) {' in function_body(menu, 'void idSessionLocal::HandleRetainedMultiplayerRequest(')
+    listed = command.index('if ( client < 0 || client >= MAX_CLIENTS || !RetainedListed( client ) ) {')
+    assert listed < command.index('retainedStatClient = client;')
+    own = command.index('} else if ( local != NULL && client != local->entityNumber ) {')
+    assert listed < own < command.index('ClientVoiceMute( client, !local->IsPlayerMuted( client ) );') < command.index('ToggleFriend( client );')
+    players = command[listed:]
+    assert 'DisableMenu' not in players and 'return true' not in players, 'the Players page commands keep the menu open'
+    # The game and the document agree on the lists, the weapons and the awards.
+    assert f'static const int RETAINED_PLAYER_LISTS = {len(retained_mp_menus.PLAYER_LISTS)};' in header
+    assert f'static const int RETAINED_PLAYER_ROWS = {retained_mp_menus.PLAYER_ROWS};' in header
+    weapons = re.search(r'RETAINED_ACCURACY_WEAPONS\[\] = \{([^}]*)\};', mp_game).group(1)
+    assert re.findall(r'"([a-z_]+)"', weapons) == [weapon for weapon, _icon, _tint in retained_mp_menus.WEAPONS]
+    awards = re.search(r'RETAINED_AWARDS\[\] = \{([^}]*)\};', mp_game).group(1)
+    assert re.findall(r'IGA_[A-Z_]+', awards) == ['IGA_' + award.upper() for award in retained_mp_menus.AWARDS]
+    for kind, _tints in retained_mp_menus.PLAYER_LISTS:
+        assert all(f'players_{kind}{row}' in document['events'] for row in range(retained_mp_menus.PLAYER_ROWS)), kind
+    publish = function_body(mp_game, 'void idMultiplayerGame::PublishRetainedMenu(')
+    assert publish.index('PublishRetainedPlayers( card, changed );') < publish.index('if ( changed ) {')
+    # The deathmatch header's rank text drops the HUD's colour codes.
+    assert 'score = MPRetainedPlainText( GetPlayerRankText( player ), 96, 1 );' in publish
+    # The stock Friend button keeps the same mark the page shows.
+    assert mp_game.count('ToggleFriend( client );') == 2
 
 
 def main() -> int:

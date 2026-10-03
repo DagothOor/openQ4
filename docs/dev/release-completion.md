@@ -735,10 +735,16 @@
   full-screen page, with the map, mode, clock and score in its header, eight
   tabs that Q and E (or the shoulder buttons) switch, and Resume, Main Menu
   and Disconnect, which asks first. Its Team page switches team, spectates or
-  readies up, and says why when it cannot; its Server page shows the server's
+  readies up, and says why when it cannot; its Players page lists the teams
+  beside the chosen player's kills, deaths, score, accuracy per weapon and
+  awards, and mutes or befriends them; its Server page shows the server's
   message, rules and map rotation. Its other pages still open the classic
   pages for now, and the menu shown when you first join a server stays
   classic.
+
+- The classic multiplayer Players page's Add Friend button now marks the
+  player as your friend in the lists and on the scoreboard. It did nothing on
+  PC, which has no friends service.
 
 - The opt-in SYSTEM page adds **Preload Light Grids** under Irradiance Volumes.
   Apply saves it without a Keep/Revert question, since it takes effect when the

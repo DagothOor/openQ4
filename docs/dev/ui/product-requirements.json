@@ -4,7 +4,7 @@
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "a7db82f34de864059cf66441b2ad63dfce5cec14",
+    "engine_revision": "27a3cf97551dbb4d0caead0904985e702631e0ca",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -24,7 +24,7 @@
     "original": {
       "path": "docs/dev/plans/idtech5-ui.md",
       "authority": "original immutable scope and stage gates",
-      "sha256": "5893ce0edc021d1e6f4963b4815665168bc43baf325ddf8b8f6c66f566f50e70"
+      "sha256": "d5f0aa3660681325236df4c8a1996c53d30b036a630e6c8a9c3aa12bae94cacd"
     },
     "inventory": {
       "path": "docs/dev/ui/inventory-report.md",
@@ -844,13 +844,19 @@
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/multiplayer-menus.md",
       "scope": "Behind ui_retainedMultiplayer, the multiplayer Escape card covers the game's in-match menu over the softened match: header, eight-tab strip, prompt bar, Disconnect confirmation and hand-off pages, with the game's revisioned header keys and its own menu commands. Qualified by the gate and native screens tests, a mutation pass and a live probe on OpenGL and Vulkan in four languages.",
-      "sha256": "ea3d4bbac25d24b9bc291d3e5c4df798eaffd811e38f6272bf220711378f4935"
+      "sha256": "c2b721b66800f0d68d692c34b9c538676d12b5db71b55dc3f00bfbc8e9348896"
     },
     "retained-mp-team-server": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/multiplayer-menus.md",
       "scope": "The Escape card's Team page offers the game's own join, spectate and ready actions with their availability and reasons, the team band and recent chat; its Server page shows the server's name, address, message, rules and rotation. Qualified by the gate and native screens tests, a mutation pass and a live probe in two languages.",
-      "sha256": "ea3d4bbac25d24b9bc291d3e5c4df798eaffd811e38f6272bf220711378f4935"
+      "sha256": "c2b721b66800f0d68d692c34b9c538676d12b5db71b55dc3f00bfbc8e9348896"
+    },
+    "retained-mp-players": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/multiplayer-menus.md",
+      "scope": "The Escape card's Players page lists the teams and spectators beside the selected player's statistics, with Mute and Friend. Qualified by the gate and native screens tests, a mutation pass and live probes in three languages, on both renderers, and from a remote client.",
+      "sha256": "c2b721b66800f0d68d692c34b9c538676d12b5db71b55dc3f00bfbc8e9348896"
     }
   },
   "groups": {
@@ -11553,10 +11559,11 @@
       "status": "partial",
       "current_evidence": [
         "retained-mp-escape",
-        "retained-mp-team-server"
+        "retained-mp-team-server",
+        "retained-mp-players"
       ],
       "acceptance_evidence": [],
-      "remaining": "Behind ui_retainedMultiplayer, the Escape card covers the game's in-match menu over the softened match (in over 250 ms with the 12 dp rise and 150 ms fade, released over 250 ms when it closes over the match, the scrim and vignette standing in) while the match runs and the HUD hides: the section 6 card, the header with the map, mode, clock and score, the horizontal tab strip (the active tab's rise, flare and shoulder, the broken baseline and wash, labels fitted per language, Q and E at its ends), the 150 ms page cross-fade with focus on each page's primary action, and the prompt bar with Resume, Tabs, Select, Main Menu and Disconnect, which asks first. The card is 890 dp wide, not 648 dp, because eight tabs cannot fit the specified width. The Team page offers the game's actions for the player (switch team with the sizes it would leave, spectate and ready on a team; joining either team as a spectator; join game or spectate elsewhere), each unavailable one dimmed with its lock and reason and shaking when chosen, with the team band and the last chat lines; the Server page shows the name, address, message, rules and map rotation. The other six pages still hand off to their stock pages; those pages, the Welcome card, unavailable-action plates, the Match tab's inner strip, controller glyphs, narrow and portrait views, Classic and acceptance remain.",
+      "remaining": "Behind ui_retainedMultiplayer, the Escape card covers the game's in-match menu over the softened match (in over 250 ms with the 12 dp rise and 150 ms fade, released over 250 ms when it closes over the match, the scrim and vignette standing in) while the match runs and the HUD hides: the section 6 card, the header with the map, mode, clock and score, the horizontal tab strip (the active tab's rise, flare and shoulder, the broken baseline and wash, labels fitted per language, Q and E at its ends), the 150 ms page cross-fade with focus on each page's primary action, and the prompt bar with Resume, Tabs, Select, Main Menu and Disconnect, which asks first. The card is 890 dp wide, not 648 dp, because eight tabs cannot fit the specified width. The Team page offers the game's actions for the player (switch team with the sizes it would leave, spectate and ready on a team; joining either team as a spectator; join game or spectate elsewhere), each unavailable one dimmed with its lock and reason and shaking when chosen, with the team band and the last chat lines; the Server page shows the name, address, message, rules and map rotation. The Players page lists the teams and spectators in the scoreboard's rows (the player's own row marked, muted and friend symbols, score and ping, a pitch adapting to sixteen entries, the order held while the menu is open) beside the selected player's statistics (kills, deaths, score, accuracy per weapon in the weapon color code, the awards' medals), with Mute and Friend, which the player's own row refuses with reasons. The other five pages still hand off to their stock pages; those pages, the Welcome card, unavailable-action plates, the Match tab's inner strip, controller glyphs, narrow and portrait views, Classic and acceptance remain.",
       "constraints": {
         "welcome_card_dp": [
           570,

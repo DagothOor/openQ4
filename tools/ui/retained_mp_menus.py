@@ -23,7 +23,7 @@ from pathlib import Path
 import build_retained_screens as b
 from build_retained_screens import (EASE_OUT, FULL, MARKER, OLIVE, ORANGE, RAIL_CARD, SOFT_FOCUS_BLUR,
                                     SOFT_FOCUS_SATURATION, VALUE, Document, absolute, colour, confirmation, group,
-                                    keyword, label, length, linear, link, marker_path, number, path, rgb, solid,
+                                    keyword, label, length, linear, link, marker_path, number, path, picture, rgb, solid,
                                     stroke, track, transform, typeface, vector)
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -396,18 +396,18 @@ def padlock(ident: str, tint: list) -> dict:
     ])
 
 
-def slot_plate(doc: Document, index: int, width: float) -> tuple[dict, str]:
-    """A Team page action: an in-game plate whose label, availability and
-    reason the game publishes (mp.action<i>.*). An unavailable action stays in
-    place, dimmed, with a lock after its label and its reason in the error
-    color on the plate; choosing it shakes the plate for 300 ms and pulses the
-    reason, and nothing else happens. An available one records its slot and
-    runs mpTeamAction, which the game derives again from the player's state."""
-    ident = f"team-slot-{index}"
-    key = f"mp.action{index}"
+def action_plate(doc: Document, ident: str, key: str, width: float, top: float, event: str, steps: list, *,
+                 primary: bool = False) -> dict:
+    """An action the game offers: an in-game plate whose label, availability
+    and reason the game publishes (`key`.shown, .available, .label, .reason
+    and .detail). An unavailable action stays in place, dimmed, with a lock
+    after its label and its reason in the error color on the plate; choosing
+    it shakes the plate for 300 ms and pulses the reason, and nothing else
+    happens. An available one runs `steps`, which ask the game, and the game
+    checks the action again."""
     for name, kind in (("shown", "boolean"), ("available", "boolean"), ("label", "string"), ("reason", "string"), ("detail", "string")):
         doc.state[f"{key}.{name}"] = {"type": kind, "initial": False if kind == "boolean" else ""}
-    plate = in_game_plate(doc, ident, PLACEHOLDER, 0, 0, width=width, primary=index == 0, event=f"team_slot_{index}")
+    plate = in_game_plate(doc, ident, PLACEHOLDER, 0, 0, width=width, primary=primary, event=event)
     # The label leaves the plate's own box for a row with the lock after it.
     label_node = next(child for child in plate["children"] if child["id"] == f"{ident}-label")
     plate["children"].remove(label_node)
@@ -435,7 +435,7 @@ def slot_plate(doc: Document, index: int, width: float) -> tuple[dict, str]:
     doc.bind(f"{ident}-reason.display", f"{ident}-reason", "display", {"op": "select", "args": [unavailable, "block", "none"]})
     doc.bind(f"{ident}-detail.display", f"{ident}-detail", "display",
              {"op": "select", "args": [{"state": f"{key}.available"}, "block", "none"]})
-    holder = group(f"{ident}-slot", {**absolute(left=0, top=SLOT_TOP + SLOT_PITCH * index, width=width, height=58),
+    holder = group(f"{ident}-slot", {**absolute(left=0, top=top, width=width, height=58),
                                      "transform": transform(), "display": keyword("none")}, [plate, reason, detail])
     doc.bind(f"{ident}-slot.display", f"{ident}-slot", "display", {"op": "select", "args": [{"state": f"{key}.shown"}, "block", "none"]})
     shake = f"shake-{ident}"
@@ -444,11 +444,20 @@ def slot_plate(doc: Document, index: int, width: float) -> tuple[dict, str]:
                                              (230, transform(tx=3)), (300, transform())]),
         track(f"{ident}-reason", "opacity", [(0, number(1)), (100, number(0.35)), (200, number(1)), (300, number(1))]),
     ])
-    doc.events[f"team_slot_{index}"] = [
-        {"op": "if", "condition": {"state": f"{key}.available"},
-         "then": [{"op": "setState", "values": {"card.team_action": index}}, {"op": "action", "action": "mpTeamAction"}],
-         "else": [{"op": "playTimeline", "timeline": shake}]},
+    doc.events[event] = [
+        {"op": "if", "condition": {"state": f"{key}.available"}, "then": steps, "else": [{"op": "playTimeline", "timeline": shake}]},
     ]
+    return holder
+
+
+def slot_plate(doc: Document, index: int, width: float) -> tuple[dict, str]:
+    """A Team page action (mp.action<i>.*): an available one records its slot
+    and runs mpTeamAction, which the game derives again from the player's
+    state."""
+    ident = f"team-slot-{index}"
+    steps = [{"op": "setState", "values": {"card.team_action": index}}, {"op": "action", "action": "mpTeamAction"}]
+    holder = action_plate(doc, ident, f"mp.action{index}", width, SLOT_TOP + SLOT_PITCH * index, f"team_slot_{index}", steps,
+                          primary=index == 0)
     return holder, ident
 
 
@@ -504,6 +513,355 @@ def team_page(doc: Document, index: int, ident: str, width: float, height: float
     doc.session("mpTeamAction", "mpTeamAction")
     children = [*bands, band_title, band_score, band_detail, *slots, *chat]
     return page_group(doc, index, ident, width, height, children, controls), controls[0]
+
+
+# ------------------------------------------------------------- Players page
+
+# The lists: the player's own team (or Marines while spectating, or everyone
+# outside team modes), the other team, then the spectators, each as many rows
+# as a server can hold (si_maxPlayers is at most 16). The game fills them in
+# this order (RETAINED_PLAYER_LISTS and RETAINED_PLAYER_ROWS in the game) and
+# says which band color each list takes: Marine, Strogg, spectators or the
+# deathmatch olive.
+PLAYER_LISTS = (("a", (0, 1, 3)), ("b", (0, 1)), ("s", (2,)))
+PLAYER_ROWS = 16
+BAND_TINTS = (MP_MARINE, MP_STROGG, MP_SPECTATOR, MP_NEUTRAL)
+LIST_W = 380.0                 # the lists' column; the statistics take the rest
+LIST_HEAD_H, LIST_BAND_H, LIST_GAP = 16.0, 22.0, 6.0
+ROW_MIN, ROW_MAX = 14.0, 24.0  # a row's pitch, shrinking with the entries (section 14.14)
+ROW_FACE = 14.0
+NAME_KEY, SCORE_KEY, PING_KEY = "#str_200242", "#str_200198", "#str_200037"
+KILLS_KEY, DEATHS_KEY, ACCURACY_KEY, AWARDS_KEY = "#str_200201", "#str_200202", "#str_200203", "#str_200204"
+# The accuracy row in the stock statistics' order: each weapon's icon in its
+# color code (Appendix B.4). The game publishes mp.stat.acc<i> for the same
+# weapons (RETAINED_ACCURACY_WEAPONS).
+WEAPONS = (("weapon_machinegun", "item_machinegun", (1, 1, 0)), ("weapon_shotgun", "item_shotgun", (1, 0.5, 0)),
+           ("weapon_hyperblaster", "item_hyperblaster", (0, 0.45, 1)), ("weapon_grenadelauncher", "item_grenade", (0.2, 0.56, 0.07)),
+           ("weapon_nailgun", "item_nailgun", (0.6, 0.8, 0.8)), ("weapon_rocketlauncher", "item_rocket", (1, 0.2, 0)),
+           ("weapon_railgun", "item_railgun", (0, 1, 0)), ("weapon_lightninggun", "item_lightning", (1, 1, 0.73)),
+           ("weapon_dmg", "item_darkmatter", (0.77, 0, 1)), ("weapon_napalmgun", "item_fire", (1, 0.75, 0.25)))
+# The awards the stock statistics show, the last three only in flag modes
+# (RETAINED_AWARDS in the game); medals stay bitmaps (section 6).
+AWARDS = ("excellent", "impressive", "humiliation", "combo_kill", "rampage", "capture", "assist", "defense")
+FLAG_AWARDS = 3
+MUTE_LABELS, FRIEND_LABELS = ("#str_200250", "#str_200251"), ("#str_200248", "#str_200249")
+MUTE_SELF, FRIEND_SELF = "#str_231031", "#str_231032"
+STAT_PLATES_TOP = 192.0
+
+
+def widest(keys, face: str, size: float) -> float:
+    return max(b.text_width(face, text, size) for key in keys for text in any_text(key).values())
+
+
+def list_columns(width: float) -> dict:
+    """The rows' columns: the marker, the speaker and friend symbols, the
+    name taking what is left, then the score and the ping at the widest of
+    their heading in any language and their longest values."""
+    score = max(widest([SCORE_KEY], "lowpixel", 11), b.text_width("lowpixel", "-999", ROW_FACE)) + 2
+    ping = max(widest([PING_KEY], "lowpixel", 11), b.text_width("lowpixel", "999", ROW_FACE)) + 2
+    columns = {"marker": 12.0, "speaker": 18.0, "friend": 20.0, "score": round(score, 3), "ping": round(ping, 3), "gap": 8.0, "end": 4.0}
+    columns["name"] = width - columns["marker"] - columns["speaker"] - columns["friend"] - score - ping - columns["gap"] - columns["end"]
+    if columns["name"] < 160:
+        raise SystemExit(f"the player lists leave {columns['name']:.0f} dp for names")
+    return columns
+
+
+def speaker_icon(ident: str) -> dict:
+    """The speaker with a wave (section 6, status symbols); muting crosses it
+    with a red slash."""
+    tint = [1, 1, 1, 0.7]
+    slash = vector(f"{ident}-slash", {**absolute(left=0, top=0, width=14, height=14), "display": keyword("none")}, [
+        path("slash", [(1.5, 12.5), (12.5, 1.5)], closed=False, stroke=stroke(solid(rgb(ERROR)), 1.6))])
+    return vector(ident, {"position": keyword("relative"), "display": keyword("block"), "width": length(14), "height": length(14),
+                          "margin-right": length(4), "flex-shrink": number(0)}, [
+        path("body", [(1.5, 5), (4.5, 5), (8, 2), (8, 12), (4.5, 9), (1.5, 9)], fill=solid(tint)),
+        path("wave", [(10, 4), (11.6, 7), (10, 10)], closed=False, stroke=stroke(solid(tint), 1.2)),
+    ], [slash])
+
+
+def friend_icon(ident: str) -> dict:
+    """The friend silhouette (section 6, status symbols), 0.125 when the
+    player is not a friend."""
+    tint = [1, 1, 1, 1]
+    head = [(7 + 2.6 * x, 4.6 + 2.6 * y) for x, y in ((0, -1), (0.71, -0.71), (1, 0), (0.71, 0.71), (0, 1), (-0.71, 0.71),
+                                                      (-1, 0), (-0.71, -0.71))]
+    return vector(ident, {"position": keyword("relative"), "display": keyword("block"), "width": length(14), "height": length(14),
+                          "margin-right": length(6), "flex-shrink": number(0), "opacity": number(0.125)}, [
+        path("head", head, fill=solid(tint)),
+        path("shoulders", [(1.5, 13.5), (2.2, 10.4), (4.6, 8.6), (9.4, 8.6), (11.8, 10.4), (12.5, 13.5)], fill=solid(tint)),
+    ])
+
+
+def team_band(ident: str, width: float, height: float, tint: str, cut: float = 8.0) -> dict:
+    """A header band in a team's color (section 6): an upper-leading cut, top
+    and leading rails, the fill full to half the width and fading toward the
+    end."""
+    return vector(ident, {**absolute(left=0, top=0, width=width, height=height), "display": keyword("none")}, [
+        path("fill", [(cut, 0), ({"fraction": 1}, 0), ({"fraction": 1}, height), (0, height), (0, cut)],
+             fill=linear((0, 0), ({"fraction": 1}, 0), [(0, rgb(tint, 0.49)), (0.5, rgb(tint, 0.49)), (0.75, rgb(tint, 0.25)),
+                                                     (0.95, rgb(tint, 0.05)), (1, rgb(tint, 0))])),
+        path("rail", [(0.75, height), (0.75, cut), (cut, 0.75), ({"fraction": 0.6}, 0.75)], closed=False,
+             stroke=stroke(linear((0, 0), ({"fraction": 0.6}, 0), [(0, rgb(tint)), (0.7, rgb(tint)), (1, rgb(tint, 0))]), 1.5)),
+    ])
+
+
+def player_row(doc: Document, prefix: str, kind: str, row: int, width: float, columns: dict) -> tuple[dict, str]:
+    """One row of a list, the scoreboard's row (section 14.14): a band at
+    0.08, 0.29 and the marker for the player's own row; the speaker, crossed
+    when muted, and the friend symbol; the name, the score and the ping. The
+    player whose statistics show is lit in olive. Choosing a row records its
+    client and runs mpSelectPlayer; the game checks the client again."""
+    ident = f"{prefix}-{kind}-{row}"
+    key = f"mp.players.{kind}{row}"
+    doc.state.update({
+        f"{key}.client": {"type": "number", "initial": -1}, f"{key}.name": {"type": "string", "initial": ""},
+        f"{key}.score": {"type": "string", "initial": ""}, f"{key}.ping": {"type": "string", "initial": ""},
+        f"{key}.friend": {"type": "boolean", "initial": False}, f"{key}.muted": {"type": "boolean", "initial": False},
+        f"{key}.local": {"type": "boolean", "initial": False},
+    })
+    whole = [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})]
+    band = vector(f"{ident}-band", {**absolute(left=0, top=0, width=width, height=length(100, "%")), "opacity": number(0.08)},
+                  [path("band", [(0, 1), ({"fraction": 1}, 1), ({"fraction": 1}, {"fraction": 1, "dp": -1}), (0, {"fraction": 1, "dp": -1})],
+                        fill=solid([1, 1, 1, 1]))])
+    doc.bind(f"{ident}-band.opacity", f"{ident}-band", "opacity", {"op": "select", "args": [{"state": f"{key}.local"}, 0.29, 0.08]})
+    chosen = vector(f"{ident}-chosen", {**absolute(left=0, top=0, width=width, height=length(100, "%")), "display": keyword("none")},
+                    [path("fill", whole, fill=linear((0, 0), ({"fraction": 1}, 0),
+                                                     [(0, rgb(OLIVE, 0.6)), (0.4, rgb(OLIVE, 0.45)), (1, rgb(OLIVE, 0))]))])
+    selected = {"op": "&&", "args": [{"op": ">=", "args": [{"state": f"{key}.client"}, 0]},
+                                     {"op": "==", "args": [{"state": f"{key}.client"}, {"state": "mp.stat.client"}]}]}
+    doc.bind(f"{ident}-chosen.display", f"{ident}-chosen", "display", {"op": "select", "args": [selected, "block", "none"]})
+    focus = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=width, height=length(100, "%")), "opacity": number(0)},
+                   [path("inset", [(0.75, 1), (0.75, {"fraction": 1, "dp": -1.5}), (width, {"fraction": 1, "dp": -1.5})], closed=False,
+                         stroke=stroke(solid(rgb(ORANGE)), 1.2))])
+    marker = vector(f"{ident}-marker", {"position": keyword("relative"), "display": keyword("none"), "width": length(8),
+                                         "height": length(8), "margin-right": length(4), "flex-shrink": number(0)},
+                    [marker_path("mark", 0, 0, 8, rgb(MARKER))])
+    spacer = group(f"{ident}-spacer", {"position": keyword("relative"), "display": keyword("block"), "width": length(columns["marker"]),
+                                       "height": length(8), "flex-shrink": number(0)})
+    doc.bind(f"{ident}-marker.display", f"{ident}-marker", "display", {"op": "select", "args": [{"state": f"{key}.local"}, "block", "none"]})
+    doc.bind(f"{ident}-spacer.display", f"{ident}-spacer", "display", {"op": "select", "args": [{"state": f"{key}.local"}, "none", "block"]})
+    speaker = speaker_icon(f"{ident}-speaker")
+    doc.bind(f"{ident}-speaker-slash.display", f"{ident}-speaker-slash", "display",
+             {"op": "select", "args": [{"state": f"{key}.muted"}, "block", "none"]})
+    friend = friend_icon(f"{ident}-friend")
+    doc.bind(f"{ident}-friend.opacity", f"{ident}-friend", "opacity", {"op": "select", "args": [{"state": f"{key}.friend"}, 1, 0.125]})
+    cell = {"position": keyword("relative"), "display": keyword("block"), "white-space": keyword("nowrap"), "overflow": keyword("hidden"),
+            "flex-shrink": number(0)}
+    name = label(f"{ident}-name", PLACEHOLDER, {**cell, "flex-grow": number(1), "flex-shrink": number(1), "min-width": length(0),
+                                               **typeface("lowpixel", ROW_FACE, 16, [1, 1, 1, 0.85])})
+    score = label(f"{ident}-score", PLACEHOLDER, {**cell, "width": length(columns["score"]), "text-align": keyword("right"),
+                                                 **typeface("lowpixel", ROW_FACE, 16, [1, 1, 1, 0.85])})
+    ping = label(f"{ident}-ping", PLACEHOLDER, {**cell, "width": length(columns["ping"]), "margin-left": length(columns["gap"]),
+                                               "margin-right": length(columns["end"]), "text-align": keyword("right"),
+                                               **typeface("lowpixel", ROW_FACE, 16, [1, 1, 1, 0.6])})
+    for part in ("name", "score", "ping"):
+        doc.bind(f"{ident}-{part}.text", f"{ident}-{part}", "text", {"state": f"{key}.{part}"})
+    content = group(f"{ident}-content", {**absolute(left=2, top=0, width=width - 2, height=length(100, "%")), "display": keyword("flex"),
+                                         "flex-direction": keyword("row"), "align-items": keyword("center"), "pointer-events": keyword("none")},
+                    [marker, spacer, speaker, friend, name, score, ping])
+    ids = doc.states(ident, {
+        "default": [(f"{ident}-focus", "opacity", number(0)), (f"{ident}-name", "color", colour([1, 1, 1, 0.85]))],
+        "hover": [(f"{ident}-focus", "opacity", number(0.5)), (f"{ident}-name", "color", colour([1, 1, 1, 1]))],
+        "focus": [(f"{ident}-focus", "opacity", number(1)), (f"{ident}-name", "color", colour(rgb(ORANGE)))],
+        "pressed": [(f"{ident}-focus", "opacity", number(1)), (f"{ident}-name", "color", colour(rgb(ORANGE)))],
+        "disabled": [(f"{ident}-focus", "opacity", number(0)), (f"{ident}-name", "color", colour([1, 1, 1, 0.85]))],
+    })
+    event = f"{prefix}_{kind}{row}"
+    doc.events[event] = [{"op": "setState", "values": {"card.client": {"state": f"{key}.client"}}},
+                         {"op": "action", "action": "mpSelectPlayer"}]
+    node = group(ident, {"position": keyword("relative"), "display": keyword("none"), "width": length(width), "height": length(ROW_MAX),
+                         "min-height": length(ROW_MIN), "flex-shrink": number(1)},
+                 [band, chosen, focus, content], control={"role": "button", "label": PLACEHOLDER, "event": event, "states": ids})
+    doc.bind(f"{ident}.display", ident, "display",
+             {"op": "select", "args": [{"op": "<", "args": [row, {"state": f"mp.players.{kind}.count"}]}, "block", "none"]})
+    return node, ident
+
+
+def player_lists(doc: Document, prefix: str, width: float, height: float) -> tuple[dict, list, list]:
+    """The team lists (section 14.18 with the scoreboard's rows, section
+    14.14): headings once above them, then each list's band in its team's
+    color with its title and score over its rows; the spectators' band shows
+    only while there are spectators. The lists are one flex column: each row
+    is 24 dp and shrinks with the others, down to 14 dp, to share what the
+    bands leave, so sixteen players and three bands fit; rows past that are
+    clipped. Returns the lists, their controls and the steps that focus the
+    player whose statistics show (or the first row)."""
+    doc.state.update({"card.client": {"type": "number", "initial": -1}, "mp.stat.client": {"type": "number", "initial": -1}})
+    columns = list_columns(width)
+    heading = {**typeface("lowpixel", 11, LIST_HEAD_H, [1, 1, 1, 0.4]), "white-space": keyword("nowrap")}
+    name_left = columns["marker"] + columns["speaker"] + columns["friend"] + 2
+    score_right = width - columns["end"] - columns["ping"] - columns["gap"]
+    headings = group(f"{prefix}-headings", {"position": keyword("relative"), "display": keyword("block"), "width": length(width),
+                                            "height": length(LIST_HEAD_H), "flex-shrink": number(0)}, [
+        label(f"{prefix}-head-name", NAME_KEY, {**absolute(left=name_left, top=0, width=columns["name"], height=LIST_HEAD_H), **heading}),
+        label(f"{prefix}-head-score", SCORE_KEY, {**absolute(left=round(score_right - columns["score"], 3), top=0, width=columns["score"],
+                                                            height=LIST_HEAD_H), **heading, "text-align": keyword("right")}),
+        label(f"{prefix}-head-ping", PING_KEY, {**absolute(left=round(width - columns["end"] - columns["ping"], 3), top=0,
+                                                          width=columns["ping"], height=LIST_HEAD_H), **heading, "text-align": keyword("right")}),
+        vector(f"{prefix}-head-rule", absolute(left=0, top=LIST_HEAD_H - 1, width=width, height=1), [
+            path("rule", [(0, 0.5), ({"fraction": 1}, 0.5)], closed=False, stroke=stroke(solid([1, 1, 1, 0.1]), 1))]),
+    ])
+    shown = {kind: ({"state": f"mp.players.{kind}.shown"} if kind != "s" else {"op": ">", "args": [{"state": "mp.players.s.count"}, 0]})
+             for kind, _tints in PLAYER_LISTS}
+    full = LIST_HEAD_H + len(PLAYER_LISTS) * LIST_BAND_H + (len(PLAYER_LISTS) - 1) * LIST_GAP + PLAYER_ROWS * ROW_MIN
+    if full > height:
+        raise SystemExit(f"sixteen players and three bands need {full:g} dp, past the lists' {height:g} dp")
+    children, controls = [headings], []
+    for kind, tints in PLAYER_LISTS:
+        doc.state.update({
+            f"mp.players.{kind}.shown": {"type": "boolean", "initial": False}, f"mp.players.{kind}.title": {"type": "string", "initial": ""},
+            f"mp.players.{kind}.color": {"type": "number", "initial": tints[0]}, f"mp.players.{kind}.score": {"type": "string", "initial": ""},
+            f"mp.players.{kind}.count": {"type": "number", "initial": 0},
+        })
+        band = f"{prefix}-{kind}-band"
+        variants = []
+        for tint in tints:
+            node = f"{band}-{tint}"
+            variants.append(team_band(node, width, LIST_BAND_H, BAND_TINTS[tint], cut=6))
+            doc.bind(f"{node}.display", node, "display",
+                     {"op": "select", "args": [{"op": "==", "args": [{"state": f"mp.players.{kind}.color"}, tint]}, "block", "none"]})
+        title = label(f"{band}-title", PLACEHOLDER, {**absolute(left=16, top=0, width=width * 0.6, height=LIST_BAND_H),
+                      **typeface("marine", 15, LIST_BAND_H, [1, 1, 1, 0.95]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+        score = label(f"{band}-score", PLACEHOLDER, {**absolute(left=round(score_right - 80, 3), top=0, width=80, height=LIST_BAND_H),
+                      **typeface("lowpixel", 16, LIST_BAND_H, rgb(VALUE)), "text-align": keyword("right"), "white-space": keyword("nowrap")})
+        doc.bind(f"{band}-title.text", f"{band}-title", "text", {"state": f"mp.players.{kind}.title"})
+        doc.bind(f"{band}-score.text", f"{band}-score", "text", {"state": f"mp.players.{kind}.score"})
+        holder = group(band, {"position": keyword("relative"), "display": keyword("none"), "width": length(width),
+                              "height": length(LIST_BAND_H), "flex-shrink": number(0),
+                              "margin-top": length(0 if kind == "a" else LIST_GAP)}, [*variants, title, score])
+        doc.bind(f"{band}.display", band, "display", {"op": "select", "args": [shown[kind], "block", "none"]})
+        children.append(holder)
+        for row in range(PLAYER_ROWS):
+            node, control = player_row(doc, prefix, kind, row, width, columns)
+            children.append(node)
+            controls.append(control)
+    lists = group(f"{prefix}-lists", {**absolute(left=0, top=0, width=width, height=height), "display": keyword("flex"),
+                                      "flex-direction": keyword("column"), "overflow": keyword("hidden")}, children)
+    # The first row of the first list with players, unless the player whose
+    # statistics show has a row: a later focus step overrides an earlier one.
+    focus = [{"op": "focus", "control": f"tab-{prefix}"}]
+    for kind, _tints in reversed(PLAYER_LISTS):
+        focus.append({"op": "if", "condition": {"op": ">", "args": [{"state": f"mp.players.{kind}.count"}, 0]},
+                      "then": [{"op": "focus", "control": f"{prefix}-{kind}-0"}]})
+    for kind, _tints in PLAYER_LISTS:
+        for row in range(PLAYER_ROWS):
+            key = f"mp.players.{kind}{row}"
+            focus.append({"op": "if", "condition": {"op": "&&", "args": [
+                {"op": "<", "args": [row, {"state": f"mp.players.{kind}.count"}]},
+                {"op": "==", "args": [{"state": f"{key}.client"}, {"state": "mp.stat.client"}]}]},
+                "then": [{"op": "focus", "control": f"{prefix}-{kind}-{row}"}]})
+    doc.session("mpSelectPlayer", "mpSelectPlayer")
+    return lists, controls, focus
+
+
+def check_stat_labels(width: float) -> None:
+    """Fail generation when Mute or Friend, in either form, with its lock,
+    would leave its plate, or a statistics heading its column."""
+    room = width - 26 - 20 - 20
+    over = {}
+    for key in (*MUTE_LABELS, *FRIEND_LABELS):
+        for language, text in any_text(key).items():
+            if b.text_width("marine", text, 20) > room:
+                over[(key, language)] = round(b.text_width("marine", text, 20))
+    for key in (MUTE_SELF, FRIEND_SELF):
+        for language, text in any_text(key).items():
+            if b.text_width("lowpixel", text, 14) > width - 26:
+                over[(key, language)] = round(b.text_width("lowpixel", text, 14))
+    for key in (KILLS_KEY, DEATHS_KEY, SCORE_KEY):
+        for language, text in any_text(key).items():
+            if b.text_width("lowpixel", text, 12) > width / 3 - 8:
+                over[(key, language)] = round(b.text_width("lowpixel", text, 12))
+    if over:
+        raise SystemExit(f"Players page labels past their room: {over}")
+
+
+def player_stats(doc: Document, left: float, width: float, height: float) -> tuple[dict, list]:
+    """The selected player's statistics (section 14.18): the name in a band
+    in the player's team color; kills, deaths and score; accuracy per weapon,
+    each weapon's icon in its color code and dimmed while it has not fired;
+    the awards' medals with their counts, the flag awards only in flag modes;
+    then Mute and Friend. Both are unavailable, with a reason, on the
+    player's own row."""
+    check_stat_labels(width)
+    doc.state.update({
+        "mp.stat.name": {"type": "string", "initial": ""}, "mp.stat.color": {"type": "number", "initial": 3},
+        "mp.stat.kills": {"type": "string", "initial": ""}, "mp.stat.deaths": {"type": "string", "initial": ""},
+        "mp.stat.score": {"type": "string", "initial": ""}, "mp.stat.flag_mode": {"type": "boolean", "initial": False},
+        **{f"mp.stat.acc{weapon}": {"type": "string", "initial": ""} for weapon in range(len(WEAPONS))},
+        **{f"mp.stat.award{award}": {"type": "string", "initial": ""} for award in range(len(AWARDS))},
+    })
+    band_h = 26.0
+    children = []
+    for tint, color in enumerate(BAND_TINTS):
+        node = f"stat-band-{tint}"
+        children.append(team_band(node, width, band_h, color))
+        doc.bind(f"{node}.display", node, "display",
+                 {"op": "select", "args": [{"op": "==", "args": [{"state": "mp.stat.color"}, tint]}, "block", "none"]})
+    children.append(label("stat-name", PLACEHOLDER, {**absolute(left=18, top=0, width=width - 24, height=band_h),
+                          **typeface("marine", 18, band_h, [1, 1, 1, 0.95]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")}))
+    doc.bind("stat-name.text", "stat-name", "text", {"state": "mp.stat.name"})
+    heading = {**typeface("lowpixel", 12, 14, HEADING), "white-space": keyword("nowrap")}
+    cell = width / 3
+    for column, (part, key) in enumerate((("kills", KILLS_KEY), ("deaths", DEATHS_KEY), ("score", SCORE_KEY))):
+        x = round(cell * column, 3)
+        children.append(label(f"stat-{part}-label", key, {**absolute(left=x, top=32, width=round(cell - 8, 3), height=14), **heading}))
+        children.append(label(f"stat-{part}", PLACEHOLDER, {**absolute(left=x, top=46, width=round(cell - 8, 3), height=26),
+                              **typeface("lowpixel", 22, 26, rgb(VALUE)), "white-space": keyword("nowrap")}))
+        doc.bind(f"stat-{part}.text", f"stat-{part}", "text", {"state": f"mp.stat.{part}"})
+    children.append(label("stat-accuracy-label", ACCURACY_KEY, {**absolute(left=0, top=78, width=width, height=14), **heading}))
+    columns = 5
+    pitch_x = width / columns
+    for weapon, (_def, icon, tint) in enumerate(WEAPONS):
+        x, y = round(pitch_x * (weapon % columns), 3), 94 + 22 * (weapon // columns)
+        quiet = {"op": "||", "args": [{"op": "==", "args": [{"state": f"mp.stat.acc{weapon}"}, "-"]},
+                                      {"op": "==", "args": [{"state": f"mp.stat.acc{weapon}"}, ""]}]}
+        children.append(picture(f"stat-acc-{weapon}-icon", f"gfx/guis/hud/icons/{icon}",
+                                {**absolute(left=x, top=y + 2, width=18, height=18), "image-color": colour([*tint, 1]),
+                                 "opacity": number(1)}, fit="contain"))
+        doc.bind(f"stat-acc-{weapon}-icon.opacity", f"stat-acc-{weapon}-icon", "opacity", {"op": "select", "args": [quiet, 0.35, 1]})
+        children.append(label(f"stat-acc-{weapon}", PLACEHOLDER, {**absolute(left=round(x + 24, 3), top=y, width=round(pitch_x - 26, 3),
+                              height=22), **typeface("lowpixel", 15, 22, [1, 1, 1, 0.85]), "white-space": keyword("nowrap")}))
+        doc.bind(f"stat-acc-{weapon}.text", f"stat-acc-{weapon}", "text", {"state": f"mp.stat.acc{weapon}"})
+    children.append(label("stat-awards-label", AWARDS_KEY, {**absolute(left=0, top=144, width=width, height=14), **heading}))
+    pitch_x = width / len(AWARDS)
+    for award, name in enumerate(AWARDS):
+        x = round(pitch_x * award, 3)
+        medal = group(f"stat-award-{award}-cell", {**absolute(left=x, top=160, width=round(pitch_x, 3), height=24),
+                                                    "display": keyword("block")}, [
+            picture(f"stat-award-{award}-icon", f"gfx/mp/awards/{name}", {**absolute(left=0, top=1, width=22, height=22),
+                                                                          "opacity": number(1)}, fit="contain"),
+            label(f"stat-award-{award}", PLACEHOLDER, {**absolute(left=25, top=0, width=round(pitch_x - 26, 3), height=24),
+                  **typeface("lowpixel", 15, 24, rgb(VALUE)), "white-space": keyword("nowrap")}),
+        ])
+        children.append(medal)
+        doc.bind(f"stat-award-{award}.text", f"stat-award-{award}", "text", {"state": f"mp.stat.award{award}"})
+        earned = {"op": "&&", "args": [{"op": "!=", "args": [{"state": f"mp.stat.award{award}"}, "0"]},
+                                       {"op": "&&", "args": [{"op": "!=", "args": [{"state": f"mp.stat.award{award}"}, "-"]},
+                                                             {"op": "!=", "args": [{"state": f"mp.stat.award{award}"}, ""]}]}]}
+        doc.bind(f"stat-award-{award}-icon.opacity", f"stat-award-{award}-icon", "opacity", {"op": "select", "args": [earned, 1, 0.35]})
+        if award >= len(AWARDS) - FLAG_AWARDS:
+            doc.bind(f"stat-award-{award}-cell.display", f"stat-award-{award}-cell", "display",
+                     {"op": "select", "args": [{"state": "mp.stat.flag_mode"}, "block", "none"]})
+    plates = []
+    for index, (verb, key) in enumerate((("mpMute", "mp.mute"), ("mpFriend", "mp.friend"))):
+        ident = f"players-{key.split('.')[1]}"
+        steps = [{"op": "setState", "values": {"card.client": {"state": "mp.stat.client"}}}, {"op": "action", "action": verb}]
+        plates.append(action_plate(doc, ident, key, width, STAT_PLATES_TOP + SLOT_PITCH * index, f"players_{key.split('.')[1]}", steps))
+        doc.session(verb, verb)
+    if STAT_PLATES_TOP + SLOT_PITCH + 58 > height:
+        raise SystemExit("the Players page's Mute and Friend leave the page")
+    stats = group("players-stats", absolute(left=left, top=0, width=width, height=height), [*children, *plates])
+    return stats, ["players-mute", "players-friend"]
+
+
+def players_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, list]:
+    """The Players page (section 14.18): the team lists beside the selected
+    player's statistics, then Mute and Friend."""
+    page_width = width - 2 * INSET
+    page_height = height - PAGE_TOP - PROMPT_BOTTOM - PROMPT_H - 16
+    lists, rows, focus = player_lists(doc, ident, LIST_W, page_height)
+    stats, plates = player_stats(doc, LIST_W + 24, page_width - LIST_W - 24, page_height)
+    return page_group(doc, index, ident, width, height, [lists, stats], rows + plates), focus
 
 
 # -------------------------------------------------------------- Server page
@@ -577,7 +935,7 @@ def server_page(doc: Document, index: int, ident: str, width: float, height: flo
     return page_group(doc, index, ident, width, height, children, []), f"tab-{ident}"
 
 
-PAGE_BUILDERS = {"team": team_page, "server": server_page}
+PAGE_BUILDERS = {"team": team_page, "players": players_page, "server": server_page}
 
 
 def prompt_row(width: float, height: float, back_verb: str, trailing: list) -> dict:
@@ -619,7 +977,7 @@ def backdrop(doc: Document) -> list:
     return [softened, scrim]
 
 
-def card_motion(doc: Document, tabs: list, primaries: list) -> None:
+def card_motion(doc: Document, tabs: list, focus: list) -> None:
     """Section 14.18 motion and the tab programs.
 
     open      the softening ramps in over 250 ms while the card rises 12 dp and
@@ -631,6 +989,8 @@ def card_motion(doc: Document, tabs: list, primaries: list) -> None:
     tab_<id>  switches to a tab at once and cross-fades the page over 150 ms,
               then focuses its primary action; onTabPrevious and onTabNext
               wrap around the strip.
+
+    `focus` holds each page's steps that focus its primary action.
     """
     blur, tint = length(SOFT_FOCUS_BLUR), number(SOFT_FOCUS_SATURATION)
     none_blur, none_tint = length(0), number(1)
@@ -666,7 +1026,7 @@ def card_motion(doc: Document, tabs: list, primaries: list) -> None:
         steps: list = []
         for index in reversed(range(count)):
             steps = [{"op": "if", "condition": {"op": "==", "args": [{"state": "card.tab"}, index]},
-                      "then": [{"op": "focus", "control": primaries[index]}], **({"else": steps} if steps else {})}]
+                      "then": focus[index], **({"else": steps} if steps else {})}]
         return steps[0]
     for index, (ident, _key, _window) in enumerate(tabs):
         page = f"page-{ident}"
@@ -680,8 +1040,7 @@ def card_motion(doc: Document, tabs: list, primaries: list) -> None:
         doc.events[f"tab_{ident}"] = [
             {"op": "if", "condition": {"op": "!=", "args": [{"state": "card.tab"}, index]},
              "then": [{"op": "setState", "values": {"card.leaving": {"state": "card.tab"}, "card.tab": index}},
-                      {"op": "playTimeline", "timeline": f"show-{ident}"},
-                      {"op": "focus", "control": primaries[index]}]},
+                      {"op": "playTimeline", "timeline": f"show-{ident}"}, *focus[index]]},
         ]
     doc.events["pageShown"] = [{"op": "setState", "values": {"card.leaving": -1}}]
     for name, step in (("onTabPrevious", -1), ("onTabNext", 1)):
@@ -706,8 +1065,8 @@ def card_motion(doc: Document, tabs: list, primaries: list) -> None:
 
 def escape_document() -> dict:
     """The Escape card (section 14.18), opened with the menu key during a
-    match, Resume leading its prompt bar. The Team and Server pages are built;
-    the others hand off to their stock pages for now."""
+    match, Resume leading its prompt bar. The Team, Players and Server pages
+    are built; the others hand off to their stock pages for now."""
     doc = Document("openq4.mp_escape")
     width, height = fitted_card_width([key for _, key, _ in ESCAPE_TABS]), ESCAPE_H
     doc.state.update({
@@ -726,11 +1085,12 @@ def escape_document() -> dict:
     trailing = [bound_text("header-mode", doc, "mp.mode", "lowpixel", 15, [1, 1, 1, 0.7]),
                 bound_text("header-clock", doc, "mp.clock", "lowpixel", 17, rgb(VALUE)),
                 bound_text("header-score", doc, "mp.score", "lowpixel", 15, [1, 1, 1, 0.85])]
-    pages, primaries = [], []
+    pages, focus = [], []
     for index, (ident, _key, _window) in enumerate(ESCAPE_TABS):
         page, primary = PAGE_BUILDERS.get(ident, lambda d, i, n, w, h: handoff_page(d, i, n, w, h))(doc, index, ident, width, height)
         pages.append(page)
-        primaries.append(primary)
+        # A page names its primary action, or gives the steps that find it.
+        focus.append([{"op": "focus", "control": primary}] if isinstance(primary, str) else primary)
     actions = [link(doc, "prompt-mainmenu", MAIN_MENU, action="mpMainMenu"),
                link(doc, "prompt-disconnect", DISCONNECT, event="disconnectModalShow")]
     actions[-1]["properties"]["margin-right"] = length(0)
@@ -746,5 +1106,5 @@ def escape_document() -> dict:
     doc.bind("chrome.display", "chrome", "display", {"op": "select", "args": [{"state": "card.released"}, "none", "block"]})
     root = group("screen", {**FULL, "font-family": b.font("marine"), "font-size": length(16), "color": colour([1, 1, 1, 0.8])},
                  [*backdrop(doc), chrome])
-    card_motion(doc, ESCAPE_TABS, primaries)
+    card_motion(doc, ESCAPE_TABS, focus)
     return doc.build(root)

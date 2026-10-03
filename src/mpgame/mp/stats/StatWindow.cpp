@@ -263,23 +263,7 @@ void rvStatWindow::SelectPlayer( int clientNum ) {
 	rvPlayerStat* clientStat = statManager->GetPlayerStat( clientNum );
 
 	if( gameLocal.isClient && ( clientStat == NULL || ( gameLocal.time - clientStat->lastUpdateTime ) > 5000 ) ) {
-		// openQ4: only one request per client may be in flight - the reply is what advances
-		// lastUpdateTime, so re-asking every frame just makes the server answer the same
-		// question dozens of times.  A negative delta means the level time restarted.
-		int requestDelta = gameLocal.time - lastStatRequestTime[ clientNum ];
-
-		if( requestDelta < 0 || requestDelta >= STAT_REQUEST_RESEND_DELAY ) {
-			// get new stats
-			idBitMsg	outMsg;
-			byte		msgBuf[ 128 ];
-
-			lastStatRequestTime[ clientNum ] = gameLocal.time;
-
-			outMsg.Init( msgBuf, sizeof( msgBuf ) );
-			outMsg.WriteByte( GAME_RELIABLE_MESSAGE_STAT );
-			outMsg.WriteByte( clientNum );
-			networkSystem->ClientSendReliableMessage( outMsg );
-		}
+		RequestStats( clientNum );
 
 		// openQ4: nothing new to paint yet, and deliberately no repaint here - SetupStatWindow()
 		// has already pushed its list changes with StateChanged, and idPlayer::DrawHUD redraws
@@ -353,6 +337,37 @@ void rvStatWindow::SelectPlayer( int clientNum ) {
 
 	statHud->StateChanged ( gameLocal.time );
 	statHud->Redraw( gameLocal.time );
+}
+
+/*
+================
+rvStatWindow::RequestStats()
+
+Asks the server for a client's stats
+================
+*/
+void rvStatWindow::RequestStats( int clientNum ) {
+	if( !gameLocal.isClient || clientNum < 0 || clientNum >= MAX_CLIENTS ) {
+		return;
+	}
+
+	// openQ4: only one request per client may be in flight - the reply is what advances
+	// lastUpdateTime, so re-asking every frame just makes the server answer the same
+	// question dozens of times.  A negative delta means the level time restarted.
+	int requestDelta = gameLocal.time - lastStatRequestTime[ clientNum ];
+
+	if( requestDelta < 0 || requestDelta >= STAT_REQUEST_RESEND_DELAY ) {
+		// get new stats
+		idBitMsg	outMsg;
+		byte		msgBuf[ 128 ];
+
+		lastStatRequestTime[ clientNum ] = gameLocal.time;
+
+		outMsg.Init( msgBuf, sizeof( msgBuf ) );
+		outMsg.WriteByte( GAME_RELIABLE_MESSAGE_STAT );
+		outMsg.WriteByte( clientNum );
+		networkSystem->ClientSendReliableMessage( outMsg );
+	}
 }
 
 /*

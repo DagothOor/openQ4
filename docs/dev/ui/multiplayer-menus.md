@@ -6,16 +6,16 @@ with one card over the live, softened match (section 14.18 of the
 Escape card's shell came first: the card, its header, the eight-tab strip, the
 prompt bar, the Disconnect confirmation, the softening and its release, and the
 session and game plumbing that let the card cover the game's own menu. The
-Team and Server pages are built on it; the other six pages still hand off to
-their stock pages, so the card stays opt-in. The Welcome card and the other
-pages follow in later increments (the plan's B3 to B9).
+Team, Players and Server pages are built on it; the other five pages still
+hand off to their stock pages, so the card stays opt-in. The Welcome card and
+the other pages follow in later increments (the plan's B4 to B9).
 
 ## The gate
 
 `ui_retainedMultiplayer` (default 0) opts into the card. `ui_retained` alone
 includes it only once no page hands off any more: the session lists the
 Escape pages that still do in `RETAINED_MP_ESCAPE_MISSING_PAGES`, today
-Players, Vote, Match, Settings, Voice and Admin, and
+Vote, Match, Settings, Voice and Admin, and
 `tools/tests/ui_retained_gate.py` keeps that list equal to the
 document's hand-off pages (its `stock_<page>` programs). Players never see a
 mix of card and stock pages unless they opt in.
@@ -112,6 +112,42 @@ and runs `mpTeamAction`; the game derives the slot's action again from the
 player's state, refuses it if it is no longer available, and otherwise joins,
 spectates or readies and closes the menu, as the stock buttons do.
 
+### The Players page
+
+The team lists stand beside the selected player's statistics. Each list opens
+with a band in its team's color (#6AA42B Marine, #FF7B04 Strogg, #999999 for
+spectators, #8B964B for everyone outside team modes) holding the title and the
+team's score, then lists its players in the scoreboard's rows (section 14.14):
+a band at 0.08, or 0.29 with the marker for the player's own row; the speaker,
+crossed in red when the player is muted; the friend silhouette, 0.125 when the
+player is not a friend; the name, the score and the ping. The name, score and
+ping headings run once above the lists. The player's own team comes first
+(Marines while spectating), then the other team, then the spectators, whose
+band shows only while there are any. Each row is 24 dp and shrinks with the
+others, down to 14 dp, to share what the bands leave, so sixteen players and
+three bands fit the page; the generator fails if they would not.
+
+A list keeps its order while the menu stays open and sorts again by score only
+when the menu opens or the list's players change, so a row never moves under
+the cursor while scores change. The page opens on the player's own row and
+statistics. Choosing a row shows that player's statistics and lights the row in
+olive: their name in a band in their team's color; kills, deaths and score;
+accuracy for the machinegun through the napalm launcher, each icon in its
+weapon color code (Appendix B.4) and dimmed until the weapon has fired; and the
+awards' medals with their counts, dimmed until earned, with Capture, Assist and
+Defense only in flag modes. Medals stay bitmaps, and the document's pictures
+load with it inside the level load. A remote client asks the server for
+statistics older than five seconds, one request at a time, as the stock page
+does, and shows "-" until the answer arrives.
+
+Mute and Friend close the page, in-game plates labelled as the stock page
+labels them (MUTE PLAYER or UNMUTE PLAYER, ADD FRIEND or REMOVE FRIEND). On the
+player's own row both are unavailable, dimmed with their lock and reason, and
+shake when chosen. Muting is the stock mute, which also tells the server.
+There is no friends service on PC (the engine's is empty), so a friend is the
+player's own mark, shown in the lists and on the scoreboard while the map runs;
+the stock page's Friend button keeps the same mark now.
+
 ### The Server page
 
 The server's name and address, its message (`si_motd`, three lines) in
@@ -130,12 +166,18 @@ only when it changes and moving `mp.revision` when anything did:
   `mp.team.band_detail`, `mp.action<0-2>.{shown,available,label,reason,detail}`
   and `mp.chat<0-2>`;
 - the Server page: `mp.server.{name,address,message}`, `mp.rule<0-6>`,
-  `mp.rotation<0-15>`, `mp.rotation_count` and `mp.rotation_current`.
+  `mp.rotation<0-15>`, `mp.rotation_count` and `mp.rotation_current`;
+- the Players page: per list (`a` the player's own team or everyone, `b` the
+  other team, `s` the spectators) `mp.players.<list>.{shown,title,color,score,count}`
+  and sixteen rows `mp.players.<list><0-15>.{client,name,score,ping,local,friend,muted}`;
+  the statistics `mp.stat.{client,name,color,kills,deaths,score,flag_mode}`,
+  `mp.stat.acc<0-9>` and `mp.stat.award<0-7>`; and Mute and Friend as
+  `mp.mute.*` and `mp.friend.*`, shaped like the Team page's actions.
 
-Player and server text (the server's name and message, the chat) is cleaned as
-the loading screen's server card cleans it: colour codes, controls and
-malformed UTF-8 dropped, its lines and bytes bounded, and a leading `#str_`
-broken so a name never translates.
+Player and server text (player names, the server's name and message, the
+chat) is cleaned as the loading screen's server card cleans it: colour codes,
+controls and malformed UTF-8 dropped, its lines and bytes bounded, and a
+leading `#str_` broken so a name never translates.
 
 ### Width
 
@@ -169,6 +211,14 @@ The card's verbs are the stock menu's own commands with its selection sound:
 | `mpDisconnect` (after the confirmation) | `play main_menu_selection ; disconnect` |
 | `mpStockPage` | the stock page's own button, by `card.stock_page` |
 | `mpTeamAction` | `play main_menu_selection ; retained team <slot>`, by `card.team_action` |
+| `mpSelectPlayer` | `play main_menu_selection ; retained select <client>`, by `card.client` |
+| `mpMute` | `play main_menu_selection ; retained mute <client>`, by `card.client` |
+| `mpFriend` | `play main_menu_selection ; retained friend <client>`, by `card.client` |
+
+A row records its player's client number before it asks, and Mute and Friend
+record the selected player's. The session refuses a client outside the
+server's slots; the game acts only on a client with a row now, never mutes or
+befriends the player's own row, and none of the three closes the menu.
 
 A hand-off presents the stock menu at once and presses the page's button as
 soon as the menu's opening shows it, within 500 ms; the stock menu then keeps
@@ -202,6 +252,11 @@ without affecting players:
 - **Motion (D6).** No card exit motion; reduced motion as above.
 - **Tabs per map (D18).** The card remembers its tab while a map runs and
   starts each map on Team.
+- **Players page.** Rows run 14 to 24 dp, tighter than the held scoreboard,
+  so sixteen players fit beside the statistics without scrolling; the lists
+  hold their order while the menu stays open; Mute and Friend refuse the
+  player's own row; and Friend is the player's own mark, since PC has no
+  friends service.
 
 ## Validation
 
@@ -253,11 +308,41 @@ The Team and Server pages add:
 Evidence: `.tmp/ui/retained-mp-team-server/validation-evidence.json`, SHA-256
 `470d27af66c563373136d5db16f862eb0d3f1c935e3b1dfe6609896f18b56fb3`.
 
+The Players page adds:
+
+- gate cases for `mpSelectPlayer`, `mpMute` and `mpFriend`: the client the
+  card records reaches the game as `retained select|mute|friend <client>`
+  without closing the menu, and a client outside the server's slots is
+  refused; pins that the game acts only on a listed client, never mutes or
+  befriends the player's own row and keeps the menu open, that the game and
+  the document agree on the lists, rows, weapons and awards, and that the
+  stock Friend button keeps the same mark;
+- native checks of the page: each list's rows and band color, the player's
+  own row brighter and marked, the selected player lit, muted and friend
+  symbols, the statistics beside the lists, the widest pitch for a few
+  players, sixteen players sharing what the bands leave, rows holding 14 dp
+  past sixteen, an idle weapon and an unearned award dimmed, flag awards only in flag modes, the statistics in
+  the player's team color, Mute refusing the player's own row with its
+  reason, a row asking for its player, and Mute and Friend asking for the
+  selected one; arriving on the page focuses the selected player's row;
+- generator checks that Mute and Friend in either form, their reasons and the
+  statistics headings fit in every language, and that sixteen players and
+  three bands fit the page;
+- live probes with bots on listen servers: Team DM in English, CTF in
+  Hungarian and DM in German on Vulkan (the lists, the statistics with
+  accuracy and awards, selecting a bot, muting and befriending it and taking
+  both back, the selection back on the player when the menu reopens), the
+  spectators' band during a warm-up, and a second client over loopback whose
+  statistics come from the server.
+
+Evidence: `.tmp/ui/retained-mp-players/validation-evidence.json`, SHA-256
+`6ef9ecdea0cd0d453a3485185bdffa0562cd091d703969aa96244f2febccefb6`.
+
 The card's acceptance continues under `FLOW-046`.
 
 ## Known limitations
 
-- Six pages hand off to their stock pages, and the stock menu then keeps the
+- Five pages hand off to their stock pages, and the stock menu then keeps the
   menu until it closes; the card does not come back over it.
 - Choosing an unavailable action does not announce its reason to the
   accessibility text backing yet, and a controller gives no rumble.
@@ -265,6 +350,16 @@ The card's acceptance continues under `FLOW-046`.
   deathmatch does.
 - The stock team-refusal messages are English in French and Italian, whose
   tables lack them.
+- Voice chat does not work yet (capture and playback are off), so Mute records
+  the choice and tells the server without anything to silence.
+- Mute and friend marks belong to a client slot, as the stock page's do: a
+  player who takes a departed player's slot inherits them until the map
+  changes.
+- The lists have no BOT tag, dead-player mark or network-quality bars (the
+  remastered scoreboard's additions), and the rows' pitch never scrolls: a
+  server past sixteen clients clips the last rows.
+- Left and right move focus between the lists and the statistics; they do not
+  switch tabs as section 14.18 asks (decision D2 is open).
 - There is no Welcome card: the connect-time join offer keeps the stock join
   card.
 - The prompt bar shows keyboard keycaps only; controller glyphs wait for the

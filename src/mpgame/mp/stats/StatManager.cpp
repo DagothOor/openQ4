@@ -766,6 +766,10 @@ int rvStatManager::ResolveSelection( int selectionIndex, int selectionTeam ) con
 	return statWindow.ResolveSelection( selectionIndex, selectionTeam );
 }
 
+void rvStatManager::RequestPlayerStat( int clientNum ) {
+	statWindow.RequestStats( clientNum );
+}
+
 void rvStatManager::UpdateInGameHud( idUserInterface* statHud, bool visible ) {
 	idPlayer* player = NULL;
 

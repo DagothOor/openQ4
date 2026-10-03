@@ -1185,4 +1185,6 @@
 	"#str_231028"	"CARTE SUIVANTE"
 	"#str_231029"	"ROTATION DES CARTES"
 	"#str_231030"	"ADRESSE"
+	"#str_231031"	"Vous ne pouvez pas vous rendre muet vous-même."
+	"#str_231032"	"Vous ne pouvez pas vous ajouter en ami."
 }

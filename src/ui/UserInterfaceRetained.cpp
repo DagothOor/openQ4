@@ -72,7 +72,8 @@ bool SessionMenuCommand(const std::string& command) {
 	static const std::set<std::string> commands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
 		"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
         "campaigns","campaignQuake4","campaignAwakening","campaignArena","campaignBack","campaignHome",
-        "mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction"};
+        "mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction",
+        "mpSelectPlayer","mpMute","mpFriend"};
 	return commands.contains(command);
 }
 

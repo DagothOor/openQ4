@@ -292,6 +292,9 @@ public:
 	// warning - so a per-frame poller can use it.  The window itself is not reachable from
 	// outside the stat manager.
 	int							ResolveSelection( int selectionIndex, int selectionTeam ) const;
+	// openQ4: a client asks the server for a player's stats, one request at a
+	// time; the reply updates GetPlayerStat( clientNum )
+	void						RequestPlayerStat( int clientNum );
 
 	//asalmon: Sends all stats to all clients.  For Xenon periodic update of stats.
 	void						SendAllStats( int clientNum = -1, bool full = true );
