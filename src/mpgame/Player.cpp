@@ -12837,12 +12837,19 @@ bool idPlayer::GetVRWeaponTransform( idVec3 &origin, idMat3 &axis, bool presenta
 	if ( health <= 0 || !GetVRView( frame, trackingYaw ) || frame.aimMode != VR_AIM_HAND ) {
 		return false;
 	}
+	if ( weapon == NULL ) {
+		return false;
+	}
 	idVec3 eyeOrigin = firstPersonViewOrigin;
 	if ( presentation ) {
 		idMat3 eyeAxis;
 		GetPresentationViewPos( eyeOrigin, eyeAxis );
 	}
-	return VR_WeaponTransform( frame, eyeOrigin, trackingYaw, origin, axis );
+	// the gun sits in the hand the way its own model holds it
+	idVec3 barrel;
+	idVec3 grip;
+	weapon->GetVRHold( barrel, grip );
+	return VR_WeaponTransform( frame, eyeOrigin, trackingYaw, barrel, grip, origin, axis );
 }
 
 /*

@@ -54,12 +54,12 @@ idCVar vr_screenWidth( "vr_screenWidth", "3.0", CVAR_SYSTEM | CVAR_ARCHIVE | CVA
 	"width of the virtual screen in metres", 0.5f, 12.0f );
 idCVar vr_mirror( "vr_mirror", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_INTEGER,
 	"desktop window while in VR: 0 = black, 1 = left eye, 2 = virtual screen", 0, 2, idCmdSystem::ArgCompletion_Integer<0,2> );
-idCVar vr_weaponOffsetX( "vr_weaponOffsetX", "-5", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
-	"view weapon offset along the controller's aim, in game units" );
+idCVar vr_weaponOffsetX( "vr_weaponOffsetX", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"moves the held view weapon along the controller's aim, in game units (0 holds it by its own grip)" );
 idCVar vr_weaponOffsetY( "vr_weaponOffsetY", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
-	"view weapon offset to the controller's left, in game units" );
-idCVar vr_weaponOffsetZ( "vr_weaponOffsetZ", "-3", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
-	"view weapon offset above the controller, in game units" );
+	"moves the held view weapon to the controller's left, in game units" );
+idCVar vr_weaponOffsetZ( "vr_weaponOffsetZ", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
+	"moves the held view weapon up, in game units" );
 idCVar vr_weaponPitch( "vr_weaponPitch", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
 	"view weapon pitch relative to the controller's aim, in degrees (positive tilts down)", -60.0f, 60.0f );
 idCVar vr_roomScale( "vr_roomScale", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL,

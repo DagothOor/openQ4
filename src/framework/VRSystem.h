@@ -78,7 +78,8 @@ typedef struct vrFrameState_s {
 	float					unitsPerMetre;
 	float					headOffsetLimit;	// horizontal head travel from the body, units
 
-	// view-weapon placement in the weapon hand's aim axes (units, degrees)
+	// fine-tuning of the held view weapon, in the weapon hand's aim axes
+	// (units, degrees); VR_WeaponTransform holds it by the model's own grip
 	idVec3					weaponOffset;
 	float					weaponPitch;
 
@@ -207,21 +208,39 @@ ID_INLINE void VR_BuildEyeView( const vrFrameState_t &frame, int eye, const idVe
 	view.fov_y = RAD2DEG( 2.0f * idMath::ATan( halfY ) );
 }
 
-// The weapon hand's pointing pose in the world, with the view-weapon offsets
-// and pitch applied, for drawing the view weapon at the hand.
-ID_INLINE bool VR_WeaponTransform( const vrFrameState_t &frame, const idVec3 &eyeOrigin, float trackingYaw, idVec3 &origin, idMat3 &axis ) {
+// The view weapon held in the weapon hand at true scale. barrel is the
+// direction the model's barrel points and grip the point its hand holds, both
+// in model space: the barrel turns onto the hand's aim, by the shortest turn,
+// and the grip point lands on the hand's grip pose. The view-weapon offsets
+// and pitch then fine-tune the hold in the aim axes.
+ID_INLINE bool VR_WeaponTransform( const vrFrameState_t &frame, const idVec3 &eyeOrigin, float trackingYaw,
+		const idVec3 &barrel, const idVec3 &grip, idVec3 &origin, idMat3 &axis ) {
 	const int hand = frame.weaponHand == VR_HAND_LEFT ? VR_HAND_LEFT : VR_HAND_RIGHT;
-	const vrPose_t &aim = frame.aim[hand];
-	if ( !aim.valid ) {
+	if ( !frame.aim[hand].valid ) {
 		return false;
 	}
+	const idVec3 correction = VR_HeadOffsetCorrection( frame );
+	vrPose_t pose = frame.aim[hand];
+	pose.origin += correction;
 	idVec3 aimOrigin;
 	idMat3 aimAxis;
-	vrPose_t pose = aim;
-	pose.origin += VR_HeadOffsetCorrection( frame );
 	VR_PoseToWorld( pose, eyeOrigin, trackingYaw, aimOrigin, aimAxis );
-	axis = idAngles( frame.weaponPitch, 0.0f, 0.0f ).ToMat3() * aimAxis;
-	origin = aimOrigin + frame.weaponOffset * axis;
+
+	// the palm is at the grip pose; without one, at the aim's origin
+	idVec3 holdOrigin = aimOrigin;
+	if ( frame.grip[hand].valid ) {
+		pose = frame.grip[hand];
+		pose.origin += correction;
+		idMat3 gripAxis;
+		VR_PoseToWorld( pose, eyeOrigin, trackingYaw, holdOrigin, gripAxis );
+	}
+
+	const idMat3 held = idAngles( frame.weaponPitch, 0.0f, 0.0f ).ToMat3() * aimAxis;
+	vrVec3_t turn[3];
+	VR_RotationBetween( VR_Vec3( barrel.x, barrel.y, barrel.z ), VR_Vec3( 1.0f, 0.0f, 0.0f ), turn );
+	const idMat3 align( turn[0].x, turn[0].y, turn[0].z, turn[1].x, turn[1].y, turn[1].z, turn[2].x, turn[2].y, turn[2].z );
+	axis = align * held;
+	origin = holdOrigin + frame.weaponOffset * held - grip * axis;
 	return true;
 }
 

@@ -281,6 +281,43 @@ inline void VR_TangentToImage( const vrFovTangents_t &fov, float tangentX, float
 
 /*
 ====================
+Rotation between directions
+
+The shortest rotation that turns unit vector a onto unit vector b, about
+a x b, as the rows of a matrix in the engine's row-vector convention, so
+a * m == b. Nearly parallel vectors give the identity; opposite ones have no
+single shortest turn and also give the identity, which callers reject.
+====================
+*/
+inline void VR_RotationBetween( const vrVec3_t &a, const vrVec3_t &b, vrVec3_t rows[3] ) {
+	const vrVec3_t k = VR_Cross( a, b );
+	const float sineSquared = VR_Dot( k, k );
+	const float cosine = VR_Dot( a, b );
+	float m[3][3] = { { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } };
+	if ( sineSquared > 1e-12f && cosine > -0.9999f ) {
+		// column form R = I + [k]x + [k]x^2 (1 - cos) / sin^2; the rows are its transpose
+		const float f = ( 1.0f - cosine ) / sineSquared;
+		const float kv[3] = { k.x, k.y, k.z };
+		const float cross[3][3] = { { 0.0f, -k.z, k.y }, { k.z, 0.0f, -k.x }, { -k.y, k.x, 0.0f } };
+		for ( int i = 0; i < 3; i++ ) {
+			for ( int j = 0; j < 3; j++ ) {
+				const float squared = kv[i] * kv[j] - ( i == j ? sineSquared : 0.0f );
+				m[j][i] = ( i == j ? 1.0f : 0.0f ) + cross[i][j] + f * squared;
+			}
+		}
+	}
+	for ( int i = 0; i < 3; i++ ) {
+		rows[i] = VR_Vec3( m[i][0], m[i][1], m[i][2] );
+	}
+}
+
+// v * rows, in the engine's row-vector convention
+inline vrVec3_t VR_MultiplyRows( const vrVec3_t &v, const vrVec3_t rows[3] ) {
+	return VR_Add( VR_Add( VR_Scale( rows[0], v.x ), VR_Scale( rows[1], v.y ) ), VR_Scale( rows[2], v.z ) );
+}
+
+/*
+====================
 Turning
 
 A snap turn fires once when the stick passes the press threshold and re-arms

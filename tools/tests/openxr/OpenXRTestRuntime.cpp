@@ -29,6 +29,9 @@
 //   button <left|right> <trigger|squeeze|a|b|x|y|menu|thumbclick> <value>
 //   stick <left|right> <x> <y>
 //   capture <path prefix>                           write every layer of the next submitted frame
+//   burst <path prefix> <frames> [scale]            write the left eye of that many consecutive frames,
+//                                                   shrunk by an integer scale (default 4), to catch a
+//                                                   single-frame dropout that one capture can miss
 //   focus <0|1>                                     toggle between FOCUSED and VISIBLE
 //   exit                                            ask the application to quit (STOPPING)
 
@@ -428,6 +431,10 @@ struct RuntimeGlobals {
 	std::vector<ScriptEvent> script;
 	size_t					scriptCursor = 0;
 	std::string				pendingCapture;
+	std::string				burstPrefix;
+	int						burstRemaining = 0;
+	int						burstIndex = 0;
+	int						burstScale = 4;
 	int						eyeWidth = 1440;
 	int						eyeHeight = 1600;
 	double					refreshRate = 90.0;
@@ -905,6 +912,48 @@ void CaptureImage( const std::string &prefix, const char *label, const XrSwapcha
 		count ? sum / static_cast<double>( count ) : 0.0, count ? static_cast<double>( lit ) / static_cast<double>( count ) : 0.0 );
 }
 
+// One frame of a burst: the image shrunk by box filtering, with the same
+// content summary as a capture so a harness can spot an odd frame from the
+// log alone.
+void CaptureBurstImage( const std::string &path, int scale, const XrSwapchainSubImage &subImage, int index ) {
+	TRSwapchain *swapchain = Check( reinterpret_cast<TRSwapchain *>( subImage.swapchain ), MAGIC_SWAPCHAIN );
+	if ( swapchain == nullptr ) {
+		return;
+	}
+	std::vector<uint8_t> pixels;
+	int width = 0, height = 0;
+	if ( !ReadSwapchainImage( swapchain, swapchain->lastReleased, subImage.imageRect, pixels, width, height ) ) {
+		Log( "{\"event\":\"burst_failed\",\"index\":%d}", index );
+		return;
+	}
+	scale = scale < 1 ? 1 : scale;
+	const int outWidth = width / scale, outHeight = height / scale;
+	std::vector<uint8_t> shrunk( static_cast<size_t>( outWidth ) * outHeight * 4 );
+	double sum = 0.0;
+	for ( int y = 0; y < outHeight; ++y ) {
+		for ( int x = 0; x < outWidth; ++x ) {
+			int acc[4] = { 0, 0, 0, 0 };
+			for ( int sy = 0; sy < scale; ++sy ) {
+				for ( int sx = 0; sx < scale; ++sx ) {
+					const uint8_t *p = &pixels[( static_cast<size_t>( y * scale + sy ) * width + x * scale + sx ) * 4];
+					for ( int c = 0; c < 4; ++c ) {
+						acc[c] += p[c];
+					}
+				}
+			}
+			uint8_t *out = &shrunk[( static_cast<size_t>( y ) * outWidth + x ) * 4];
+			for ( int c = 0; c < 4; ++c ) {
+				out[c] = static_cast<uint8_t>( acc[c] / ( scale * scale ) );
+			}
+			sum += ( out[0] * 3 + out[1] * 6 + out[2] ) / 10;
+		}
+	}
+	const bool written = WriteTga( path, outWidth, outHeight, shrunk );
+	Log( "{\"event\":\"burst\",\"index\":%d,\"path\":\"%s\",\"written\":%s,\"mean_luma\":%.3f}",
+		index, JsonEscape( path ).c_str(), written ? "true" : "false",
+		outWidth * outHeight ? sum / static_cast<double>( outWidth * outHeight ) : 0.0 );
+}
+
 bool FileExists( const std::string &path ) {
 	FILE *file = std::fopen( path.c_str(), "rb" );
 	if ( file == nullptr ) {
@@ -958,6 +1007,11 @@ void RunScriptCommand( TRSession *session, const std::vector<std::string> &a ) {
 			hand.stickY = f( 3, 0.0f );
 		} else if ( command == "capture" && a.size() >= 2 ) {
 			g.pendingCapture = a[1];
+		} else if ( command == "burst" && a.size() >= 3 ) {
+			g.burstPrefix = a[1];
+			g.burstRemaining = std::atoi( a[2].c_str() );
+			g.burstIndex = 0;
+			g.burstScale = a.size() >= 4 ? std::atoi( a[3].c_str() ) : 4;
 		} else if ( command == "focus" ) {
 			const bool focus = f( 1, 1.0f ) >= 0.5f;
 			if ( session->running && focus != session->focused ) {
@@ -2054,6 +2108,13 @@ XRAPI_ATTR XrResult XRAPI_CALL TR_xrEndFrame( XrSession handle, const XrFrameEnd
 			if ( capture ) {
 				CaptureImage( capturePrefix, "left", projection->views[0].subImage );
 				CaptureImage( capturePrefix, "right", projection->views[1].subImage );
+			}
+			if ( g.burstRemaining > 0 ) {
+				char suffix[32];
+				std::snprintf( suffix, sizeof( suffix ), "_%03d.tga", g.burstIndex );
+				CaptureBurstImage( g.burstPrefix + suffix, g.burstScale, projection->views[0].subImage, g.burstIndex );
+				++g.burstIndex;
+				--g.burstRemaining;
 			}
 		} else if ( layer->type == XR_TYPE_COMPOSITION_LAYER_QUAD ) {
 			const XrCompositionLayerQuad *quad = reinterpret_cast<const XrCompositionLayerQuad *>( layer );

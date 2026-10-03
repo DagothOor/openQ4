@@ -667,6 +667,7 @@ rvWeapon::rvWeapon ( void ) {
 	hitscanAttackDef = -1;
 	
 	forceGUIReload = false;
+	vrHoldKnown = false;
 	ResetPresentationViewModelState();
 }
 
@@ -965,6 +966,9 @@ void rvWeapon::InitViewModel( void ) {
 	ejectJointView		= viewAnimator->GetJointHandle( spawnArgs.GetString ( "joint_view_eject", "eject" ) );
 	guiLightJointView	= viewAnimator->GetJointHandle( spawnArgs.GetString ( "joint_view_guiLight", "guiLight" ) );
 	flashlightJointView = viewAnimator->GetJointHandle( spawnArgs.GetString ( "joint_view_flashlight", "flashlight" ) );
+
+	// openQ4 VR: a new view model holds its gun its own way
+	vrHoldKnown = false;
 
 	// Eject offset
 	spawnArgs.GetVector ( "ejectOffset", "0 0 0", ejectOffset );
@@ -1422,6 +1426,59 @@ bool rvWeapon::GetVRMuzzle( idVec3 &origin ) const {
 
 /*
 ================
+rvWeapon::GetVRHold
+
+openQ4 VR: how the view model holds its gun, so VR_WeaponTransform can put it
+in the weapon hand at true scale. The barrel runs along the flash joint, the
+way the muzzle flash leaves it, and the right hand grips halfway between its
+wrist and index knuckle. Both come from the first frame of the idle animation,
+so the hold stays put while the gun animates in the hand. Stock barrels point
+up to 13 degrees off the model's forward axis, toward a crosshair at the
+centre of a flat screen; the hold turns them onto the hand's aim.
+================
+*/
+void rvWeapon::GetVRHold( idVec3 &barrel, idVec3 &grip ) const {
+	// unmeasured: straight ahead, held where the stock models put the right hand
+	barrel.Set( 1.0f, 0.0f, 0.0f );
+	grip.Set( 13.0f, -5.0f, -5.0f );
+	if ( viewAnimator == NULL ) {
+		return;
+	}
+	if ( !vrHoldKnown ) {
+		vrHoldKnown = true;
+		vrHoldBarrel = barrel;
+		vrHoldGrip = grip;
+		const idRenderModel *model = viewAnimator->ModelHandle();
+		const int idleAnim = viewAnimator->GetAnim( "idle" );
+		const idAnim *idle = idleAnim ? viewAnimator->GetAnim( idleAnim ) : NULL;
+		const idMD5Anim *md5 = idle != NULL ? idle->MD5Anim( 0 ) : NULL;
+		const jointHandle_t wrist = viewAnimator->GetJointHandle( "rt_wrst" );
+		const jointHandle_t knuckle = viewAnimator->GetJointHandle( "rt_ndx_1" );
+		const int numJoints = viewAnimator->NumJoints();
+		if ( model != NULL && md5 != NULL && viewAnimator->ModelDef() != NULL
+				&& wrist != INVALID_JOINT && knuckle != INVALID_JOINT
+				&& numJoints == model->NumJoints() && numJoints == md5->NumJoints() ) {
+			idJointMat *joints = ( idJointMat * )_alloca16( numJoints * sizeof( joints[0] ) );
+			gameEdit->ANIM_CreateAnimFrame( model, md5, numJoints, joints, 0,
+				viewAnimator->ModelDef()->GetVisualOffset(), viewAnimator->RemoveOrigin() );
+			vrHoldGrip = ( joints[ wrist ].ToVec3() + joints[ knuckle ].ToVec3() ) * 0.5f;
+			if ( flashJointView != INVALID_JOINT && flashJointView < numJoints ) {
+				idVec3 forward = joints[ flashJointView ].ToMat3()[ 0 ];
+				// a flash joint turned well away from the model's forward axis is no barrel
+				if ( forward.Normalize() > 0.0f && forward.x > 0.8f ) {
+					vrHoldBarrel = forward;
+				}
+			}
+		}
+		gameLocal.DPrintf( "VR hold %s: barrel %s, grip %s\n", spawnArgs.GetString( "classname" ),
+			vrHoldBarrel.ToString( 3 ), vrHoldGrip.ToString( 1 ) );
+	}
+	barrel = vrHoldBarrel;
+	grip = vrHoldGrip;
+}
+
+/*
+================
 rvWeapon::UpdatePresentationEffects
 
 Draw-pass hook for weapons that drive a view effect from an explicit origin
@@ -1534,7 +1591,6 @@ void rvWeapon::Think ( void ) {
 			worldModel->GetRenderEntity()->suppressShadowInViewID	= 0;
 			worldModel->GetRenderEntity()->suppressShadowInLightID = suppressShadowLightId;
 		} else {
-			// Only show weapon shadows for other clients
 			worldModel->GetRenderEntity()->suppressShadowInViewID	= owner->entityNumber+1;
 			worldModel->GetRenderEntity()->suppressShadowInLightID = suppressShadowLightId;
 		}
@@ -2839,6 +2895,10 @@ rvWeapon::ForeshortenAxis
 ================
 */
 idMat3 rvWeapon::ForeshortenAxis( const idMat3& axis ) const {
+	// openQ4 VR: a gun held in the hand keeps its true length
+	if ( owner != NULL && owner->IsVRHandAiming() ) {
+		return axis;
+	}
 	return idMat3( axis[0] * viewModelForeshorten, axis[1], axis[2] );
 }
 

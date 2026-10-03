@@ -131,6 +131,28 @@ static void TestEyeImage( void ) {
 	Check( Near( ipd / ( fromLeft.x - fromRight.x ), depth, 0.01f ), "disparity gives back the point's depth" );
 }
 
+static void TestRotationBetween( void ) {
+	// a blaster's barrel: 10 degrees left of the model's forward and a little up
+	const vrVec3_t barrel = VR_Scale( VR_Vec3( 0.984f, 0.176f, 0.029f ), 1.0f / VR_Length( VR_Vec3( 0.984f, 0.176f, 0.029f ) ) );
+	const vrVec3_t forward = VR_Vec3( 1.0f, 0.0f, 0.0f );
+	vrVec3_t rows[3];
+	VR_RotationBetween( barrel, forward, rows );
+	Check( NearVec( VR_MultiplyRows( barrel, rows ), forward, 0.0005f ), "the barrel turns onto the forward axis" );
+	for ( int i = 0; i < 3; i++ ) {
+		Check( Near( VR_Length( rows[i] ), 1.0f, 0.0005f ), "the turn keeps lengths" );
+		for ( int j = i + 1; j < 3; j++ ) {
+			Check( Near( VR_Dot( rows[i], rows[j] ), 0.0f, 0.0005f ), "the turn keeps right angles" );
+		}
+	}
+	Check( Near( VR_Dot( VR_Cross( rows[0], rows[1] ), rows[2] ), 1.0f, 0.0005f ), "the turn is a rotation, not a reflection" );
+	// the axis it turns about stays put
+	const vrVec3_t axis = VR_Cross( barrel, forward );
+	Check( NearVec( VR_MultiplyRows( axis, rows ), axis, 0.0005f ), "the turning axis stays where it is" );
+
+	VR_RotationBetween( forward, forward, rows );
+	Check( NearVec( VR_MultiplyRows( VR_Vec3( 0.2f, 0.3f, 0.4f ), rows ), VR_Vec3( 0.2f, 0.3f, 0.4f ) ), "parallel vectors leave everything alone" );
+}
+
 static void TestTurning( void ) {
 	vrSnapTurnState_t snap = { false };
 	Check( VR_SnapTurn( snap, 0.5f, 45.0f ) == 0.0f, "below the press threshold does nothing" );
@@ -188,6 +210,7 @@ int main() {
 	TestOrientation();
 	TestProjection();
 	TestEyeImage();
+	TestRotationBetween();
 	TestTurning();
 	TestOffsets();
 	TestQuad();

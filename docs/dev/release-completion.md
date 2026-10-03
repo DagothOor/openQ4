@@ -24,7 +24,9 @@
   controller pointer, controller buttons through the gamepad bindings, a
   stereo-correct laser dot (optional beam) where controller-aimed shots land,
   controller haptics on each shot and hit, single-player room scale (the body
-  walks after the head with collision), and a Virtual Reality section in
+  walks after the head with collision), weapons held at full size by each
+  model's own grip with the barrel along the aim (measured from its idle
+  pose; every stock weapon checked), and a Virtual Reality section in
   Settings > Game Options (nine rows, twelve languages). Building that section
   fixed the Game Options and display section selectors, which ignored clicks.
   The VR math core passes natively and under ASan/UBSan on Linux; the source

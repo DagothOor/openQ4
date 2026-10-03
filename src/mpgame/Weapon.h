@@ -293,6 +293,9 @@ public:
 	// openQ4 VR: the muzzle where this frame draws the view model at the
 	// weapon hand. False outside hand aim or without a flash joint.
 	bool				GetVRMuzzle					( idVec3 &origin ) const;
+	// openQ4 VR: how the view model holds its gun at true scale: the barrel's
+	// direction and the point the right hand grips, in model space.
+	void				GetVRHold					( idVec3 &barrel, idVec3 &grip ) const;
 
 	// Script state management
 	struct weaponStateFlags_s {
@@ -448,6 +451,11 @@ protected:
 	int								mods;
 
 	float							viewModelForeshorten;
+
+	// openQ4 VR: the hold GetVRHold measured from the current view model
+	mutable bool					vrHoldKnown;
+	mutable idVec3					vrHoldBarrel;
+	mutable idVec3					vrHoldGrip;
 
 	rvStateThread					stateThread;
 	int								animDoneTime[ANIM_NumAnimChannels];

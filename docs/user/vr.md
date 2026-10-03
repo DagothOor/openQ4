@@ -146,15 +146,19 @@ Use MSAA (`r_multiSamples`) or SMAA instead.
 
 ## Weapon position
 
-If the gun doesn't sit naturally in your hand, adjust where it is drawn
-relative to the controller:
+Each gun appears full size in your hand, gripped where its own model holds it,
+with its barrel pointing along your controller's aim and the laser. If a gun
+still doesn't sit naturally, nudge it relative to the controller:
 
 | Setting | Default | Direction |
 | --- | --- | --- |
-| `vr_weaponOffsetX` | -5 | along the controller's aim, in game units |
+| `vr_weaponOffsetX` | 0 | along the controller's aim, in game units |
 | `vr_weaponOffsetY` | 0 | to the controller's left |
-| `vr_weaponOffsetZ` | -3 | above the controller |
+| `vr_weaponOffsetZ` | 0 | up |
 | `vr_weaponPitch` | 0 | tilt in degrees; positive tilts down |
+
+If you used an earlier VR build, set `vr_weaponOffsetX` and `vr_weaponOffsetZ`
+back to 0: the old defaults of -5 and -3 now push the gun out of your hand.
 
 ## Multiplayer
 
