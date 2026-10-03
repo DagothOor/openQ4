@@ -5,9 +5,18 @@
 #define __MODERN_LIGHT_GRID_GLSL_H__
 
 static const char *modernLightGridGLSL = R"glsl(
+#if MODERN_HAS_TEXTURE_TABLE
+// Table element i is bound to unit i, so these read units 7-9 without three
+// more sampler uniforms. Mesa enforces 32 samplers per stage, and the
+// clustered-forward program fails to link with separate uniforms.
+#define uBakedIrradiance uMaterialTextures[7]
+#define uBakedVisibility uMaterialTextures[8]
+#define uBakedRelocation uMaterialTextures[9]
+#else
 uniform sampler2D uBakedIrradiance;
 uniform sampler2D uBakedVisibility;
 uniform sampler2D uBakedRelocation;
+#endif
 // origin/enabled, spacing/gamma, bounds/intensity, atlas dimensions/tile/border,
 // visibility distance/bias/floor/exponent, relocation distance, view origin/cap.
 uniform vec4 uBakedGrid[7];

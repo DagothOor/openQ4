@@ -10,6 +10,8 @@
 #include "PBRMath.h"
 #include "ModernLightGridGLSL.h"
 
+static_assert( MATERIAL_RESOURCE_TABLE_TEXTURE_ARRAY_CAPACITY > 9,
+	"light-grid GLSL sampler-alias ABI drift" );
 static_assert( MODERN_SPECULAR_PROBE_ATLAS_SIZE == 2048,
 	"authored-probe GLSL atlas-size ABI drift" );
 static_assert( MODERN_SPECULAR_PROBE_ATLAS_FACE_SIZE == 256,
@@ -1600,7 +1602,12 @@ static void R_ModernGLShaderLibrary_BuildFragmentBody( int glslVersion, modernGL
 			"%s"
 			"%s"
 			"%s"
+			// Unit 4 is table element 4 (see modernLightGridGLSL).
+			"#if MODERN_HAS_TEXTURE_TABLE\n"
+			"#define uClassicLighting uMaterialTextures[4]\n"
+			"#else\n"
 			"uniform sampler2D uClassicLighting;\n"
+			"#endif\n"
 			"void main() {\n"
 			"    vec4 texel = ModernSampleMainTexture(vTexCoord);\n"
 			"    bool pbr = ModernIsPBRMaterial();\n"
@@ -2749,6 +2756,8 @@ static bool R_ModernGLShaderLibrary_ReflectProgram( modernGLShaderProgramInfo_t 
 			glUniform1i( info.specularProbeAtlasLocation, MODERN_SPECULAR_PROBE_ATLAS_TEXTURE_UNIT );
 		}
 		if ( usesBakedGrid ) {
+			// Texture-table variants alias these to the table elements that already
+			// name units 4 and 7-9, so their lookups return -1 and the calls do nothing.
 			glUniform1i( glGetUniformLocation( info.program, "uClassicLighting" ), 4 );
 			glUniform1i( glGetUniformLocation( info.program, "uBakedIrradiance" ), 7 );
 			glUniform1i( glGetUniformLocation( info.program, "uBakedVisibility" ), 8 );
