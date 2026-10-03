@@ -212,6 +212,7 @@ public:
 	virtual bool			GetUsercmdInput( float otherYawDelta, float currentYaw, vrUsercmdInput_t &input );
 	virtual void			DrawMenuPointer( void );
 	virtual void			Vibrate( int hand, float amplitude, int durationMsec );
+	virtual void			ShiftTrackingOrigin( const idVec3 &trackingDelta );
 
 	void					RequestRestart( void ) { restartRequested = true; }
 	void					RequestRecenter( void ) { recenterRequested = true; }
@@ -1812,6 +1813,38 @@ void idVRSystemOpenXR::UpdateMenuPointer( int weaponHand, bool menu ) {
 
 /*
 ====================
+idVRSystemOpenXR::ShiftTrackingOrigin
+
+The recentre pose (a heading and a position in LOCAL space) moves by the
+distance the body walked, horizontally only, and the poses already handed
+out for this frame move with it, so the camera stays on the head.
+====================
+*/
+void idVRSystemOpenXR::ShiftTrackingOrigin( const idVec3 &trackingDelta ) {
+	const float unitsPerMetre = vr_worldScale.GetFloat();
+	if ( !sessionRunning || unitsPerMetre <= 0.0f || !VR_IsFinite( VR_Vec3( trackingDelta.x, trackingDelta.y, trackingDelta.z ) ) ) {
+		return;
+	}
+	const idVec3 horizontal( trackingDelta.x, trackingDelta.y, 0.0f );
+	const vrVec3_t xr = VR_Scale( VR_EngineToXrDirection( VR_Vec3( horizontal.x, horizontal.y, 0.0f ) ), 1.0f / unitsPerMetre );
+	const vrVec3_t local = VR_RotateVector( VR_QuatNormalize( VR_FromXrQuat( recenterPose.orientation ) ), xr );
+	recenterPose.position.x += local.x;
+	recenterPose.position.y += local.y;
+	recenterPose.position.z += local.z;
+	Sys_EnterCriticalSection( VR_INPUT_CRITICAL_SECTION );
+	frame.head.origin -= horizontal;
+	for ( int i = 0; i < VR_NUM_EYES; i++ ) {
+		frame.eyes[i].pose.origin -= horizontal;
+	}
+	for ( int i = 0; i < VR_NUM_HANDS; i++ ) {
+		frame.grip[i].origin -= horizontal;
+		frame.aim[i].origin -= horizontal;
+	}
+	Sys_LeaveCriticalSection( VR_INPUT_CRITICAL_SECTION );
+}
+
+/*
+====================
 idVRSystemOpenXR::Vibrate
 ====================
 */
@@ -1932,6 +1965,7 @@ void idVRSystemOpenXR::BeginFrame( void ) {
 	frame.weaponOffset.Set( vr_weaponOffsetX.GetFloat(), vr_weaponOffsetY.GetFloat(), vr_weaponOffsetZ.GetFloat() );
 	frame.weaponPitch = vr_weaponPitch.GetFloat();
 	frame.aimLaser = idMath::ClampInt( VR_AIM_LASER_OFF, VR_AIM_LASER_BEAM, vr_aimLaser.GetInteger() );
+	frame.roomScale = vr_roomScale.GetBool();
 
 	if ( !frameShouldRender || !ResizeScreenSwapchain() || !AcquireImages() ) {
 		return;

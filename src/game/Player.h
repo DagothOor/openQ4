@@ -563,6 +563,8 @@ public:
 	// Where this frame's shot from the weapon hand lands, for the aim
 	// marker. False when nothing is aimed by hand.
 	bool					GetVRAimMarker( vrAimMarker_t &marker ) const;
+	// Room scale: walks the body after the tracked head (vr_roomScale).
+	void					UpdateVRRoomScale( void );
 	// A pulse in the local player's weapon hand, other hand, or both.
 	void					VRVibrate( bool weaponHand, bool otherHand, float amplitude, int durationMsec ) const;
  	void					OffsetThirdPersonView( float angle, float range, float height, bool clip );

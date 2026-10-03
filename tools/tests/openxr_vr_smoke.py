@@ -20,6 +20,9 @@ Checks:
   plausible range, and a beam that adds more;
 - the trigger fires the weapon through its default binding, and each shot
   pulses the weapon hand's controller (a 40 ms vibration on the right hand);
+- room scale: half a metre's step forward walks the body after the head, so
+  the head ends up within a few units of the tracking origin, while with
+  vr_roomScale 0 the same step leaves the whole distance as a lean;
 - a stick snap turn turns the body by vr_snapTurnAngle and a controller
   trigger press reaches the binding system;
 - the controller's menu button opens the pause menu on an opaque, world-locked
@@ -145,6 +148,9 @@ def main(argv: list[str] | None = None) -> None:
         f"when {marker('laser_done')} hand right 0.2 1.25 -0.35 0 0 0",
         f"when {marker('fire')} button right trigger 1",
         f"when {marker('fire_release')} button right trigger 0",
+        f"when {marker('room_walk')} head 0 0 0 0 1.6 -0.5",
+        f"when {marker('room_lean')} head 0 0 0 0 1.6 -1.0",
+        f"when {marker('room_back')} head 0 0 0 0 1.6 0",
         f"when {marker('turn')} head 40 0 0",
         f"when {marker('turned')} capture {profile / 'xr_turned'}",
         f"when {marker('snap')} head 0 0 0",
@@ -178,6 +184,10 @@ def main(argv: list[str] | None = None) -> None:
         # the right trigger's default binding fires the weapon
         "echo VR_FIRE", "condump vr_marker_fire.txt", "waitMsec 400",
         "condump vr_marker_fire_release.txt", "waitMsec 600",
+        # room scale: a step forward walks the body; without it the step is a lean
+        "vr_roomScale 1", "condump vr_marker_room_walk.txt", "waitMsec 1200", "echo VR_ROOM_WALKED", "vr_status",
+        "vr_roomScale 0", "condump vr_marker_room_lean.txt", "waitMsec 1000", "echo VR_ROOM_LEANED", "vr_status",
+        "condump vr_marker_room_back.txt", "waitMsec 600", "vr_recenter", "vr_roomScale 1", "waitMsec 600",
         "condump vr_marker_turn.txt", "waitMsec 700",
         "condump vr_marker_turned.txt", "waitMsec 700",
         "echo VR_SNAP_BEFORE", "vr_status",
@@ -307,6 +317,18 @@ def main(argv: list[str] | None = None) -> None:
     turned = image("xr_turned", "left")
     turn_difference = max(ImageStat.Stat(ImageChops.difference(left, turned)).mean)
     assert turn_difference > 4.0, f"a 40 degree head turn barely changed the view ({turn_difference:.3f})"
+    # room scale: the body walked the step; with it off the step stayed a lean
+    def head_forward(after: str) -> float:
+        found = re.search(r"head tracked \( (-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?) \)", text.partition(after)[2])
+        assert found, f"vr_status after {after} did not report a tracked head"
+        return float(found.group(1))
+    walked = head_forward("VR_ROOM_WALKED")
+    leaned = head_forward("VR_ROOM_LEANED")
+    step_units = 0.5 * 39.37
+    assert 0.0 <= walked <= 4.5, f"a 0.5 m step should walk the body and leave the head within 4 units, not {walked:.1f}"
+    assert abs(leaned - walked - step_units) < 1.5, \
+        f"with vr_roomScale 0 another 0.5 m step should stay a {step_units:.1f}-unit lean, moved {leaned - walked:.1f}"
+
     # a shot pulses the weapon hand, and only it (a hit would pulse both, for 90 ms)
     pulses = [e for e in events if e.get("event") == "haptic" and e.get("duration_ns") == 40_000_000]
     assert pulses, "firing the weapon did not vibrate a controller"

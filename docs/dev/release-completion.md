@@ -8,11 +8,13 @@
   head-locked overlay, menus and cinematics on a world-locked screen with a
   controller pointer, controller buttons through the gamepad bindings, and a
   stereo-correct laser dot (optional beam) where controller-aimed shots land,
-  and controller haptics on each shot and hit.
+  controller haptics on each shot and hit, and single-player room scale
+  (the body walks after the head with collision).
   The VR math core passes natively and under ASan/UBSan on Linux; the source
   contract and `openxr_vr_smoke.py` pass against the in-tree OpenXR test
   runtime on Air Defense 1 (stereo parallax, head tracking, HUD alpha, snap
   turn, the aim dot fusing on the shot's path, a shot pulsing the weapon hand,
+  a room-scale step walking the body,
   trigger binding, pause menu
   pointer and a click on Resume with the window unfocused, localised action names,
   ending VR from the runtime); the Linux sources and

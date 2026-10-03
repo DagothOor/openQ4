@@ -82,6 +82,9 @@ public:
 	bool					HasSteppedUp( void ) const;
 	float					GetStepUp( void ) const;
 	bool					IsCrouching( void ) const;
+	// openQ4 VR room scale: walks the body a horizontal distance after the
+	// tracked head; returns the distance it covered.
+	idVec3					VRWalk( const idVec3 &delta );
 	bool					OnLadder( void ) const;
 	const idVec3 &			PlayerGetOrigin( void ) const;	// != GetOrigin
 

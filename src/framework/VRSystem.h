@@ -83,6 +83,7 @@ typedef struct vrFrameState_s {
 	float					weaponPitch;
 
 	int						aimLaser;		// vrAimLaser_t
+	bool					roomScale;		// the body walks after the head (vr_roomScale)
 } vrFrameState_t;
 
 // What the usercmd generator applies for one tic while VR drives input.
@@ -134,6 +135,11 @@ public:
 	// scaled by vr_hapticStrength, for durationMsec. Nothing happens without
 	// a focused session.
 	virtual void			Vibrate( int hand, float amplitude, int durationMsec ) = 0;
+
+	// Room scale: the body walked after the head by this horizontal distance
+	// in tracking space (engine axes, game units). The tracking origin moves
+	// with it, so every pose read afterwards is that much nearer the origin.
+	virtual void			ShiftTrackingOrigin( const idVec3 &trackingDelta ) = 0;
 };
 
 extern idVRSystem *			vrSystem;

@@ -62,6 +62,8 @@ idCVar vr_weaponOffsetZ( "vr_weaponOffsetZ", "-3", CVAR_SYSTEM | CVAR_ARCHIVE | 
 	"view weapon offset above the controller, in game units" );
 idCVar vr_weaponPitch( "vr_weaponPitch", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
 	"view weapon pitch relative to the controller's aim, in degrees (positive tilts down)", -60.0f, 60.0f );
+idCVar vr_roomScale( "vr_roomScale", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL,
+	"1 = in single player the body walks after your head as you move about the room; 0 = it stays put and leaning stops at vr_headOffsetLimit" );
 idCVar vr_hapticStrength( "vr_hapticStrength", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
 	"controller vibration strength, from 0 (off) to 1", 0.0f, 1.0f );
 idCVar vr_aimLaser( "vr_aimLaser", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_INTEGER,
@@ -101,6 +103,9 @@ public:
 		(void)hand;
 		(void)amplitude;
 		(void)durationMsec;
+	}
+	virtual void			ShiftTrackingOrigin( const idVec3 &trackingDelta ) {
+		(void)trackingDelta;
 	}
 };
 

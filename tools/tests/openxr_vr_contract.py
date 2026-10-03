@@ -84,12 +84,12 @@ def check_abi() -> None:
     interface = vr_system[vr_system.index("class idVRSystem {"):vr_system.index("extern idVRSystem *")]
     vr_slots = re.findall(r"virtual \w+\s+(\w+)\(", interface)
     if vr_slots != ["Init", "Shutdown", "RendererStarted", "RendererStopping", "BeginFrame", "EndFrame",
-                    "IsPacing", "IsActive", "GetFrameState", "GetUsercmdInput", "DrawMenuPointer", "Vibrate"]:
+                    "IsPacing", "IsActive", "GetFrameState", "GetUsercmdInput", "DrawMenuPointer", "Vibrate", "ShiftTrackingOrigin"]:
         raise AssertionError(f"idVRSystem's slots changed order: {vr_slots}")
     # game modules read the frame state by layout: new members go at the end
     frame = vr_system[vr_system.index("typedef struct vrFrameState_s {"):vr_system.index("} vrFrameState_t;")]
-    if not frame.rstrip().endswith("int\t\t\t\t\t\taimLaser;\t\t// vrAimLaser_t"):
-        raise AssertionError("vrFrameState_t grows at the end; aimLaser is its newest member")
+    if not frame.rstrip().endswith("bool\t\t\t\t\troomScale;\t\t// the body walks after the head (vr_roomScale)"):
+        raise AssertionError("vrFrameState_t grows at the end; roomScale is its newest member")
 
     render_world = read("src/renderer/RenderWorld.h")
     for field in ("bool					asymmetricFov = false;", "float					fovTanLeft = 0.0f;",

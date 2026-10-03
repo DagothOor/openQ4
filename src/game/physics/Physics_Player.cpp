@@ -2119,6 +2119,50 @@ void idPhysics_Player::SetAxis( const idMat3 &newAxis, int id ) {
 
 /*
 ================
+idPhysics_Player::VRWalk
+
+openQ4 VR room scale: the body walks a horizontal distance after the
+tracked head as a ground move would, sliding along walls and stepping up
+and down, without changing its velocity, so neither momentum nor
+footsteps follow. A step that would leave solid ground is refused: the
+head may lean over a ledge, the body stays on it.
+================
+*/
+idVec3 idPhysics_Player::VRWalk( const idVec3 &delta ) {
+	if ( IsNoclip() || IsDead() || clipModel == NULL || delta.LengthSqr() < 0.0001f ) {
+		return vec3_origin;
+	}
+	const idVec3 start = current.origin;
+	const idVec3 savedVelocity = current.velocity;
+	const float savedFrametime = frametime;
+	const bool onGround = groundPlane;
+	current.velocity = delta;
+	frametime = 1.0f;
+	SlideMove( false, onGround, onGround, false );
+	current.velocity = savedVelocity;
+	frametime = savedFrametime;
+	if ( onGround ) {
+		trace_t ground;
+		gameLocal.Translation( self, ground, current.origin, current.origin + gravityNormal * ( maxStepHeight + 1.0f ),
+			clipModel, clipModel->GetAxis(), clipMask, self );
+		if ( ground.fraction >= 1.0f ) {
+			current.origin = start;
+		}
+	}
+	if ( masterEntity ) {
+		idVec3 masterOrigin;
+		idMat3 masterAxis;
+		self->GetMasterPosition( masterOrigin, masterAxis );
+		current.localOrigin = ( current.origin - masterOrigin ) * masterAxis.Transpose();
+	} else {
+		current.localOrigin = current.origin;
+	}
+	clipModel->Link( self, 0, current.origin, clipModel->GetAxis() );
+	return current.origin - start;
+}
+
+/*
+================
 idPhysics_Player::Translate
 ================
 */

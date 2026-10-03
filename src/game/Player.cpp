@@ -11188,6 +11188,9 @@ void idPlayer::Think( void ) {
 	}
 // RAVEN END
 
+	// openQ4 VR: a step about the room walks the body first
+	UpdateVRRoomScale();
+
 	Move();
 
 	if ( !g_stopTime.GetBool() ) {
@@ -13356,6 +13359,39 @@ bool idPlayer::GetVRAimMarker( vrAimMarker_t &marker ) const {
 		}
 	}
 	return true;
+}
+
+/*
+===============
+idPlayer::UpdateVRRoomScale
+
+openQ4 VR: a step about the room takes the body with it. Once the head is
+more than a few units from the body, the body walks the rest of the way
+(with collision), and the tracking space follows by what it covered, so
+the camera stays on the head and never enters a wall.
+===============
+*/
+void idPlayer::UpdateVRRoomScale( void ) {
+	vrFrameState_t frame;
+	float trackingYaw;
+	// a multiplayer server owns positions; there the head leans within vr_headOffsetLimit
+	if ( gameLocal.isMultiplayer || noclip || spectating || health <= 0 || !GetVRView( frame, trackingYaw ) || !frame.roomScale || !frame.head.valid ) {
+		return;
+	}
+	// leaning a little is free; beyond it the body follows
+	const float freeRadius = 4.0f;
+	const idVec3 offset( frame.head.origin.x, frame.head.origin.y, 0.0f );
+	const float distance = offset.Length();
+	if ( distance <= freeRadius ) {
+		return;
+	}
+	const idMat3 tracking = VR_TrackingAxis( trackingYaw );
+	const idVec3 walked = physicsObj.VRWalk( ( offset * ( ( distance - freeRadius ) / distance ) ) * tracking );
+	idVec3 walkedTracking = walked * tracking.Transpose();
+	walkedTracking.z = 0.0f;
+	if ( walkedTracking.LengthSqr() > 0.0f ) {
+		vrSystem->ShiftTrackingOrigin( walkedTracking );
+	}
 }
 
 /*
