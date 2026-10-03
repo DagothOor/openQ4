@@ -551,6 +551,11 @@ private:
 				Fields(value,at,{"op","event","extensions"}); step.op = EventOp::Call;
 				step.target = EventName(value["event"],at+"/event");
 				Require(model.events.contains(step.target),value["event"],at+"/event","Unknown called event");
+			} else if (op == "focus") {
+				Fields(value,at,{"op","control","extensions"}); step.op = EventOp::Focus;
+				step.target = Id(value["control"],at+"/control");
+				const auto* node = model.FindNode(step.target);
+				Require(node && node->control,value["control"],at+"/control","An event can focus only a declared control");
 			} else if (op == "if") {
 				Fields(value,at,{"op","condition","then","else","extensions"}); step.op = EventOp::If;
 				step.condition = ReadExpression(value["condition"],at+"/condition",0,true);

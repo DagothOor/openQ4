@@ -258,6 +258,24 @@ static void CheckEventSchema() {
 	Check(steps[6].condition.type==1 && steps[6].thenSteps[1].target=="root::later" && steps[6].elseSteps.size()==1,"conditional branches and forward calls compile");
 	Check(steps[7].op==EventOp::PlayTimeline && steps[8].op==EventOp::PauseTimeline && steps[9].op==EventOp::ResumeTimeline &&
 		steps[10].op==EventOp::CancelTimeline && !steps[10].restoreBase && steps[11].restoreBase,"all timeline commands and cancellation policies remain distinct");
+	{	// A focus instruction names a declared control.
+		const std::string anchor = R"("root::Later":[{"op":"call","event":"ONACTIVATE"}])";
+		Check(source.find(anchor) != std::string::npos,"the focus variants rewrite the forward call");
+		const auto variant = [&](const std::string& control) {
+			auto text = source;
+			text.replace(text.find(anchor),anchor.size(),R"("root::Later":[{"op":"focus","control":")"+control+R"("},{"op":"call","event":"ONACTIVATE"}])");
+			return text;
+		};
+		Document focusing; std::vector<Diagnostic> focusErrors;
+		Check(focusing.Load(variant("button"),focusErrors) && focusing.Model().events.at("root::later").steps[0].op==EventOp::Focus &&
+			focusing.Model().events.at("root::later").steps[0].target=="button","a focus instruction compiles with its control");
+		for (const char* control : {"label","missing"}) {
+			Document broken; std::vector<Diagnostic> brokenErrors;
+			Check(!broken.Load(variant(control),brokenErrors) && !brokenErrors.empty() &&
+				brokenErrors.front().pointer.size() >= 8 && brokenErrors.front().pointer.compare(brokenErrors.front().pointer.size()-8,8,"/control")==0,
+				"a focus instruction requires a declared control");
+		}
+	}
 	for (const auto& [name,type] : std::map<std::string,PresentationType>{{"CURR",PresentationType::Number},{"caption",PresentationType::String},
 		{"allowed",PresentationType::Boolean},{"pair",PresentationType::Vector2},{"triple",PresentationType::Vector3},
 		{"panel::rect",PresentationType::Vector4},{"panel::tint",PresentationType::Vector4},{"panel::visible",PresentationType::Boolean},

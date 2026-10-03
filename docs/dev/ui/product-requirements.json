@@ -4,7 +4,7 @@
   "date": "2026-10-01",
   "status": "Implementation incomplete; this register preserves full product scope and does not accept any production GUI.",
   "baseline": {
-    "engine_revision": "9605f1dbbefc953b4c22af1650d5bf69e34e63cc",
+    "engine_revision": "34dba978638b3255d8d67e74a7eea374c151b07c",
     "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
     "effective_gui_count": 271,
     "translated_or_accepted_resources": 0,
@@ -120,7 +120,7 @@
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/input-routing.md",
       "scope": "Semantic button/device ownership fixtures; no full widget, text, touch or platform acceptance.",
-      "sha256": "d352b1ad749f177093d1b88b73dbd7c1b7879f3d6c736d22ed96d56d54ee42b6"
+      "sha256": "9936741b2f281bd28b6f4777bccbc9047a67aaf2a7f7e4afae7a501547da4d99"
     },
     "interaction-foundation": {
       "kind": "implementation_checkpoint",
@@ -204,7 +204,7 @@
     "event-program-foundation": {
       "kind": "qualified_foundation_checkpoint",
       "path": "docs/dev/ui/event-programs.md",
-      "sha256": "b306ee55c5b8a50aa305c2944a08de649988515acbe45f184a099304d02b1633",
+      "sha256": "ce7b2494cc4de862e2ffddf43cc821d991cf964e2d18be6c9dcaf20145af2c39",
       "baseline_engine_revision": "25813aaf96f0a9dfe36e1be0fd29bbce8cea93df",
       "companion_revision": "1cd33980f072ac3d78978a07b388b4b6fe6b5eb2",
       "local_capture_summary": ".tmp/ui/events-review/capture-evidence.json",
@@ -832,7 +832,13 @@
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/input-routing.md",
       "scope": "The controller menu pump pairs each navigation step with its release on every retained input target, so a stick push no longer leaves focus moving on the Single Player, Campaign and SYSTEM pages. Qualified by a compiled pump test, a mutation pass and the session tests.",
-      "sha256": "d352b1ad749f177093d1b88b73dbd7c1b7879f3d6c736d22ed96d56d54ee42b6"
+      "sha256": "9936741b2f281bd28b6f4777bccbc9047a67aaf2a7f7e4afae7a501547da4d99"
+    },
+    "event-focus-tabs": {
+      "kind": "implementation_checkpoint",
+      "path": "docs/dev/ui/event-programs.md",
+      "scope": "Event programs can move focus (the focus instruction, including after a layout and from completion programs), and Q/E and the shoulders run a document's tab events. Qualified by the behavior, document and runtime suites, the adapter test and a mutation pass; no document uses them yet.",
+      "sha256": "ce7b2494cc4de862e2ffddf43cc821d991cf964e2d18be6c9dcaf20145af2c39"
     }
   },
   "groups": {
@@ -8436,10 +8442,12 @@
       "acceptance_evidence_needed": [
         "Navigation traces through menus, lists, tabs and modals including re-entry and restoration."
       ],
-      "status": "pending",
-      "current_evidence": [],
+      "status": "partial",
+      "current_evidence": [
+        "event-focus-tabs"
+      ],
       "acceptance_evidence": [],
-      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "remaining": "Event programs can now focus a control, so a page can open with its primary action focused (the focus instruction). Containers remembering their focus, modals returning focus to the invoker, authored navigation overrides, wrapping menus and tab strips, and documents that use them remain.",
       "constraints": {
         "wrap_max_items": 7
       }
@@ -8466,10 +8474,12 @@
       "acceptance_evidence_needed": [
         "Per-family controller runs covering every mapped action, glyph selection, confirm conventions and override readback, including Steam Input remapping."
       ],
-      "status": "pending",
-      "current_evidence": [],
+      "status": "partial",
+      "current_evidence": [
+        "event-focus-tabs"
+      ],
       "acceptance_evidence": [],
-      "remaining": "Implementation and acceptance evidence covering the entire stated requirement are required.",
+      "remaining": "The shoulders (with Q and E) now run a document's previous and next tab events. The other position mappings, SDL's printed labels, the Nintendo layout default with Swap Confirm and Back, the glyph families and the Prompt Style override remain.",
       "constraints": {
         "south": "accept",
         "east": "back",

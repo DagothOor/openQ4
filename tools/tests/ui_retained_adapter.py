@@ -52,7 +52,7 @@ struct idCmdArgs {
 template<class T> T Min(T a,T b) { return (std::min)(a,b); }
 struct idVec2 { idVec2(float=0,float=0) {} } vec2_origin;
 enum { SE_KEY=1,SE_MOUSE,K_TAB=10,K_SHIFT,K_UPARROW,K_DOWNARROW,K_LEFTARROW,K_RIGHTARROW,
-       K_ENTER,K_KP_ENTER,K_SPACE,K_ESCAPE,K_MOUSE1,K_JOY3,K_JOY4,K_JOY7,K_JOY8,K_JOY9,K_JOY10,K_JOY11,K_JOY12,
+       K_ENTER,K_KP_ENTER,K_SPACE,K_ESCAPE,K_MOUSE1,K_JOY1,K_JOY2,K_JOY3,K_JOY4,K_JOY7,K_JOY8,K_JOY9,K_JOY10,K_JOY11,K_JOY12,
        K_HOME,K_END,K_PGUP,K_PGDN,K_MWHEELUP,K_MWHEELDOWN,K_CTRL,K_ALT,K_RIGHT_ALT,K_BACKSPACE,K_DEL,K_INS,K_LAST_KEY=512 };
 struct idKeyInput { static inline bool shift=false; static bool IsDown(int key) { return key==K_SHIFT && shift; } };
 class idFile {
@@ -2136,6 +2136,36 @@ static void CheckNumberDiagnosticBoundary() {
     }
     assert(views.empty() && service.owners.empty());modelTemplate=original;eventPlans.clear();
 }
+// Q and E, and the shoulders, run the document's onTabPrevious and onTabNext
+// where it declares them: once per press, never on a repeat, never with Ctrl
+// or Alt, and never while a Number field is being edited.
+static void CheckTabKeys() {
+    assert(views.empty());cvars=CVars{};consoleObject.open=false;windowFocused=true;
+    eventPlans={};eventHistory.clear();
+    idUserInterfaceRetained gui;assert(gui.InitFromFile("test.q4ui"));gui.Activate(true,0);gui.Redraw(0);
+    auto& runtime=Live();
+    const auto tabs=[&]{std::vector<std::string> found;for(const auto& name:eventHistory)if(name=="ontabprevious" || name=="ontabnext")found.push_back(name);return found;};
+    const auto pulse=[&](int key){Key(gui,key,true);Key(gui,key,false);};
+    pulse('q');pulse(K_JOY2);
+    assert(tabs().empty() && runtime.menu.empty());
+    eventPlans["ontabprevious"]={};eventPlans["ontabnext"]={};
+    pulse('q');pulse('e');pulse(K_JOY1);pulse(K_JOY2);
+    assert(tabs()==std::vector<std::string>({"ontabprevious","ontabnext","ontabprevious","ontabnext"}));
+    assert(runtime.menu.empty());
+    Key(gui,'e',true);Key(gui,'e',true);Key(gui,'e',false);
+    assert(tabs().size()==5);
+    Key(gui,K_CTRL,true);pulse('e');Key(gui,K_CTRL,false);
+    Key(gui,K_ALT,true);pulse('q');Key(gui,K_ALT,false);
+    Key(gui,K_RIGHT_ALT,true);pulse(K_JOY2);Key(gui,K_RIGHT_ALT,false);
+    assert(tabs().size()==5);
+    runtime.InstallNumber("root","number.settings");runtime.selected="root";
+    std::string error;assert(runtime.BeginNumberEdit("root",error,0));
+    pulse('q');pulse(K_JOY2);
+    assert(tabs().size()==5);
+    runtime.widgets.at("root").number->active=false;
+    pulse(K_JOY2);
+    assert(tabs().size()==6 && tabs().back()=="ontabnext");
+}
 static void CheckNumberKeys() {
     assert(views.empty());const auto original=modelTemplate;
     Expression operand;operand.type=0;operand.inputValue=true;
@@ -2377,6 +2407,7 @@ int main() {
     CheckNumberDiagnosticBoundary();
     CheckChoiceDiagnosticBoundary();
     CheckNumberKeys();
+    CheckTabKeys();
     std::puts("Retained adapter: Number diagnostic transport, delayed numeric identity and readback-before-acknowledgement; exactly-once Apply-and-exit receipts after complete queued batches, stationary wheel/pointer handoff, immutable value proposals/acknowledgements, authoritative settings return and authored Back, settings capability/draw ownership and state/lifecycle boundaries, ordered event/FIFO publication, restore suppression, pending dictionary, presentation delegation, framed saves, input suspension and cursor mapping passed");
 }
 '''

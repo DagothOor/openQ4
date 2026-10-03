@@ -451,11 +451,78 @@ static void CheckEventRuntime(TestHost& host) {
 	host.eventHost = 1;
 }
 
+// A focus instruction moves focus once its program commits: at once where the
+// control can take it, else after the next frame's layout, else not at all.
+// A timeline's completion program focuses after the frame that completes it.
+static void CheckEventFocus(TestHost& host) {
+	Json::Value source = JsonData(Source());
+	const auto visible = [](bool shown) {
+		Json::Value step; step["op"] = "setPresentation"; step["alias"] = "menu::visible"; step["value"] = shown;
+		step["overrideExpression"] = true; return step;
+	};
+	const auto focus = [](const char* control) { Json::Value step; step["op"] = "focus"; step["control"] = control; return step; };
+	const auto program = [&](const char* name, std::initializer_list<Json::Value> steps) {
+		source["events"][name] = Json::Value(Json::arrayValue);
+		for (const auto& step : steps) source["events"][name].append(step);
+	};
+	program("toOutside",{focus("outside")});
+	program("hideAndFocus",{visible(false),focus("second")});
+	program("showAndFocus",{visible(true),focus("second")});
+	program("focusFirst",{focus("first")});
+	Json::Value play; play["op"] = "playTimeline"; play["timeline"] = "later";
+	program("startLater",{play});
+	Json::Value later; later["id"] = "later"; later["durationMs"] = 100; later["complete"] = "focusFirst";
+	// A timeline that only holds the panel's own color, so its completion is all it does.
+	const Json::Value panelColor = Typed("color",Tuple({.125,.25,.5,1}));
+	later["tracks"] = Json::Value(Json::arrayValue); later["tracks"].append(JsonTrack("panel","background-color",panelColor,panelColor,100));
+	source["timelines"].append(later);
+	Runtime runtime(host);
+	Check(runtime.Initialize(),"focus event context initializes");
+	Load(runtime,JsonText(source)); Frame(host,runtime,1);
+	Runtime::EventEffects effects; std::string error;
+	Check(runtime.FocusControl("first",1),"a control has focus before the programs run");
+	Check(runtime.RunEvent("toOutside",1,effects,error) && runtime.FocusedControl() == "outside","a program focuses a visible control as it commits");
+	Check(runtime.RunEvent("hideAndFocus",2,effects,error) && runtime.FocusedControl() == "outside","a control its own program hides cannot take focus");
+	Frame(host,runtime,2.1);
+	Check(runtime.FocusedControl() == "outside","a request the next frame cannot take lapses");
+	Check(runtime.RunEvent("showAndFocus",3,effects,error),"a program shows a control and asks for it");
+	Frame(host,runtime,3.1);
+	Check(runtime.FocusedControl() == "second","a program focuses the control it shows");
+	Check(runtime.RunEvent("startLater",4,effects,error) && runtime.FocusedControl() == "second","playing a timeline moves no focus");
+	Frame(host,runtime,4.05);
+	Check(runtime.FocusedControl() == "second","focus waits for the timeline to complete");
+	Frame(host,runtime,4.2);
+	Check(runtime.FocusedControl() == "first","a completion program's focus lands after the frame that completes it");
+	// Newer input wins over a program's focus still waiting for layout: a
+	// navigation press (Right finds no control past "outside"), or an explicit focus.
+	for (const bool press : {true,false}) {
+		const double at = press ? 5 : 6;
+		Check(runtime.RunEvent("hideAndFocus",at,effects,error),"a program hides the menu again");
+		Frame(host,runtime,at+0.1);
+		Check(runtime.FocusControl("outside",at+0.2),"the player focuses outside the menu");
+		Check(runtime.RunEvent("showAndFocus",at+0.3,effects,error) && runtime.FocusedControl() == "outside","the program's focus waits for layout");
+		if (press) { runtime.MenuAction(MenuInput::Right,true,at+0.31); runtime.MenuAction(MenuInput::Right,false,at+0.32); }
+		else Check(runtime.FocusControl("outside",at+0.31),"the player focuses a control again");
+		Frame(host,runtime,at+0.4);
+		Check(runtime.FocusedControl() == "outside",press ? "a navigation press cancels a program's waiting focus" :
+			"an explicit focus cancels a program's waiting focus");
+	}
+	// A replaced document drops a request its predecessor left waiting.
+	Check(runtime.RunEvent("hideAndFocus",7,effects,error),"a program hides the menu once more");
+	Frame(host,runtime,7.05);
+	Check(runtime.FocusControl("outside",7.06) && runtime.RunEvent("showAndFocus",7.1,effects,error) &&
+		runtime.FocusedControl() == "outside","a request waits again");
+	Load(runtime,JsonText(source));
+	Frame(host,runtime,7.2);
+	Check(runtime.FocusedControl() != "second","a reloaded document drops the waiting focus");
+}
+
 int main() {
 	TestHost host;
 	CheckAliasesAndOwnership(host); CheckDisabledExpressions(host); CheckTextAndColour(host); CheckSnapshots(host);
 	CheckVersionOne(host); CheckTimelineWrites(host); CheckInputSuppression(host);
 	CheckEventRuntime(host);
+	CheckEventFocus(host);
 	Check(host.draws > 0 && host.errors == 0,"real runtime integration completes with geometry and no host diagnostics");
 	std::puts("PASS: runtime presentation aliases, binding ownership, snapshots, atomic rollback and subtree input suppression");
 	return 0;

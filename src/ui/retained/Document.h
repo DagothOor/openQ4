@@ -73,7 +73,7 @@ struct ActionInvocation {
 	std::string action, operation;
 	StateValues arguments;
 };
-enum class EventOp { SetState, SetPresentation, Action, Call, If, PlayTimeline, PauseTimeline, ResumeTimeline, CancelTimeline };
+enum class EventOp { SetState, SetPresentation, Action, Call, If, PlayTimeline, PauseTimeline, ResumeTimeline, CancelTimeline, Focus };
 struct EventStep {
 	EventOp op = EventOp::SetState;
 	std::string target;

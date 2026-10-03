@@ -525,7 +525,9 @@ On engine `e242f927cc0fe252ab8438d2348c5b03d98ca727` the retained SYSTEM page ga
 
 On engine `9605f1dbbefc953b4c22af1650d5bf69e34e63cc` the session's controller menu pump completes each navigation step with its release on every retained input target, not only the home screen, so a stick push no longer leaves focus moving on the Single Player, Campaign and SYSTEM pages; legacy GUIs keep receiving presses alone. A compiled pump test, its mutants and the session tests qualify it. `INP-002` and `INP-003` gain partial evidence without a status change. Evidence: `.tmp/ui/controller-menu-pump/validation-evidence.json`, SHA-256 `90860f636950012e402d58132f0f8c0c2d4834633005a15d59bdca33bcb0c94c`.
 
-There are **87 partial, 252 pending and one verified requirement**, counting the
+On engine `34dba978638b3255d8d67e74a7eea374c151b07c` event programs gain a focus instruction, which moves focus as the program commits or after the next layout and yields to newer input, and Q, E and the gamepad shoulders run a document's tab events. The behavior, document and runtime suites, the adapter test and a mutation pass qualify it; no document uses them yet. `INP-010` and `INP-011` move from pending to partial. Evidence: `.tmp/ui/event-focus-tabs/validation-evidence.json`, SHA-256 `a46e0a80f07dade3ec51c8fe9a363e4deb53d3aff60860f86ccc522793c86df0`.
+
+There are **89 partial, 250 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock

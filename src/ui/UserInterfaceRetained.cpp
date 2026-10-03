@@ -476,6 +476,19 @@ struct idUserInterfaceRetained::Impl {
 		suspended = pause;
 		return !pause;
 	}
+	// Q and E, and the shoulder buttons, page a document's tabs where it
+	// declares onTabPrevious and onTabNext. A field being edited keeps its keys,
+	// and Ctrl or Alt leave them to shortcuts.
+	bool TabKey(int key, const openq4::KeyEventMetadata* metadata) {
+		const char* name = key == 'q' || key == K_JOY1 ? "onTabPrevious" : key == 'e' || key == K_JOY2 ? "onTabNext" : nullptr;
+		if (!name || !RuntimeView()->HasEvent(name)) return false;
+		const bool control = metadata ? metadata->control : held.contains(K_CTRL) || idKeyInput::IsDown(K_CTRL);
+		const bool alt = metadata ? metadata->alt : held.contains(K_ALT) || held.contains(K_RIGHT_ALT) || idKeyInput::IsDown(K_ALT) || idKeyInput::IsDown(K_RIGHT_ALT);
+		if (control || alt) return false;
+		const auto widget = RuntimeView()->GetWidgetState(RuntimeView()->FocusedControl());
+		if (widget && widget->role == ControlRole::Number && widget->number && widget->number->active) return false;
+		pointerVisible = false; RunEvent(name); return true;
+	}
 	bool TextCommandKey(int key, bool down, bool repeated, const openq4::KeyEventMetadata* metadata) {
 		auto* runtime = RuntimeView();
 		const auto id = runtime->FocusedControl();
@@ -773,6 +786,7 @@ const char* idUserInterfaceRetained::HandleEvent(const sysEvent_t* event, int ti
 				default: mapped = false; break;
 			}
 			if (mapped) { impl->pointerVisible = false; impl->input.Menu(key,action,down,repeated,RetainedUI_PresentationTime()); }
+			else if (down && !repeated) impl->TabKey(key,hasMetadata ? &metadata : nullptr);
 		}
 	}
 	impl->input.Advance(RetainedUI_PresentationTime()); impl->ApplyInput(); impl->CollectActions();

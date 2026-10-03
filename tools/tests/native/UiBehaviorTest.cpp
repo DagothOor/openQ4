@@ -407,6 +407,20 @@ void FailuresAndBudgets(const DocumentModel& compiled) {
 	Check(state.Set({{"a",40.0}},error),"seed recursion above shared stack bound");
 	Reject(model,state,motion,"recurse",10.5);
 }
+// A focus instruction records its control in the staged result; the last one
+// wins, and a failed program leaves the caller's previous result alone.
+void Focus(const DocumentModel& base) {
+	auto model = base; State state; Motion motion; Reset(model,state,motion);
+	model.events["focusing"] = {"focusing",{Step(EventOp::Focus,"first"),Set("a",5.0),Step(EventOp::Focus,"second")}};
+	model.events["calls"] = {"calls",{Step(EventOp::Call,"focusing"),Step(EventOp::Focus,"third")}};
+	model.events["plain"] = {"plain",{Set("a",6.0)}};
+	Check(Run(model,state,motion,"focusing",0).focus == "second","the last focus instruction wins");
+	Check(Run(model,state,motion,"calls",0).focus == "third","a caller's later focus overrides a called program's");
+	Check(Run(model,state,motion,"plain",0).focus.empty(),"a program without a focus instruction requests none");
+	model.events["failing"] = {"failing",{Step(EventOp::Focus,"first"),Step(EventOp::Call,"missing")}};
+	EventResult previous; previous.focus = "kept"; std::string error;
+	Check(!EvaluateEvent(model,state,motion,"failing",0,previous,error) && previous.focus == "kept","a failed program requests no focus");
+}
 } // namespace
 
 int main() {
@@ -415,5 +429,6 @@ int main() {
 	AliasOwnership(document.Model());
 	Timelines(document.Model());
 	FailuresAndBudgets(document.Model());
+	Focus(document.Model());
 	std::puts("UI behavior: ordered transactions, typed aliases/actions, ownership, motion, rollback and runtime budgets passed");
 }

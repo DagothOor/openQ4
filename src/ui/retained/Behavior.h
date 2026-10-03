@@ -13,6 +13,7 @@ struct EventResult {
 	Motion motion;
 	StateValues stateChanges; // Final values of explicitly written application keys.
 	std::vector<ActionInvocation> actions;
+	std::string focus; // The control the program last asked to focus, if any.
 };
 
 bool ReadPresentationAlias(const DocumentModel& model, const State& state, const Motion& motion,

@@ -933,6 +933,10 @@ struct Runtime::Impl {
 	float windowPointerX = 0, windowPointerY = 0;
 	bool pointerPresent = false;
 	bool pointerNavigation = false;
+	// A program's focus request that the current layout could not take: its
+	// control appears with the same state change. The next frame's layout
+	// takes it, or it lapses.
+	std::string pendingFocus;
 	std::map<PropertyKey,std::string> applied;
 	// ApplyMotion's last applied input for each motion value, by position, and
 	// the state revision and text ratio it was formatted under.
@@ -968,7 +972,7 @@ struct Runtime::Impl {
 	// frame has no caller to fail. The document's completion graph is acyclic;
 	// the round cap only bounds a pathological chain of replays.
 	// Returns whether any program committed.
-	bool RunCompletions(State& candidateState, Motion& candidateMotion, double now, StateValues& writes) const {
+	bool RunCompletions(State& candidateState, Motion& candidateMotion, double now, StateValues& writes, std::string* focus = nullptr) const {
 		if (!canonical) { candidateMotion.TakeCompleted(); return false; }
 		const auto& model = canonical->Model();
 		bool committed = false;
@@ -984,12 +988,20 @@ struct Runtime::Impl {
 					host.Log(true,"Completion program of timeline '"+id+"' failed: "+error); continue;
 				}
 				for (auto& [key,value] : candidate.stateChanges) writes[key] = std::move(value);
+				if (focus && !candidate.focus.empty()) *focus = std::move(candidate.focus);
 				candidateState = std::move(candidate.state); candidateMotion = std::move(candidate.motion);
 				committed = true;
 			}
 		}
 		host.Log(true,"Timeline completion programs did not settle within 64 rounds");
 		return committed;
+	}
+	// Focus a program asked for: now, when the control can take it, else
+	// after the next frame's layout.
+	void RequestFocus(const std::string& id) {
+		pointerNavigation = false;
+		if (interaction.Focus(id)) { pendingFocus.clear(); RevealFocus(); }
+		else pendingFocus = id;
 	}
 	bool PrepareNumberEdit(double seconds, std::string& error) {
 		if (!canonical || !document || !std::isfinite(seconds) || seconds < 0) {
@@ -1535,6 +1547,7 @@ void Runtime::Shutdown() {
 	impl->canonical.reset(); impl->applied.clear(); impl->appliedInputs.clear(); impl->motion.Reset({});
 	impl->state = {}; impl->appliedStateRevision = 0; impl->stateError.clear();
 	impl->interaction.Reset({}); impl->controls.clear(); impl->pointerPresent = impl->pointerNavigation = false;
+	impl->pendingFocus.clear();
 	impl->initialized = false;
 	impl->time = 0;
 	impl->contextName.clear();
@@ -1553,6 +1566,7 @@ void Runtime::CloseDocument() {
 	impl->canonical.reset(); impl->applied.clear(); impl->appliedInputs.clear(); impl->motion.Reset({});
 	impl->state = {}; impl->appliedStateRevision = 0; impl->stateError.clear();
 	impl->interaction.Reset({}); impl->controls.clear(); impl->pointerPresent = impl->pointerNavigation = false;
+	impl->pendingFocus.clear();
 	if (!impl->document) return;
 	ContextClock clock(*impl->services,impl->time,impl->strictPreparation?&impl->preparationFailed:nullptr);
 	impl->document->Close();
@@ -1920,6 +1934,7 @@ bool Runtime::RestoreSnapshot(const std::string& snapshot, std::string& error, d
 		if (!impl->interaction.Adopt(std::move(interaction),error)) return false;
 		impl->state = std::move(state); impl->motion = std::move(motion);
 		impl->time = now; impl->pointerPresent = impl->pointerNavigation = false; impl->applied.clear(); impl->appliedInputs.clear();
+		impl->pendingFocus.clear();
         impl->preserveRestoredScroll=widgets.version==3;
 		// The restored modals are open already: their saved scroll offsets stand.
 		impl->openModals = modalRoots;
@@ -1978,16 +1993,19 @@ bool Runtime::RunEvent(const std::string& name, double seconds, EventEffects& ef
 	// it commits with the event, and their writes are published with its own.
 	Motion motion = impl->motion; motion.Advance(now);
 	StateValues before, after;
-	impl->RunCompletions(state,motion,now,before);
+	std::string focus;
+	impl->RunCompletions(state,motion,now,before,&focus);
 	EventResult candidate;
 	if (!EvaluateEvent(model,state,motion,name,now,candidate,error,validate,maxActions)) return false;
-	impl->RunCompletions(candidate.state,candidate.motion,now,after);
+	if (!candidate.focus.empty()) focus = std::move(candidate.focus);
+	impl->RunCompletions(candidate.state,candidate.motion,now,after,&focus);
 	if (!impl->ValidModals(candidate.state,candidate.motion,error)) return false;
 	EventEffects published{std::move(before),std::move(candidate.actions)};
 	for (auto& [key,value] : candidate.stateChanges) published.stateChanges[key] = std::move(value);
 	for (auto& [key,value] : after) published.stateChanges[key] = std::move(value);
 	impl->state = std::move(candidate.state); impl->motion = std::move(candidate.motion); impl->time = now;
 	impl->stateError.clear(); impl->ApplyControlBindings(); impl->UpdateInteraction(now);
+	if (!focus.empty()) { impl->RequestFocus(focus); impl->Feedback(now); }
 	effects = std::move(published); return true;
 }
 StateValues Runtime::TakeCompletionWrites() {
@@ -2030,7 +2048,9 @@ bool Runtime::Layout(const Viewport& viewport,double seconds) {
 	ContextClock clock(*impl->services,impl->time,impl->strictPreparation?&impl->preparationFailed:nullptr);
 	impl->ReadStateSources();
 	impl->motion.Advance(impl->time);
-	if (impl->RunCompletions(impl->state,impl->motion,impl->time,impl->completionWrites)) impl->ApplyControlBindings();
+	std::string completionFocus;
+	if (impl->RunCompletions(impl->state,impl->motion,impl->time,impl->completionWrites,&completionFocus)) impl->ApplyControlBindings();
+	if (!completionFocus.empty()) impl->pendingFocus = std::move(completionFocus);
 	impl->ApplyMotion();
 	impl->context->SetDimensions({viewport.width, viewport.height});
 	impl->context->SetDensityIndependentPixelRatio(viewport.DpRatio());
@@ -2090,6 +2110,11 @@ void Runtime::Frame(const Viewport& viewport, double seconds) {
 	// RmlUi resolves transform state while rendering. Hit/navigation bounds
 	// therefore follow the just-presented frame, not stale transform matrices.
 	impl->UpdateInteraction(-1,true);
+	if (!impl->pendingFocus.empty()) {
+		const auto focus = std::move(impl->pendingFocus); impl->pendingFocus.clear();
+		impl->pointerNavigation = false;
+		if (impl->interaction.Focus(focus)) { impl->RevealFocus(); impl->Feedback(impl->time); }
+	}
 	const auto end = std::chrono::steady_clock::now();
 	statistics.updateMilliseconds = std::chrono::duration<double,std::milli>(updated-start).count();
 	statistics.renderMilliseconds = std::chrono::duration<double,std::milli>(end-updated).count();
@@ -2188,6 +2213,7 @@ void Runtime::MenuAction(MenuInput input, bool down, double seconds) {
 
     if(impl->viewport.width<=0 || impl->viewport.height<=0) {impl->interaction.QuarantineInput(input,down);return;}
 	if (down && input != MenuInput::Back && !impl->interaction.CapturedPointerControl().empty()) impl->interaction.Cancel();
+	if (down) impl->pendingFocus.clear();
 	const auto before = impl->interaction.Focused();
 	impl->pointerNavigation = false; if(!impl->UpdateInteraction(seconds,false,true))return; impl->interaction.Input(input,down); impl->ApplyScrollCommands(); impl->Feedback(seconds);
 	if (impl->interaction.Focused() != before) impl->RevealFocus();
@@ -2201,7 +2227,7 @@ void Runtime::ReleaseInputSources() {
 bool Runtime::FocusControl(const std::string& id, double seconds) {
     if(!Mutate())return false;
 
-	impl->pointerNavigation = false;
+	impl->pointerNavigation = false; impl->pendingFocus.clear();
 	if(!impl->UpdateInteraction(seconds,false,true))return false; const bool result = impl->interaction.Focus(id);
 	if (result) impl->RevealFocus();
 	impl->Feedback(seconds); return result;

@@ -39,6 +39,7 @@ and display-failure recovery remain production component work.
 | `playTimeline` | Start/retarget the declared `timeline` at the event's presentation time |
 | `pauseTimeline` / `resumeTimeline` | Change the named timeline's playback without changing the event clock |
 | `cancelTimeline` | Cancel the named timeline using explicit `policy`: `hold` or `base` |
+| `focus` | Move keyboard focus to the declared `control` once the program commits; the last request wins. A control the current layout cannot focus yet, because the same state change shows it, takes focus after the next frame's layout, or the request lapses. A navigation press, an explicit focus or a replaced document cancels a waiting request. A timeline's completion program focuses after the frame that completes it |
 
 Button controls declare exactly one `action` or `event`. Existing direct-action
 controls remain valid; event controls route the named program through the same
@@ -53,6 +54,15 @@ component. These reads never create dictionary entries, disable expressions or
 parse CSS. Ordinary bindings and presentation-variable expressions still accept
 only their existing state sources; they cannot introduce presentation dependency
 cycles through this syntax.
+
+A document with tabs declares `onTabPrevious` and `onTabNext`. The adapter runs
+them for Q and E and the gamepad shoulders, once per press: never on a repeat,
+never with Ctrl or Alt, and never while a Number field is being edited
+([input routing](input-routing.md)). With `focus`, a tab program can switch
+the page and focus its primary action.
+
+Evidence: `.tmp/ui/event-focus-tabs/validation-evidence.json`, SHA-256
+`a46e0a80f07dade3ec51c8fe9a363e4deb53d3aff60860f86ccc522793c86df0`.
 
 ## Ordering, validation and rollback
 

@@ -165,6 +165,9 @@ private:
 				case EventOp::Call:
 					if (!Call(step.target,depth,error)) return false;
 					break;
+				case EventOp::Focus:
+					candidate.focus = step.target;
+					break;
 				case EventOp::If: {
 					StateValue condition;
 					if (!Eval(step.condition,condition,error)) return false;

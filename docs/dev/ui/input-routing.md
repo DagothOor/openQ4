@@ -41,6 +41,7 @@ revision; the parity test checks the pinned files as well as the working tree.
 | Escape / gamepad East, Start, Back | Pop the current modal scope, then close the root menu |
 | Primary pointer | Focus, arm and release the hit button |
 | Movement stick | Dominant-axis spatial navigation after neutral |
+| Q / E, gamepad shoulders | The document's previous / next tab (`onTabPrevious`, `onTabNext`) where it declares them; not while a field is being edited, nor with Ctrl or Alt |
 
 SDL's gamepad South/East buttons map to engine `K_JOY3`/`K_JOY4`; the shoulders
 are distinct. Keyboard scancodes, controller buttons and pointer buttons have
