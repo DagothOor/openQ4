@@ -205,8 +205,8 @@ MAIN = r'''
 int main(){
     {
         Scenario s;ui_retainedSystem.value=false;CHECK(!s.session.OpenSystemSettings());CHECK(s.manager.loads==0 && s.parent->deactivates==0);
-        // The gate includes the SYSTEM page only once it offers every stock setting.
-        ui_retained.value=true;CHECK(RETAINED_SYSTEM_MISSING_SETTINGS[0]!=NULL && !s.session.OpenSystemSettings() && s.manager.loads==0);
+        // The gate includes the SYSTEM page only once it offers every stock setting and each one works there.
+        ui_retained.value=true;CHECK((RETAINED_SYSTEM_MISSING_SETTINGS[0]!=NULL || RETAINED_SYSTEM_INCOMPLETE_SETTINGS[0]!=NULL) && !s.session.OpenSystemSettings() && s.manager.loads==0);
         ui_retainedSystem.value=true;CHECK(s.session.OpenSystemSettings() && s.manager.loads==1);CHECK(s.session.ReturnSystemSettings());ui_retained.value=false;
         s.manager.loads=0;s.manager.frees=0;s.parent->deactivates=0;
         ui_retainedSystem.value=true;s.session.guiTest=s.parent;CHECK(!s.session.OpenSystemSettings());s.session.guiTest=nullptr;
@@ -378,7 +378,8 @@ def main():
     assert stock[:stock.index('}')].count('set "desktop::dest" "22" ;') == 1
     assert 'ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL' in menu
     assert 'ui_retained( "ui_retained", "1", CVAR_GUI | CVAR_BOOL | CVAR_ARCHIVE,' in menu
-    assert 'return ui_retainedSystem.GetBool() || ( Session_RetainedScreensEnabled() && RETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL );' in menu
+    assert ('return ui_retainedSystem.GetBool() || ( Session_RetainedScreensEnabled() &&\n'
+            '\t\tRETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL && RETAINED_SYSTEM_INCOMPLETE_SETTINGS[0] == NULL );') in menu
     assert 'ReturnSystemSettings();' in function_body(menu, 'void idSessionLocal::StartMenu(')
     unload = function_body(session, 'void idSessionLocal::UnloadMap(')
     assert unload.index('CloseSystemSettings();') < unload.index('game->MapShutdown();')

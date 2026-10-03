@@ -152,7 +152,14 @@ against each other and the catalog. A disconnected unused monitor cannot block
 an otherwise valid recovery.
 
 Persistent display descriptors contain names, bounds and desktop pixel modes,
-not process-local SDL IDs. Resolution requires a unique matching configuration;
+not process-local SDL IDs. A descriptor's size is the desktop mode's, which
+equals the bounds except while an exclusive mode resizes them: Windows, X11 and
+macOS switch the display, and Wayland reports a focused exclusive window's
+emulated mode. A Revert from a non-desktop exclusive size therefore still finds
+its monitor by size. The position still comes from the bounds: where an
+operating system moves a display or its neighbours while one runs an exclusive
+mode, which has not been checked, a Revert there can still miss. No visible
+exclusive Apply has qualified this yet. Resolution requires a unique matching configuration;
 this is not a hardware serial/EDID identity. Explicit numeric display selections
 are remapped to the current resolved index. A second startup accepts that same
 owned remapping after a preceding config commit and failed journal cleanup.
@@ -188,9 +195,11 @@ FIFO behavior on DrvFS. No macOS runtime or power-cut acceptance is claimed.
 opacity/display plus explicitly view-wide vector statistics. It performs no
 input or frame advancement; aggregate counters do not prove an individual path
 was visible. The display probe records five such observations alongside its
-screenshots. Its controlled initial sample count is zero: an inherited MSAA
-preference can otherwise request an unsupported Vulkan framebuffer, which the
-strict path correctly refuses and restores. Production requests are not coerced.
+screenshots. Its controlled initial sample count is zero. An inherited MSAA
+preference once made a Vulkan Apply request a multisampled window, which the
+strict path refused and restored. SYSTEM now requests a single-sample window on
+Vulkan, whose MSAA belongs to its scene targets; OpenGL window requests are
+unchanged.
 
 The configuration durability work does not change the pre-existing escaping of
 quotes/newlines in archived CVar and binding text. Serialization completeness

@@ -29,8 +29,13 @@ public:
 	bool StartupActive() const noexcept { return startup; }
 	const std::string& RecoveryError() const noexcept { return recoveryError; }
 	// Active backend policy, not a promise that every sample count is supported
-	// by the current device. Strict Apply still validates the actual request.
+	// by the current device: a ready OpenGL-family or Vulkan renderer can apply
+	// an MSAA change. OpenGL's strict Apply verifies its window's actual count;
+	// Vulkan's scene targets take the highest supported count up to the request.
 	bool SupportsMultisampling() const;
+	// The active back end multisamples its window (the OpenGL family). Vulkan
+	// presents a single-sample swapchain, so its display requests ask for none.
+	bool WindowMultisampling() const;
 	// An automatic attempt proves its effect with later presented frames, so it
 	// needs a ready renderer and window presenting now.
 	bool ReadyForAutomatic() const;

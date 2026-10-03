@@ -5,7 +5,7 @@ development feature integrated into `main` at the user's request on 25 September
 Since 1 October 2026 the retained title, pause and loading screens and the
 campaign selectors are on by default, and each presents its stock GUI whenever
 its retained content is missing or cannot load. The SYSTEM page stays opt-in
-until it offers every setting of the stock page. This does not close the
+until every setting of the stock page works there. This does not close the
 runtime, editor, screen migration or platform qualification gates. The [retained runtime checkpoint](../ui/runtime-spike.md)
 records the stage 2 integration candidate and its remaining limitations.
 
@@ -120,14 +120,18 @@ display picked from the list must still be that monitor at Apply. The
 [display rows increment](../ui/system-display-rows.md) adds Display Device and
 Expand Across Displays over those lists, hidden on one display unless the draft
 names a display or a span the lists cannot offer, or holds a change not yet
-applied. The refresh and resolution rows remain; `BEH-002` and `FLOW-002` stay
+applied. The [resolution rows increment](../ui/system-resolution-rows.md) adds
+Display Resolution and Refresh Rate, so the page now has a control for every
+stock setting; it stays opt-in while presets cannot apply from it and its size
+fields take no typed digits. Auto refresh now means the desktop rate on every
+display path, and MSAA applies on Vulkan. `BEH-002` and `FLOW-002` stay
 partial.
 
 The [retained screen increment](../ui/retained-screens.md) builds the title
 screen, the single-player pause menu and the stock loading screens from
 visual specification 1.7 and the design atlas, behind one `ui_retained` gate
 (on by default since 1 October; `ui_retainedSystem` opts into the SYSTEM page,
-which joins the gate once it offers every stock setting). It adds image
+which joins the gate once every stock setting works there). It adds image
 nodes, additive and multiply path blends, a view-height canvas, typed session
 menu requests and exact overflow clipping under translation and scale. The
 loading screen shows the Remastered progress: the loader's phase with its

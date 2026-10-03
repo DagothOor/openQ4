@@ -3,8 +3,8 @@
 The retained SYSTEM page now offers **Display Device** and **Expand Across
 Displays**. Both rows lead the display column and read the
 [SYSTEM display lists](system-display-catalog.md) the settings service
-publishes to the page owner. The resolution and refresh rows, and the gate
-change, follow in their own increments.
+publishes to the page owner. Display Resolution and Refresh Rate followed in
+their own increment ([SYSTEM resolution rows](system-resolution-rows.md)).
 
 ## Display Device
 
@@ -144,4 +144,5 @@ the nine device option rows.
 Evidence: `.tmp/ui/system-display-rows/validation-evidence.json`, SHA-256
 `13a53dceb2a89b149ee7965bdfa1e43626f9049b8e78850cf2a2a0377bcaf0b4`.
 
-The resolution and refresh rows and the gate change remain open.
+Display Resolution and Refresh Rate followed in
+[SYSTEM resolution rows](system-resolution-rows.md).

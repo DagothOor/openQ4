@@ -273,8 +273,8 @@ static bool VK_PrepareRenderDevice( void ) {
 	windowParms.displayHz = parms.displayHz;
 	if ( R_IsRecoverableRendererRestart() ) {
 		const auto* request = R_GetRecoverableWindowRequest();
-		// Vulkan's current render targets are single-sample. A strict request
-		// must not silently advertise unsupported multisampling as applied.
+		// The swapchain is single-sample; r_multiSamples reaches only the scene
+		// targets. A strict window request must not claim multisampling.
 		if ( !request || request->parms.multiSamples != 0 || request->parms.stereo ) {
 			common->Warning( "Vulkan: strict framebuffer request is unsupported" );
 			R_DisplayPresentationFailed( RDP_INIT_FAILED ); return false;

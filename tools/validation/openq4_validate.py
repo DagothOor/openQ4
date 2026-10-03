@@ -619,6 +619,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         (root / "tools" / "tests" / 'native_input_terminal.py', []),
         (root / "tools" / "tests" / 'native_event_retirement.py', []),
         (root / "tools" / "tests" / 'sdl3_clipboard_status.py', []),
+        (root / "tools" / "tests" / 'sdl3_wayland_mode_contract.py', []),
         (root / "tools" / "tests" / 'sdl3_text_provenance.py', []),
         (root / "tools" / "tests" / 'sdl3_native_fence.py', []),
         (root / "tools" / "tests" / 'native_queue_batch.py', []),

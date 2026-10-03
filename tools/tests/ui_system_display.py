@@ -20,11 +20,12 @@ EXTRA = r'''
 #if defined(USE_SDL3)
 struct SDL_Rect { int x,y,w,h; };
 static bool displayBoundsFail=false;
+static int boundsWidth=1920,boundsHeight=1080;
 static const char* videoDriver="windows";
 static const char* SDL_GetCurrentVideoDriver() { return videoDriver; }
 static const char* SDL_GetDisplayName(unsigned id) { return id==1?"Primary monitor":"Secondary monitor"; }
 static bool SDL_GetDisplayBounds(unsigned id,SDL_Rect* value) {
-    if(displayBoundsFail)return false;*value={int(id-1)*1920,0,1920,1080};return true;
+    if(displayBoundsFail)return false;*value={int(id-1)*1920,0,boundsWidth,boundsHeight};return true;
 }
 #endif
 '''
@@ -98,6 +99,15 @@ static void RecoveryPairs(const StateValues& values,const rendererDisplayState_t
     auto candidate=values;candidate["r_screen"]=0.0;candidate["r_windowWidth"]=960.0;
     assert(BuildDisplayRequest(candidate,actual,topology,target,error) && CaptureDisplayRecovery(target,topology,savedTarget,error));
     assert(ValidateDisplayRecoveryPair(savedRestore,savedTarget,candidate,error));
+    // A single-sample (Vulkan) target agrees with any catalog count; a window
+    // count must still be the catalog's.
+    auto sampled=candidate;sampled["r_multiSamples"]=4.0;StateValues vulkanTarget,windowTarget;
+    assert(BuildDisplayRequest(sampled,actual,topology,target,error,false) && target.request.parms.multiSamples==0 &&
+           CaptureDisplayRecovery(target,topology,vulkanTarget,error) && ValidateDisplayRecoveryPair(savedRestore,vulkanTarget,sampled,error));
+    assert(BuildDisplayRequest(sampled,actual,topology,target,error) && CaptureDisplayRecovery(target,topology,windowTarget,error) &&
+           ValidateDisplayRecoveryPair(savedRestore,windowTarget,sampled,error));
+    auto otherCount=windowTarget;otherCount["samples"]=2.0;assert(!ValidateDisplayRecoveryPair(savedRestore,otherCount,sampled,error));
+    assert(!ValidateDisplayRecoveryPair(savedRestore,windowTarget,candidate,error));
 
     // The unused target may disappear before a Pending startup restores the
     // original display. A Confirmed startup analogously needs only its target.
@@ -246,6 +256,35 @@ static void Catalogs() {
     assert(BuildSystemDisplayCatalog(input,DisplayDraft(0,-2,100,20000,0),c,error) && c.modes.back().label=="Custom (320 \xC3\x97 16384)");
     assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Mode,int(c.modes.size())-1,patch,error) &&
            patch==StateValues({{"r_mode",-1.0},{"r_customWidth",320.0},{"r_customHeight",16384.0}}));
+    // A size pick returns a rate the new size lacks to Auto; Auto's display is
+    // the window's (display 2 here).
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(1,8,3840,2160,144),c,error) && c.autoDisplay==1 && c.refreshSelected==2);
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Mode,2,patch,error) &&
+           patch==StateValues({{"r_customWidth",1920.0},{"r_customHeight",1080.0},{"r_mode",3.0},{"r_displayRefresh",0.0}}));
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Mode,0,patch,error) && patch==StateValues({{"r_mode",-2.0},{"r_displayRefresh",0.0}}));
+    // On the Auto display (r_screen -1: the window's, display 2 here) too.
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(-1,8,3840,2160,144),c,error) && c.deviceSelected==-1 && c.refreshSelected==2);
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Mode,2,patch,error) &&
+           patch==StateValues({{"r_customWidth",1920.0},{"r_customHeight",1080.0},{"r_mode",3.0},{"r_displayRefresh",0.0}}));
+    assert(BuildSystemDisplayCatalog(input,DisplayDraft(1,8,3840,2160,60),c,error));
+    assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Mode,1,patch,error) &&
+           patch==StateValues({{"r_customWidth",1280.0},{"r_customHeight",720.0},{"r_mode",0.0}})); // 59.94 keeps 60
+    // A display pick returns a listed size the display lacks to Desktop Native
+    // and a rate it lacks to Auto; a typed Custom size stays.
+    {auto narrow=input;narrow.topology.displays[0].modes={{1920,1080,60}};
+     assert(BuildSystemDisplayCatalog(narrow,DisplayDraft(1,8,3840,2160,144),c,error));
+     assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Device,0,patch,error) &&
+            patch==StateValues({{"r_screen",0.0},{"r_mode",-2.0},{"r_displayRefresh",0.0}}));
+     assert(BuildSystemDisplayCatalog(narrow,DisplayDraft(1,8,3840,2160,60),c,error));
+     assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Device,0,patch,error) && patch==StateValues({{"r_screen",0.0},{"r_mode",-2.0}}));
+     assert(BuildSystemDisplayCatalog(narrow,DisplayDraft(1,-1,3000,2000,144),c,error));
+     assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Device,0,patch,error) && patch==StateValues({{"r_screen",0.0},{"r_displayRefresh",0.0}}));
+     narrow.currentDisplay=1;assert(BuildSystemDisplayCatalog(narrow,DisplayDraft(1,8,3840,2160,144),c,error) && c.autoDisplay==0);
+     assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Device,-1,patch,error) &&
+            patch==StateValues({{"r_screen",-1.0},{"r_mode",-2.0},{"r_displayRefresh",0.0}}));
+     narrow.currentDisplay=2;assert(BuildSystemDisplayCatalog(narrow,DisplayDraft(1,8,3840,2160,144),c,error));
+     assert(SystemDisplaySelectionPatch(c,SystemDisplayList::Device,-1,patch,error) && patch==StateValues({{"r_screen",-1.0}}));
+     narrow.currentDisplay=9;assert(BuildSystemDisplayCatalog(narrow,DisplayDraft(1,8,3840,2160,144),c,error) && c.autoDisplay==0);}
     patch={{"untouched",true}};
     assert(!SystemDisplaySelectionPatch(c,SystemDisplayList::Device,2,patch,error) && patch.contains("untouched"));
     assert(!SystemDisplaySelectionPatch(c,SystemDisplayList::Device,-2,patch,error));
@@ -330,6 +369,13 @@ int main() {
     assert(plan.request.displayId==2 && plan.request.parms.width==1280 && plan.request.parms.height==720);
     assert(plan.request.restorePlacement && plan.request.windowX==1960 && plan.request.windowY==50 && !plan.request.maximized);
     assert(MatchesDisplay(plan,Observed(plan),error));Portable(plan,topology);
+    // Vulkan's window is single-sample; r_multiSamples reaches only its scene targets.
+    auto sampled=values;sampled["r_multiSamples"]=4.0;
+    assert(BuildDisplayRequest(sampled,actual,topology,plan,error,false) && plan.request.parms.multiSamples==0);
+    assert(MatchesDisplay(plan,Observed(plan),error));Portable(plan,topology);
+    auto windowSampled=Observed(plan);windowSampled.presentation.samples=4;assert(!MatchesDisplay(plan,windowSampled,error));
+    assert(BuildDisplayRequest(sampled,actual,topology,plan,error,true) && plan.request.parms.multiSamples==4);
+    assert(BuildDisplayRequest(values,actual,topology,plan,error));
     auto changed=values;changed["r_brightness"]=1.5;changed["r_windowWidth"]=960.0;changed["s_useEAXReverb"]=true;
     assert(host.ChangedEffects(values,changed)==(SystemSettingDisplayRestart|SystemSettingAudioRestart));
     assert(host.ChangedEffects(values,values)==0);
@@ -349,7 +395,21 @@ int main() {
     changed["r_customWidth"]=3840.0;changed["r_customHeight"]=2160.0;changed["r_displayRefresh"]=60.0;
     assert(BuildDisplayRequest(changed,actual,topology,plan,error) && plan.checkPixels && plan.expected.refreshRate==59.94f);
     auto high=Observed(plan);high.window.logicalWidth=1920;high.window.logicalHeight=1080;assert(MatchesDisplay(plan,high,error));Portable(plan,topology);
-    changed["r_displayRefresh"]=0.0;assert(BuildDisplayRequest(changed,actual,topology,plan,error) && plan.expected.refreshRate==144);
+    // Auto takes the rate nearest the desktop's (60 Hz): 59.94, not the highest.
+    changed["r_displayRefresh"]=0.0;assert(BuildDisplayRequest(changed,actual,topology,plan,error) && plan.expected.refreshRate==59.94f);
+    Portable(plan,topology);
+    {auto fast=topology;for(auto& d:fast.displays)d.desktop.refresh=144;
+     assert(BuildDisplayRequest(changed,actual,fast,plan,error) && plan.expected.refreshRate==144);
+     // Of two equally near rates the lower wins.
+     auto tie=topology;tie.displays[1].modes={{1920,1080,70},{1920,1080,50}};auto even=changed;even["r_customWidth"]=1920.0;even["r_customHeight"]=1080.0;
+     assert(BuildDisplayRequest(even,actual,tie,plan,error) && plan.expected.refreshRate==50);}
+    // A restore whose whole hertz names a neighbour (60.00 beside 59.94) replays Auto.
+    {auto tv=topology;tv.displays[1].desktop={1920,1080,double(59.94f)};tv.displays[1].modes={{1920,1080,60},{1920,1080,double(59.94f)}};
+     auto exclusive=actual;auto& w=exclusive.window;w.fullscreen=true;w.fullscreenDesktop=false;w.borderless=false;
+     w.logicalWidth=w.pixelWidth=w.modeWidth=w.modePixelWidth=1920;w.logicalHeight=w.pixelHeight=w.modeHeight=w.modePixelHeight=1080;w.refreshRate=59.94f;
+     SystemDisplayPlan restore;assert(BuildDisplayRestore(exclusive,tv,restore,error) && restore.request.parms.displayHz==0);Portable(restore,tv);
+     w.refreshRate=60;assert(BuildDisplayRestore(exclusive,tv,restore,error) && restore.request.parms.displayHz==60);
+     tv.displays[1].desktop.refresh=60;w.refreshRate=59.94f;assert(!BuildDisplayRestore(exclusive,tv,restore,error));}
     changed["r_displayRefresh"]=75.0;assert(!BuildDisplayRequest(changed,actual,topology,plan,error));
     auto dense=topology;dense.displays[1].modes={{3840,2160,60}};
     changed["r_displayRefresh"]=60.0;changed["r_customWidth"]=1920.0;changed["r_customHeight"]=1080.0;
@@ -387,6 +447,18 @@ int main() {
 #if defined(USE_SDL3)
     SystemDisplayTopology captured;assert(CaptureDisplayTopology(captured,error) && captured.displays.size()==2 && captured.absolutePlacement);
     videoDriver="wayland";assert(CaptureDisplayTopology(captured,error) && !captured.absolutePlacement);videoDriver="windows";
+    // An exclusive mode resizes the display's bounds while it is active; the
+    // descriptors keep the desktop size, so a Revert still finds the monitor.
+    for(const char* driver:{"windows","x11","cocoa","wayland"}) {
+     videoDriver=driver;auto positionless=Actual();positionless.window.positionValid=false;SystemDisplayPlan held,resolved;StateValues saved;
+     SystemDisplayTopology desktopTopology;assert(CaptureDisplayTopology(desktopTopology,error));
+     assert(BuildDisplayRestore(positionless,desktopTopology,held,error) && CaptureDisplayRecovery(held,desktopTopology,saved,error));
+     boundsWidth=1280;boundsHeight=720;SystemDisplayTopology exclusive;
+     assert(CaptureDisplayTopology(exclusive,error) && exclusive.displays[1].width==1920 && exclusive.displays[1].height==1080 && exclusive.displays[1].x==1920);
+     assert(ResolveDisplayRecovery(saved,exclusive,resolved,error) && resolved.request.displayId==2);
+     boundsWidth=1920;boundsHeight=1080;
+    }
+    videoDriver="windows";
     displayBoundsFail=true;captured.primary=999;assert(!CaptureDisplayTopology(captured,error) && captured.primary==999);displayBoundsFail=false;
     assert(refreshCalls==0 && writes==0);
 #else

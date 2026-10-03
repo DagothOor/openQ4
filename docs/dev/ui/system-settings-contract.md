@@ -134,8 +134,8 @@ cached topology capture: the [SYSTEM display lists](system-display-catalog.md).
 A pick names the list's token and writes these same settings; a display picked
 from the list must still be that monitor at Apply. Display Device and Expand
 Across Displays read them ([SYSTEM display rows](system-display-rows.md)), hidden
-on one display as here unless they hold something to undo; the resolution and
-refresh rows follow.
+on one display as here unless they hold something to undo, and so do Display
+Resolution and Refresh Rate ([SYSTEM resolution rows](system-resolution-rows.md)).
 
 `fromMp_toSystem` targets desktop page 22 for the stock page; with the retained
 page available it asks the session to open the retained page over the main menu

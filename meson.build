@@ -457,6 +457,14 @@ if get_option('build_native_tests')
   )
   test('openq4-pbr-math', openq4_pbr_math_test, timeout: 30)
 
+  openq4_display_mode_rule_test = executable(
+    'openq4-display-mode-rule-test',
+    files('tools/tests/native/DisplayModeRuleTest.cpp'),
+    include_directories: root_include_dir,
+    install: false,
+  )
+  test('openq4-display-mode-rule', openq4_display_mode_rule_test, timeout: 30)
+
   openq4_specular_probe_atlas_packing_test = executable(
     'openq4-specular-probe-atlas-packing-test',
     files('tools/tests/native/ModernSpecularProbeAtlasPackingTest.cpp'),
@@ -942,43 +950,56 @@ if build_engine or get_option('build_native_tests')
       include_directories: root_include_dir,
       dependencies: [openq4_retained_dep, rmlui_project.get_variable('rmlui_dep'), jsoncpp_project.get_variable('jsoncpp_dep')],
       install: false)
-    test('openq4-ui-system-text-scale', openq4_ui_system_text_scale_test,
-      args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings'], timeout: 1800)
+    system_page_locales = ['english', 'spanish', 'polish', 'russian', 'french', 'italian', 'german']
+    foreach locale : system_page_locales
+      test('openq4-ui-system-text-scale-' + locale, openq4_ui_system_text_scale_test,
+        args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings', locale], timeout: 900)
+    endforeach
     openq4_ui_system_interface_settings_test = executable('openq4-ui-system-interface-settings-test',
       files('tools/tests/native/UiSystemInterfaceSettingsTest.cpp', 'src/framework/PerformancePreset.cpp'),
       include_directories: root_include_dir,
       dependencies: [openq4_retained_dep, rmlui_project.get_variable('rmlui_dep'), jsoncpp_project.get_variable('jsoncpp_dep')],
       install: false)
-    test('openq4-ui-system-interface-settings', openq4_ui_system_interface_settings_test,
-      args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings'], timeout: 900)
+    foreach locale : system_page_locales
+      test('openq4-ui-system-interface-settings-' + locale, openq4_ui_system_interface_settings_test,
+        args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings', locale], timeout: 600)
+    endforeach
     openq4_ui_system_render_options_test = executable('openq4-ui-system-render-options-test',
       files('tools/tests/native/UiSystemRenderOptionsTest.cpp', 'src/framework/PerformancePreset.cpp'),
       include_directories: root_include_dir,
       dependencies: [openq4_retained_dep, rmlui_project.get_variable('rmlui_dep'), jsoncpp_project.get_variable('jsoncpp_dep')],
       install: false)
-    test('openq4-ui-system-render-options', openq4_ui_system_render_options_test,
-      args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings'], timeout: 900)
+    foreach locale : system_page_locales
+      test('openq4-ui-system-render-options-' + locale, openq4_ui_system_render_options_test,
+        args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings', locale], timeout: 600)
+    endforeach
     openq4_ui_system_display_controls_test = executable('openq4-ui-system-display-controls-test',
       files('tools/tests/native/UiSystemDisplayControlsTest.cpp', 'src/framework/PerformancePreset.cpp'),
       include_directories: root_include_dir,
       dependencies: [openq4_retained_dep, rmlui_project.get_variable('rmlui_dep'), jsoncpp_project.get_variable('jsoncpp_dep')],
       install: false)
-    test('openq4-ui-system-display-controls', openq4_ui_system_display_controls_test,
-      args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings'], timeout: 600)
+    foreach locale : system_page_locales
+      test('openq4-ui-system-display-controls-' + locale, openq4_ui_system_display_controls_test,
+        args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings', locale], timeout: 600)
+    endforeach
     openq4_ui_system_display_catalog_test = executable('openq4-ui-system-display-catalog-test',
       files('tools/tests/native/UiSystemDisplayCatalogTest.cpp', 'src/framework/PerformancePreset.cpp'),
       include_directories: root_include_dir,
       dependencies: [openq4_retained_dep, rmlui_project.get_variable('rmlui_dep'), jsoncpp_project.get_variable('jsoncpp_dep')],
       install: false)
-    test('openq4-ui-system-display-catalog', openq4_ui_system_display_catalog_test,
-      args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings'], timeout: 1800)
+    foreach locale : system_page_locales
+      test('openq4-ui-system-display-catalog-' + locale, openq4_ui_system_display_catalog_test,
+        args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings', locale], timeout: 900)
+    endforeach
     openq4_ui_system_dimensions_test = executable('openq4-ui-system-dimensions-test',
       files('tools/tests/native/UiSystemDimensionsTest.cpp', 'src/framework/PerformancePreset.cpp'),
       include_directories: root_include_dir,
       dependencies: [openq4_retained_dep, rmlui_project.get_variable('rmlui_dep'), jsoncpp_project.get_variable('jsoncpp_dep')],
       install: false)
-    test('openq4-ui-system-dimensions', openq4_ui_system_dimensions_test,
-      args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings'], timeout: 900)
+    foreach locale : system_page_locales
+      test('openq4-ui-system-dimensions-' + locale, openq4_ui_system_dimensions_test,
+        args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings', locale], timeout: 600)
+    endforeach
     openq4_ui_value_runtime_test = executable(
       'openq4-ui-value-runtime-test',
       files('tools/tests/native/UiValueRuntimeTest.cpp'),
@@ -1028,7 +1049,7 @@ if build_engine or get_option('build_native_tests')
       install: false)
     test('openq4-ui-popup-placement-runtime', openq4_ui_popup_placement_runtime_test,
       args: [meson.project_source_root() / 'content/baseoq4/pak0/guis/menu/settings/system.q4ui',
-             meson.project_source_root() / 'content/baseoq4/pak0/strings'], timeout: 300)
+             meson.project_source_root() / 'content/baseoq4/pak0/strings'], timeout: 900)
     test('openq4-ui-document-files', py,
       args: [meson.project_source_root() / 'tools/tests/durable_file.py',
         '--compiler', ui_test_cpp.cmd_array()[-1]], timeout: 180)

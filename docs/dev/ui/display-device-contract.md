@@ -57,15 +57,30 @@ display, with primary-display selection only when no usable current display
 exists. Display IDs are runtime identities, not durable monitor identifiers.
 
 Windowed width/height use logical window units. Exclusive fullscreen requests
-use pixels: the selected enumerated mode must match pixel dimensions and the
-integer refresh bucket exactly; 59.94 Hz belongs to 60 Hz. Refresh zero allows
-the highest matching mode. Desktop fullscreen validates the desktop pixel mode.
+use pixels: the selected enumerated mode must match pixel dimensions exactly. A
+whole-hertz rate takes the highest rate in its bucket; 59.94 Hz belongs to 60
+Hz. Refresh zero (Auto) takes the rate nearest the display's desktop rate, the
+lower of two equally near. That is the target `SDL_GetClosestFullscreenDisplayMode`
+uses for refresh 0, and SDL keeps the desktop mode fixed while a fullscreen
+window is active. Equal rates keep SDL's first mode. The SYSTEM planner, this
+service, recorded restores and recovery replays, and legacy startup,
+`vid_restart` and Alt+Enter all share this rule (`src/sys/DisplayModeRule.h`).
+Only legacy falls back, for a size or rate the display does not offer: on
+macOS first to the nearest rate at the exact pixel size for an explicit rate
+its bucket lacks, then to SDL's closest mode. A restore whose captured exclusive rate its whole hertz cannot
+reproduce replays Auto when Auto reproduces it. Desktop fullscreen validates
+the desktop pixel mode.
 Borderless/span dimensions derive from display bounds. Spanned desktop
 fullscreen is represented by a borderless window covering those bounds.
 
 `renderWindowState_t` reports current flags, display identity, logical and pixel
 sizes, density/scale, viewport and current display mode. It reads
-`SDL_GetCurrentDisplayMode`, not an unapplied requested fullscreen mode.
+`SDL_GetCurrentDisplayMode`, not an unapplied requested fullscreen mode. Native
+Wayland is the exception: SDL emulates exclusive modes per window and never
+switches the output, so for an exclusive window there the query reads the
+window's applied mode (`SDL_GetWindowFullscreenMode` while
+`SDL_WINDOW_FULLSCREEN` is set), which SDL uses to size the buffer and
+viewport. No native Wayland session has qualified it yet.
 `currentModeValid` and `positionValid` distinguish unavailable observations.
 The query does not update archived CVars or publish window geometry.
 
@@ -101,8 +116,12 @@ a resource refresh signal, not proof of presentation.
 
 GL strict initialization forbids MSAA degradation/CVar substitution and verifies
 actual samples. Requested swap interval is set and read back even when its CVar
-was not marked modified. Vulkan currently supports only single-sample targets;
-strict multisampling and stereo requests are rejected. Vulkan records the
+was not marked modified. Vulkan presents through a single-sample swapchain and
+reports zero samples; strict window multisampling and stereo requests are
+rejected. `r_multiSamples` reaches Vulkan's scene targets instead: the device
+restart destroys the backend scene target, which the next view rebuilds from
+the cvar, and advances `videoRestartCount`, which makes single-player rebuild
+its forward target. SYSTEM therefore requests a single-sample window there. Vulkan records the
 selected present mode and effective interval; strict interval requests fail when
 no supported corresponding mode exists. Inspect `parametersValid` before using
 sample, interval or present-mode fields.

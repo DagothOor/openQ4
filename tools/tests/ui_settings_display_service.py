@@ -155,11 +155,16 @@ static void ApplyActual(const renderWindowRequest_t& r){
     w.logicalWidth=w.pixelWidth=r.parms.width;w.logicalHeight=w.pixelHeight=r.parms.height;
     if(r.restorePlacement){w.windowX=r.windowX;w.windowY=r.windowY;}
 }
+static renderWindowRequest_t lastRequest{};
+// Vulkan's strict device initialization refuses window samples (vk_Backend.cpp).
+static bool VulkanRefuses(const renderWindowRequest_t* r,char* error,int size){
+    lastRequest=*r;return moduleStatus.activeApi==RENDER_MODULE_API_VULKAN && r->parms.multiSamples && !GeometryError(error,size,"Vulkan: strict framebuffer request is unsupported");
+}
 bool R_RendererModule_TryDeviceRestart(const renderWindowRequest_t* r,char* error,int size){
-    trace.push_back("restart");++restarts;if(!restartOkay)return GeometryError(error,size,"restart failed");ApplyActual(*r);PublishSelection();return true;
+    trace.push_back("restart");++restarts;if(!restartOkay)return GeometryError(error,size,"restart failed");if(VulkanRefuses(r,error,size))return false;ApplyActual(*r);PublishSelection();return true;
 }
 bool R_RendererModule_TryInitializeDisplay(const renderWindowRequest_t* r,char* error,int size){
-    trace.push_back("initialize");++initializations;if(!restartOkay)return GeometryError(error,size,"initialize failed");ApplyActual(*r);PublishSelection();return true;
+    trace.push_back("initialize");++initializations;if(!restartOkay)return GeometryError(error,size,"initialize failed");if(VulkanRefuses(r,error,size))return false;ApplyActual(*r);PublishSelection();return true;
 }
 '''
 
@@ -171,14 +176,16 @@ static void ResetFixture(){
     geometryFailure=geometryPartial=false;queryOkay=restartOkay=true;displayOrder={1,2};displayCount=2;primaryDisplay=1;currentDisplay=2;configWrites=restarts=initializations=0;archived.clear();
     Seed();localCVarSystem.variables.at("r_swapInterval").value="1";actual=Actual();actual.window.hidden=false;actual.window.focused=true;
     geometry={actual.window.windowX,actual.window.windowY,1280,720,actual.window.windowX,actual.window.windowY,1280,720,true};
-    trace.clear();writes=0;moduleStatus.activeApi=RENDER_MODULE_API_GL;
+    trace.clear();writes=0;moduleStatus.activeApi=RENDER_MODULE_API_GL;lastRequest={};
     selectionFault=0;selectionReportValid=true;selectionReport={};selectionReportSerial=0;PublishSelection();
 }
 static void MultisamplingCapability(){
     ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);
     for(const auto api:{RENDER_MODULE_API_GL,RENDER_MODULE_API_GL_MODULE,RENDER_MODULE_API_GLES,RENDER_MODULE_API_VULKAN,RENDER_MODULE_API_COUNT}){
         moduleStatus.activeApi=api;
-        Check(host.SupportsMultisampling()==(api==RENDER_MODULE_API_GL || api==RENDER_MODULE_API_GL_MODULE || api==RENDER_MODULE_API_GLES),"backend MSAA policy follows active renderer");
+        const bool window=api==RENDER_MODULE_API_GL || api==RENDER_MODULE_API_GL_MODULE || api==RENDER_MODULE_API_GLES;
+        Check(host.SupportsMultisampling()==(window || api==RENDER_MODULE_API_VULKAN),"every known ready renderer applies MSAA");
+        Check(host.WindowMultisampling()==window,"only the OpenGL family multisamples its window");
     }
     moduleStatus.activeApi=RENDER_MODULE_API_GL;
     queryOkay=false;Check(!host.SupportsMultisampling(),"missing observation disables MSAA");queryOkay=true;
@@ -275,6 +282,48 @@ static void StartupCases(){
     {ResetFixture();SystemSettingsHost settings;PendingForStartup(settings);auto j=Journal();j.displayRestore["samples"]=2.0;Store(j);
      EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"captured actual baseline samples may differ from archived baseline intent");
      Check(host.InitializeDisplay(error) && actual.presentation.samples==2,"startup restores actual recorded device independently of old CVar intent");host.Shutdown();}
+}
+
+// Vulkan multisamples its scene targets, not its single-sample window: the
+// display request asks for no window samples whatever r_multiSamples holds,
+// and a saved Vulkan record recovers.
+static void VulkanMultisampling(){
+    for(bool dimensions:{false,true}){ResetFixture();moduleStatus.activeApi=RENDER_MODULE_API_VULKAN;SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);
+     auto a=Attempt(settings,dimensions);Check(host.Prepare(a,error),"prepare a Vulkan MSAA change");
+     Check(Journal().displayTarget.at("samples")==StateValue(0.0) && a.target.at("r_multiSamples")==StateValue(4.0),"the Vulkan target window is single-sample");
+     Check(settings.Write(a.patch,error),"write the Vulkan MSAA change");SettingsDisplayObservation seen;
+     Check(host.Restart(false,seen,error) && lastRequest.parms.multiSamples==0 && actual.presentation.samples==0,"the Vulkan restart asks for no window samples");
+     Present();Check(host.PersistConfirmation(a,error) && configWrites==1,"the Vulkan MSAA change keeps");
+     Check(host.Finish(false,error) && !files.contains(journalFile) && Live(settings).at("r_multiSamples")==StateValue(4.0),"the kept Vulkan change leaves r_multiSamples at the request");}
+    {ResetFixture();moduleStatus.activeApi=RENDER_MODULE_API_VULKAN;localCVarSystem.variables.at("r_multiSamples").value="8";
+     SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);
+     SettingsAttempt a{17,71,Live(settings),{},{}};a.target=a.baseline;a.target["r_windowWidth"]=960.0;a.target["r_windowHeight"]=540.0;
+     for(const auto& [key,value]:a.target)if(value!=a.baseline.at(key))a.patch[key]=value;
+     Check(settings.Validate(a.baseline,a.target,error) && host.Prepare(a,error) && settings.Write(a.patch,error),"prepare a window change under 8x on Vulkan");
+     SettingsDisplayObservation seen;Check(host.Restart(false,seen,error) && lastRequest.parms.multiSamples==0,"a window change under MSAA restarts Vulkan");
+     Present();Check(host.PersistConfirmation(a,error) && host.Finish(false,error),"the window change keeps under MSAA on Vulkan");
+     Check(Live(settings).at("r_multiSamples")==StateValue(8.0),"the change leaves MSAA as it was");}
+    {ResetFixture();SystemSettingsHost settings;EngineSettingsDisplayHost host(settings);auto a=Attempt(settings);
+     Check(host.Prepare(a,error) && Journal().displayTarget.at("samples")==StateValue(4.0) && settings.Write(a.patch,error),"OpenGL records its window samples");
+     SettingsDisplayObservation seen;Check(host.Restart(false,seen,error) && lastRequest.parms.multiSamples==4,"OpenGL asks for window samples");host.Shutdown();}
+    for(bool confirmed:{false,true}){ResetFixture();moduleStatus.activeApi=RENDER_MODULE_API_VULKAN;SystemSettingsHost settings;auto a=PendingForStartup(settings,confirmed);
+     for(const auto& [key,value]:a.patch)localCVarSystem.variables.at(key).value=FormatPresentationValue(StatePresentation(confirmed?a.baseline.at(key):value));
+     EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"a Vulkan record recovers at startup");
+     Check(Live(settings).at("r_multiSamples")==(confirmed?a.target:a.baseline).at("r_multiSamples"),"Vulkan recovery chooses the recorded direction");
+     Check(host.InitializeDisplay(error) && lastRequest.parms.multiSamples==0,"Vulkan recovery asks for no window samples");
+     Present();host.StartupFrame(1,true);Check(configWrites==1 && !files.contains(journalFile),"Vulkan recovery commits and retires its record");}
+    // A record written under OpenGL (window samples 4) recovers under Vulkan,
+    // whose window is single-sample.
+    for(bool confirmed:{false,true}){ResetFixture();SystemSettingsHost settings;auto a=PendingForStartup(settings,confirmed);
+     Check(Journal().displayTarget.at("samples")==StateValue(4.0),"the OpenGL record keeps its window samples");
+     moduleStatus.activeApi=RENDER_MODULE_API_VULKAN;
+     for(const auto& [key,value]:a.patch)localCVarSystem.variables.at(key).value=FormatPresentationValue(StatePresentation(confirmed?a.baseline.at(key):value));
+     EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"an OpenGL record recovers under Vulkan");
+     Check(host.InitializeDisplay(error) && lastRequest.parms.multiSamples==0,"the recovered Vulkan window is single-sample");
+     Present();host.StartupFrame(1,true);Check(configWrites==1 && !files.contains(journalFile),"the OpenGL record commits and retires under Vulkan");}
+    {ResetFixture();SystemSettingsHost settings;PendingForStartup(settings,true);auto j=Journal();j.displayTarget["samples"]=0.0;Store(j);
+     localCVarSystem.variables.at("r_multiSamples").value="0";EngineSettingsDisplayHost host(settings);
+     Check(host.Startup(error),"a single-sample saved window agrees with any catalog count");host.Shutdown();}
 }
 
 static void GeometryAndStartupFailures(){
@@ -719,7 +768,7 @@ static void EmitDeferredJournals(const std::string& directory){
 
 int main(){
     if(const char* directory=std::getenv("OPENQ4_EMIT_DEFERRED_JOURNALS")){EmitDeferredJournals(directory);std::printf("Deferred recovery journals emitted: %d checks\n",checks);return 0;}
-    MultisamplingCapability();ExactCatalogCases();RuntimeJournal();StartupCases();GeometryAndStartupFailures();StartupClockCases();CommitOwnershipCases();ReindexedStartupRetry();UnusedTopologyCases();DeferredCases();DeferredExactCases();RendererCases();RendererExactCases();CatalogInputCases();std::printf("UI settings display service passed: %d checks\n",checks);}
+    MultisamplingCapability();VulkanMultisampling();ExactCatalogCases();RuntimeJournal();StartupCases();GeometryAndStartupFailures();StartupClockCases();CommitOwnershipCases();ReindexedStartupRetry();UnusedTopologyCases();DeferredCases();DeferredExactCases();RendererCases();RendererExactCases();CatalogInputCases();std::printf("UI settings display service passed: %d checks\n",checks);}
 
 '''
 

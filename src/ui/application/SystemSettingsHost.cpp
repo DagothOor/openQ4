@@ -179,7 +179,7 @@ bool DisplayModePixels(const SDL_DisplayMode* mode, int& width, int& height) {
 	return true;
 }
 #endif
-bool DisplayTuple(const StateValues& current, const StateValues& candidate, std::string& error) {
+bool DisplayTuple(const StateValues& current, const StateValues& candidate, std::string& error, bool forward) {
 	const bool windowChanged = Changed(current, candidate, "r_windowWidth") || Changed(current, candidate, "r_windowHeight") ||
 		Changed(current, candidate, "r_fullscreen");
 	if (windowChanged && !std::get<bool>(candidate.at("r_fullscreen"))) {
@@ -192,7 +192,12 @@ bool DisplayTuple(const StateValues& current, const StateValues& candidate, std:
 		"r_customWidth", "r_customHeight", "r_displayRefresh"};
 	bool changed = false;
 	for (const char* key : coupled) changed = changed || Changed(current, candidate, key);
-	if (!changed) return true;
+	// Every display restart (V-Sync, MSAA, Borderless, window size) requests
+	// the exclusive mode again, so an Apply with a saved size or rate the display
+	// no longer offers is refused here rather than failing the restart. A
+	// rollback keeps to the coupled keys: it can run with no window, when Auto
+	// would resolve to the primary display rather than the one it restores.
+	if (!changed && !(forward && SystemSettingsHost::ChangedRequiresDisplayRestart(current, candidate))) return true;
 	const auto integer = [&](const char* key) { return static_cast<int>(std::get<double>(candidate.at(key))); };
 	const int mode = integer("r_mode");
 	if (mode < -2 || mode >= static_cast<int>(sizeof(LegacyModes) / sizeof(LegacyModes[0])))
@@ -265,7 +270,7 @@ bool ValidateCandidate(const StateValues* original, const StateValues& current,
 		const bool restoring = original && SameValue(original->at(item.key), value);
 		if (!restoring && !EditorValue(item, value, error)) return false;
 	}
-	if (checkDisplay && !DisplayTuple(current, candidate, error)) return false;
+	if (checkDisplay && !DisplayTuple(current, candidate, error, original == nullptr)) return false;
 	error.clear(); return true;
 }
 } // namespace

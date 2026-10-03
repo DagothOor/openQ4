@@ -307,6 +307,7 @@ jobs:
             tools/tests/native_input_driver.py \
             tools/tests/native_event_retirement.py \
             tools/tests/sdl3_clipboard_status.py \
+            tools/tests/sdl3_wayland_mode_contract.py \
             tools/tests/sdl3_text_provenance.py \
             tools/tests/sdl3_native_fence.py \
             tools/tests/native_queue_batch.py \
@@ -645,6 +646,7 @@ jobs:
           python tools/tests/native_input_terminal.py
           python tools/tests/native_event_retirement.py
           python tools/tests/sdl3_clipboard_status.py
+          python tools/tests/sdl3_wayland_mode_contract.py
           python tools/tests/sdl3_text_provenance.py
           python tools/tests/sdl3_native_fence.py
           python tools/tests/native_queue_batch.py

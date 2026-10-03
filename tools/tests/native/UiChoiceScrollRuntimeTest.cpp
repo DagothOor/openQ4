@@ -198,8 +198,9 @@ static void SystemCandidate(const std::string& source) {
         TestHost host;View view(host,source);view.viewport.width=1280;view.viewport.height=720;view.viewport.displayScale=density;
         view.runtime.SetReducedMotion(true,view.time);view.State({{"settings.open",true},{"settings.phase",1.},{"settings.busy",false},{"settings.confirmationVisible",false},{"settings.renderer.available",true},
             {"settings.display.available",true},{"settings.display.spanAvailable",true},{"settings.display.count",2.},{"settings.display.optionCount",3.},
-            {"settings.display.0.label",std::string("1: Primary monitor")},{"settings.display.1.label",std::string("2: Secondary monitor")}});view.Frame();
-        for(const auto* id:{"settings_preset","settings_display_device","settings_multiscreen","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
+            {"settings.display.0.label",std::string("1: Primary monitor")},{"settings.display.1.label",std::string("2: Secondary monitor")},
+            {"settings.display.mode.optionCount",4.},{"settings.display.mode.selected",0.},{"settings.display.mode.0.label",std::string("Desktop Native (1920 \xC3\x97 1080)")},{"settings.display.mode.1.label",std::string("1280 \xC3\x97 720 (16:9)")},{"settings.display.mode.2.label",std::string("2560 \xC3\x97 1080 (21:9)")},{"settings.display.mode.3.label",std::string("Custom (1600 \xC3\x97 900)")},{"settings.display.refresh.optionCount",3.},{"settings.display.refresh.selected",0.},{"settings.display.refresh.0.label",std::string("Auto")},{"settings.display.refresh.1.label",std::string("60 Hz")},{"settings.display.refresh.2.label",std::string("144 Hz")}});view.Frame();
+        for(const auto* id:{"settings_preset","settings_display_device","settings_multiscreen","settings_display_mode","settings_display_refresh","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
             Check(view.runtime.FocusControl(id,view.time),"SYSTEM choice can receive explicit focus");view.Frame();view.Key(MenuInput::Accept);view.Frame();
             auto w=view.Widget(id);
             Check(w.popupOpen&&w.scroll&&w.scroll->available,"SYSTEM authored choice has first-frame measured scroll geometry");

@@ -607,6 +607,32 @@
 - With the opt-in SYSTEM page enabled, choosing System from the multiplayer
   menu's settings now opens it too, instead of the stock page.
 
+- The opt-in SYSTEM page adds **Display Resolution** and **Refresh Rate**
+  to its Display Sizing column. They list only the sizes and rates your
+  display offers for exclusive fullscreen, so they are dimmed until
+  Fullscreen Policy is set to Exclusive (you can set them while still in a
+  window). Choosing a resolution or display that cannot do the selected rate
+  sets Refresh Rate back to Auto, and choosing a display that lacks the
+  selected resolution switches it to Desktop Native, instead of leaving Apply
+  unavailable. A saved resolution or rate your display no longer offers is
+  named in its row, and Apply asks you to choose a supported one instead of
+  failing. Reverting from an exclusive resolution smaller than your desktop
+  now finds your monitor again. The page stays opt-in until presets can be
+  applied from it and its size fields take typed digits.
+
+- Upgrade note for players who opted into the modern SYSTEM page: if an
+  earlier build closed while applying an exclusive fullscreen change with
+  Refresh Rate on Auto, this version can stop at startup with "Settings
+  startup recovery failed" until you delete `ui-settings-recovery.dat` from
+  your `baseoq4` save folder. Your saved settings are kept.
+
+- **Refresh Rate: Auto** now means the same rate everywhere: your desktop's
+  refresh rate, or the nearest rate the chosen resolution offers. The modern
+  SYSTEM page used to apply the display's highest rate for Auto, while the
+  next start, `vid_restart` or Alt+Enter went back to the desktop rate. On
+  macOS, exclusive fullscreen on Auto now uses the desktop rate rather than
+  the highest one.
+
 - The opt-in SYSTEM page adds **Display Device** and **Expand Across
   Displays** at the top of its display column when you have more than one
   display. Pick Auto or a display by name; a display that is no longer
@@ -632,13 +658,14 @@
   resolution automatically. Unsupported display combinations remain editable
   drafts and cannot Apply; window resizing uses Keep/Revert confirmation.
   Oversized numeric fields keep their editable value visible when translated
-  labels or validation text exceed the available scroll area.
-  Display, resolution and refresh-rate choice catalogs remain in development.
+  labels or validation text exceed the available scroll area. Typed digits do
+  not reach these fields yet; paste a value instead.
 
 - The opt-in modern SYSTEM page adds fullscreen, borderless, fullscreen policy
-  and MSAA controls to its Apply/Keep/Revert flow. MSAA is unavailable through
-  this page on Vulkan because its strict display-change path does not yet
-  support those requests. Vulkan's scene-rendering MSAA remains separate.
+  and MSAA controls to its Apply/Keep/Revert flow. On Vulkan, MSAA now changes
+  through this page too, and display changes no longer fail and revert while
+  MSAA is on. Vulkan applies MSAA to the 3D scene rather than the window, at
+  up to 8x.
   Blocking video reload time no longer consumes the subsequent 20-second
   presentation wait. The separate 15-second Keep/Revert countdown is unchanged.
 

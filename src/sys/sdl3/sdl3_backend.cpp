@@ -35,6 +35,7 @@ along with Doom 3 Source Code.  If not, see <http://www.gnu.org/licenses/>.
 #include "../../framework/NativeInputPublications.h"
 #include "../sys_public.h"
 #include "../WindowSettings.h"
+#include "../DisplayModeRule.h"
 #include "../KeyEventMetadata.h"
 #include "../EventQueueContinuity.h"
 #include "InputDisposition.h"
@@ -4270,11 +4271,9 @@ static bool SDL3_FindExactPixelFullscreenMode(SDL_DisplayID display, int pixelWi
 		if (candidatePixelWidth != pixelWidth || candidatePixelHeight != pixelHeight) {
 			continue;
 		}
-		// Nearest refresh to the request, or the highest available when no
-		// specific rate was requested.
-		const float score = requestedRefresh > 0.0f
-			? -fabsf(candidate->refresh_rate - requestedRefresh)
-			: candidate->refresh_rate;
+		// Nearest refresh to the request. Legacy calls this only for a nonzero
+		// rate its whole-hertz bucket lacks; Auto is decided by the shared rule.
+		const float score = -fabsf(candidate->refresh_rate - requestedRefresh);
 		if (!found || score > bestScore) {
 			found = true;
 			bestScore = score;
@@ -4359,6 +4358,9 @@ static void SDL3_MinimizeOnFullscreenFocusLoss(void) {
 }
 #endif
 
+// The SYSTEM page's exclusive rule, defined with the strict window service.
+static bool SDL3_StrictFullscreenMode(SDL_DisplayID display, int width, int height, int refresh, SDL_DisplayMode &selected);
+
 static bool SDL3_ApplyScreenParms(glimpParms_t parms) {
 	if (!s_sdlWindow) {
 		return false;
@@ -4440,18 +4442,25 @@ static bool SDL3_ApplyScreenParms(glimpParms_t parms) {
 			SDL_DisplayMode mode;
 			memset(&mode, 0, sizeof(mode));
 			const float requestedRefresh = parms.displayHz > 0 ? static_cast<float>(parms.displayHz) : 0.0f;
-			bool hasClosestMode = false;
+			// The SYSTEM page's rule first, in pixels, so startup, vid_restart and
+			// Alt+Enter choose the mode an Apply chooses: the exact size, the
+			// highest rate of a whole-hertz choice, and for Auto the rate nearest
+			// the desktop's (src/sys/DisplayModeRule.h). glConfig dimensions are
+			// read back via SDL_GetWindowSizeInPixels.
+			bool hasClosestMode = display != 0 &&
+				SDL3_StrictFullscreenMode(display, parms.width, parms.height, parms.displayHz, mode);
 #if defined(OPENQ4_SDL3_DARWIN_HOST)
-			// The menu offers pixel resolutions, but Retina displays expose
-			// their native pixel sizes only as high-density modes whose w/h
-			// are points. Prefer an exact pixel-size match so the requested
-			// resolution is honored in pixels; glConfig dimensions stay
-			// correct because they are read back via SDL_GetWindowSizeInPixels.
-			hasClosestMode = display != 0 &&
-				SDL3_FindExactPixelFullscreenMode(display, parms.width, parms.height, requestedRefresh, mode);
+			// A rate the exact pixel size lacks keeps that size at the nearest
+			// rate: Retina displays expose their native pixel sizes only as
+			// high-density modes whose w/h are points, which the point-size
+			// fallback below would misread.
+			if (!hasClosestMode && parms.displayHz > 0) {
+				hasClosestMode = display != 0 &&
+					SDL3_FindExactPixelFullscreenMode(display, parms.width, parms.height, requestedRefresh, mode);
+			}
 #endif
-			// Point-size matching over the standard (1x-density) mode list;
-			// also the fallback when no exact Retina pixel match exists.
+			// Point-size matching over the standard (1x-density) mode list: the
+			// legacy tolerance for a size or rate the display does not offer.
 			if (!hasClosestMode) {
 				hasClosestMode = display != 0 &&
 					SDL_GetClosestFullscreenDisplayMode(display, parms.width, parms.height, requestedRefresh, false, &mode);
@@ -6980,6 +6989,20 @@ static void SDL3_QueryDisplayViewport(renderWindowState_t &state) {
 	}
 }
 
+// SDL's Wayland driver emulates exclusive modes per window: it never switches
+// the output, so SDL_GetCurrentDisplayMode keeps the desktop, and the window's
+// buffer and viewport follow its own fullscreen mode, which
+// SDL_GetWindowFullscreenMode returns while it is fullscreen. Every other
+// driver, XWayland included, switches the display, whose current mode stays
+// authoritative.
+static const SDL_DisplayMode *SDL3_StrictObservedMode(const renderWindowState_t &state) {
+	if (SDL3_IsNativeWaylandVideoDriver() && state.fullscreen && !state.fullscreenDesktop) {
+		const SDL_DisplayMode *applied = SDL_GetWindowFullscreenMode(s_sdlWindow);
+		if (applied && (!applied->displayID || applied->displayID == state.displayId)) return applied;
+	}
+	return SDL_GetCurrentDisplayMode(state.displayId);
+}
+
 static bool SDL3_WindowServices_QueryWindowState(renderWindowState_t *outState) {
 	if (!outState || !s_sdlWindow) return SDL_SetError("No SDL window or window-state output");
 	renderWindowState_t state = {};
@@ -7005,7 +7028,7 @@ static bool SDL3_WindowServices_QueryWindowState(renderWindowState_t *outState) 
 	if (!std::isfinite(state.displayScale) || state.displayScale <= 0) return SDL_SetError("The SDL window display scale is invalid");
 	state.pixelDensityX = static_cast<float>(state.pixelWidth) / state.logicalWidth;
 	state.pixelDensityY = static_cast<float>(state.pixelHeight) / state.logicalHeight;
-	const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(state.displayId);
+	const SDL_DisplayMode *mode = SDL3_StrictObservedMode(state);
 	if (SDL3_StrictModePixels(mode, state.modePixelWidth, state.modePixelHeight) &&
 		std::isfinite(mode->refresh_rate) && mode->refresh_rate >= 0) {
 		state.currentModeValid = true; state.modeWidth = mode->w; state.modeHeight = mode->h;
@@ -7022,23 +7045,25 @@ static bool SDL3_StrictWindowFailure(const char *message, char *error, int error
 }
 
 static bool SDL3_StrictFullscreenMode(SDL_DisplayID display, int width, int height, int refresh, SDL_DisplayMode &selected) {
+	// The shared exclusive rule (src/sys/DisplayModeRule.h) over SDL's own list,
+	// which the SYSTEM capture copies in this order: 59.94 belongs to the 60-Hz
+	// choice, Auto takes the rate nearest the desktop's, and no neighbouring
+	// resolution or other rate bucket is used.
+	const SDL_DisplayMode *desktop = SDL_GetDesktopDisplayMode(display);
+	if (!desktop || !std::isfinite(desktop->refresh_rate) || desktop->refresh_rate < 0) return false;
 	int count = 0;
 	SDL_DisplayMode **modes = SDL_GetFullscreenDisplayModes(display, &count);
 	if (!modes) return false;
-	bool found = false;
-	for (int i = 0; i < count; ++i) {
-		int w = 0, h = 0;
-		const auto *mode = modes[i];
-		if (!SDL3_StrictModePixels(mode,w,h) || w != width || h != height ||
-			(mode->displayID && mode->displayID != display) || !std::isfinite(mode->refresh_rate) || mode->refresh_rate < 0) continue;
-		// The existing menu stores integer Hz: 59.94 belongs to the 60-Hz
-		// choice. No neighboring resolution or different refresh bucket is used.
-		if (refresh > 0 && std::floor(mode->refresh_rate + 0.5f) != refresh) continue;
-		if (!found || mode->refresh_rate > selected.refresh_rate) { selected = *mode; found = true; }
-	}
+	const int chosen = openq4::SelectDisplayMode(count, [&](int i, openq4::DisplayModeCandidate &mode) {
+		const SDL_DisplayMode *option = modes[i];
+		if (!option || (option->displayID && option->displayID != display) ||
+			!SDL3_StrictModePixels(option, mode.pixelWidth, mode.pixelHeight)) return false;
+		mode.refresh = option->refresh_rate;
+		return true;
+	}, width, height, refresh, desktop->refresh_rate);
+	if (chosen >= 0) { selected = *modes[chosen]; selected.displayID = display; }
 	SDL_free(modes);
-	if (found) selected.displayID = display;
-	return found;
+	return chosen >= 0;
 }
 
 static bool SDL3_StrictDisplayBounds(const sdl3StrictDisplayList_t &displays, SDL_DisplayID selected,

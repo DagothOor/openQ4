@@ -46,11 +46,12 @@ combination. Apply, preparation, execution, restoration and recovery retain
 their existing full checks; capability loss cannot turn an old prepared request
 into an unchecked write.
 
-Dynamic display/resolution/refresh catalogs, further dependent controls,
-Defaults, complete effect execution, native text/IME activation, full responsive
-artwork/motion acceptance and the editor round trip remain required. Refresh
-selection still requires a capability-backed choice; an unrestricted numeric
-field would not fulfill that requirement. Actual fullscreen, borderless,
+Display Resolution and Refresh Rate now sit in this column as
+capability-backed choices over the published lists
+([SYSTEM resolution rows](system-resolution-rows.md)). Further dependent
+controls, Defaults, complete effect execution, native text/IME activation (the
+size fields take no typed digits yet), full responsive artwork/motion
+acceptance and the editor round trip remain required. Actual fullscreen, borderless,
 multiple-monitor and window-manager behavior require separate qualification.
 Automated gameplay validation remains hidden and windowed.
 

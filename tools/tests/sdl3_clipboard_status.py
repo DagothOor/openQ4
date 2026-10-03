@@ -33,12 +33,14 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def provision_source(explicit: Path | None, specification: dict[str, str], scratch: Path) -> tuple[Path, dict, list[Path]]:
+def provision_source(explicit: Path | None, specification: dict[str, str], scratch: Path,
+                     files: list[str] | None = None) -> tuple[Path, dict, list[Path]]:
     """Use an existing tree, or read only the tested members from the pinned tar.
 
     CI runs this test before Meson provisions subprojects. Never extract an
     archive wholesale, and never silently replace an explicitly selected tree.
     """
+    files = FILES if files is None else files
     directory = specification["directory"]
     filename = specification["source_filename"]
     expected_hash = specification["source_hash"]
@@ -50,7 +52,7 @@ def provision_source(explicit: Path | None, specification: dict[str, str], scrat
     if selected.exists() or explicit is not None:
         if not selected.is_dir():
             raise RuntimeError(f"SDL source directory is missing or invalid: {selected}")
-        for name in [*FILES, "LICENSE.txt"]:
+        for name in [*files, "LICENSE.txt"]:
             if not (selected / name).is_file():
                 raise RuntimeError(f"Required SDL source file is missing: {selected / name}")
         return selected, {"kind": "explicit-tree" if explicit is not None else "default-tree", "path": str(selected)}, []
@@ -72,7 +74,7 @@ def provision_source(explicit: Path | None, specification: dict[str, str], scrat
     if not archive.is_file() or archive.stat().st_size > 128 * 1024 * 1024 or sha(archive) != expected_hash:
         raise RuntimeError("Pinned SDL archive SHA-256 does not match source_hash")
 
-    members = {f"{directory}/{name}": name for name in [*FILES, "LICENSE.txt"]}
+    members = {f"{directory}/{name}": name for name in [*files, "LICENSE.txt"]}
     contents: dict[str, bytes] = {}
     with tarfile.open(archive, "r:gz") as package:
         for member in package:

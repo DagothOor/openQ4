@@ -3,6 +3,7 @@
 
 #include "../retained/Document.h"
 #include "../../renderer/RendererModule.h"
+#include "../../sys/DisplayModeRule.h"
 
 namespace openq4::ui {
 
@@ -36,8 +37,12 @@ struct SystemDisplayPlan {
 // owner/request identity and fresh successful presentation remain coordinator
 // responsibilities; MatchesDisplay verifies actual policy/parameters only.
 bool CaptureDisplayTopology(SystemDisplayTopology& output, std::string& error);
+// windowMultisampling: the back end multisamples its window (the OpenGL
+// family), so r_multiSamples is the window's sample request. Otherwise the
+// request is a single-sample window (Vulkan's swapchain), and r_multiSamples
+// reaches only the scene targets the device restart re-creates.
 bool BuildDisplayRequest(const StateValues& validatedCandidate, const rendererDisplayState_t& captured,
-	const SystemDisplayTopology& topology, SystemDisplayPlan& output, std::string& error);
+	const SystemDisplayTopology& topology, SystemDisplayPlan& output, std::string& error, bool windowMultisampling = true);
 bool BuildDisplayRestore(const rendererDisplayState_t& captured, const SystemDisplayTopology& topology,
 	SystemDisplayPlan& output, std::string& error);
 bool MatchesDisplay(const SystemDisplayPlan& plan, const rendererDisplayState_t& observed, std::string& error);
@@ -120,6 +125,7 @@ struct SystemDisplayCatalog {
 	std::vector<std::string> devices;                  // r_screen 0..: connected, then stale up to the draft's.
 	int deviceSelected = -1;                           // The draft's r_screen.
 	std::vector<SystemDisplayDescriptor> descriptors;  // Connected displays in r_screen order.
+	int autoDisplay = -1;                              // The descriptor Auto (r_screen -1) describes: the window's display, else the primary.
 	std::vector<SystemDisplayModeSlot> modes;          // Visible slots: Desktop, sizes, Custom.
 	std::vector<SystemDisplayModeSlot> unlistedMode;   // At most one: the reserved slot's current size.
 	int modeSelected = 0;                              // A visible slot, or the reserved last slot.
@@ -131,9 +137,13 @@ struct SystemDisplayCatalog {
 bool BuildSystemDisplayCatalog(const SystemDisplayCatalogInput& input, const StateValues& draft,
 	SystemDisplayCatalog& output, std::string& error);
 // The settings one pick writes: r_screen; r_mode with the custom size; or
-// r_displayRefresh. Picking the current entry writes nothing, so a re-pick
-// never turns a same-size setting into a display restart. A display that is
-// not connected cannot be picked, nor can a reserved slot.
+// r_displayRefresh. A display or size pick also returns what the new choice
+// cannot offer to its automatic value: a listed or legacy size the new display
+// lacks to Desktop Native (r_mode -2), and a rate the resulting size lacks to
+// Auto (r_displayRefresh 0). A typed Custom size stays. Picking the current
+// entry writes nothing, so a re-pick never turns a same-size setting into a
+// display restart. A display that is not connected cannot be picked, nor can
+// a reserved slot.
 bool SystemDisplaySelectionPatch(const SystemDisplayCatalog& catalog, SystemDisplayList list, int index,
 	StateValues& patch, std::string& error);
 // Two descriptors name the same monitor: name, bounds and desktop mode.

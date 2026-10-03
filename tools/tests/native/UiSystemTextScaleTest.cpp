@@ -46,6 +46,10 @@ static void ModalBody(View& v,const char* name,const char* title) {
 static void CheckPage(View& v,int width,int height,float density,float textScale) {
     std::fprintf(stderr,"SYSTEM text viewport=%dx%d density=%g text=%g\n",width,height,density,textScale);
     v.viewport.width=width;v.viewport.height=height;v.viewport.displayScale=density;v.viewport.textScale=textScale;
+    // As RetainedUI_DefaultViewport does: the engine never lays a menu out in
+    // less than 640x480 dp, so 1280x720 at 200% runs at 150%, as in play.
+    // The checks below measure in that fitted ratio.
+    v.viewport.FitToMinimum(640,480);density=v.viewport.DpRatio();
     v.Sync();v.Frame();
     const Bounds screen{0,0,float(width),float(height)};
     v.message="#str_230007";v.Sync();v.Frame();
@@ -102,11 +106,12 @@ static void CheckPage(View& v,int width,int height,float density,float textScale
     Check(field.has_value(),"editor retains typed identity");
     Contained(v.Box("settings_brightness_number-caret"),viewport,"scaled caret fits the numeric viewport");
     v.Key(MenuInput::Back);v.Frame();
-    // Two displays show the device and span rows.
+    // Two displays show the device and span rows; the size and rate rows read their lists.
     Check(v.runtime.SetState({{"settings.display.available",true},{"settings.display.spanAvailable",true},{"settings.display.count",2.0},
         {"settings.display.optionCount",3.0},{"settings.display.0.label",std::string("1: Primary monitor")},
-        {"settings.display.1.label",std::string("2: Secondary monitor")}},v.error,v.time),v.error.c_str());v.Frame();
-    for(auto* id:{"settings_preset","settings_display_device","settings_multiscreen","settings_fullscreen_policy","settings_msaa","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
+        {"settings.display.1.label",std::string("2: Secondary monitor")},
+        {"settings.display.mode.optionCount",4.},{"settings.display.mode.selected",0.},{"settings.display.mode.0.label",std::string("Desktop Native (1920 \xC3\x97 1080)")},{"settings.display.mode.1.label",std::string("1280 \xC3\x97 720 (16:9)")},{"settings.display.mode.2.label",std::string("2560 \xC3\x97 1080 (21:9)")},{"settings.display.mode.3.label",std::string("Custom (1600 \xC3\x97 900)")},{"settings.display.refresh.optionCount",3.},{"settings.display.refresh.selected",0.},{"settings.display.refresh.0.label",std::string("Auto")},{"settings.display.refresh.1.label",std::string("60 Hz")},{"settings.display.refresh.2.label",std::string("144 Hz")}},v.error,v.time),v.error.c_str());v.Frame();
+    for(auto* id:{"settings_preset","settings_display_device","settings_multiscreen","settings_display_mode","settings_display_refresh","settings_fullscreen_policy","settings_msaa","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
         Check(v.runtime.FocusControl(id,v.time),"large-text choice can receive focus");v.Frame();
         v.Key(MenuInput::Accept);v.Frame();
         auto state=v.runtime.GetWidgetState(id);

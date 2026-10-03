@@ -8,6 +8,8 @@
 
 static constexpr const char* Device="settings_display_device";
 static constexpr const char* Span="settings_multiscreen";
+static constexpr const char* Resolution="settings_display_mode";
+static constexpr const char* Refresh="settings_display_refresh";
 static void Inside(const Bounds& a,const Bounds& b,const char* why) {
  const bool okay=a.x>=b.x-1&&a.y>=b.y-1&&a.x+a.width<=b.x+b.width+1&&a.y+a.height<=b.y+b.height+1;
  if(!okay)std::fprintf(stderr,"%s: %g,%g %gx%g in %g,%g %gx%g\n",why,a.x,a.y,a.width,a.height,b.x,b.y,b.width,b.height);
@@ -22,6 +24,18 @@ static void Publish(View& v,const Lists& l) {
  Check(v.runtime.SetState(s,v.error,v.time),v.error.c_str());v.Frame();
 }
 static const std::vector<std::string> Two{"1: Primary monitor","2: Secondary monitor"};
+// The size and rate lists as the service publishes them. The reserved last
+// slot (39 for sizes, 15 for rates) names an unlisted current entry.
+struct Sizes { std::vector<std::string> modes; int mode=0; std::vector<std::string> rates; int rate=0; std::string reservedMode,reservedRate; };
+static void PublishSizes(View& v,const Sizes& s) {
+ StateValues values{{"settings.display.mode.optionCount",double(s.modes.size())},{"settings.display.mode.selected",double(s.mode)},
+  {"settings.display.refresh.optionCount",double(s.rates.size())},{"settings.display.refresh.selected",double(s.rate)}};
+ for(int i=0;i<40;++i)values["settings.display.mode."+std::to_string(i)+".label"]=i<int(s.modes.size())?s.modes[size_t(i)]:i==39?s.reservedMode:std::string();
+ for(int i=0;i<16;++i)values["settings.display.refresh."+std::to_string(i)+".label"]=i<int(s.rates.size())?s.rates[size_t(i)]:i==15?s.reservedRate:std::string();
+ Check(v.runtime.SetState(values,v.error,v.time),v.error.c_str());v.Frame();
+}
+static const Sizes Usual{{"Desktop Native (1920 \xC3\x97 1080)","1280 \xC3\x97 720 (16:9)","1920 \xC3\x97 1080 (16:9)","Custom (1600 \xC3\x97 900)"},0,
+                         {"Auto","60 Hz","144 Hz"},0};
 static std::string Id(const char* row,const char* part){return std::string(row)+part;}
 static std::string Option(const char* row,int i){return std::string(row)+"-option-"+std::to_string(i);}
 static std::string Shown(View& v,const char* id){const auto p=v.runtime.PresentedValue(id,"display");Check(p.has_value(),id);return p->text;}
@@ -66,6 +80,9 @@ static void OneDisplay(View& v) {
  Publish(v,{true,false,1,{"1: Primary monitor"}});
  Check(Shown(v,Device)=="none"&&Shown(v,Span)=="none","one display hides both rows");
  Check(!v.runtime.FocusControl(Device,v.time)&&!v.runtime.FocusControl(Span,v.time),"hidden rows cannot take focus");
+ // The size and rate rows describe exclusive fullscreen on any display.
+ PublishSizes(v,Usual);
+ Check(v.Element(Resolution)->IsVisible(true)&&v.Element(Refresh)->IsVisible(true),"one display keeps the size and rate rows");
  Check(v.runtime.FocusControl("settings_text_scale",v.time),"focus the control before the display column");v.Frame();
  v.Key(MenuInput::Next);Check(v.runtime.FocusedControl()=="settings_fullscreen","keyboard order passes over the hidden rows");
  // A change not yet applied keeps its row, so it can be seen and undone.
@@ -178,6 +195,55 @@ static void Spanning(View& v) {
  Open(v,Span);Check(Highlight(v,Span,MenuInput::Home)==Option(Span,0),"the primary display alone stays pickable");Close(v,Span);
  Draft(v,{{"r_fullscreen",false},{"r_multiScreen",0.0}});
 }
+// Display Resolution and Refresh Rate pick a slot of their lists with the
+// list token; the reserved slot names an unlisted entry outside the popup.
+static void Sizing(View& v) {
+ Publish(v,{true,true,2,Two});
+ Draft(v,{{"r_fullscreen",true},{"r_fullscreenDesktop",false}});
+ PublishSizes(v,Usual);
+ Check(ClosedText(v,Resolution)==Encoded(Usual.modes[0])&&ClosedText(v,Refresh)==Encoded("Auto"),"the closed controls name the list selections");
+ Open(v,Resolution);
+ Check(Highlight(v,Resolution,MenuInput::End)==Option(Resolution,3),"the size list ends at Custom");
+ for(int i=4;i<40;++i)Check(!v.Element(Option(Resolution,i).c_str())->IsVisible(true),"slots past the size list stay hidden");
+ auto pick=Pick(v);Check(SettingsValueEqual(*pick.proposal,3.0),"Custom's slot is proposed");
+ auto invocation=Resolve(v,pick);
+ Check(invocation.operation=="settings.system.displayMode"&&invocation.arguments==StateValues({{"index",3.0},{"catalog",std::string("7")}}),
+  "a size pick sends its slot and the list token, not a setting");
+ Check(v.runtime.AcknowledgeControlProposal(Resolution,pick.proposalToken,false),"decline the size");v.Frame();
+ Check(ClosedText(v,Resolution)==Encoded(Usual.modes[0]),"a declined size keeps the accepted choice");
+ Open(v,Refresh);Check(Highlight(v,Refresh,MenuInput::End)==Option(Refresh,2),"the rate list ends at its last rate");
+ pick=Pick(v);invocation=Resolve(v,pick);
+ Check(invocation.operation=="settings.system.displayRefresh"&&invocation.arguments==StateValues({{"index",2.0},{"catalog",std::string("7")}}),
+  "a rate pick sends its slot and the list token");
+ // The service publishes the new selection; that readback acknowledges the pick.
+ auto picked=Usual;picked.rate=2;PublishSizes(v,picked);
+ Check(v.runtime.AcknowledgeControlProposal(Refresh,pick.proposalToken,true),"the readback acknowledges the rate");v.Frame();
+ Check(ClosedText(v,Refresh)==Encoded("144 Hz"),"the closed control names the picked rate");
+ // A size or rate the display does not list sits in the reserved slot.
+ auto unlisted=Usual;unlisted.mode=39;unlisted.reservedMode="800 \xC3\x97 600 (4:3)";unlisted.rate=15;unlisted.reservedRate="75 Hz";PublishSizes(v,unlisted);
+ Check(ClosedText(v,Resolution)==Encoded(unlisted.reservedMode)&&ClosedText(v,Refresh)==Encoded("75 Hz"),"the closed controls name an unlisted current entry");
+ Open(v,Resolution);
+ Check(Highlight(v,Resolution,MenuInput::End)==Option(Resolution,3)&&!v.Element(Option(Resolution,39).c_str())->IsVisible(true),"the reserved slot stays out of the popup");
+ Close(v,Resolution);
+ Open(v,Refresh);
+ Check(Highlight(v,Refresh,MenuInput::End)==Option(Refresh,2)&&!v.Element(Option(Refresh,15).c_str())->IsVisible(true),"the reserved rate stays out of its popup");
+ Close(v,Refresh);PublishSizes(v,Usual);
+ // A row that cannot act reads at 45%, as the custom size fields do.
+ const auto strength=[&](const char* row){const auto o=v.runtime.PresentedValue(row,"opacity");Check(o.has_value(),row);return o->data[0];};
+ Check(std::abs(strength(Resolution)-1)<1e-6&&std::abs(strength(Refresh)-1)<1e-6,"usable size and rate rows read at full strength");
+ // Desktop fullscreen keeps the display's own size and rate.
+ Draft(v,{{"r_fullscreenDesktop",true}});
+ Check(!v.runtime.CanActivateControl(Resolution,v.time)&&!v.runtime.CanActivateControl(Refresh,v.time),"the desktop policy disables both rows");
+ Check(std::abs(strength(Resolution)-.45)<1e-6&&std::abs(strength(Refresh)-.45)<1e-6,"the desktop policy dims both rows");
+ Draft(v,{{"r_fullscreenDesktop",false},{"r_fullscreen",false}});
+ Check(v.runtime.CanActivateControl(Resolution,v.time)&&v.runtime.CanActivateControl(Refresh,v.time),"the exclusive policy enables both rows, even while windowed");
+ Check(std::abs(strength(Resolution)-1)<1e-6&&std::abs(strength(Refresh)-1)<1e-6,"the exclusive policy restores both rows");
+ // Without lists neither row can pick.
+ Publish(v,{false,false,0,{}});
+ Check(!v.runtime.CanActivateControl(Resolution,v.time)&&!v.runtime.CanActivateControl(Refresh,v.time),"size and rate rows without lists cannot act");
+ Check(std::abs(strength(Resolution)-.45)<1e-6&&std::abs(strength(Refresh)-.45)<1e-6,"size and rate rows without lists dim");
+ Publish(v,{true,true,2,Two});
+}
 // Without lists neither row can work, so both stay hidden.
 static void Unavailable(View& v) {
  Publish(v,{false,false,0,{}});Draft(v,{{"r_screen",3.0},{"r_multiScreen",1.0}});
@@ -192,9 +258,11 @@ static void Guards(View& v) {
                                       {"ui.numberDraftsPending",true},{"settings.open",false},{"settings.phase",2.0}}) {
   v.Sync();Check(v.runtime.SetState({{blocked.first,blocked.second}},v.error,v.time),"publish a competing workflow");v.Frame();
   Check(!v.runtime.CanActivateControl(Device,v.time)&&!v.runtime.CanActivateControl(Span,v.time),"display picks wait for competing workflows");
+  Check(!v.runtime.CanActivateControl(Resolution,v.time)&&!v.runtime.CanActivateControl(Refresh,v.time),"size and rate picks wait for competing workflows");
   Check(v.runtime.SetState({{"page.discardVisible",false}},v.error,v.time),"clear the local discard dialog");
  }
  v.Sync();v.Frame();Check(v.runtime.CanActivateControl(Device,v.time)&&v.runtime.CanActivateControl(Span,v.time),"both rows act again");
+ Check(v.runtime.CanActivateControl(Resolution,v.time)&&v.runtime.CanActivateControl(Refresh,v.time),"the size and rate rows act again");
 }
 // A long name and every slot: cards and popups fit and stay revealed.
 static void Fit(View& v,const char* locale,float expansion) {
@@ -202,12 +270,18 @@ static void Fit(View& v,const char* locale,float expansion) {
  const std::string longest="1: "+std::string(47,'W')+"\xE2\x80\xA6";
  std::vector<std::string> eight;for(int i=0;i<8;++i)eight.push_back(std::to_string(i+1)+": Display "+std::to_string(i+1));
  struct Case{int width,height;float density,text;bool longName;};
+ // A full size list and rate list, as the builder publishes them.
+ Sizes full;full.modes.push_back("Desktop Native (3840 \xC3\x97 2160)");
+ for(int i=1;i<38;++i)full.modes.push_back(std::to_string(640+i*80)+" \xC3\x97 "+std::to_string(360+i*45)+" (16:9)");
+ full.modes.push_back("Custom (16384 \xC3\x97 16384)");
+ full.rates.push_back("Auto");for(int i=0;i<14;++i)full.rates.push_back(std::to_string(50+i*10)+" Hz");
  for(const auto c:{Case{1920,1080,1,1,false},Case{1280,720,1,1,true},Case{1280,720,1.25,1,true},Case{640,480,1,1,false},Case{640,480,1,2,false},Case{3440,1440,2,2,true}}) {
   std::fprintf(stderr,"Display lists locale=%s expansion=%g viewport=%dx%d density=%g text=%g\n",locale,expansion,c.width,c.height,c.density,c.text);
   v.viewport.width=c.width;v.viewport.height=c.height;v.viewport.displayScale=c.density;v.viewport.textScale=c.text;v.Frame();
   auto labels=eight;if(c.longName)labels[0]=longest;
-  Publish(v,{true,true,8,labels});Draft(v,{{"r_screen",0.0},{"r_multiScreen",0.0}});
-  for(const auto* row:{Device,Span}) {
+  Publish(v,{true,true,8,labels});PublishSizes(v,full);
+  Draft(v,{{"r_screen",0.0},{"r_multiScreen",0.0},{"r_fullscreenDesktop",false}});
+  for(const auto* row:{Device,Span,Resolution,Refresh}) {
    Check(v.runtime.FocusControl("settings_text_scale",v.time),"focus leaves the display column");v.Frame();
    Check(v.runtime.FocusControl(row,v.time),"the display row receives focus");v.Frame();
    // A card taller than the scroll body, as the span card with its reason
@@ -233,6 +307,21 @@ static void Fit(View& v,const char* locale,float expansion) {
   }
   if(c.longName){Check(Highlight(v,Device,MenuInput::Down)==Option(Device,1),"the long name is reachable");TextFits(v,(Option(Device,1)+"-label").c_str());}
   Close(v,Device);
+  // The size and rate lists: the last entry reachable and readable.
+  for(const auto& [row,last]:{std::pair{Resolution,38},std::pair{Refresh,14}}) {
+   Open(v,row);
+   Inside(v.Box(Id(row,"-popup").c_str()),v.Box("settings-body"),"the size or rate popup stays in the scroll body");
+   const auto end=Highlight(v,row,MenuInput::End);Check(end==Option(row,last),"the last size or rate is reachable");
+   Inside(v.Box(end.c_str()),v.Box(Id(row,"-viewport").c_str()),"the last size or rate is wholly visible");
+   TextFits(v,(end+"-label").c_str());
+   Check(Highlight(v,row,MenuInput::Home)==Option(row,0),"Home returns to the first size or rate");
+   if(c.width==1920&&c.density==1&&c.text==1&&!c.longName) {
+    const auto viewport=v.Box(Id(row,"-viewport").c_str());
+    Inside(v.Box(Option(row,7).c_str()),viewport,"the eighth size or rate shows before the list scrolls");
+    Check(v.Box(Option(row,8).c_str()).y>=viewport.y+viewport.height-1,"the ninth size or rate waits below the eighth");
+   }
+   Close(v,row);
+  }
  }
  v.viewport.width=1280;v.viewport.height=720;v.viewport.displayScale=1;v.viewport.textScale=1;v.Frame();
 }
@@ -247,9 +336,9 @@ static void Recreate(View& v,const std::string& source) {
 }
 static void Run(const std::string& source,const std::string& folder,const char* locale,float expansion) {
  View v(source,folder+"/"+locale+"_openq4.lang",1,1280,720,expansion,folder+"/"+locale+"_guis.lang");
- for(const auto* key:{"#str_229912","#str_229914","#str_229915","#str_200059"})Check(v.host.strings.contains(key),"every display row label is translated");
+ for(const auto* key:{"#str_229912","#str_229914","#str_229915","#str_200059","#str_229975","#str_229945"})Check(v.host.strings.contains(key),"every display row label is translated");
  Check(Shown(v,Device)=="none"&&Shown(v,Span)=="none","before the service publishes lists both rows stay hidden");
- OneDisplay(v);Stale(v);Several(v);Spanning(v);Unavailable(v);Guards(v);Fit(v,locale,expansion);Recreate(v,source);
+ OneDisplay(v);Stale(v);Several(v);Spanning(v);Sizing(v);Unavailable(v);Guards(v);Fit(v,locale,expansion);Recreate(v,source);
  // Begin, Edit and Cancel, which the page's edits and Cancel reach, never write.
  Check(v.tx.Cancel(View::Owner).code==SettingsCode::Ok&&v.host.writes==0,"Cancel ends the display drafts without a write");
 }

@@ -5,7 +5,7 @@ Selections only edit the existing typed draft. Apply/Keep/Revert and display
 recovery remain owned by the settings service, including unsupported requests.
 The pass also declares the display list keys the service publishes
 (system_display_catalog.py). Display Device and Expand Across Displays read
-them; the resolution and refresh rows are still to come.
+them, and so do Display Resolution and Refresh Rate (update_system_dimensions.py).
 """
 from __future__ import annotations
 import argparse
@@ -207,11 +207,11 @@ def compose(document):
     body['children'].insert(position, column)
     result['extensions']['openq4']['displayControls'] = {
         'scope': 'Display Device, Expand Across Displays, fullscreen, borderless, fullscreen policy and MSAA edit the existing draft. Apply uses owned Keep/Revert recovery; unsupported device requests do not bypass validation.',
-        'remaining': 'The resolution and refresh rows over the published display lists, dimension editors, full settings effects and screen acceptance remain required.',
+        'remaining': 'Typed entry in the size fields (native text input), visible fullscreen qualification, full settings effects and screen acceptance remain required.',
         'displayLists': 'settings.display.* keys from system_display_catalog.py: owner-only lists the settings service builds from the display topology.',
         'deviceRow': 'Auto and the device list slots, labelled from the list; a pick sends its slot and the list token, and a display that is not connected cannot be picked. Hidden on one display unless the draft names a display the list lacks or holds a change not yet applied, and hidden without lists.',
         'spanRow': 'No or Yes over r_multiScreen, as V-Sync answers; the stock option labels do not fit the largest text size in every language. Spanning needs the list to allow it and a borderless window or desktop fullscreen; a line under the value says which is missing. Hidden on one display unless the draft spans or holds a change not yet applied, and hidden without lists.',
-        'msaaAvailability': 'Read-only active-backend observation. Vulkan and unavailable renderers disable MSAA; strict Apply still checks supported GL sample counts.',
+        'msaaAvailability': 'Read-only renderer observation; an unavailable renderer disables MSAA. OpenGL multisamples its window and strict Apply checks the actual count; Vulkan keeps a single-sample window and its device restart re-creates the scene targets at the requested count, at most the highest the GPU supports (8x).',
         'localization': ['#str_229900', DEVICE_LABEL, AUTO, SPAN_LABEL, SPAN_OPTIONS, SPAN_NEEDS_WINDOW, SPAN_UNAVAILABLE, '#str_200147',
                          '#str_229909', '#str_229910', '#str_229911', '#str_41093', '#str_230020']}
     nodes(result['root'])

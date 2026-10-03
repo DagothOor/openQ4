@@ -22,20 +22,33 @@ state without replaying operations. The new column flows with the existing
 responsive page and scroll body.
 
 MSAA availability is a read-only observation of the active renderer and its
-ready window/presentation state. The strict display-change path currently
-accepts multisample requests on the GL-family backends but rejects nonzero
-requests on Vulkan. SYSTEM therefore disables this control on Vulkan or when
-the renderer is unavailable, and the service refuses a changed nonzero MSAA
-draft before writing settings or preparing a restart. Unavailable MSAA is
-visibly dimmed while its label and current value remain readable; availability
-restores normal opacity. The 45% group opacity combines with the existing
-88% label paint to give approximately 40% label opacity, matching the visual
-specification's disabled-text baseline. This is a limitation of
-the strict settings/recovery path, **not a claim that Vulkan scene rendering
-lacks MSAA**. Unchanged observed MSAA does not prevent an unrelated immediate
-edit, and the service permits a request to disable MSAA. Actual sample counts
-remain subject to strict device validation; the choices do not promise that
-every GPU supports every listed count.
+ready window/presentation state. An unavailable renderer disables the control,
+and the service refuses a changed nonzero MSAA draft before writing settings or
+preparing a restart. The OpenGL family multisamples its window: a display Apply
+requests `r_multiSamples` samples for it, and the strict path verifies the
+actual count, so a count the device lacks fails and reverts. Vulkan presents
+through a single-sample swapchain and multisamples its scene render targets
+instead, so on Vulkan the display request always asks for a single-sample
+window, whatever `r_multiSamples` holds. The successful device restart, before
+Keep or Revert, destroys Vulkan's backend scene target, which the next view
+rebuilds from `r_multiSamples`, and advances `videoRestartCount`, which makes
+single-player rebuild its forward target; a Revert restarts the device again.
+On Vulkan the strict check therefore proves the restarted window, not the
+scene's sample count. That count is the highest the GPU supports up to the
+request, and never above 8x, exactly as after `vid_restart`; `gfxInfo` reports
+it (`Renderer AA: MSAA requested=N effective=M reason=vulkan-scene`). Until 3
+October 2026 the page sent `r_multiSamples` to Vulkan as a window request,
+which Vulkan's strict device initialization refuses: every display Apply on
+Vulkan failed and reverted while MSAA was on, and the control stayed disabled
+there. Unavailable MSAA is visibly dimmed while its label and current value
+remain readable; availability restores normal opacity. The 45% group opacity
+combines with the existing 88% label paint to give approximately 40% label
+opacity, matching the visual specification's disabled-text baseline. Unchanged
+observed MSAA does not prevent an unrelated immediate edit, and the service
+permits a request to disable MSAA. The choices do not promise that every GPU
+supports every listed count. Windows/NVIDIA Vulkan runs applied and kept a
+V-Sync change under 4x, 4x to off and off to 8x (16x renders at 8x); no Linux
+or macOS runtime qualification is claimed.
 
 The first recovery run exposed a separate timing defect. The controller based
 its 20-second first-presentation deadline on the frame timestamp from before a
@@ -52,10 +65,11 @@ The settings service now builds the display, resolution and refresh lists
 ([SYSTEM display lists](system-display-catalog.md)). That page records two
 deliberate departures: display names are cut to 48 code points, and the
 refresh list does not add the desktop rate to every size. Display Device and
-Expand Across Displays read the lists ([SYSTEM display rows](system-display-rows.md)).
-The full SYSTEM migration still needs the resolution and refresh rows, dimension editors,
-dependent-setting presentation, Defaults,
-complete effect/preset execution, native text entry, complete artwork and
+Expand Across Displays read the lists ([SYSTEM display rows](system-display-rows.md)),
+and so do Display Resolution and Refresh Rate
+([SYSTEM resolution rows](system-resolution-rows.md)). The full SYSTEM
+migration still needs typed entry in the size fields, dependent-setting
+presentation, Defaults, complete effect/preset execution, complete artwork and
 motion qualification, and the editor round trip. Visible fullscreen,
 borderless, window-manager and multiple-monitor behavior require separate
 qualification. The automated engine probes keep fullscreen and borderless off

@@ -51,7 +51,7 @@ idCVar	idSessionLocal::gui_configServerRate( "gui_configServerRate", "0", CVAR_G
 idCVar gui_set_sys_scroll( "gui_set_sys_scroll", "0", CVAR_GUI | CVAR_INTEGER, "display menu scroll step", 0, 28 );
 idCVar gui_set_audio_scroll( "gui_set_audio_scroll", "0", CVAR_GUI | CVAR_INTEGER, "audio menu scroll step", 0.0f, 0.0f );
 idCVar gui_set_game_scroll( "gui_set_game_scroll", "0", CVAR_GUI | CVAR_INTEGER, "game menu scroll step", 0, 48 );
-idCVar ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL, "use the in-development retained SYSTEM page, which ui_retained includes only once it offers every stock setting" );
+idCVar ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL, "use the in-development retained SYSTEM page, which ui_retained includes only once every stock setting works there" );
 // The single gate for the retained (RmlUi) interface, on by default. Each
 // screen presents its stock GUI instead when its retained document is missing
 // or cannot load, or when the legacy menu it covers lacks a page it hands off
@@ -71,16 +71,26 @@ static bool Session_RetainedScreensEnabled( void ) {
 // The retained SYSTEM page, reached from the legacy menu's SYSTEM button.
 static const char *const RETAINED_SYSTEM_GUI = "guis/menu/settings/system.q4ui";
 // Settings the stock SYSTEM page offers that the retained page has no control
-// for yet (r_mode is the display mode list). While any remain, the gate leaves
-// the stock SYSTEM page in place and only ui_retainedSystem opts into the
-// retained one. ui_retained_gate.py keeps this list equal to what the two
-// pages offer, so the page joins the gate once it is complete.
+// for yet. While any remain, the gate leaves the stock SYSTEM page in place
+// and only ui_retainedSystem opts into the retained one. ui_retained_gate.py
+// keeps this list equal to what the two pages offer.
 static const char *const RETAINED_SYSTEM_MISSING_SETTINGS[] = {
-	"r_mode", "r_displayRefresh", NULL
+	NULL
+};
+// Settings the retained page has a control for that cannot yet do what the
+// stock page did, which keep it out of the gate too: a Performance Preset or
+// Auto-Detect cannot be applied (its image, audio and renderer resource
+// effects have no apply path), and the size fields take no typed digits (no
+// native text input route).
+// ui_retained_gate.py derives this list from those reasons, so the page joins
+// the gate once both lists are empty.
+static const char *const RETAINED_SYSTEM_INCOMPLETE_SETTINGS[] = {
+	"com_performancePreset", "r_customHeight", "r_customWidth", "r_windowHeight", "r_windowWidth", NULL
 };
 
 static bool Session_RetainedSystemEnabled( void ) {
-	return ui_retainedSystem.GetBool() || ( Session_RetainedScreensEnabled() && RETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL );
+	return ui_retainedSystem.GetBool() || ( Session_RetainedScreensEnabled() &&
+		RETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL && RETAINED_SYSTEM_INCOMPLETE_SETTINGS[0] == NULL );
 }
 
 static const int MENU_CONTROLLER_AXIS_THRESHOLD = 50;

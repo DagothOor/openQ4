@@ -9,7 +9,10 @@ source contracts that keep the gate complete:
 * ui_retained defaults to 1 and is archived; while it is 0 no retained
   screen is reachable. ui_retainedSystem opts into the SYSTEM page, which
   ui_retained includes only once it offers every setting of the stock SYSTEM
-  page; the list of settings it still lacks matches the two pages;
+  page and each one works there: the list of settings it lacks matches the
+  two pages (a control counts for a setting only when its action writes it),
+  and the list of settings it cannot yet apply, take typing for or change on
+  every renderer matches those reasons as the code states them;
 * each screen presents its stock GUI instead when its retained document is
   not installed (quietly) or cannot load (reported once), when the legacy
   main menu lacks a page the home screens hand off to, or when its view
@@ -541,10 +544,13 @@ int main() {
         stock.HandleRetainedSessionRequest(alone, "campaigns");
         CHECK(std::string(stock.guiActive->Name()) == "guis/campaign_menu.gui" && stock.retainedSubpageFrom == nullptr && alone->named.empty());
     }
-    {   // The gate alone keeps the stock SYSTEM page while the retained one lacks stock settings;
-        // ui_retainedSystem opts into it until it falls back.
-        auto s = Session(true); CHECK(RETAINED_SYSTEM_MISSING_SETTINGS[0] != NULL && !s.RetainedSystemAvailable());
-        ui_retainedSystem.value = true; CHECK(s.RetainedSystemAvailable());
+    {   // The gate alone includes the SYSTEM page only once it lacks no stock setting and
+        // each one works there; ui_retainedSystem opts into it until it falls back.
+        const bool complete = RETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL && RETAINED_SYSTEM_INCOMPLETE_SETTINGS[0] == NULL;
+        auto s = Session(true); CHECK(s.RetainedSystemAvailable() == complete);
+        s.ReportRetainedScreens(); CHECK(commonObject.output.find(complete ? "OPENQ4_RETAINED enabled=1 system=1 " : "OPENQ4_RETAINED enabled=1 system=0 ") != std::string::npos);
+        auto off = Session(false); CHECK(!off.RetainedSystemAvailable());
+        ui_retainedSystem.value = true; CHECK(s.RetainedSystemAvailable() && off.RetainedSystemAvailable());
         s.retainedStock.Append("guis/menu/settings/system.q4ui"); CHECK(!s.RetainedSystemAvailable());
     }
     {   // CONTINUE shows a save's own screenshot, freshly read, only when it exists.
@@ -729,32 +735,229 @@ def stock_system_settings() -> set[str]:
     return settings
 
 
-def retained_system_controls() -> set[str]:
-    """Every setting the retained SYSTEM page has a control for: the drafts control values read."""
+# Retained controls whose value is a list's selection rather than the draft
+# setting itself; the pick operation their action names writes the setting.
+RETAINED_SYSTEM_DERIVED_STATE = {'settings.display.mode.selected': 'r_mode', 'settings.display.refresh.selected': 'r_displayRefresh'}
+# What each pick operation writes as its own choice: SystemDisplaySelectionPatch
+# for the display lists, the preset expansion for its name. A plain edit writes
+# its arguments. A control counts only for its operation's own writes.
+OPERATION_WRITES = {'settings.system.display': {'r_screen'},
+                    'settings.system.displayMode': {'r_mode', 'r_customWidth', 'r_customHeight'},
+                    'settings.system.displayRefresh': {'r_displayRefresh'},
+                    'settings.system.preset': {'com_performancePreset'}}
+# The automatic values a display or size pick also returns: a size the new
+# display lacks to Desktop Native, a rate the new choice lacks to Auto.
+OPERATION_RESETS = {'settings.system.display': {'r_mode', 'r_displayRefresh'},
+                    'settings.system.displayMode': {'r_displayRefresh'}}
+
+
+def retained_system_document() -> dict:
     text = (ROOT / 'content/baseoq4/pak0/guis/menu/settings/system.q4ui').read_text(encoding='utf-8')
-    document = json.loads(re.sub(r'^\s*//.*$', '', text, flags=re.M))
+    return json.loads(re.sub(r'^\s*//.*$', '', text, flags=re.M))
+
+
+def control_settings(value) -> set[str]:
+    """The settings a control value reads: drafts, and list selections standing for one."""
     found = set()
 
-    def expressions(value):
-        if isinstance(value, dict):
-            state = value.get('state')
+    def expressions(item):
+        if isinstance(item, dict):
+            state = item.get('state')
             if isinstance(state, str) and state.startswith('settings.draft.'):
                 found.add(state[len('settings.draft.'):])
-            for item in value.values():
-                expressions(item)
-        elif isinstance(value, list):
-            for item in value:
-                expressions(item)
+            elif isinstance(state, str) and state in RETAINED_SYSTEM_DERIVED_STATE:
+                found.add(RETAINED_SYSTEM_DERIVED_STATE[state])
+            for child in item.values():
+                expressions(child)
+        elif isinstance(item, list):
+            for child in item:
+                expressions(child)
+
+    expressions(value)
+    return found
+
+
+def retained_system_controls() -> set[str]:
+    """Every setting the retained SYSTEM page has a control for: the settings the
+    values of controls that act read."""
+    found = set()
 
     def walk(node):
         control = node.get('control')
-        if isinstance(control, dict) and 'value' in control:
-            expressions(control['value'])
+        if isinstance(control, dict) and 'value' in control and (control.get('action') or control.get('event')):
+            found.update(control_settings(control['value']))
+        for child in node.get('children', []):
+            walk(child)
+
+    walk(retained_system_document()['root'])
+    return found
+
+
+def check_retained_system_control_writes() -> None:
+    """A control counts for a setting only when its action writes that setting."""
+    document = retained_system_document()
+
+    def walk(node):
+        control = node.get('control')
+        if isinstance(control, dict) and 'value' in control and control.get('action'):
+            action = document['actions'][control['action']]
+            operation = action['operation']
+            writes = set(action.get('arguments', {})) if operation == 'settings.system.edit' else OPERATION_WRITES.get(operation)
+            assert writes is not None, f'{node["id"]}: unknown write set for {operation}'
+            missing = control_settings(control['value']) - writes
+            assert not missing, f'{node["id"]} reads {sorted(missing)} but {control["action"]} ({operation}) does not write them'
         for child in node.get('children', []):
             walk(child)
 
     walk(document['root'])
-    return found
+    # The service's display picks write exactly the settings named above.
+    display = (ROOT / 'src/ui/application/SystemDisplay.cpp').read_text(encoding='utf-8')
+    patch = display[display.rindex('bool SystemDisplaySelectionPatch('):]
+    patch = patch[:patch.index('\n}\n')]
+    for key in sorted(set().union(*(OPERATION_WRITES[o] | OPERATION_RESETS.get(o, set()) for o in OPERATION_WRITES if o != 'settings.system.preset'))):
+        assert f'result["{key}"]' in patch, f'SystemDisplaySelectionPatch no longer writes {key}'
+    # Each branch writes what its operation is counted for: its own pick, and
+    # the automatic values a display or size pick returns.
+    device = patch[patch.index('if (list==SystemDisplayList::Device) {'):patch.index('} else if (list==SystemDisplayList::Mode) {')]
+    mode = patch[patch.index('} else if (list==SystemDisplayList::Mode) {'):patch.rindex('} else {')]
+    rate = patch[patch.rindex('} else {'):]
+    assert 'result["r_screen"]=double(index);' in device, 'a display pick no longer writes r_screen'
+    assert 'result["r_mode"]=-2.0;' in device and 'result["r_displayRefresh"]=0.0;' in device, 'a display pick no longer resets what the new display lacks'
+    for key in ('r_mode', 'r_customWidth', 'r_customHeight'):
+        assert f'result["{key}"]' in mode, f'a size pick no longer writes {key}'
+    assert 'result["r_displayRefresh"]=0.0;' in mode, 'a size pick no longer resets a rate the new size lacks'
+    assert 'result["r_displayRefresh"]=double(catalog.refresh[size_t(index)].rate);' in rate, 'a rate pick no longer writes its rate'
+
+
+# ApplyClassOf, statement by statement: a change applies when its setting is
+# Immediate or restarts the display, or is r_renderer or r_lightGridPreload;
+# any other effect makes it Unsupported. retained_system_incomplete mirrors it.
+APPLY_CLASS_STATEMENTS = ('if (item.effects==SystemSettingImmediate) continue;',
+                          'if (item.effects==SystemSettingDisplayRestart) display=true;',
+                          'else if (item.key=="r_renderer") renderer=true;',
+                          'else if (item.key=="r_lightGridPreload") deferred=true;',
+                          'else unsupported=true;')
+# Page states that enable a control only on some renderers, with the function
+# that publishes each one and the statement that makes it hold on every renderer
+# the stock page's control worked on (ui_settings_display_service.py proves the
+# statement's behaviour). Any other form is a reason the control is incomplete.
+RENDERER_LIMITED_STATES = {'settings.msaaAvailable': ('src/ui/SettingsDisplayService.cpp',
+                                                      'bool EngineSettingsDisplayHost::SupportsMultisampling() const {',
+                                                      'return WindowMultisampling() || R_RendererModule_GetStatus().activeApi == RENDER_MODULE_API_VULKAN;',
+                                                      'Vulkan')}
+# The engine reaches a Number field's text through the native text owner;
+# while no engine code constructs one, typed characters never arrive.
+NATIVE_TEXT_OWNER = ('src/ui/application/ManagedNativeTextOwner.h', 'src/ui/application/ManagedNativeTextOwner.cpp')
+
+
+def typed_text_reaches_numbers(adapter: str) -> bool:
+    """Whether typed characters can reach a retained Number field: an event-queue
+    character route in the adapter, or engine code that drives the native text owner."""
+    handle = function_body(adapter, 'const char* idUserInterfaceRetained::HandleEvent(')
+    if 'SE_CHAR' in handle and ('ApplyNumberInput' in handle or 'ApplyTextInput' in handle):
+        return True
+    owners = {ROOT / path for path in NATIVE_TEXT_OWNER}
+    for folder in ('src/framework', 'src/sys', 'src/ui'):
+        for path in (ROOT / folder).rglob('*'):
+            if path.suffix in ('.cpp', '.h') and path not in owners and 'ManagedNativeTextOwner' in path.read_text(encoding='utf-8', errors='replace'):
+                return True
+    return False
+
+
+def preset_targets() -> list[str]:
+    """The settings a Performance Preset writes (PerformancePreset.cpp Targets)."""
+    source = (ROOT / 'src/framework/PerformancePreset.cpp').read_text(encoding='utf-8')
+    block = source[source.index('PerformancePresetTargetCount> Targets{{'):]
+    return re.findall(r'"(\w+)"', block[:block.index('}};')])
+
+
+def retained_system_catalog_effects() -> dict[str, str]:
+    """Each catalog setting's effect as SystemSettingsHost::Catalog() declares it (lower-case keys)."""
+    host = (ROOT / 'src/ui/application/SystemSettingsHost.cpp').read_text(encoding='utf-8')
+    body = function_body(host, 'const std::vector<SystemSettingDescriptor>& SystemSettingsHost::Catalog() {')
+    starts = list(re.finditer(r'\b(?:String|Boolean|Number)\("(\w+)"', body))
+    assert starts, 'SystemSettingsHost::Catalog() declares no settings'
+    effects = {}
+    for index, start in enumerate(starts):
+        span = body[start.end():starts[index + 1].start() if index + 1 < len(starts) else len(body)]
+        named = re.findall(r'\bSystemSetting(\w+)\b', span)
+        assert len(named) <= 1, f'{start.group(1)} declares more than one effect'
+        effects[start.group(1).lower()] = named[0] if named else 'Immediate'
+    return effects
+
+
+def retained_system_incomplete(adapter: str) -> dict[str, str]:
+    """The stock settings the retained SYSTEM page has a control for that cannot yet
+    do what the stock page did, each with its reason, as the code states them."""
+    document = retained_system_document()
+    stock = {name.lower() for name in stock_system_settings()}
+    enabled = {binding['node']: binding['value'] for binding in document['bindings'] if binding.get('property') == 'enabled'}
+    roles: dict[str, set[str]] = {}
+    limited: dict[str, set[str]] = {}
+
+    def states(value) -> set[str]:
+        found = set()
+        if isinstance(value, dict):
+            if isinstance(value.get('state'), str):
+                found.add(value['state'])
+            for child in value.values():
+                found |= states(child)
+        elif isinstance(value, list):
+            for child in value:
+                found |= states(child)
+        return found
+
+    def walk(node):
+        control = node.get('control')
+        if isinstance(control, dict) and 'value' in control:
+            assert enabled.get(node['id'], True) is not False, f'{node["id"]} is never enabled'
+            for key in control_settings(control['value']):
+                key = key.lower()
+                roles.setdefault(key, set()).add(control['role'])
+                for state in states(enabled.get(node['id'])) & set(RENDERER_LIMITED_STATES):
+                    limited.setdefault(key, set()).add(state)
+        for child in node.get('children', []):
+            walk(child)
+
+    walk(document['root'])
+    host = (ROOT / 'src/ui/application/SystemSettingsHost.cpp').read_text(encoding='utf-8')
+    apply_class = function_body(host, 'SystemApplyClass SystemSettingsHost::ApplyClassOf(')
+    for statement in APPLY_CLASS_STATEMENTS:
+        assert statement in apply_class, f'ApplyClassOf changed ({statement}); update APPLY_CLASS_STATEMENTS and the mirror below'
+    effects = retained_system_catalog_effects()
+    typed = typed_text_reaches_numbers(adapter)
+
+    def applies(key: str) -> bool:
+        return effects[key] in ('Immediate', 'DisplayRestart') or key in ('r_renderer', 'r_lightgridpreload')
+
+    def apply_class(key: str) -> str:
+        return 'immediate' if effects[key] == 'Immediate' else 'display' if effects[key] == 'DisplayRestart' else key
+
+    targets = [target.lower() for target in preset_targets()]
+    reasons = {}
+    for key in sorted(stock & set(roles)):
+        assert key in effects, f'{key} has a retained control but no SystemSettingsHost catalog entry'
+        if key == 'com_performancepreset':
+            # A preset writes its targets: Apply needs every one to apply, in one class.
+            assert targets and all(target in effects for target in targets), 'a preset target has no SystemSettingsHost catalog entry'
+            blocked = sorted(target for target in targets if not applies(target))
+            classes = {apply_class(target) for target in targets if applies(target)} - {'immediate'}
+            if blocked or not applies(key) or len(classes) > 1:
+                reasons[key] = (f'a preset writes {", ".join(blocked) or "settings"} whose effects have no apply path, '
+                                'or mixes apply classes (ApplyClassOf: Unsupported or Mixed)')
+        elif not applies(key):
+            reasons[key] = f'its {effects[key]} effect has no apply path (ApplyClassOf: Unsupported)'
+        elif not typed and roles[key] == {'number'}:
+            reasons[key] = 'only number fields offer it, and typed characters reach no retained Number field'
+        else:
+            for state in sorted(limited.get(key, ())):
+                path, signature, statement, renderer = RENDERER_LIMITED_STATES[state]
+                if statement not in function_body((ROOT / path).read_text(encoding='utf-8'), signature):
+                    reasons[key] = f'its control needs {state}, which {signature.split("::")[-1].split("(")[0]} does not publish for {renderer}'
+    # The stock page's Auto-Detect is a button, not a setting row; the retained
+    # page keeps its own.
+    assert any(action['operation'] == 'settings.system.autodetect' for action in document['actions'].values()), 'the retained SYSTEM page lost Auto-Detect'
+    return reasons
 
 
 def cpp_allowlist(text: str) -> set[str]:
@@ -1132,15 +1335,24 @@ def main() -> int:
     # stock screens persists.
     assert 'idCVar ui_retained( "ui_retained", "1", CVAR_GUI | CVAR_BOOL | CVAR_ARCHIVE, ' in menu, 'ui_retained must default to 1 and be archived'
     assert 'ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL' in menu
-    assert 'return ui_retainedSystem.GetBool() || ( Session_RetainedScreensEnabled() && RETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL );' in menu
+    assert ('return ui_retainedSystem.GetBool() || ( Session_RetainedScreensEnabled() &&\n'
+            '\t\tRETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL && RETAINED_SYSTEM_INCOMPLETE_SETTINGS[0] == NULL );') in menu
     # The SYSTEM page joins the gate once it has a control for every setting of
-    # the stock page; the list of what it lacks must say exactly that.
+    # the stock page and each one works there; the two lists must say exactly that.
     missing = re.search(r'RETAINED_SYSTEM_MISSING_SETTINGS\[\] = \{([^}]*)\};', menu).group(1)
     listed = {name.lower() for name in re.findall(r'"([A-Za-z_0-9]+)"', missing)}
     assert missing.strip().endswith('NULL'), 'the missing-settings list must stay NULL-terminated'
     # CVar names are case-insensitive (the stock page binds r_multisamples).
     actual = {name.lower() for name in stock_system_settings()} - {name.lower() for name in retained_system_controls()}
     assert listed == actual, f'RETAINED_SYSTEM_MISSING_SETTINGS lists {sorted(listed)}; the retained SYSTEM page lacks {sorted(actual)}'
+    check_retained_system_control_writes()
+    incomplete = re.search(r'RETAINED_SYSTEM_INCOMPLETE_SETTINGS\[\] = \{([^}]*)\};', menu).group(1)
+    assert incomplete.strip().endswith('NULL'), 'the incomplete-settings list must stay NULL-terminated'
+    listed_incomplete = {name.lower() for name in re.findall(r'"([A-Za-z_0-9]+)"', incomplete)}
+    reasons = retained_system_incomplete(adapter)
+    assert listed_incomplete == set(reasons), (
+        f'RETAINED_SYSTEM_INCOMPLETE_SETTINGS lists {sorted(listed_incomplete)}; the code gives these settings a reason: '
+        + '; '.join(f'{key}: {reason}' for key, reason in sorted(reasons.items())))
     assert 'if ( !Session_RetainedSystemEnabled() || systemGuiTransition' in function_body(menu, 'bool idSessionLocal::OpenSystemSettings(')
     assert 'guiMainMenu->SetStateBool( "retainedSystem", RetainedSystemAvailable() );' in menu
     # Every retained document path in the session is behind the gate.

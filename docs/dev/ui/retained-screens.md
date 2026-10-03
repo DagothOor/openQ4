@@ -19,10 +19,14 @@ document explicitly (`testGUI`, `ui_retainedPreview`) remain the runtime's
 test and preview tools and load it regardless of the gate.
 
 `ui_retainedSystem` opts into the SYSTEM page, which `ui_retained` includes
-only once the page offers every setting of the stock SYSTEM page, so the
-default never hides one. The session lists what it still lacks in
-`RETAINED_SYSTEM_MISSING_SETTINGS`, and the gate test keeps that list equal to
-what the two pages offer: today the display mode list and refresh rate rows.
+only once every setting of the stock SYSTEM page works there, so the default
+never loses one. The session lists the stock settings the page has no control
+for in `RETAINED_SYSTEM_MISSING_SETTINGS`, now empty, and those it has a control
+for that cannot yet do what the stock page did in
+`RETAINED_SYSTEM_INCOMPLETE_SETTINGS`: a Performance Preset cannot be applied,
+and the window and custom size fields take no typed digits
+([SYSTEM resolution rows](system-resolution-rows.md#the-gate)). The gate test
+derives both lists from the code.
 
 `tools/tests/ui_retained_gate.py` holds the gate: it checks the CVar defaults,
 that every retained document path in the session is reached only behind the
@@ -873,11 +877,11 @@ connection traced the players they published. Evidence:
   228 u) and the Back action in the bottom band; Classic is not built. A
   change going back cannot be reversed, and the crumb of a title too long for
   the 13 dp floor (Italian, Polish) is cut at the step.
-- The SYSTEM page stays opt-in until it offers every stock setting: it still
-  lacks the display mode list and refresh rate. Its Display Device list
-  offers the first eight displays only, and like every retained dropdown it
-  cannot step its value with left and right, so where a list cannot open at
-  all there is no other way to change it
+- The SYSTEM page stays opt-in until every stock setting works there:
+  presets cannot be applied from it, and its size fields take no typed
+  digits. Its Display Device list offers the first eight displays only, and
+  like every retained dropdown it cannot step its value with left and right,
+  so where a list cannot open at all there is no other way to change it
   ([SYSTEM display rows](system-display-rows.md#known-limitations)).
 - The loading screen has no touch prompt (touch counts as desktop input).
   JOINING does not yet hand over to a Welcome menu. The arsenal fills in only

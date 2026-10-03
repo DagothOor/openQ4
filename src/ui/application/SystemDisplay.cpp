@@ -15,7 +15,7 @@ namespace openq4::ui {
 #if defined(ID_DEDICATED)
 namespace { bool Unsupported(std::string& error) { error="Display settings require a client renderer"; return false; } }
 bool CaptureDisplayTopology(SystemDisplayTopology&,std::string& error) { return Unsupported(error); }
-bool BuildDisplayRequest(const StateValues&,const rendererDisplayState_t&,const SystemDisplayTopology&,SystemDisplayPlan&,std::string& error) { return Unsupported(error); }
+bool BuildDisplayRequest(const StateValues&,const rendererDisplayState_t&,const SystemDisplayTopology&,SystemDisplayPlan&,std::string& error,bool) { return Unsupported(error); }
 bool BuildDisplayRestore(const rendererDisplayState_t&,const SystemDisplayTopology&,SystemDisplayPlan&,std::string& error) { return Unsupported(error); }
 bool MatchesDisplay(const SystemDisplayPlan&,const rendererDisplayState_t&,std::string& error) { return Unsupported(error); }
 bool CaptureDisplayRecovery(const SystemDisplayPlan&,const SystemDisplayTopology&,StateValues&,std::string& error) { return Unsupported(error); }
@@ -69,13 +69,16 @@ bool Ready(const rendererDisplayState_t& state, std::string& error) {
 	return true;
 }
 bool Samples(int value) { return value == 0 || value == 2 || value == 4 || value == 8 || value == 16; }
+// The shared exclusive rule (src/sys/DisplayModeRule.h) over the captured
+// list, which keeps SDL's order, so a plan expects the mode the strict window
+// service and legacy startup choose. Auto aims at the desktop rate.
 bool SelectMode(const SystemDisplayDescriptor& display, int width, int height, int refresh, SystemDisplayMode& output) {
-	bool found = false;
-	for (const auto& mode : display.modes) {
-		if (mode.width != width || mode.height != height || (refresh && std::floor(mode.refresh+.5) != refresh)) continue;
-		if (!found || mode.refresh > output.refresh) { output = mode; found = true; }
-	}
-	return found;
+	const int chosen=SelectDisplayMode(int(display.modes.size()),[&](int i,DisplayModeCandidate& mode) {
+		const auto& option=display.modes[size_t(i)];
+		mode={option.width,option.height,static_cast<float>(option.refresh)}; return true;
+	},width,height,refresh,static_cast<float>(display.desktop.refresh));
+	if (chosen<0) return false;
+	output=display.modes[size_t(chosen)]; return true;
 }
 bool Bounds(const std::vector<SystemDisplayDescriptor>& displays, int& x, int& y, int& width, int& height) {
 	int64_t left=0, top=0, right=0, bottom=0;
@@ -145,9 +148,14 @@ bool CaptureDisplayTopology(SystemDisplayTopology& output, std::string& error) {
 	bool okay=true;
 	for (int i=0; i<count && okay; ++i) {
 		SystemDisplayDescriptor display; display.id=ids[i]; const char* name=SDL_GetDisplayName(ids[i]); SDL_Rect bounds{};
-		okay=name && SDL_GetDisplayBounds(ids[i],&bounds) && convert(SDL_GetDesktopDisplayMode(ids[i]),display.desktop);
+		const SDL_DisplayMode* desktopMode=SDL_GetDesktopDisplayMode(ids[i]);
+		okay=name && SDL_GetDisplayBounds(ids[i],&bounds) && convert(desktopMode,display.desktop);
 		if (!okay) break;
-		display.name=name; display.x=bounds.x; display.y=bounds.y; display.width=bounds.w; display.height=bounds.h;
+		// An exclusive mode resizes its display's bounds while it is active:
+		// Windows, X11 and macOS switch the display, and Wayland reports a
+		// focused exclusive window's emulated mode. A descriptor names the
+		// monitor, so it keeps the desktop size, which the bounds equal otherwise.
+		display.name=name; display.x=bounds.x; display.y=bounds.y; display.width=desktopMode->w; display.height=desktopMode->h;
 		int modeCount=0; SDL_DisplayMode** modes=SDL_GetFullscreenDisplayModes(ids[i],&modeCount);
 		okay=modes && modeCount>=0 && modeCount<=4096;
 		for (int j=0; okay && j<modeCount; ++j) {
@@ -166,7 +174,7 @@ bool CaptureDisplayTopology(SystemDisplayTopology& output, std::string& error) {
 }
 
 bool BuildDisplayRequest(const StateValues& values, const rendererDisplayState_t& captured,
-	const SystemDisplayTopology& topology, SystemDisplayPlan& output, std::string& error) {
+	const SystemDisplayTopology& topology, SystemDisplayPlan& output, std::string& error, bool windowMultisampling) {
 	if (!Candidate(values,error) || !Topology(topology,error) || !Ready(captured,error)) return false;
 	const auto integer=[&](const char* key){return int(std::get<double>(values.at(key)));};
 	const int index=integer("r_screen"), modeIndex=integer("r_mode");
@@ -181,7 +189,7 @@ bool BuildDisplayRequest(const StateValues& values, const rendererDisplayState_t
 	request.fullscreenDesktop=p.fullScreen && std::get<bool>(values.at("r_fullscreenDesktop"));
 	request.spanDisplays=integer("r_multiScreen")!=0 && (p.borderless || request.fullscreenDesktop);
 	if (integer("r_multiScreen") && p.fullScreen && !request.fullscreenDesktop) return Fail(error,"Exclusive fullscreen cannot span displays");
-	p.hiddenWindow=captured.window.hidden; p.multiSamples=integer("r_multiSamples"); p.displayHz=integer("r_displayRefresh");
+	p.hiddenWindow=captured.window.hidden; p.multiSamples=windowMultisampling?integer("r_multiSamples"):0; p.displayHz=integer("r_displayRefresh");
 	request.swapInterval=integer("r_swapInterval"); p.width=integer("r_windowWidth"); p.height=integer("r_windowHeight");
 	request.maximized=false; expected.hidden=p.hiddenWindow; expected.displayId=display->id;
 	plan.monitors.push_back(*display);
@@ -243,9 +251,16 @@ bool BuildDisplayRestore(const rendererDisplayState_t& captured, const SystemDis
 		}
 	}
 	if (w.fullscreen && !w.fullscreenDesktop) {
-		SystemDisplayMode selected;
-		if (!SelectMode(*display,r.parms.width,r.parms.height,r.parms.displayHz,selected) || selected.refresh!=double(w.refreshRate))
-			return Fail(error,"The exact captured exclusive refresh cannot be restored");
+		const auto restores=[&](int refresh) {
+			SystemDisplayMode selected;
+			return SelectMode(*display,r.parms.width,r.parms.height,refresh,selected) && selected.refresh==double(w.refreshRate);
+		};
+		// Its whole hertz can name a neighbour (60.00 beside an Auto start's
+		// 59.94); Auto then restores the rate Auto chose.
+		if (!restores(r.parms.displayHz)) {
+			if (!restores(0)) return Fail(error,"The exact captured exclusive refresh cannot be restored");
+			r.parms.displayHz=0;
+		}
 	}
 	if (!Plan(plan,error)) return false;
 	output=std::move(plan); error.clear(); return true;
@@ -462,8 +477,11 @@ bool ValidateDisplayRecoveryPair(const StateValues& savedRestore,const StateValu
 	// Explicit selection follows the saved descriptor. Auto must still select
 	// the historical current display; remapping Auto would conceal corruption.
 	if (index>=0) candidate["r_screen"]=double(target.request.displayIndex);
+	// A back end without window multisampling (Vulkan) saves a single-sample
+	// window whatever r_multiSamples asks; any other saved count must still be
+	// the catalog's.
 	SystemDisplayPlan rebuilt;
-	if (!BuildDisplayRequest(candidate,observed,topology,rebuilt,error)) return false;
+	if (!BuildDisplayRequest(candidate,observed,topology,rebuilt,error,target.request.parms.multiSamples!=0)) return false;
 	if (rebuilt.monitors.size()!=target.monitors.size() || rebuilt.monitors.front().id!=target.monitors.front().id)
 		return Fail(error,"Saved target monitor set contradicts the settings catalog");
 	for (const auto& monitor:rebuilt.monitors) {
@@ -579,10 +597,13 @@ bool BuildSystemDisplayCatalog(const SystemDisplayCatalogInput& input, const Sta
 	catalog.descriptors=displays;
 	int x=0, y=0, width=0, height=0;
 	catalog.spanAvailable=catalog.count>1 && input.topology.absolutePlacement && Bounds(displays,x,y,width,height);
-	// The display the mode and refresh lists describe: the chosen index, or the
-	// window's display (else the primary) for Auto. A stale index has none.
-	const SystemDisplayDescriptor* display=screen>=0 ? (screen<catalog.count ? &displays[size_t(screen)] : nullptr) :
-		(Display(input.topology,input.currentDisplay) ? Display(input.topology,input.currentDisplay) : Display(input.topology,input.topology.primary));
+	// Auto describes the window's display, else the primary; a pick of Auto
+	// checks the draft's size and rate against it.
+	const auto* automatic=Display(input.topology,input.currentDisplay) ? Display(input.topology,input.currentDisplay) : Display(input.topology,input.topology.primary);
+	catalog.autoDisplay=automatic ? int(automatic-displays.data()) : -1;
+	// The display the mode and refresh lists describe: the chosen index, or
+	// Auto's. A stale index has none.
+	const SystemDisplayDescriptor* display=screen>=0 ? (screen<catalog.count ? &displays[size_t(screen)] : nullptr) : automatic;
 	const auto size=[&](int w,int h) { return Format(text.size,"%d \xC3\x97 %d",{w,h}); };
 	const auto sized=[&](int w,int h) {
 		const auto aspect=Aspect(w,h);
@@ -667,9 +688,37 @@ bool SystemDisplaySelectionPatch(const SystemDisplayCatalog& catalog, SystemDisp
 	const int current=list==SystemDisplayList::Device ? catalog.deviceSelected :
 		list==SystemDisplayList::Mode ? catalog.modeSelected : catalog.refreshSelected;
 	if (index==current) { patch=std::move(result); error.clear(); return true; }
+	// The draft's size and rate as the lists name them.
+	const auto& draftSize=catalog.modeSelected>=0 && catalog.modeSelected<int(catalog.modes.size()) ? catalog.modes[size_t(catalog.modeSelected)] :
+		catalog.unlistedMode.empty() ? catalog.modes.front() : catalog.unlistedMode.front();
+	const int draftRate=catalog.refreshSelected>=0 && catalog.refreshSelected<int(catalog.refresh.size()) ? catalog.refresh[size_t(catalog.refreshSelected)].rate :
+		catalog.unlistedRefresh.empty() ? 0 : catalog.unlistedRefresh.front().rate;
+	// The display an r_screen value describes: its index, or Auto's. A stale index has none.
+	const auto described=[&](int screen) -> const SystemDisplayDescriptor* {
+		const int at=screen>=0 ? screen : catalog.autoDisplay;
+		return at>=0 && at<catalog.count && size_t(at)<catalog.descriptors.size() ? &catalog.descriptors[size_t(at)] : nullptr;
+	};
+	// Whether a display offers a slot's size at a whole-hertz rate, or at all
+	// for 0, as the strict request matches it. Desktop Native is its own desktop.
+	const auto offers=[](const SystemDisplayDescriptor& display,const SystemDisplayModeSlot& slot,int refresh) {
+		const bool desktop=slot.kind==SystemDisplayModeSlot::Kind::Desktop;
+		SystemDisplayMode ignored;
+		return SelectMode(display,desktop ? display.desktop.width : slot.width,desktop ? display.desktop.height : slot.height,refresh,ignored);
+	};
 	if (list==SystemDisplayList::Device) {
 		if (index<-1 || index>=(std::min)(catalog.count,int(catalog.devices.size()))) return Fail(error,"That display is not connected");
 		result["r_screen"]=double(index);
+		// The new display keeps the draft's size and rate where it offers them. A
+		// listed or legacy size it lacks becomes Desktop Native and a rate it lacks
+		// becomes Auto, so the pick alone never makes Apply refuse the draft. A
+		// typed Custom size stays the player's choice.
+		if (const auto* display=described(index)) {
+			const bool listed=draftSize.kind==SystemDisplayModeSlot::Kind::Size || draftSize.kind==SystemDisplayModeSlot::Kind::Unlisted;
+			const bool keepSize=!listed || offers(*display,draftSize,0);
+			if (!keepSize) result["r_mode"]=-2.0;
+			const SystemDisplayModeSlot desktop;
+			if (draftRate>0 && !offers(*display,keepSize ? draftSize : desktop,draftRate)) result["r_displayRefresh"]=0.0;
+		}
 	} else if (list==SystemDisplayList::Mode) {
 		if (index<0 || index>=int(catalog.modes.size())) return Fail(error,"That display size is not in the list");
 		const auto& slot=catalog.modes[size_t(index)];
@@ -681,6 +730,9 @@ bool SystemDisplaySelectionPatch(const SystemDisplayCatalog& catalog, SystemDisp
 			result["r_customWidth"]=double(slot.width); result["r_customHeight"]=double(slot.height);
 			result["r_mode"]=double(slot.legacyMode);
 		}
+		// A rate the picked size lacks on the listed display returns to Auto.
+		if (const auto* display=described(catalog.deviceSelected); display && draftRate>0 && !offers(*display,slot,draftRate))
+			result["r_displayRefresh"]=0.0;
 	} else {
 		if (index<0 || index>=int(catalog.refresh.size())) return Fail(error,"That refresh rate is not in the list");
 		result["r_displayRefresh"]=double(catalog.refresh[size_t(index)].rate);

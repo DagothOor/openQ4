@@ -162,11 +162,12 @@ int main(){Boundary boundary;PendingAction action;NumberDraftSummary clear,dirty
  for(const char* op:{"settings.system.preset","settings.system.autodetect","settings.system.apply","settings.system.applyExit","settings.system.defaults"}){
   action.invocation.operation=op;if(boundary.ConflictsWithNumberDraft(action,clear)||!boundary.ConflictsWithNumberDraft(action,dirty))return 1;
  }
- // A size pick writes the custom width and height that Number fields edit.
- action.invocation.operation="settings.system.displayMode";if(!boundary.ConflictsWithNumberDraft(action,dirty))return 3;
- for(const char* op:{"settings.system.display","settings.system.displayRefresh"}){
-  action.invocation.operation=op;if(boundary.ConflictsWithNumberDraft(action,dirty))return 4;
+ // A size pick writes the custom width and height that Number fields edit,
+ // and a display pick can return the size to Desktop Native (r_mode).
+ for(const char* op:{"settings.system.displayMode","settings.system.display"}){
+  action.invocation.operation=op;if(!boundary.ConflictsWithNumberDraft(action,dirty))return 3;
  }
+ action.invocation.operation="settings.system.displayRefresh";if(boundary.ConflictsWithNumberDraft(action,dirty))return 4;
  action.invocation.operation="settings.system.cancel";if(boundary.ConflictsWithNumberDraft(action,dirty))return 2;
  std::puts("actual adapter local Number bulk guard passed");
 }

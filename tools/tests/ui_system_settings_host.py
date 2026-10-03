@@ -291,6 +291,15 @@ int main() {
     incompleteSize=candidate;incompleteSize["r_screen"]=99.0;
     assert(host.ValidateDraft(original,incompleteSize,error) && !host.Validate(original,incompleteSize,error));
     candidate["r_displayRefresh"]=144.0;assert(!host.Validate(original,candidate,error));
+    // A saved exclusive rate the display lacks refuses any later display
+    // restart (here V-Sync) before it is attempted; an immediate change applies.
+    auto restart=candidate;restart["r_swapInterval"]=std::get<double>(candidate.at("r_swapInterval"))==0?1.0:0.0;
+    assert(!host.Validate(candidate,restart,error));
+    auto immediate=candidate;immediate["r_brightness"]=1.4;assert(host.Validate(candidate,immediate,error));
+    // Rolling that V-Sync change back keeps to the coupled keys: a rollback can
+    // run with no window, when Auto would name the primary display.
+    assert(host.ValidateRollback(candidate,restart,candidate,error));
+    candidate["r_displayRefresh"]=60.0;restart["r_displayRefresh"]=60.0;assert(host.Validate(candidate,restart,error));
     candidate["r_displayRefresh"]=60.0;candidate["r_multiScreen"]=1.0;assert(!host.Validate(original,candidate,error));
     candidate["r_multiScreen"]=0.0;candidate["r_customWidth"]=3840.0;candidate["r_customHeight"]=2160.0;
     assert(host.Validate(original,candidate,error)); // high-density pixel mode

@@ -47,7 +47,7 @@ For package or platform validation, `performancePresetSelfTest` checks that the 
 | `r_mode` | `-2` | Fullscreen sizing selector (`-2` = desktop native/current display, `-1` = custom, `0+` = legacy preset index). |
 | `r_customWidth` | `1920` | Custom exclusive-fullscreen width used when `r_mode -1`. |
 | `r_customHeight` | `1080` | Custom exclusive-fullscreen height used when `r_mode -1`. |
-| `r_displayRefresh` | `0` | Requested fullscreen refresh rate (0 = default/driver choice). |
+| `r_displayRefresh` | `0` | Exclusive fullscreen refresh rate in whole hertz. `0` (Auto) keeps your desktop's refresh rate when the resolution offers it, otherwise the nearest rate it does offer. |
 | `r_screen` | `-1` | SDL3 monitor target (`-1` auto/current, `0..N` explicit index). |
 
 ## Texture Quality (Picmip and Downsizing)
@@ -277,6 +277,7 @@ Notes:
 - On SDL3 builds, video startup retries lower MSAA requests if the window or GL context rejects the requested sample count (`16 -> 8 -> 4 -> 2 -> off`) and logs the requested, selected, and driver-reported multisample attributes.
 - The game scene target is validated separately from the window framebuffer. If a driver rejects the RGBA8 + depth/stencil offscreen target at the selected sample count, openQ4 retries lower samples down to `0`; if even the single-sample target is unavailable, it keeps running through the direct-render fallback and logs the exact framebuffer status and attachment details.
 - `gfxInfo` reports the active AA summary, including requested/effective MSAA, `GL_MAX_SAMPLES`, alpha-to-coverage, post AA mode, screen fraction, and supersampling state.
+- On Vulkan, MSAA applies to the 3D scene, not the window, and stops at 8x: `16` renders at 8x, or at the highest count your GPU supports. `gfxInfo` shows the count in use.
 - The Post AA startup/runtime log records the active SMAA edge mode, threshold, search steps, and local contrast scale so quality captures can be compared without guessing which shader contract was active.
 - Changing `r_multiSamples` should be followed by `vid_restart`.
 - `r_postAA`, `r_msaaAlphaToCoverage`, and `r_msaaResolveDepth` can be changed at runtime, but a `vid_restart` is still safe if behavior looks stale.
@@ -366,7 +367,7 @@ The Display menu exposes curated presets: `10%`, `25%`, `50%`, `75%`, `85%`, `10
 - For **exclusive fullscreen** (explicit mode switch), set `r_fullscreenDesktop 0`. In this mode, `r_mode`/`r_customWidth`/`r_customHeight` control the requested fullscreen resolution.
 - In `Settings -> System`, **Display Resolution** lists Desktop Native first, then only the fullscreen preset resolutions SDL3 reports for the selected display, followed by Custom. Preset entries include compact aspect labels such as `16:9` or `21:9`. Choosing an unusual reported mode writes exact custom width/height when no legacy `r_mode` index exists.
 - The console `listModes` command shows the expanded legacy `r_mode` preset catalog for configs and command-line use, covering common desktop, laptop, ultrawide, HiDPI, 4K, 5K, 6K, and 8K resolutions. The Settings dropdown still hides static presets that the selected display does not report.
-- **Refresh Rate** lists Auto plus SDL3-reported refresh rates for the currently selected fullscreen resolution. Leave it on Auto unless you specifically need an exclusive-mode refresh request.
+- **Refresh Rate** lists Auto plus SDL3-reported refresh rates for the currently selected fullscreen resolution. Auto keeps your desktop's refresh rate, or the nearest rate that resolution offers, and openQ4 picks the same rate for the same resolution at startup, after `vid_restart` and after Alt+Enter. Leave it on Auto unless you specifically need an exclusive-mode refresh request. On macOS, Auto now uses the desktop rate instead of the display's highest rate; this has been checked in automated tests, not yet on a Mac.
 - On Windows, fullscreen windows minimize on focus loss so system UI such as Alt+Tab and the Snipping Tool overlay can take foreground cleanly.
 - On Windows, `PrintScreen` yields to the system snipping UI by default (`win_printScreenToSystemTool 1`). Use `F12` for the built-in openQ4 screenshot command, or set that cvar to `0` if you explicitly want `PrintScreen` available for in-engine binds again.
 

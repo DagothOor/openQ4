@@ -150,6 +150,10 @@ def validate_shared_backend_contract() -> None:
     require(screen_parms, "native Wayland does not expose absolute multi-display window placement", "Wayland span fallback")
     require(screen_parms, "SDL_SetWindowFullscreenMode(s_sdlWindow, NULL)", "desktop fullscreen mode")
     require(screen_parms, "SDL_GetClosestFullscreenDisplayMode", "exclusive fullscreen mode selection")
+    require_before(screen_parms, "SDL3_StrictFullscreenMode(display, parms.width, parms.height, parms.displayHz, mode)",
+                   "SDL_GetClosestFullscreenDisplayMode(display, parms.width, parms.height, requestedRefresh, false, &mode)",
+                   "legacy exclusive selection uses the SYSTEM rule before SDL's closest mode")
+    require(screen_parms, "if (!hasClosestMode && parms.displayHz > 0) {", "macOS exact-pixel search only for an explicit rate the shared rule lacks")
     require(screen_parms, "SDL_SetWindowFullscreen(s_sdlWindow, true)", "fullscreen transition")
     require(screen_parms, "SDL_SetWindowBordered(s_sdlWindow, !useBorderlessWindow)", "borderless window transition")
     require(screen_parms, "SDL3_ConstrainWindowRectToBounds", "window restore bounds constraint")

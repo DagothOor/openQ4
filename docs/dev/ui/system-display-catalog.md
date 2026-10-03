@@ -39,6 +39,13 @@ the keys; the rows that read them follow in their own increments.
     apply.
   - An unlisted current rate goes in the reserved last slot (15). On overflow
     the list keeps the current rate and the highest ones.
+  - Auto (`r_displayRefresh` 0) is the rate nearest the desktop's at the
+    requested size, the one every display path chooses
+    ([display device contract](display-device-contract.md)).
+- **Descriptors.** Each display's size is its desktop mode's, which equals its
+  bounds except while an exclusive mode resizes them, so an exclusive mode on
+  a display no longer changes its descriptor's size. Its position still comes
+  from the bounds.
 - **Span.** Expanding across displays is available when there is more than one
   display, the window system offers absolute window placement, and the
   displays together fit within 16384 pixels.
@@ -90,11 +97,18 @@ language's openQ4 table keeps them. A missing string keeps the English text.
   - A token other than the current one is a Conflict (`#str_230011`), and
     nothing is written.
   - Otherwise the pick becomes an ordinary generated edit:
-    - a display writes `r_screen`;
+    - a display writes `r_screen`. If the new display (for Auto, the
+      window's, else the primary) lacks the draft's listed or legacy size, the
+      pick also writes `r_mode` -2 (Desktop Native); a typed Custom size
+      stays. If it lacks the draft's rate at the resulting size, the pick also
+      writes `r_displayRefresh` 0;
     - a mode writes `r_mode` -2 for Desktop, -1 with the custom size Custom
       shows, or a listed size's width and height with its legacy mode (-1 if
-      it has none);
+      it has none). If the listed display lacks the draft's rate at that
+      size, it also writes `r_displayRefresh` 0;
     - a refresh writes `r_displayRefresh`.
+  - `SystemDisplayCatalog::autoDisplay` names the descriptor Auto describes.
+    Like the selections, it is not part of the token.
   - Picking the selected entry writes nothing. A re-pick therefore never turns
     a custom size into its legacy mode, which would restart the display for
     the same size.
@@ -147,6 +161,12 @@ language's openQ4 table keeps them. A missing string keeps the English text.
   `display_pick_drift` covers a replaced monitor blocking Apply, a second
   Begin keeping the record, picking the monitor again, and the record
   clearing, including after a session closed without Cancel.
+  `display_pick_resets` covers a display pick returning a size and a rate the
+  new display lacks to Desktop Native and Auto, and Auto following the
+  window's display; `display_catalog` proves a size pick's rate reset.
+- `tools/tests/ui_system_display.py` covers rates and sizes a size or display
+  pick resets, a typed Custom size kept, Auto's display, and descriptors that
+  keep the desktop size while an exclusive mode resizes the bounds.
 - `tools/tests/ui_settings_display_service.py` runs the host's stamp and
   capture: the generation, the window's display or the primary, all eight
   labels with English for missing strings, and a failed capture.
@@ -161,5 +181,5 @@ Evidence: `.tmp/ui/system-display-catalog/validation-evidence.json`, SHA-256
 `aaf2b08b88a32d8096460f8031f6b176f31974c5c67ce7ca548839f40f624e2f`.
 
 Display Device and Expand Across Displays now read the lists
-([SYSTEM display rows](system-display-rows.md)). The resolution and refresh
-rows and the gate change remain open.
+([SYSTEM display rows](system-display-rows.md)), and so do Display Resolution
+and Refresh Rate ([SYSTEM resolution rows](system-resolution-rows.md)).

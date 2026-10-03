@@ -144,12 +144,11 @@ scaling or establish effect parity. Repair and independently qualify these
 paths before accepting output-resolution UI or the complete settings effects.
 
 The replacement remains a default-off development option: `ui_retained`
-includes it only once it offers every setting of the stock SYSTEM page, and
+includes it only once every setting of the stock SYSTEM page works there, and
 until then `ui_retainedSystem 1` opts into it (see
 [the retained screens' gate](retained-screens.md#one-gate)). The
-complete 31-option SYSTEM contract still requires capability-backed display and
-resolution catalogs, precise numeric text entry, preset and Auto-Detect draft
-expansion, all effect executors, Defaults, full modal and scrollbar behavior,
+complete 31-option SYSTEM contract still requires precise numeric text entry,
+preset and Auto-Detect application, all effect executors, Defaults, full modal and scrollbar behavior,
 source-derived artwork and transitions, editor round trips and the full
 platform, language, display and physical-input matrix. Sixteen controls and
 bounded semantic captures cannot accept M2, a production migration or the full

@@ -12,8 +12,11 @@ bool EngineSettingsDisplayHost::SupportsMultisampling() const {
 	rendererDisplayState_t state{};
 	if (!R_RendererModule_QueryDisplay(&state) || !state.rendererReady || !state.windowValid || !state.presentation.available)
 		return false;
+	// Vulkan multisamples the scene targets its device restart re-creates.
+	return WindowMultisampling() || R_RendererModule_GetStatus().activeApi == RENDER_MODULE_API_VULKAN;
+}
+bool EngineSettingsDisplayHost::WindowMultisampling() const {
 	const auto api = R_RendererModule_GetStatus().activeApi;
-	// Vulkan's strict device initialization currently requires zero samples.
 	return api == RENDER_MODULE_API_GL || api == RENDER_MODULE_API_GL_MODULE || api == RENDER_MODULE_API_GLES;
 }
 bool EngineSettingsDisplayHost::LightGridLoad(renderLightGridLoadReceipt_t& receipt, std::uint64_t& serial) const {
@@ -221,7 +224,7 @@ bool EngineSettingsDisplayHost::Prepare(const SettingsAttempt& attempt, std::str
 		return Fail(error,error.empty()?"Actual baseline display is unavailable":error.c_str());
 	SystemDisplayTopology topology;
 	if (!CaptureDisplayTopology(topology,error) || !BuildDisplayRestore(baselineDevice,topology,restorePlan,error) ||
-		!BuildDisplayRequest(attempt.target,baselineDevice,topology,targetPlan,error)) return false;
+		!BuildDisplayRequest(attempt.target,baselineDevice,topology,targetPlan,error,WindowMultisampling())) return false;
 	SettingsRecoveryJournal candidate; candidate.baseline=attempt.baseline; candidate.target=attempt.target; candidate.patch=attempt.patch;
 	if (!NewAttemptIdentity(candidate.attempt,error)) return false;
 	if (!CaptureDisplayRecovery(restorePlan,topology,candidate.displayRestore,error) ||
@@ -568,7 +571,10 @@ bool EngineSettingsDisplayHost::StartupRenderer(const std::string& bytes, const 
 }
 bool EngineSettingsDisplayHost::InitializeDisplay(std::string& error) {
 	if (!startup) return true;
-	const auto& plan=startupConfirmed?targetPlan:restorePlan; char diagnostic[512]{};
+	auto& plan=startupConfirmed?targetPlan:restorePlan; char diagnostic[512]{};
+	// A record written under OpenGL can recover under Vulkan, whose window is
+	// single-sample (its scene targets take r_multiSamples).
+	if (!WindowMultisampling()) plan.request.parms.multiSamples=0;
 	if (!R_RendererModule_TryInitializeDisplay(&plan.request,diagnostic,sizeof(diagnostic))) return Fail(error,diagnostic);
 	SettingsDisplayObservation observed;
 	if (!ObserveDevice(currentDevice,observed,error) || !observed.ready || !MatchesDisplay(plan,currentDevice,error)) return false;

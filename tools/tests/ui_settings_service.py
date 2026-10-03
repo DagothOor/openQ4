@@ -978,7 +978,9 @@ static void DisplayCatalog() {
     Check(Dispatch(owner,"displayRefresh",CatalogPick(0,kept)) && CatalogToken(owner)==kept,"a selection-only change keeps the token");
     Expect(owner,"display.refresh.selected",0.0);
     Check(deviceData.captures==1,"the draft rebuilds the lists without recapturing");
-    // A pick that changes the lists moves the token; a pick with the old one is refused.
+    // A pick that changes the lists moves the token; a pick with the old one is
+    // refused. 3840x2160 lacks 60 Hz, so the size pick also returns the rate to Auto.
+    Check(Dispatch(owner,"displayRefresh",CatalogPick(1,CatalogToken(owner))),"pick 60 Hz again");Expect(owner,"draft.r_displayRefresh",60.0);
     const auto before=CatalogToken(owner);
     Check(Dispatch(owner,"displayMode",CatalogPick(3,before)) && CatalogToken(owner)!=before,"a pick that changes the lists moves the token");
     Check(!Dispatch(owner,"displayRefresh",CatalogPick(1,before)),"a pick from the earlier list is refused");
@@ -1012,6 +1014,25 @@ static void DisplayCatalog() {
     Check(!Dispatch(owner,"display",CatalogPick(-1,CatalogToken(owner))),"no pick without lists");
 }
 // A display picked from the list must still be that monitor at Apply.
+// A display pick returns a size and a rate the new display lacks to Desktop
+// Native and Auto; Auto describes the window's display.
+static void DisplayPickResets() {
+    deviceData.topology.displays[0].modes={{1920,1080,60}};deviceData.topologyGeneration=7;
+    const auto owner=Begin();
+    // A size pick on the Auto display (the window's) returns a rate it lacks to Auto.
+    Check(Dispatch(owner,"edit",{{"r_mode",8.0},{"r_displayRefresh",144.0}}),"draft 3840x2160 at 144 Hz on the Auto display");
+    Check(Dispatch(owner,"displayMode",CatalogPick(1,CatalogToken(owner))),"pick 1280x720 on the Auto display");
+    Expect(owner,"draft.r_displayRefresh",0.0);
+    Check(Dispatch(owner,"edit",{{"r_screen",1.0},{"r_mode",8.0},{"r_displayRefresh",144.0}}),"draft the second display at 3840x2160 and 144 Hz");
+    Check(Dispatch(owner,"display",CatalogPick(0,CatalogToken(owner))),"pick the first display, which lacks both");
+    Expect(owner,"draft.r_screen",0.0);Expect(owner,"draft.r_mode",-2.0);Expect(owner,"draft.r_displayRefresh",0.0);
+    Expect(owner,"display.mode.selected",0.0);Expect(owner,"display.refresh.selected",0.0);
+    // With the window on the first display, which lacks them, Auto resets both too.
+    Check(Dispatch(owner,"edit",{{"r_screen",1.0},{"r_mode",8.0},{"r_displayRefresh",144.0}}),"draft the second display again");
+    deviceData.currentDisplay=1;
+    Check(Dispatch(owner,"display",CatalogPick(-1,CatalogToken(owner))),"pick Auto with the window on the first display");
+    Expect(owner,"draft.r_screen",-1.0);Expect(owner,"draft.r_mode",-2.0);Expect(owner,"draft.r_displayRefresh",0.0);
+}
 static void DisplayPickDrift() {
     const auto owner=Begin();UI_SettingsConfirmationDocument(owner,ConfirmationDocument());
     Check(Dispatch(owner,"display",CatalogPick(1,CatalogToken(owner))),"pick the second display");Expect(owner,"canApply",true);
@@ -1388,6 +1409,7 @@ int main(int argc,char** argv) {
     else if(name=="deferred_retry_renews")DeferredRetryRenews();else if(name=="light_grid_status")LightGridStatus();
     else if(name=="renderer_route")RendererRoute();else if(name=="renderer_status")RendererStatus();
     else if(name=="display_catalog")DisplayCatalog();else if(name=="display_pick_drift")DisplayPickDrift();
+    else if(name=="display_pick_resets")DisplayPickResets();
     else if(name=="exit_immediate")ExitImmediate(false);else if(name=="exit_noop")ExitImmediate(true);
     else if(name.starts_with("exit_invalidate_"))ExitInvalidate(name.substr(16));
     else if(name.starts_with("exit_failure_"))ExitFailure(name.substr(13));
@@ -1413,7 +1435,7 @@ SCENARIOS = (
     'display_close_queued', 'display_close_written', 'startup_shutdown', 'stale_display_actions', 'level_load_policy', 'level_load_unreadable',
     'deferred_apply', 'deferred_mixed', 'deferred_not_ready', 'deferred_persist_failure', 'deferred_close', 'deferred_apply_exit',
     'deferred_apply_exit_restore', 'unsupported_effects', 'deferred_retry_renews', 'light_grid_status', 'renderer_route', 'renderer_status',
-    'display_catalog', 'display_pick_drift',
+    'display_catalog', 'display_pick_drift', 'display_pick_resets',
     'frame_outside','frame_skipped','frame_submit_only','frame_present_only',
     'frame_readback_before_draw','frame_readback_after_draw','frame_readback_during_end',
     'frame_nested','frame_aborted','frame_begin_aborted','frame_wrong_request','frame_shutdown',

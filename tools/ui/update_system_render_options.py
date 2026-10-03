@@ -205,7 +205,7 @@ def compose(document):
                         'availability': 'A presenting OpenGL renderer that reports its selection; Vulkan has one back end.'},
         'localization': [KEEP_TITLE, RECOVERY_TITLE, '#str_230073', '#str_230074', '#str_230075', '#str_230076',
                          LABEL, HELP, PENDING, PRELOADS, STREAMS, NO_GRIDS, RENDERER_LABEL, RENDERER_OPTIONS, FALLBACK],
-        'remaining': 'The display device and resolution rows follow in their own increments.'}
+        'remaining': 'Preset application, full settings effects and screen acceptance remain required.'}
     nodes(result['root'])
     return result
 

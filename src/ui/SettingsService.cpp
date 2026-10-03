@@ -130,6 +130,7 @@ void RefreshCatalog(Service& service, std::uint64_t owner) {
     // Selections and the reserved slots are not entries a pick can name.
     const auto mapping = [](SystemDisplayCatalog value) {
         value.deviceSelected = value.modeSelected = value.refreshSelected = 0;
+        value.autoDisplay = -1; // Follows the stamp, whose change already issues a new token.
         value.unlistedMode.clear(); value.unlistedRefresh.clear(); return value;
     };
     if (!cache.built || cache.owner != owner || !(mapping(catalog) == mapping(cache.catalog))) {

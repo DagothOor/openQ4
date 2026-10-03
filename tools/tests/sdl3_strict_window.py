@@ -6,6 +6,8 @@ atomicity and explicit restore placement. This does not create a real window,
 drive input, qualify a compositor/monitor or prove renderer resource/present
 success. Legacy windowing source guards run separately.
 Video pin tests verify counted references, not SDL's real display-ID lifetime.
+Native Wayland's per-window mode emulation is modelled from SDL 3.4.16; no
+compositor is qualified.
 The POD observes maximized geometry; it does not expose the compositor's hidden
 normal restore rectangle, so complete restore-rectangle fidelity is unqualified.
 """
@@ -34,6 +36,7 @@ SUPPORT = r'''
 #include <vector>
 #define OPENQ4_RENDERER_MODULE_ONLY
 #include "src/renderer/RenderModuleAPI.h"
+#include "src/sys/DisplayModeRule.h"
 using SDL_DisplayID=unsigned;
 using SDL_WindowFlags=unsigned long long;
 constexpr SDL_WindowFlags SDL_WINDOW_FULLSCREEN=1,SDL_WINDOW_BORDERLESS=2,SDL_WINDOW_HIDDEN=4,
@@ -48,7 +51,7 @@ struct SDL_Window {
     bool haveFullscreenMode=false;
     SDL_DisplayMode fullscreenMode;
 } window,*s_sdlWindow=&window;
-static bool wayland=false,s_screenParmTransitionActive=false,s_windowAspectSnapActive=false;
+static bool wayland=false,emulatedModes=false,s_screenParmTransitionActive=false,s_windowAspectSnapActive=false;
 static float s_windowAspectSnapRatio=0;
 static unsigned viewportDisplay=101;
 static int allocations=0,mutations=0,queries=0;
@@ -127,8 +130,10 @@ static bool SDL_SetWindowFullscreen(SDL_Window* value,bool enable) {
     if(enable) {
         value->flags|=SDL_WINDOW_FULLSCREEN;
         auto mode=value->haveFullscreenMode?value->fullscreenMode:desktopModes.at(value->display);
-        currentModes[value->display]=mode;value->w=mode.w;value->h=mode.h;
-        value->densityX=value->densityY=mode.pixel_density;
+        // Wayland emulates the mode: the output keeps its desktop mode, and the
+        // window's buffer takes the mode's size at density 1.
+        if(!emulatedModes)currentModes[value->display]=mode;value->w=mode.w;value->h=mode.h;
+        value->densityX=value->densityY=emulatedModes && value->haveFullscreenMode?1:mode.pixel_density;
     } else { value->flags&=~SDL_WINDOW_FULLSCREEN;currentModes[value->display]=desktopModes.at(value->display); }
     return true;
 }
@@ -167,6 +172,7 @@ struct idMath {
     static int ClampInt(int low,int high,int value) { return std::clamp(value,low,high); }
 };
 static bool SDL3_UseAbsoluteWindowPlacement() { return !wayland; }
+static bool SDL3_IsNativeWaylandVideoDriver() { return wayland; }
 static bool Sys_WindowPlacementLeaseActive() { return false; }
 static unsigned SDL3_ResolveViewportDisplay() { return viewportDisplay; }
 static int SDL3_SaturateWindowCoordinate(int64_t value) {
@@ -188,7 +194,7 @@ static void Reset() {
     desktopModes={{101,{101,1920,1080,1,60}},{202,{202,1920,1080,1,144}}};currentModes=desktopModes;
     modes={{101,1280,720,1,60},{101,1920,1080,1,60},{101,1920,1080,2,59.94f},{101,1920,1080,2,144},{202,1920,1080,1,144}};
     mutations=queries=0;failure.clear();lastError.clear();viewportDisplay=101;
-    wayland=noModes=noCurrentMode=noDesktopMode=silentSize=silentFullscreen=silentBorder=silentMove=failQueryAfterMutation=false;
+    wayland=emulatedModes=noModes=noCurrentMode=noDesktopMode=silentSize=silentFullscreen=silentBorder=silentMove=failQueryAfterMutation=false;
     s_screenParmTransitionActive=s_windowAspectSnapActive=false;s_windowAspectSnapRatio=0;
 }
 static renderWindowRequest_t Request() {
@@ -243,7 +249,7 @@ static void Query() {
     std::puts("strict SDL query: actual flags/display/mode/density, viewport parity, no publication and atomic failure passed");
 }
 static void Preflight() {
-    for(int which=0;which<14;++which) {
+    for(int which=0;which<15;++which) {
         Reset();auto request=Request();
         switch(which) {
             case 0:request.parms.width=319;break;case 1:request.parms.height=16385;break;
@@ -257,6 +263,8 @@ static void Preflight() {
             case 10:failure="bounds";break;case 11:failure="size-query";break;
             case 12:request.displayIndex=-2;break;
             case 13:request.restorePlacement=true;wayland=true;break;
+            // Auto aims at the desktop rate, so an exclusive request needs it.
+            case 14:request.parms.fullScreen=true;request.parms.width=1280;request.parms.height=720;noDesktopMode=true;break;
         }
         Failed(request,true);
     }
@@ -278,7 +286,13 @@ static void Success() {
     Reset();window.display=202;window.x=2000;request=Request();output=Applied(request);assert(output.displayId==202);
     Reset();request=Request();request.parms.fullScreen=true;request.parms.width=3840;request.parms.height=2160;request.parms.displayHz=60;
     output=Applied(request);assert(output.fullscreen && !output.fullscreenDesktop && output.modeWidth==1920 && output.modePixelWidth==3840 && output.refreshRate==59.94f);
-    Reset();request.parms.displayHz=0;output=Applied(request);assert(output.refreshRate==144);
+    // Auto takes the rate nearest the desktop's (60 Hz here), as SDL's closest
+    // mode does for refresh 0; a 144 Hz desktop takes 144.
+    Reset();request.parms.displayHz=0;output=Applied(request);assert(output.refreshRate==59.94f);
+    Reset();desktopModes[101].refresh_rate=144;currentModes=desktopModes;output=Applied(request);assert(output.refreshRate==144);
+    // Of two equally near rates the lower wins, as in SDL.
+    Reset();modes.push_back({101,1600,900,1,70});modes.push_back({101,1600,900,1,50});request=Request();
+    request.parms.fullScreen=true;request.parms.width=1600;request.parms.height=900;output=Applied(request);assert(output.refreshRate==50);
     Reset();request=Request();request.parms.fullScreen=request.fullscreenDesktop=true;output=Applied(request);
     assert(output.fullscreen && output.fullscreenDesktop && output.pixelWidth==1920 && output.pixelHeight==1080);
     Reset();request=Request();request.parms.borderless=true;output=Applied(request);assert(output.borderless && !output.fullscreen && output.logicalWidth==1920 && output.windowX==0);
@@ -333,7 +347,29 @@ static void VideoLifetime() {
     SDL_QuitSubSystem(SDL_INIT_VIDEO);assert(videoReferences==0 && videoInitCalls==4 && videoQuitCalls==4);
     std::puts("strict SDL video pin: cold/failing retain rejected; balanced reference survives legacy teardown and releases after recreation passed");
 }
-int main() { Query();Preflight();Success();Failures();VideoLifetime();assert(allocations==0); }
+// Native Wayland emulates an exclusive mode in the window: the window's own
+// fullscreen mode is the observed one there, and only there.
+static void WaylandEmulation() {
+    Reset();wayland=emulatedModes=true;auto request=Request();request.parms.fullScreen=true;request.parms.width=1280;request.parms.height=720;request.parms.displayHz=60;
+    renderWindowState_t output={};char error[256]={};
+    assert(SDL3_WindowServices_ApplyScreenParmsStrict(&request,&output,error,sizeof(error)));
+    assert(output.fullscreen && !output.fullscreenDesktop && output.currentModeValid && output.modePixelWidth==1280 && output.modePixelHeight==720);
+    assert(output.pixelWidth==1280 && output.refreshRate==60 && currentModes.at(101).w==1920);
+    renderWindowState_t queried={};assert(SDL3_WindowServices_QueryWindowState(&queried) && queried.modePixelWidth==1280);
+    // Desktop fullscreen keeps the desktop mode.
+    Reset();wayland=emulatedModes=true;request=Request();request.parms.fullScreen=request.fullscreenDesktop=true;
+    output={};assert(SDL3_WindowServices_ApplyScreenParmsStrict(&request,&output,error,sizeof(error)) && output.fullscreenDesktop && output.modePixelWidth==1920);
+    // Another driver that leaves the output's mode unchanged is refused.
+    Reset();emulatedModes=true;request=Request();request.parms.fullScreen=true;request.parms.width=1280;request.parms.height=720;request.parms.displayHz=60;Failed(request);
+    // Only an exclusive window's mode on its own display is adopted.
+    Reset();wayland=true;window.flags|=SDL_WINDOW_FULLSCREEN;window.haveFullscreenMode=true;window.fullscreenMode={202,1280,720,1,144};
+    renderWindowState_t r={};assert(SDL3_WindowServices_QueryWindowState(&r) && r.modePixelWidth==1920);
+    window.fullscreenMode={101,1280,720,1,60};assert(SDL3_WindowServices_QueryWindowState(&r) && r.modePixelWidth==1280);
+    window.flags&=~SDL_WINDOW_FULLSCREEN;assert(SDL3_WindowServices_QueryWindowState(&r) && r.modePixelWidth==1920);
+    wayland=false;window.flags|=SDL_WINDOW_FULLSCREEN;assert(SDL3_WindowServices_QueryWindowState(&r) && r.modePixelWidth==1920);
+    std::puts("strict SDL Wayland emulation: the exclusive window's mode is observed on native Wayland only, desktop and other drivers unchanged passed");
+}
+int main() { Query();Preflight();Success();Failures();WaylandEmulation();VideoLifetime();assert(allocations==0); }
 '''
 
 

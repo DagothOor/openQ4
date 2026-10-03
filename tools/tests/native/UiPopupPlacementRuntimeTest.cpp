@@ -239,16 +239,22 @@ static void ProductionPopup(const std::string& source,const std::string& locales
         // labels. The second is a long name of short words, as the builder cuts
         // names to 48 code points: where it is wider than the safe area the list
         // wraps it instead of refusing to open.
+        // The size and rate rows read their own lists.
         const std::map<std::string,std::string> displays{{"settings.display.0.label","1: Primary monitor"},
-            {"settings.display.1.label","2: Extremely Wide Vendor Monitor Model With Words"}};
-        StateValues lists{{"settings.display.available",true},{"settings.display.spanAvailable",true},{"settings.display.count",2.},{"settings.display.optionCount",3.}};
+            {"settings.display.1.label","2: Extremely Wide Vendor Monitor Model With Words"},
+            {"settings.display.mode.0.label","Desktop Native (1920 \xC3\x97 1080)"},{"settings.display.mode.1.label","1280 \xC3\x97 720 (16:9)"},
+            {"settings.display.mode.2.label","2560 \xC3\x97 1080 (21:9)"},{"settings.display.mode.3.label","Custom (1600 \xC3\x97 900)"},
+            {"settings.display.refresh.0.label","Auto"},{"settings.display.refresh.1.label","60 Hz"},{"settings.display.refresh.2.label","144 Hz"}};
+        StateValues lists{{"settings.display.available",true},{"settings.display.spanAvailable",true},{"settings.display.count",2.},{"settings.display.optionCount",3.},
+            {"settings.display.mode.optionCount",4.},{"settings.display.mode.selected",0.},{"settings.display.refresh.optionCount",3.},
+            {"settings.display.refresh.selected",0.}};
         for(const auto& [key,label]:displays)lists[key]=label;
         Check(runtime.SetState(lists,error,time),"published display lists");
         auto frame=[&]{time+=.02;++host.frame;runtime.Frame(vp,time);Check(host.errors==0,"no SYSTEM Runtime error");};
         auto key=[&](MenuInput input){runtime.MenuAction(input,true,time);runtime.MenuAction(input,false,time);};frame();
         for(unsigned layout=0;layout<(std::string(locale)=="english"?2u:1u);++layout) {
         if(layout){vp.width=800;vp.height=600;vp.displayScale=1;frame();}
-        for(const char* id:{"settings_preset","settings_display_device","settings_multiscreen","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
+        for(const char* id:{"settings_preset","settings_display_device","settings_multiscreen","settings_display_mode","settings_display_refresh","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
             // The engine opens a dropdown while revealing the newly focused row is
             // still scrolling the panel, and pumps pointer motion before the next
             // paint. Neither may retire the opening before it is ever seen.
