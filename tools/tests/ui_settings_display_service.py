@@ -22,9 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 BOUNDARIES = r'''
 #include <cstring>
-#if defined(__SSE__) || defined(_M_X64)
-#include <xmmintrin.h>
-#endif
+#include "tools/tests/native/FloatFlushMode.h"
 #include "src/ui/SettingsDisplayService.h"
 #include "src/framework/SettingsPersistence.h"
 using namespace openq4;
@@ -347,11 +345,7 @@ static void UnusedTopologyCases(){
 // Full production catalog with an observed custom ambient subnormal. The host
 // allows restoration of this original, but new edits still enforce float-cache
 // representability; these cases request zero and never introduce a tiny edit.
-struct ExactMode {
-#if defined(__SSE__) || defined(_M_X64)
-    unsigned old=_mm_getcsr();ExactMode(){_mm_setcsr((old&~0xe040u)|0x8040u);}~ExactMode(){_mm_setcsr(old);}
-#endif
-};
+struct ExactMode:openq4::test::FloatFlushMode{ExactMode():FloatFlushMode(true){}};
 static void SetExactAmbient(std::uint64_t bits){
     std::string text;Check(SettingsNumberText(std::bit_cast<double>(bits),SettingsNumberFormat::FixedShortest,text),"serialize exact observed ambient fixture");
     localCVarSystem.variables.at("r_forceAmbient").value=text;

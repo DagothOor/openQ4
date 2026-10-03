@@ -51,7 +51,7 @@ def main():
   for platform in ['windows','posix']:
    loop=read('src/framework/EventLoop.cpp');sdl=read('src/sys/sdl3/sdl3_backend.cpp');sys=read('src/sys/win32/win_main.cpp' if platform=='windows' else 'src/sys/posix/posix_main.cpp')
    body=storage.projection(platform,{'platform':sys,'loop':loop,'sdl':sdl}).replace('#include "tools/tests/native/NativeEventRetirementTest.cpp"','')
-   body=body.replace('static void Mem_Free(void* pointer) {','static std::function<void()> onFree;\nstatic void Mem_Free(void* pointer) {\n auto call=std::move(onFree);if(call)call();')
+   body=body.replace('static void Mem_Free(void* pointer) {','static std::function<void()> onFree;\nstatic void Mem_Free(void* pointer) {\n auto call=std::exchange(onFree,nullptr);if(call)call();')
    body=body.replace('void SetInteger(int v){value=v;}','bool GetBool()const{return value!=0;} void SetInteger(int v){value=v;}')
    body=body.replace('struct Common {','struct Common {\n    int GetPresentationTime()const{return 100;}')
    body='#include <functional>\n#include <deque>\n'+body+'\n#include "src/sys/sdl3/NativeInputDriver.h"\n#define CHECK(...) Check((__VA_ARGS__),#__VA_ARGS__)\n'

@@ -33,7 +33,7 @@ bool NativeInputUnbindPublications(NativeInputRoute& r,std::uint64_t id)noexcept
 }
 }
 openq4::ui::NativeTextPresence UI_NativeTextPresence(openq4::ui::NativeTextIdentity native,const openq4::ui::TextEditorIdentity& owner)noexcept {
-    auto callback=std::move(onPresence);if(callback)callback();
+    auto callback=std::exchange(onPresence,nullptr);if(callback)callback();
     ++presenceQueries;return fields?fields->input.QueryNumberNativePresence(native,owner):NativeTextPresence::BusyOrUnknown;
 }
 static NativeInputBinding Setup(Session& f) {

@@ -5,7 +5,7 @@ struct DriverFacts final:NativeInputRouteSource,NativeDispositionProbe {
     std::uint64_t id=0;bool retired=false,completed=false,busy=false;
     mutable std::function<void()> callback;
     bool Observe(NativeInputObservation& out)const noexcept override {
-        CHECK(lockDepth==0);auto call=std::move(callback);if(call)call();
+        CHECK(lockDepth==0);auto call=std::exchange(callback,nullptr);if(call)call();
         out={binding.outer,binding.editor.allocation,binding.sessionTransition,Sys_EventDispositionEpoch(),Sys_EventQueueToken(),binding.window,true,true,true,true};return true;
     }
     bool Current(const NativeDispositionContext& c)const noexcept override {
@@ -27,7 +27,7 @@ struct DriverLifecycle final:NativeInputDriverLifecycle {
     std::function<void()> callback;
     DriverLifecycle(DriverFacts& f,native_model::Run& n):facts(f),native(n){}
     void RetirePreservingEvents()noexcept override {
-        ++retires;auto call=std::move(callback);if(call)call();
+        ++retires;auto call=std::exchange(callback,nullptr);if(call)call();
         if(!facts.retired){native.owner.RetireExact(native.f.nativeId,native.f.barrier.editor);native.store.RetireExact(native.f.nativeId);facts.retired=true;}
     }
     bool DetachCompleted(NativeInputDriver& driver)noexcept override {

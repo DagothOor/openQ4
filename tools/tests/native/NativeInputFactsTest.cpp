@@ -17,7 +17,7 @@ struct RouteFacts final : NativeInputRouteSource {
     mutable unsigned observations=0,retirements=0;
     const NativeInputEmissionInventory* inventory=nullptr;
     bool Observe(NativeInputObservation& out) const noexcept override {
-        ++observations;auto f=std::move(callback);if(f)f();
+        ++observations;auto f=std::exchange(callback,nullptr);if(f)f();
         const auto transition=useHub?NativeInputSessionTransition():binding.sessionTransition;
         out={binding.outer,binding.editor.allocation,transition,binding.dispatchEpoch,binding.streamToken,
             binding.window,true,allow&&transition!=0,true,true};return true;

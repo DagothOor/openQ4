@@ -36,9 +36,7 @@ SUPPORT = r'''
 #include <string>
 #include <utility>
 #include <vector>
-#if defined(__SSE__) || defined(_M_X64)
-#include <xmmintrin.h>
-#endif
+#include "tools/tests/native/FloatFlushMode.h"
 #include "src/ui/SettingsService.h"
 #include "src/renderer/RendererSettingsReports.h"
 #include "src/ui/application/SystemSettingsHost.h"
@@ -1134,11 +1132,7 @@ static void ExitDisplayApplyFailure(const std::string& failure) {
 static void ExactValues(const std::string& scenario) {
     // No renderer/native service runs. The bounded four-field host uses a
     // zero-capable continuous numeric range for this exact comparison probe.
-    struct Mode {
-#if defined(__SSE__) || defined(_M_X64)
-        unsigned old=_mm_getcsr();Mode(){_mm_setcsr((old&~0x6000u)|0x8040u);}~Mode(){_mm_setcsr(old);}
-#endif
-    } mode;
+    openq4::test::FloatFlushMode mode(true);
     host.allowNearZero=true;host.live["r_brightness"]=std::bit_cast<double>(std::uint64_t(1));cvars.trace=true;
     const auto owner=Begin();Check(Dispatch(owner,"edit",{{"r_brightness",0.0}}),"edit observed subnormal to explicit zero");
     Expect(owner,"dirty",true);Expect(owner,"canApply",true);

@@ -23,10 +23,7 @@ CVAR_SUPPORT=r'''
 #include <limits>
 #include <string>
 #include <stdexcept>
-#if defined(__SSE__) || defined(_M_X64)
-#include <xmmintrin.h>
-#define TEST_SSE 1
-#endif
+#include "tools/tests/native/FloatFlushMode.h"
 #include "src/idlib/NumericString.h"
 #include "src/ui/retained/FloatChars.h"
 namespace ActualCVar {
@@ -59,13 +56,7 @@ static Observed Normalize(const char* text,int flags,float minimum,float maximum
 CASES=r'''
 static unsigned precisionChecks;
 #define CHECK(x) do{++precisionChecks;if(!(x)){std::fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);std::exit(1);}}while(false)
-struct FloatMode{
-#if TEST_SSE
- unsigned original=_mm_getcsr();FloatMode(){_mm_setcsr(original&~0x8040u);}~FloatMode(){_mm_setcsr(original);}void Flush(){_mm_setcsr((original&~0x6000u)|0x8040u);}
-#else
- void Flush(){}
-#endif
-};
+struct FloatMode:openq4::test::FloatFlushMode{FloatMode():FloatFlushMode(false){}void Flush(){Set(true);}};
 static void ExactSerialization(){
  for(const std::uint64_t bits:{1ULL,2ULL,255ULL,0x8000000000000ULL,0xfffffffffffffULL,0x10000000000000ULL,0x10000000000001ULL,0x8000000000000001ULL,0x800fffffffffffffULL}){
   const double value=std::bit_cast<double>(bits);const auto text=Serialize(StateValue(value));CHECK(!text.empty()&&text.size()<=1077&&text.find_first_of("eE")==std::string::npos);CHECK(idNumericString::IsDecimal(text.c_str()));

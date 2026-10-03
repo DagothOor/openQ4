@@ -12,9 +12,7 @@
 #if defined(_MSC_VER)
 #include <crtdbg.h>
 #endif
-#if defined(__SSE__) || defined(_M_X64)
-#include <xmmintrin.h>
-#endif
+#include "tools/tests/native/FloatFlushMode.h"
 namespace openq4::ui {
 bool BaselineEncodeSettingsJournal(const SettingsRecoveryJournal&,const std::map<std::string,std::size_t>&,std::string&,std::string&);
 bool BaselineDecodeSettingsJournal(const std::string&,const std::map<std::string,std::size_t>&,SettingsRecoveryJournal&,std::string&);
@@ -32,13 +30,7 @@ TEST_NOINLINE void* operator new(std::size_t size) {if(failAfter==0)throw std::b
 TEST_NOINLINE void* operator new[](std::size_t size){return ::operator new(size);}
 TEST_NOINLINE void operator delete(void* p) noexcept {std::free(p);}TEST_NOINLINE void operator delete[](void* p) noexcept {std::free(p);}
 TEST_NOINLINE void operator delete(void* p,std::size_t) noexcept {std::free(p);}TEST_NOINLINE void operator delete[](void* p,std::size_t) noexcept {std::free(p);}
-struct FloatMode {
-#if defined(__SSE__) || defined(_M_X64)
- unsigned old=_mm_getcsr();explicit FloatMode(bool flush){_mm_setcsr((old&~0xe040u)|(flush?0x8040u:0));}~FloatMode(){_mm_setcsr(old);}
-#else
- explicit FloatMode(bool){}
-#endif
-};
+using FloatMode=openq4::test::FloatFlushMode;
 static StateValues Values() {
  StateValues v;for(const auto& [k,f]:SettingsEffectCatalogV2())v[k]=f.type==0?StateValue(0.0):f.type==1?StateValue(false):StateValue(std::string("original"));
  v["r_windowWidth"]=1280.0;v["r_windowHeight"]=720.0;v["r_customWidth"]=1280.0;v["r_customHeight"]=720.0;v["r_screen"]=-1.0;

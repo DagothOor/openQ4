@@ -50,7 +50,7 @@ struct Source final : NativeQueueSource, NativeDispositionProbe {
     }
     bool Observe(NativeQueueStatus& out, std::string&) override {
         ++observations;
-        auto callback = std::move(observe);
+        auto callback = std::exchange(observe, nullptr);
         if (callback) callback();
         if (unavailable) return false;
         status.engineToken = continuity.Token(); out = status; return true;
@@ -60,7 +60,7 @@ struct Source final : NativeQueueSource, NativeDispositionProbe {
         if (failPoll == polls) return -1;
         if (head == events.size()) return 0;
         event = events[head].first; record = events[head++].second;
-        auto callback = std::move(afterPoll); if (callback) callback();
+        auto callback = std::exchange(afterPoll, nullptr); if (callback) callback();
         if (denyAfterPoll == polls) denyAllocation = true;
         return 1;
     }

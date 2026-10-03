@@ -7,25 +7,14 @@
 #include <cstring>
 #include <functional>
 #include <limits>
-#if defined(__SSE__) || defined(_M_X64)
-#include <xmmintrin.h>
-#define TEST_SSE 1
-#endif
+#include "tools/tests/native/FloatFlushMode.h"
 using namespace openq4::ui;
 static unsigned checks;
 #define CHECK(x) do { ++checks; if (!(x)) { std::fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x); std::exit(1); } } while (false)
 static double Bits(std::uint64_t bits) { return std::bit_cast<double>(bits); }
 static bool Exact(double a,double b) { return std::memcmp(&a,&b,sizeof(a))==0; }
 static void Code(SettingsResult r,SettingsCode c) { if(r.code!=c)std::fprintf(stderr,"code %d expected %d: %s\n",int(r.code),int(c),r.diagnostic.c_str());CHECK(r.code==c); }
-struct FloatMode {
-#if TEST_SSE
- unsigned previous=_mm_getcsr();
- explicit FloatMode(bool flush) { _mm_setcsr((previous&~0xe040u)|(flush?0x8040u:0)); }
- ~FloatMode() { _mm_setcsr(previous); }
-#else
- explicit FloatMode(bool) {}
-#endif
-};
+using FloatMode=openq4::test::FloatFlushMode;
 struct Host final:SettingsHost {
  StateValues live{{"scalar",Bits(1)},{"other",Bits(2)},{"toggle",true},{"label",std::string("value")}};
  std::vector<StateValues> writes; bool confirmation=false,failWrite=false;

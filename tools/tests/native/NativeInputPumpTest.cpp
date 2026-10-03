@@ -17,7 +17,7 @@ static std::function<void()> onRetire;
 static std::string diagnostic;
 #define CHECK(...) do{++tests;if(!(__VA_ARGS__)){std::fprintf(stderr,"FAIL pump line %d: %s\n",__LINE__,#__VA_ARGS__);std::exit(1);}}while(false)
 static bool NativeInput_OwnsPump()noexcept{return owned;}
-static bool NativeInput_FatalRetire()noexcept{calls.emplace_back("retire");auto callback=std::move(onRetire);if(callback)callback();return retired;}
+static bool NativeInput_FatalRetire()noexcept{calls.emplace_back("retire");auto callback=std::exchange(onRetire,nullptr);if(callback)callback();return retired;}
 static int GetStdHandle(int){calls.emplace_back("stderr");return 3;}
 static int GetCurrentProcess(){calls.emplace_back("current-process");return 4;}
 static bool WriteFile(int handle,const char* message,DWORD length,DWORD*,void*){CHECK(handle==3&&length<=2048);calls.emplace_back("write");diagnostic.assign(message,length);return writeSucceeds;}

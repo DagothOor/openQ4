@@ -163,7 +163,7 @@ public:
     int ticks=0,loads=0,lastTime=-1;
     std::function<void()> onThink,onLoad;
     std::function<void(bool)> onActivate;
-    ~idUserInterfaceLocal() override { auto call=std::move(onBackendDestroy);if(call)call();++destroyed; }
+    ~idUserInterfaceLocal() override { auto call=std::exchange(onBackendDestroy,nullptr);if(call)call();++destroyed; }
     static void* operator new(size_t bytes) {
         if(recycledAllocation) {
             void* result=recycledAllocation; recycledAllocation=nullptr; return result;

@@ -9,11 +9,11 @@ struct TerminalFacts final:NativeInputRouteSource {
     bool retired=false,busy=false;
     mutable std::function<void()> callback;
     bool Observe(NativeInputObservation& out)const noexcept override {
-        CHECK(lockDepth==0);auto call=std::move(callback);if(call)call();
+        CHECK(lockDepth==0);auto call=std::exchange(callback,nullptr);if(call)call();
         out={binding.outer,binding.editor.allocation,binding.sessionTransition,Sys_EventDispositionEpoch(),Sys_EventQueueToken(),binding.window,true,true,true,true};return true;
     }
     bool Retirement(std::uint64_t route,const NativeInputBinding& original,NativeInputRetirement& out)const noexcept override {
-        CHECK(lockDepth==0);auto call=std::move(callback);if(call)call();
+        CHECK(lockDepth==0);auto call=std::exchange(callback,nullptr);if(call)call();
         if(route!=id || original.editor!=binding.editor || original.native!=binding.native || original.window!=binding.window)return false;
         out={id,binding.native,binding.window,busy?NativeInputUiRetirement::Busy:retired?NativeInputUiRetirement::AbsentOriginal:NativeInputUiRetirement::Unknown,
             retired?NativeInputNativeRetirement::RetiredExact:NativeInputNativeRetirement::Unknown,

@@ -16,14 +16,35 @@ import platform
 import shutil
 import subprocess
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
+# Windows runners publish through write-through flushes far more slowly than
+# local disks; on Windows ARM64 the native suite alone outlasted a 90 s limit.
+# A hung command still ends the run, and each command records its duration.
+COMMAND_TIMEOUT = 600
 SOURCES = (
     ROOT / "src/framework/DurableFile.h",
     ROOT / "src/framework/DurableFile.cpp",
     ROOT / "tools/tests/native/DurableFileTest.cpp",
     Path(__file__).resolve(),
 )
+
+
+def run_command(command, env):
+    """Run one command; a timeout reports exit code 124 and is never a rejection."""
+    began = time.monotonic()
+    try:
+        result = subprocess.run(command, cwd=ROOT, env=env, text=True, encoding="utf-8",
+                                errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                timeout=COMMAND_TIMEOUT, check=False)
+        output, code = result.stdout, result.returncode
+    except subprocess.TimeoutExpired as expired:
+        partial = expired.stdout or ""
+        output = (partial.decode("utf-8", "replace") if isinstance(partial, bytes) else partial)
+        output += f"\nTIMEOUT: no exit after {COMMAND_TIMEOUT} s\n"
+        code = 124
+    return output, code, round(time.monotonic() - began, 3)
 
 
 def main() -> int:
@@ -96,15 +117,13 @@ def main() -> int:
     with (scratch / "test.log").open("w", encoding="utf-8") as log:
         for command in commands:
             log.write(json.dumps(command) + "\n")
-            result = subprocess.run(command, cwd=ROOT, env=env, text=True, encoding="utf-8",
-                                    errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    timeout=90, check=False)
-            log.write(result.stdout + f"\nexit_code={result.returncode}\n")
+            output, code, elapsed = run_command(command, env)
+            log.write(output + f"\nexit_code={code}\nelapsed_seconds={elapsed}\n")
             log.flush()
-            print(result.stdout, end="")
-            evidence["commands"].append({"args": command, "exit_code": result.returncode})
-            if result.returncode:
-                status = result.returncode
+            print(output, end="")
+            evidence["commands"].append({"args": command, "exit_code": code, "elapsed_seconds": elapsed})
+            if code:
+                status = code
                 break
         if status == 0 and args.mutations:
             original = SOURCES[1].read_text(encoding='utf-8')
@@ -137,14 +156,13 @@ def main() -> int:
                 record = {'name': name, 'commands': [], 'expected_rejection': False}
                 for step, command in [('compile', compile_command(SOURCES[2], binary, overlay=overlay)),
                                       ('run', [str(binary), str(overlay)])]:
-                    result = subprocess.run(command, cwd=ROOT, env=env, text=True, encoding='utf-8',
-                                            errors='replace', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90, check=False)
-                    log.write(json.dumps(command)+'\n'+result.stdout+f'\nexit_code={result.returncode}\n');log.flush()
-                    record['commands'].append({'step': step, 'args': command, 'exit_code': result.returncode, 'output': result.stdout})
-                    if step == 'compile' and result.returncode:
-                        status = result.returncode;break
+                    output, code, elapsed = run_command(command, env)
+                    log.write(json.dumps(command)+'\n'+output+f'\nexit_code={code}\nelapsed_seconds={elapsed}\n');log.flush()
+                    record['commands'].append({'step': step, 'args': command, 'exit_code': code, 'elapsed_seconds': elapsed, 'output': output})
+                    if step == 'compile' and code:
+                        status = code;break
                     if step == 'run':
-                        record['expected_rejection'] = result.returncode != 0 and 'FAIL:' in result.stdout
+                        record['expected_rejection'] = code not in (0, 124) and 'FAIL:' in output
                         if not record['expected_rejection']:status = 1
                 evidence['mutations'].append(record)
                 print(name, 'rejected' if record['expected_rejection'] else 'FAILED')
