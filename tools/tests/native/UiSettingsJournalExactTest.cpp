@@ -32,12 +32,12 @@ static void Serialization() {
   const std::uint64_t fraction=(random&0x000fffffffffffffULL)|1;
   const double value=std::bit_cast<double>(fraction|((i&1)?0x8000000000000000ULL:0));
   const auto legacy=OldGeneral(value);
-  for(bool flush:{false,true}) {Mode mode(flush);std::string text="untouched";const unsigned originalMode=FloatingMode();CHECK(SettingsNumberText(value,SettingsNumberFormat::GeneralRoundTrip,text)&&text==legacy);CHECK(FloatingMode()==originalMode);
+  for(bool flush:{false,true}) {Mode mode(flush);std::string text="untouched";const auto originalMode=FloatingMode();CHECK(SettingsNumberText(value,SettingsNumberFormat::GeneralRoundTrip,text)&&text==legacy);CHECK(FloatingMode()==originalMode);
    double parsed=0;auto result=FloatFromChars(text.data(),text.data()+text.size(),parsed);CHECK(result.ec==std::errc{}&&result.ptr==text.data()+text.size());CHECK(std::memcmp(&value,&parsed,sizeof(value))==0);
   }
  }
  for(double value:{0.0,-0.0,1.375,.1375,1e-7,1e-100,std::numeric_limits<double>::min(),std::bit_cast<double>(std::uint64_t(0x10000000000001ULL)),1e12}) {
-  const auto legacy=OldGeneral(value);for(bool flush:{false,true}){Mode mode(flush);std::string text;const unsigned originalMode=FloatingMode();CHECK(SettingsNumberText(value,SettingsNumberFormat::GeneralRoundTrip,text)&&text==legacy);CHECK((FloatingMode()&~0x3fu)==(originalMode&~0x3fu));}
+  const auto legacy=OldGeneral(value);for(bool flush:{false,true}){Mode mode(flush);std::string text;const auto originalMode=FloatingMode();CHECK(SettingsNumberText(value,SettingsNumberFormat::GeneralRoundTrip,text)&&text==legacy);CHECK((FloatingMode()&~0x3fu)==(originalMode&~0x3fu));}
  }
  for(double invalid:{std::numeric_limits<double>::quiet_NaN(),std::numeric_limits<double>::infinity()}){std::string text="untouched";CHECK(!SettingsNumberText(invalid,SettingsNumberFormat::GeneralRoundTrip,text)&&text=="untouched");}
  std::string text="untouched";CHECK(!SettingsNumberText(1.0,static_cast<SettingsNumberFormat>(99),text)&&text=="untouched");
@@ -45,7 +45,7 @@ static void Serialization() {
 static void RoundTrip() {
  for(const std::uint64_t bits:{1ULL,2ULL,255ULL,0x8000000000000ULL,0xfffffffffffffULL,0x10000000000000ULL,0x8000000000000001ULL}) {
   const double value=std::bit_cast<double>(bits);const auto legacy=OldGeneral(value);std::string gradual;
-  for(bool flush:{false,true}){Mode mode(flush);const unsigned originalMode=FloatingMode();std::string text;CHECK(SettingsNumberText(value,SettingsNumberFormat::GeneralRoundTrip,text)&&text==legacy);CHECK((FloatingMode()&~0x3fu)==(originalMode&~0x3fu));}
+  for(bool flush:{false,true}){Mode mode(flush);const auto originalMode=FloatingMode();std::string text;CHECK(SettingsNumberText(value,SettingsNumberFormat::GeneralRoundTrip,text)&&text==legacy);CHECK((FloatingMode()&~0x3fu)==(originalMode&~0x3fu));}
   for(bool flush:{false,true}) {Mode mode(flush);auto j=Journal(value);std::string bytes,error;CHECK(EncodeSettingsJournal(j,Catalog,bytes,error));
    CHECK(bytes.find("\"baseline.scalar\":"+legacy)!=std::string::npos);if(!flush)gradual=bytes;else CHECK(bytes==gradual);
    SettingsRecoveryJournal decoded;CHECK(DecodeSettingsJournal(bytes,Catalog,decoded,error));CHECK(SettingsValuesEqual(decoded.baseline,j.baseline)&&SettingsValuesEqual(decoded.target,j.target)&&SettingsValuesEqual(decoded.patch,j.patch));
