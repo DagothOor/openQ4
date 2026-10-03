@@ -5,6 +5,7 @@
 #include "NativeEventDispositionTest.cpp"
 #undef main
 #include "src/framework/NativeInputPublications.h"
+#include <utility>
 #include "src/framework/NativeInputRoute.h"
 #include "src/sys/sdl3/NativeInputEmissionInventory.h"
 #include "engine_enums.inc"

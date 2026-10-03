@@ -1,5 +1,6 @@
 // Actual storage and transfer methods precede this test; external native/UI
 // retirement remains a counted contract. No native input or GUI is invoked.
+#include <utility>
 using Status=NativeInputTransferStatus;
 using Delivery=NativeInputDeliveryStatus;
 struct TerminalFacts final:NativeInputRouteSource {

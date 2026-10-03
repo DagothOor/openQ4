@@ -2,6 +2,7 @@
 #include "WindowsTextSessionTest.cpp"
 #undef main
 #include "src/sys/sdl3/WindowsNativeInputRouteSource.h"
+#include <utility>
 
 // Production source queries join actual controller/store/Interaction facts.
 // Only the outer registry/Session/window copied publication boundary is counted

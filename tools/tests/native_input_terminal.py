@@ -66,7 +66,7 @@ def main():
             body=storage.projection(target,{'platform':read('src/sys/win32/win_main.cpp' if target=='windows' else 'src/sys/posix/posix_main.cpp'),'loop':read('src/framework/EventLoop.cpp'),'sdl':read('src/sys/sdl3/sdl3_backend.cpp')})
             body=body.replace('#include "tools/tests/native/NativeEventRetirementTest.cpp"','')
             body=body.replace('static void Mem_Free(void* pointer) {','static std::function<void()> onFree;\nstatic void Mem_Free(void* pointer) {\n    auto callback=std::exchange(onFree,nullptr);if(callback)callback();')
-            body='#include <functional>\n'+allocator+body+'\nusing namespace openq4;\n#define CHECK(...) Check((__VA_ARGS__),#__VA_ARGS__)\n'+fixture
+            body='#include <functional>\n#include <utility>\n'+allocator+body+'\nusing namespace openq4;\n#define CHECK(...) Check((__VA_ARGS__),#__VA_ARGS__)\n'+fixture
             body+=read('src/sys/sdl3/NativeInputTransfers.cpp').replace('#include "../../idlib/precompiled.h"\n','')
             body+='\n#include "tools/tests/native/NativeInputTerminalTest.cpp"\n'
             path=out/(target+'.cpp');path.write_text(body,newline='\n');extra=['/DOPENQ4_SDL3_POSIX_HOST'] if msvc else ['-DOPENQ4_SDL3_POSIX_HOST']

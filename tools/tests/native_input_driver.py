@@ -54,7 +54,7 @@ def main():
    body=body.replace('static void Mem_Free(void* pointer) {','static std::function<void()> onFree;\nstatic void Mem_Free(void* pointer) {\n auto call=std::exchange(onFree,nullptr);if(call)call();')
    body=body.replace('void SetInteger(int v){value=v;}','bool GetBool()const{return value!=0;} void SetInteger(int v){value=v;}')
    body=body.replace('struct Common {','struct Common {\n    int GetPresentationTime()const{return 100;}')
-   body='#include <functional>\n#include <deque>\n'+body+'\n#include "src/sys/sdl3/NativeInputDriver.h"\n#define CHECK(...) Check((__VA_ARGS__),#__VA_ARGS__)\n'
+   body='#include <functional>\n#include <deque>\n#include <utility>\n'+body+'\n#include "src/sys/sdl3/NativeInputDriver.h"\n#define CHECK(...) Check((__VA_ARGS__),#__VA_ARGS__)\n'
    body+='static long failAfter=-1;static bool noAllocation=false;\nnamespace native_model {\nusing namespace openq4;using namespace openq4::ui;\nstatic bool Same(const TextEditState&a,const TextEditState&b){return a.text==b.text&&a.anchor==b.anchor&&a.caret==b.caret;}\n'+fixture+'}\n'
    body+='\nusing namespace openq4;\nstatic idCVar com_asyncInput;\nint idEventLoop::JournalLevel()const{return com_journal.GetInteger();}\n'
    body+=function_body(sys,'sysEventTransfer_t Sys_PeekEventDispositionTag(')+function_body(loop,'sysEventTransfer_t idEventLoop::PeekEventDispositionTag(')
