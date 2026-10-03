@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import configparser
 import importlib.util
 import os
+import re
 import shutil
 import sys
 import uuid
@@ -790,6 +792,37 @@ def validate_validation_wiring() -> None:
         raise AssertionError("release notes do not mention validation hardening")
 
 
+def wrap_tree_stem(directory: str) -> str:
+    return re.sub(r"-[0-9][0-9A-Za-z.]*$", "", directory)
+
+
+def validate_workflow_wrap_paths() -> None:
+    # A workflow step that reads an unpacked wrap tree must name the version the
+    # wrap pins. Local checkouts keep old unpacked trees, so a stale path passes
+    # locally and fails only on a clean runner: the SDL 3.4.16 bump left the
+    # Windows text-store step reading subprojects/SDL3-3.4.10.
+    pinned: dict[str, str] = {}
+    for wrap in sorted((ROOT / "subprojects").glob("*.wrap")):
+        config = configparser.ConfigParser(interpolation=None)
+        config.read(wrap, encoding="utf-8")
+        for section in config.sections():
+            directory = config[section].get("directory")
+            if directory:
+                pinned[wrap_tree_stem(directory)] = directory
+    if "SDL3" not in pinned:
+        raise AssertionError("subprojects/sdl3.wrap does not pin an SDL3 directory")
+
+    for workflow in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        text = workflow.read_text(encoding="utf-8")
+        for match in re.finditer(r"subprojects[/\\]([A-Za-z0-9_.+-]+)", text):
+            directory = match.group(1)
+            expected = pinned.get(wrap_tree_stem(directory))
+            if expected is not None and directory != expected:
+                raise AssertionError(
+                    f"{workflow.name} reads subprojects/{directory}, but the wrap pins {expected}"
+                )
+
+
 def main() -> None:
     shutil.rmtree(WORK, ignore_errors=True)
     try:
@@ -807,6 +840,7 @@ def main() -> None:
         validate_windows_pdb_architecture_match()
         validate_python_test_failure_aggregation()
         validate_validation_wiring()
+        validate_workflow_wrap_paths()
     finally:
         shutil.rmtree(WORK, ignore_errors=True)
     print("validation_hardening: ok")
