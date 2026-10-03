@@ -198,7 +198,14 @@ idImageOpts::operator==
 ========================
 */
 ID_INLINE bool idImageOpts::operator==( const idImageOpts & opts ) {
-	return ( memcmp( this, &opts, sizeof( *this ) ) == 0 );
+	// Compare members, not bytes: no constructor or copy initializes the padding
+	// after readback and isPersistant, so memcmp could call equal options
+	// different and make callers reallocate an unchanged image.
+	static_assert( sizeof( idImageOpts ) == 36, "compare every idImageOpts member here" );
+	return textureType == opts.textureType && format == opts.format && colorFormat == opts.colorFormat
+		&& width == opts.width && height == opts.height && numLevels == opts.numLevels
+		&& gammaMips == opts.gammaMips && readback == opts.readback
+		&& numMSAASamples == opts.numMSAASamples && isPersistant == opts.isPersistant;
 }
 
 #endif

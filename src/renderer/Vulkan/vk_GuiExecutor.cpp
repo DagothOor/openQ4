@@ -8056,8 +8056,11 @@ bool VK_Exec_QueueHDRExposureReadback( idImage *image, unsigned int generation, 
 		vkExec.frameOpen = true;
 		vkExec.mainScopeOpen = false;
 		// This split frame is deliberately excluded from whole-frame timing.
-		VK_Exec_TransitionActiveTargetToAttachments();
 	}
+	// The copy leaves the image in SHADER_READ_ONLY, and the image is usually the
+	// last reduction level, still the active target. Resuming the scope loads it
+	// as an attachment, so restore the attachment layouts on both paths.
+	VK_Exec_TransitionActiveTargetToAttachments();
 	return VK_Exec_BeginMainRendering( false );
 }
 
@@ -14642,6 +14645,20 @@ static bool VK_Exec_TestColorResolve() {
 	return passed;
 }
 
+// Assetless runs such as CI resolve _default to the implicit blend material,
+// which is translucent and never receives motion vectors. Give the test plane
+// the opaque definition that the stock materials/gfx.mtr gives _default.
+static const idMaterial *VK_Exec_TestOpaqueMaterial( void ) {
+	idMaterial *material = const_cast<idMaterial *>( declManager->FindMaterial( "_vkTestOpaque" ) );
+	if ( material != NULL && material->Coverage() != MC_OPAQUE ) {
+		const char *text = "material _vkTestOpaque { { map _default } }";
+		material->SetText( text );
+		material->FreeData();
+		material->Parse( text, idStr::Length( text ) );
+	}
+	return material;
+}
+
 static bool VK_Exec_TestTemporalMotionCase( int width, int height, int fixture, bool topOrigin ) {
 	// The surface is a full-screen rigid plane at depth 0.5. Its previous
 	// model/camera/jitter transforms and the depth occluder are independent
@@ -14685,7 +14702,7 @@ static bool VK_Exec_TestTemporalMotionCase( int width, int height, int fixture, 
 	space.entityDef = &entity;
 	drawSurf_t surface = {};
 	surface.geo = &tri;
-	surface.material = declManager->FindMaterial( "_default" );
+	surface.material = VK_Exec_TestOpaqueMaterial();
 	surface.space = &space;
 	drawSurf_t *surfaces[1] = { &surface };
 	viewDef_t view = {};
