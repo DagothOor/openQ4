@@ -102,7 +102,7 @@ static void CheckPage(View& v,int width,int height,float density,float textScale
     Check(field.has_value(),"editor retains typed identity");
     Contained(v.Box("settings_brightness_number-caret"),viewport,"scaled caret fits the numeric viewport");
     v.Key(MenuInput::Back);v.Frame();
-    for(auto* id:{"settings_preset","settings_fullscreen_policy","settings_msaa","settings_postaa","settings_resolution_scale","settings_vsync"}) {
+    for(auto* id:{"settings_preset","settings_fullscreen_policy","settings_msaa","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
         Check(v.runtime.FocusControl(id,v.time),"large-text choice can receive focus");v.Frame();
         v.Key(MenuInput::Accept);v.Frame();
         auto state=v.runtime.GetWidgetState(id);

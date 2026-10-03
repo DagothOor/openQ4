@@ -76,7 +76,7 @@ static const char *const RETAINED_SYSTEM_GUI = "guis/menu/settings/system.q4ui";
 // retained one. ui_retained_gate.py keeps this list equal to what the two
 // pages offer, so the page joins the gate once it is complete.
 static const char *const RETAINED_SYSTEM_MISSING_SETTINGS[] = {
-	"r_mode", "r_screen", "r_multiScreen", "r_displayRefresh", "r_renderer", NULL
+	"r_mode", "r_screen", "r_multiScreen", "r_displayRefresh", NULL
 };
 
 static bool Session_RetainedSystemEnabled( void ) {

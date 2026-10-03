@@ -1119,6 +1119,7 @@
 	"#str_230079"	"Este mapa pré-carrega suas grades de iluminação."
 	"#str_230080"	"Este mapa carrega as grades de iluminação conforme as áreas ficam visíveis."
 	"#str_230081"	"Este mapa não tem grades de iluminação pré-calculadas."
+	"#str_230082"	"O renderizador escolhido não está disponível aqui; o openQ4 usa um compatível."
 	"#str_230100"	"Pose de mira"
 	"#str_230101"	"Pose de empunhadura"
 	"#str_230102"	"Gatilho"

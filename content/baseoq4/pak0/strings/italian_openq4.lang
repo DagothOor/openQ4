@@ -1119,6 +1119,7 @@
 	"#str_230079"	"Questa mappa precarica le sue griglie luce."
 	"#str_230080"	"Questa mappa carica le griglie luce man mano che le aree diventano visibili."
 	"#str_230081"	"Questa mappa non ha griglie luce precalcolate."
+	"#str_230082"	"Il renderer scelto non è disponibile qui; openQ4 ne usa uno supportato."
 	"#str_230100"	"Posa di mira"
 	"#str_230101"	"Posa dell'impugnatura"
 	"#str_230102"	"Grilletto"

@@ -1119,6 +1119,7 @@
 	"#str_230079"	"Ez a pálya előre betölti a fényrácsait."
 	"#str_230080"	"Ez a pálya a területek megjelenésekor tölti be a fényrácsokat."
 	"#str_230081"	"Ennek a pályának nincsenek előre számított fényrácsai."
+	"#str_230082"	"A választott renderelő itt nem érhető el; az openQ4 egy támogatottat használ."
 	"#str_230100"	"Célzási póz"
 	"#str_230101"	"Markolási póz"
 	"#str_230102"	"Ravasz"

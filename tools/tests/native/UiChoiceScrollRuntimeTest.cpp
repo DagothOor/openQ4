@@ -196,8 +196,8 @@ static void ChangedRowTransform(TestHost& host) {
 static void SystemCandidate(const std::string& source) {
     for(float density:{1.f,1.25f,2.f}) {
         TestHost host;View view(host,source);view.viewport.width=1280;view.viewport.height=720;view.viewport.displayScale=density;
-        view.runtime.SetReducedMotion(true,view.time);view.State({{"settings.open",true},{"settings.phase",1.},{"settings.busy",false},{"settings.confirmationVisible",false}});view.Frame();
-        for(const auto* id:{"settings_preset","settings_postaa","settings_resolution_scale","settings_vsync"}) {
+        view.runtime.SetReducedMotion(true,view.time);view.State({{"settings.open",true},{"settings.phase",1.},{"settings.busy",false},{"settings.confirmationVisible",false},{"settings.renderer.available",true}});view.Frame();
+        for(const auto* id:{"settings_preset","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
             Check(view.runtime.FocusControl(id,view.time),"SYSTEM choice can receive explicit focus");view.Frame();view.Key(MenuInput::Accept);view.Frame();
             auto w=view.Widget(id);
             Check(w.popupOpen&&w.scroll&&w.scroll->available,"SYSTEM authored choice has first-frame measured scroll geometry");

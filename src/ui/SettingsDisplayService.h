@@ -40,6 +40,8 @@ public:
 	// renderer's own selection report, so it needs a presenting OpenGL renderer
 	// that has already reported one for its current module.
 	bool SupportsRendererSelection() const;
+	// The renderer's latest selection report for its current module.
+	bool RendererSelection(renderRendererSelection_t& selection, std::uint64_t& serial) const;
 
 private:
 	bool Paths(std::string& error);

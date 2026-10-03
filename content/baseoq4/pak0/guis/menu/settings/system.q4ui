@@ -562,6 +562,14 @@
     "settings.lightGrid.pending": {
       "type": "boolean",
       "initial": false
+    },
+    "settings.renderer.available": {
+      "type": "boolean",
+      "initial": false
+    },
+    "settings.renderer.fallback": {
+      "type": "boolean",
+      "initial": false
     }
   },
   "actions": {
@@ -4089,6 +4097,209 @@
           },
           "#str_230077",
           "#str_229993"
+        ]
+      }
+    },
+    {
+      "id": "settings_renderer.enabled",
+      "node": "settings_renderer",
+      "property": "enabled",
+      "value": {
+        "op": "&&",
+        "args": [
+          {
+            "op": "&&",
+            "args": [
+              {
+                "op": "&&",
+                "args": [
+                  {
+                    "op": "&&",
+                    "args": [
+                      {
+                        "op": "&&",
+                        "args": [
+                          {
+                            "op": "&&",
+                            "args": [
+                              {
+                                "state": "settings.open"
+                              },
+                              {
+                                "op": "==",
+                                "args": [
+                                  {
+                                    "state": "settings.phase"
+                                  },
+                                  1
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "!",
+                            "args": [
+                              {
+                                "state": "settings.busy"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "!",
+                        "args": [
+                          {
+                            "state": "settings.confirmationVisible"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "!",
+                    "args": [
+                      {
+                        "state": "page.discardVisible"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "!",
+                "args": [
+                  {
+                    "state": "ui.numberDraftsPending"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "state": "settings.renderer.available"
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings_renderer.opacity",
+      "node": "settings_renderer",
+      "property": "opacity",
+      "value": {
+        "op": "select",
+        "args": [
+          {
+            "state": "settings.renderer.available"
+          },
+          {
+            "op": "select",
+            "args": [
+              {
+                "op": "&&",
+                "args": [
+                  {
+                    "op": "&&",
+                    "args": [
+                      {
+                        "op": "&&",
+                        "args": [
+                          {
+                            "op": "&&",
+                            "args": [
+                              {
+                                "op": "&&",
+                                "args": [
+                                  {
+                                    "state": "settings.open"
+                                  },
+                                  {
+                                    "op": "==",
+                                    "args": [
+                                      {
+                                        "state": "settings.phase"
+                                      },
+                                      1
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "op": "!",
+                                "args": [
+                                  {
+                                    "state": "settings.busy"
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "!",
+                            "args": [
+                              {
+                                "state": "settings.confirmationVisible"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "!",
+                        "args": [
+                          {
+                            "state": "page.discardVisible"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "!",
+                    "args": [
+                      {
+                        "state": "ui.numberDraftsPending"
+                      }
+                    ]
+                  }
+                ]
+              },
+              1,
+              0.4
+            ]
+          },
+          0.45
+        ]
+      }
+    },
+    {
+      "id": "settings_renderer-status.display",
+      "node": "settings_renderer-status",
+      "property": "display",
+      "value": {
+        "op": "select",
+        "args": [
+          {
+            "op": "&&",
+            "args": [
+              {
+                "state": "settings.renderer.fallback"
+              },
+              {
+                "op": "==",
+                "args": [
+                  {
+                    "state": "settings.draft.r_renderer"
+                  },
+                  {
+                    "state": "settings.baseline.r_renderer"
+                  }
+                ]
+              }
+            ]
+          },
+          "block",
+          "none"
         ]
       }
     },
@@ -8947,6 +9158,241 @@
       ]
     },
     {
+      "id": "settings_renderer.default",
+      "durationMs": 90,
+      "iterations": 1,
+      "tracks": [
+        {
+          "node": "settings_renderer-focus",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 0.12
+              }
+            },
+            {
+              "atMs": 90,
+              "value": {
+                "type": "number",
+                "value": 0.12
+              }
+            }
+          ]
+        },
+        {
+          "node": "settings_renderer-popup-scroll-active",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 0
+              }
+            },
+            {
+              "atMs": 90,
+              "value": {
+                "type": "number",
+                "value": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "settings_renderer.hover",
+      "durationMs": 90,
+      "iterations": 1,
+      "tracks": [
+        {
+          "node": "settings_renderer-focus",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 0.55
+              }
+            },
+            {
+              "atMs": 90,
+              "value": {
+                "type": "number",
+                "value": 0.55
+              }
+            }
+          ]
+        },
+        {
+          "node": "settings_renderer-popup-scroll-active",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 0.55
+              }
+            },
+            {
+              "atMs": 90,
+              "value": {
+                "type": "number",
+                "value": 0.55
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "settings_renderer.focus",
+      "durationMs": 90,
+      "iterations": 1,
+      "tracks": [
+        {
+          "node": "settings_renderer-focus",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 1
+              }
+            },
+            {
+              "atMs": 90,
+              "value": {
+                "type": "number",
+                "value": 1
+              }
+            }
+          ]
+        },
+        {
+          "node": "settings_renderer-popup-scroll-active",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 0.85
+              }
+            },
+            {
+              "atMs": 90,
+              "value": {
+                "type": "number",
+                "value": 0.85
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "settings_renderer.pressed",
+      "durationMs": 45,
+      "iterations": 1,
+      "tracks": [
+        {
+          "node": "settings_renderer-focus",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 0.8
+              }
+            },
+            {
+              "atMs": 45,
+              "value": {
+                "type": "number",
+                "value": 0.8
+              }
+            }
+          ]
+        },
+        {
+          "node": "settings_renderer-popup-scroll-active",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 1
+              }
+            },
+            {
+              "atMs": 45,
+              "value": {
+                "type": "number",
+                "value": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "settings_renderer.disabled",
+      "durationMs": 90,
+      "iterations": 1,
+      "tracks": [
+        {
+          "node": "settings_renderer-focus",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 0.025
+              }
+            },
+            {
+              "atMs": 90,
+              "value": {
+                "type": "number",
+                "value": 0.025
+              }
+            }
+          ]
+        },
+        {
+          "node": "settings_renderer-popup-scroll-active",
+          "property": "opacity",
+          "keys": [
+            {
+              "atMs": 0,
+              "value": {
+                "type": "number",
+                "value": 0
+              }
+            },
+            {
+              "atMs": 90,
+              "value": {
+                "type": "number",
+                "value": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "discard_apply_changes.default",
       "durationMs": 90,
       "iterations": 1,
@@ -12619,6 +13065,17 @@
             "noGrids": "#str_230081"
           }
         },
+        "rendererRow": {
+          "control": "settings_renderer",
+          "clonedFrom": "settings_vsync",
+          "setting": "r_renderer",
+          "values": [
+            "best",
+            "arb2"
+          ],
+          "fallbackNotice": "#str_230082",
+          "availability": "A presenting OpenGL renderer that reports its selection; Vulkan has one back end."
+        },
         "localization": [
           "#str_229993",
           "#str_230077",
@@ -12631,9 +13088,12 @@
           "#str_230078",
           "#str_230079",
           "#str_230080",
-          "#str_230081"
+          "#str_230081",
+          "#str_41103",
+          "#str_41104",
+          "#str_230082"
         ],
-        "remaining": "The Renderer Fallback, display device and resolution rows follow in their own increments."
+        "remaining": "The display device and resolution rows follow in their own increments."
       }
     }
   },
@@ -74826,6 +75286,3036 @@
                           },
                           "placementBounds": "settings-body"
                         }
+                      },
+                      {
+                        "id": "settings_renderer",
+                        "type": "group",
+                        "properties": {
+                          "position": {
+                            "type": "keyword",
+                            "value": "relative"
+                          },
+                          "display": {
+                            "type": "keyword",
+                            "value": "block"
+                          },
+                          "box-sizing": {
+                            "type": "keyword",
+                            "value": "border-box"
+                          },
+                          "opacity": {
+                            "type": "number",
+                            "value": 1
+                          },
+                          "width": {
+                            "type": "length",
+                            "value": 100,
+                            "unit": "%"
+                          },
+                          "min-height": {
+                            "type": "length",
+                            "value": 80,
+                            "unit": "dp"
+                          },
+                          "padding": {
+                            "type": "length",
+                            "value": 12,
+                            "unit": "dp"
+                          },
+                          "margin-bottom": {
+                            "type": "length",
+                            "value": 8,
+                            "unit": "dp"
+                          }
+                        },
+                        "children": [
+                          {
+                            "id": "settings_renderer-plate",
+                            "type": "vector",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "absolute"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "block"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "left": {
+                                "type": "length",
+                                "value": 0,
+                                "unit": "dp"
+                              },
+                              "top": {
+                                "type": "length",
+                                "value": 0,
+                                "unit": "dp"
+                              },
+                              "width": {
+                                "type": "length",
+                                "value": 100,
+                                "unit": "%"
+                              },
+                              "height": {
+                                "type": "length",
+                                "value": 100,
+                                "unit": "%"
+                              },
+                              "pointer-events": {
+                                "type": "keyword",
+                                "value": "none"
+                              }
+                            },
+                            "children": [],
+                            "paths": [
+                              {
+                                "id": "field",
+                                "commands": [
+                                  {
+                                    "id": "point-0",
+                                    "op": "move",
+                                    "points": [
+                                      [
+                                        6,
+                                        0
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-1",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": -6
+                                        },
+                                        0
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-2",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        },
+                                        6
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-3",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        },
+                                        {
+                                          "fraction": 1,
+                                          "dp": -6
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-4",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": -6
+                                        },
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-5",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        0,
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-6",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        0,
+                                        6
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "close",
+                                    "op": "close"
+                                  }
+                                ],
+                                "fill": {
+                                  "type": "solid",
+                                  "color": {
+                                    "type": "color",
+                                    "value": [
+                                      0.035,
+                                      0.047,
+                                      0.031,
+                                      0.96
+                                    ]
+                                  }
+                                },
+                                "stroke": {
+                                  "paint": {
+                                    "type": "solid",
+                                    "color": {
+                                      "type": "color",
+                                      "value": [
+                                        0.5451,
+                                        0.5882,
+                                        0.2941,
+                                        0.32
+                                      ]
+                                    }
+                                  },
+                                  "widthDp": 1,
+                                  "minimumPixels": 1,
+                                  "join": "miter"
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "id": "settings_renderer-focus",
+                            "type": "vector",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "absolute"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "block"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 0.12
+                              },
+                              "left": {
+                                "type": "length",
+                                "value": 0,
+                                "unit": "dp"
+                              },
+                              "top": {
+                                "type": "length",
+                                "value": 0,
+                                "unit": "dp"
+                              },
+                              "width": {
+                                "type": "length",
+                                "value": 100,
+                                "unit": "%"
+                              },
+                              "height": {
+                                "type": "length",
+                                "value": 100,
+                                "unit": "%"
+                              },
+                              "pointer-events": {
+                                "type": "keyword",
+                                "value": "none"
+                              }
+                            },
+                            "children": [],
+                            "paths": [
+                              {
+                                "id": "focus",
+                                "commands": [
+                                  {
+                                    "id": "point-0",
+                                    "op": "move",
+                                    "points": [
+                                      [
+                                        6,
+                                        0
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-1",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": -6
+                                        },
+                                        0
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-2",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        },
+                                        6
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-3",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        },
+                                        {
+                                          "fraction": 1,
+                                          "dp": -6
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-4",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        {
+                                          "fraction": 1,
+                                          "dp": -6
+                                        },
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-5",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        0,
+                                        {
+                                          "fraction": 1,
+                                          "dp": 0
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-6",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        0,
+                                        6
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "close",
+                                    "op": "close"
+                                  }
+                                ],
+                                "stroke": {
+                                  "paint": {
+                                    "type": "solid",
+                                    "color": {
+                                      "type": "color",
+                                      "value": [
+                                        0.8902,
+                                        0.5373,
+                                        0,
+                                        1
+                                      ]
+                                    }
+                                  },
+                                  "widthDp": 1,
+                                  "minimumPixels": 1,
+                                  "join": "miter"
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "id": "settings_renderer-label",
+                            "type": "text",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "relative"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "block"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "text": {
+                                "type": "text",
+                                "value": "#str_41103"
+                              },
+                              "font-family": {
+                                "type": "font",
+                                "value": "marine"
+                              },
+                              "font-size": {
+                                "type": "length",
+                                "value": 16,
+                                "unit": "dp"
+                              },
+                              "line-height": {
+                                "type": "length",
+                                "value": 23,
+                                "unit": "dp"
+                              },
+                              "color": {
+                                "type": "color",
+                                "value": [
+                                  1,
+                                  1,
+                                  1,
+                                  0.88
+                                ]
+                              },
+                              "white-space": {
+                                "type": "keyword",
+                                "value": "normal"
+                              }
+                            }
+                          },
+                          {
+                            "id": "settings_renderer-value",
+                            "type": "text",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "relative"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "block"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "text": {
+                                "type": "text",
+                                "value": "#str_230007"
+                              },
+                              "font-family": {
+                                "type": "font",
+                                "value": "marine"
+                              },
+                              "font-size": {
+                                "type": "length",
+                                "value": 16,
+                                "unit": "dp"
+                              },
+                              "line-height": {
+                                "type": "length",
+                                "value": 23,
+                                "unit": "dp"
+                              },
+                              "color": {
+                                "type": "color",
+                                "value": [
+                                  0.8902,
+                                  0.5373,
+                                  0,
+                                  1
+                                ]
+                              },
+                              "white-space": {
+                                "type": "keyword",
+                                "value": "normal"
+                              },
+                              "margin-top": {
+                                "type": "length",
+                                "value": 6,
+                                "unit": "dp"
+                              },
+                              "padding-right": {
+                                "type": "length",
+                                "value": 28,
+                                "unit": "dp"
+                              },
+                              "min-height": {
+                                "type": "length",
+                                "value": 23,
+                                "unit": "dp"
+                              }
+                            }
+                          },
+                          {
+                            "id": "settings_renderer-status",
+                            "type": "text",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "relative"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "none"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "text": {
+                                "type": "text",
+                                "value": "#str_230082"
+                              },
+                              "font-family": {
+                                "type": "font",
+                                "value": "marine"
+                              },
+                              "font-size": {
+                                "type": "length",
+                                "value": 14,
+                                "unit": "dp"
+                              },
+                              "line-height": {
+                                "type": "length",
+                                "value": 20,
+                                "unit": "dp"
+                              },
+                              "color": {
+                                "type": "color",
+                                "value": [
+                                  0.72,
+                                  0.76,
+                                  0.62,
+                                  1
+                                ]
+                              },
+                              "white-space": {
+                                "type": "keyword",
+                                "value": "normal"
+                              },
+                              "min-height": {
+                                "type": "length",
+                                "value": 20,
+                                "unit": "dp"
+                              },
+                              "margin-bottom": {
+                                "type": "length",
+                                "value": 0,
+                                "unit": "dp"
+                              },
+                              "text-align": {
+                                "type": "keyword",
+                                "value": "left"
+                              },
+                              "width": {
+                                "type": "length",
+                                "value": 100,
+                                "unit": "%"
+                              },
+                              "margin-top": {
+                                "type": "length",
+                                "value": 4,
+                                "unit": "dp"
+                              }
+                            }
+                          },
+                          {
+                            "id": "settings_renderer-chevron",
+                            "type": "vector",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "absolute"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "block"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "right": {
+                                "type": "length",
+                                "value": 14,
+                                "unit": "dp"
+                              },
+                              "top": {
+                                "type": "length",
+                                "value": 49,
+                                "unit": "dp"
+                              },
+                              "width": {
+                                "type": "length",
+                                "value": 12,
+                                "unit": "dp"
+                              },
+                              "height": {
+                                "type": "length",
+                                "value": 6,
+                                "unit": "dp"
+                              },
+                              "pointer-events": {
+                                "type": "keyword",
+                                "value": "none"
+                              }
+                            },
+                            "children": [],
+                            "paths": [
+                              {
+                                "id": "chevron",
+                                "commands": [
+                                  {
+                                    "id": "point-0",
+                                    "op": "move",
+                                    "points": [
+                                      [
+                                        0,
+                                        0
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-1",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        12,
+                                        0
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "point-2",
+                                    "op": "line",
+                                    "points": [
+                                      [
+                                        6,
+                                        6
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "id": "close",
+                                    "op": "close"
+                                  }
+                                ],
+                                "fill": {
+                                  "type": "solid",
+                                  "color": {
+                                    "type": "color",
+                                    "value": [
+                                      0.8902,
+                                      0.5373,
+                                      0,
+                                      1
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "id": "settings_renderer-popup",
+                            "type": "group",
+                            "properties": {
+                              "position": {
+                                "type": "keyword",
+                                "value": "absolute"
+                              },
+                              "display": {
+                                "type": "keyword",
+                                "value": "none"
+                              },
+                              "box-sizing": {
+                                "type": "keyword",
+                                "value": "border-box"
+                              },
+                              "opacity": {
+                                "type": "number",
+                                "value": 1
+                              },
+                              "left": {
+                                "type": "length",
+                                "value": 0,
+                                "unit": "dp"
+                              },
+                              "top": {
+                                "type": "length",
+                                "value": 76,
+                                "unit": "dp"
+                              },
+                              "width": {
+                                "type": "length",
+                                "value": 280,
+                                "unit": "dp"
+                              },
+                              "height": {
+                                "type": "length",
+                                "value": 72,
+                                "unit": "dp"
+                              },
+                              "padding": {
+                                "type": "length",
+                                "value": 8,
+                                "unit": "dp"
+                              },
+                              "background-color": {
+                                "type": "color",
+                                "value": [
+                                  0,
+                                  0,
+                                  0,
+                                  0
+                                ]
+                              },
+                              "font-family": {
+                                "type": "font",
+                                "value": "marine"
+                              },
+                              "font-size": {
+                                "type": "length",
+                                "value": 16,
+                                "unit": "dp"
+                              },
+                              "line-height": {
+                                "type": "length",
+                                "value": 23,
+                                "unit": "dp"
+                              }
+                            },
+                            "children": [
+                              {
+                                "id": "settings_renderer-popup-frame",
+                                "type": "vector",
+                                "properties": {
+                                  "position": {
+                                    "type": "keyword",
+                                    "value": "absolute"
+                                  },
+                                  "display": {
+                                    "type": "keyword",
+                                    "value": "block"
+                                  },
+                                  "box-sizing": {
+                                    "type": "keyword",
+                                    "value": "border-box"
+                                  },
+                                  "left": {
+                                    "type": "length",
+                                    "value": 0,
+                                    "unit": "dp"
+                                  },
+                                  "top": {
+                                    "type": "length",
+                                    "value": 0,
+                                    "unit": "dp"
+                                  },
+                                  "width": {
+                                    "type": "length",
+                                    "value": 100,
+                                    "unit": "%"
+                                  },
+                                  "height": {
+                                    "type": "length",
+                                    "value": 100,
+                                    "unit": "%"
+                                  },
+                                  "pointer-events": {
+                                    "type": "keyword",
+                                    "value": "none"
+                                  },
+                                  "opacity": {
+                                    "type": "number",
+                                    "value": 1
+                                  }
+                                },
+                                "paths": [
+                                  {
+                                    "id": "outline",
+                                    "commands": [
+                                      {
+                                        "id": "point-0",
+                                        "op": "move",
+                                        "points": [
+                                          [
+                                            6,
+                                            0
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-1",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            {
+                                              "fraction": 1,
+                                              "dp": 0
+                                            },
+                                            0
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-2",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            {
+                                              "fraction": 1,
+                                              "dp": 0
+                                            },
+                                            {
+                                              "fraction": 1,
+                                              "dp": -6
+                                            }
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-3",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            {
+                                              "fraction": 1,
+                                              "dp": -6
+                                            },
+                                            {
+                                              "fraction": 1,
+                                              "dp": 0
+                                            }
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-4",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            0,
+                                            {
+                                              "fraction": 1,
+                                              "dp": 0
+                                            }
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-5",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            0,
+                                            6
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "close",
+                                        "op": "close"
+                                      }
+                                    ],
+                                    "fill": {
+                                      "type": "solid",
+                                      "color": {
+                                        "type": "color",
+                                        "value": [
+                                          0.0353,
+                                          0.0471,
+                                          0.0314,
+                                          1
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "id": "outer-rail",
+                                    "commands": [
+                                      {
+                                        "id": "point-0",
+                                        "op": "move",
+                                        "points": [
+                                          [
+                                            6.5,
+                                            0.5
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-1",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            {
+                                              "fraction": 1,
+                                              "dp": -0.5
+                                            },
+                                            0.5
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-2",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            {
+                                              "fraction": 1,
+                                              "dp": -0.5
+                                            },
+                                            {
+                                              "fraction": 1,
+                                              "dp": -6.5
+                                            }
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-3",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            {
+                                              "fraction": 1,
+                                              "dp": -6.5
+                                            },
+                                            {
+                                              "fraction": 1,
+                                              "dp": -0.5
+                                            }
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-4",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            0.5,
+                                            {
+                                              "fraction": 1,
+                                              "dp": -0.5
+                                            }
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-5",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            0.5,
+                                            6.5
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "close",
+                                        "op": "close"
+                                      }
+                                    ],
+                                    "fill": {
+                                      "type": "solid",
+                                      "color": {
+                                        "type": "color",
+                                        "value": [
+                                          0,
+                                          0,
+                                          0,
+                                          0
+                                        ]
+                                      }
+                                    },
+                                    "stroke": {
+                                      "paint": {
+                                        "type": "solid",
+                                        "color": {
+                                          "type": "color",
+                                          "value": [
+                                            0.5451,
+                                            0.5882,
+                                            0.2941,
+                                            1
+                                          ]
+                                        }
+                                      },
+                                      "widthDp": 1,
+                                      "minimumPixels": 1,
+                                      "join": "miter"
+                                    }
+                                  },
+                                  {
+                                    "id": "inner-rail",
+                                    "commands": [
+                                      {
+                                        "id": "point-0",
+                                        "op": "move",
+                                        "points": [
+                                          [
+                                            7.5,
+                                            3.5
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-1",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            {
+                                              "fraction": 1,
+                                              "dp": -3.5
+                                            },
+                                            3.5
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-2",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            {
+                                              "fraction": 1,
+                                              "dp": -3.5
+                                            },
+                                            {
+                                              "fraction": 1,
+                                              "dp": -7.5
+                                            }
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-3",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            {
+                                              "fraction": 1,
+                                              "dp": -7.5
+                                            },
+                                            {
+                                              "fraction": 1,
+                                              "dp": -3.5
+                                            }
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-4",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            3.5,
+                                            {
+                                              "fraction": 1,
+                                              "dp": -3.5
+                                            }
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "point-5",
+                                        "op": "line",
+                                        "points": [
+                                          [
+                                            3.5,
+                                            7.5
+                                          ]
+                                        ]
+                                      },
+                                      {
+                                        "id": "close",
+                                        "op": "close"
+                                      }
+                                    ],
+                                    "fill": {
+                                      "type": "solid",
+                                      "color": {
+                                        "type": "color",
+                                        "value": [
+                                          0,
+                                          0,
+                                          0,
+                                          0
+                                        ]
+                                      }
+                                    },
+                                    "stroke": {
+                                      "paint": {
+                                        "type": "solid",
+                                        "color": {
+                                          "type": "color",
+                                          "value": [
+                                            0.5451,
+                                            0.5882,
+                                            0.2941,
+                                            0.35
+                                          ]
+                                        }
+                                      },
+                                      "widthDp": 1,
+                                      "minimumPixels": 1,
+                                      "join": "miter"
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "id": "settings_renderer-viewport",
+                                "type": "group",
+                                "properties": {
+                                  "position": {
+                                    "type": "keyword",
+                                    "value": "relative"
+                                  },
+                                  "display": {
+                                    "type": "keyword",
+                                    "value": "block"
+                                  },
+                                  "box-sizing": {
+                                    "type": "keyword",
+                                    "value": "border-box"
+                                  },
+                                  "opacity": {
+                                    "type": "number",
+                                    "value": 1
+                                  },
+                                  "width": {
+                                    "type": "length",
+                                    "value": 100,
+                                    "unit": "%"
+                                  },
+                                  "height": {
+                                    "type": "length",
+                                    "value": 72,
+                                    "unit": "dp"
+                                  },
+                                  "overflow": {
+                                    "type": "keyword",
+                                    "value": "hidden"
+                                  }
+                                },
+                                "children": [
+                                  {
+                                    "id": "settings_renderer-content",
+                                    "type": "group",
+                                    "properties": {
+                                      "position": {
+                                        "type": "keyword",
+                                        "value": "absolute"
+                                      },
+                                      "display": {
+                                        "type": "keyword",
+                                        "value": "block"
+                                      },
+                                      "box-sizing": {
+                                        "type": "keyword",
+                                        "value": "border-box"
+                                      },
+                                      "opacity": {
+                                        "type": "number",
+                                        "value": 1
+                                      },
+                                      "left": {
+                                        "type": "length",
+                                        "value": 0,
+                                        "unit": "dp"
+                                      },
+                                      "top": {
+                                        "type": "length",
+                                        "value": 0,
+                                        "unit": "dp"
+                                      },
+                                      "width": {
+                                        "type": "length",
+                                        "value": 100,
+                                        "unit": "%"
+                                      }
+                                    },
+                                    "children": [
+                                      {
+                                        "id": "settings_renderer-option-0",
+                                        "type": "group",
+                                        "properties": {
+                                          "position": {
+                                            "type": "keyword",
+                                            "value": "relative"
+                                          },
+                                          "display": {
+                                            "type": "keyword",
+                                            "value": "block"
+                                          },
+                                          "box-sizing": {
+                                            "type": "keyword",
+                                            "value": "border-box"
+                                          },
+                                          "opacity": {
+                                            "type": "number",
+                                            "value": 1
+                                          },
+                                          "width": {
+                                            "type": "length",
+                                            "value": 100,
+                                            "unit": "%"
+                                          },
+                                          "min-height": {
+                                            "type": "length",
+                                            "value": 36,
+                                            "unit": "dp"
+                                          }
+                                        },
+                                        "children": [
+                                          {
+                                            "id": "settings_renderer-option-0-selected",
+                                            "type": "group",
+                                            "properties": {
+                                              "position": {
+                                                "type": "keyword",
+                                                "value": "absolute"
+                                              },
+                                              "display": {
+                                                "type": "keyword",
+                                                "value": "none"
+                                              },
+                                              "box-sizing": {
+                                                "type": "keyword",
+                                                "value": "border-box"
+                                              },
+                                              "opacity": {
+                                                "type": "number",
+                                                "value": 1
+                                              },
+                                              "left": {
+                                                "type": "length",
+                                                "value": 0,
+                                                "unit": "dp"
+                                              },
+                                              "top": {
+                                                "type": "length",
+                                                "value": 0,
+                                                "unit": "dp"
+                                              },
+                                              "width": {
+                                                "type": "length",
+                                                "value": 100,
+                                                "unit": "%"
+                                              },
+                                              "height": {
+                                                "type": "length",
+                                                "value": 100,
+                                                "unit": "%"
+                                              },
+                                              "pointer-events": {
+                                                "type": "keyword",
+                                                "value": "none"
+                                              }
+                                            },
+                                            "children": [
+                                              {
+                                                "id": "settings_renderer-option-0-selected-ink",
+                                                "type": "vector",
+                                                "properties": {
+                                                  "position": {
+                                                    "type": "keyword",
+                                                    "value": "absolute"
+                                                  },
+                                                  "display": {
+                                                    "type": "keyword",
+                                                    "value": "block"
+                                                  },
+                                                  "box-sizing": {
+                                                    "type": "keyword",
+                                                    "value": "border-box"
+                                                  },
+                                                  "opacity": {
+                                                    "type": "number",
+                                                    "value": 1
+                                                  },
+                                                  "left": {
+                                                    "type": "length",
+                                                    "value": 0,
+                                                    "unit": "dp"
+                                                  },
+                                                  "top": {
+                                                    "type": "length",
+                                                    "value": 0,
+                                                    "unit": "dp"
+                                                  },
+                                                  "width": {
+                                                    "type": "length",
+                                                    "value": 100,
+                                                    "unit": "%"
+                                                  },
+                                                  "height": {
+                                                    "type": "length",
+                                                    "value": 100,
+                                                    "unit": "%"
+                                                  },
+                                                  "pointer-events": {
+                                                    "type": "keyword",
+                                                    "value": "none"
+                                                  }
+                                                },
+                                                "children": [],
+                                                "paths": [
+                                                  {
+                                                    "id": "selected",
+                                                    "commands": [
+                                                      {
+                                                        "id": "point-0",
+                                                        "op": "move",
+                                                        "points": [
+                                                          [
+                                                            3,
+                                                            0
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-1",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": -3
+                                                            },
+                                                            0
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-2",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            },
+                                                            3
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-3",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            },
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": -3
+                                                            }
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-4",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": -3
+                                                            },
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            }
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-5",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            0,
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            }
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-6",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            0,
+                                                            3
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "close",
+                                                        "op": "close"
+                                                      }
+                                                    ],
+                                                    "fill": {
+                                                      "type": "solid",
+                                                      "color": {
+                                                        "type": "color",
+                                                        "value": [
+                                                          0.5451,
+                                                          0.5882,
+                                                          0.2941,
+                                                          0.22
+                                                        ]
+                                                      }
+                                                    },
+                                                    "stroke": {
+                                                      "paint": {
+                                                        "type": "solid",
+                                                        "color": {
+                                                          "type": "color",
+                                                          "value": [
+                                                            0.5451,
+                                                            0.5882,
+                                                            0.2941,
+                                                            1
+                                                          ]
+                                                        }
+                                                      },
+                                                      "widthDp": 1,
+                                                      "minimumPixels": 1,
+                                                      "join": "miter"
+                                                    }
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "id": "settings_renderer-option-0-highlight",
+                                            "type": "group",
+                                            "properties": {
+                                              "position": {
+                                                "type": "keyword",
+                                                "value": "absolute"
+                                              },
+                                              "display": {
+                                                "type": "keyword",
+                                                "value": "none"
+                                              },
+                                              "box-sizing": {
+                                                "type": "keyword",
+                                                "value": "border-box"
+                                              },
+                                              "opacity": {
+                                                "type": "number",
+                                                "value": 1
+                                              },
+                                              "left": {
+                                                "type": "length",
+                                                "value": 0,
+                                                "unit": "dp"
+                                              },
+                                              "top": {
+                                                "type": "length",
+                                                "value": 0,
+                                                "unit": "dp"
+                                              },
+                                              "width": {
+                                                "type": "length",
+                                                "value": 100,
+                                                "unit": "%"
+                                              },
+                                              "height": {
+                                                "type": "length",
+                                                "value": 100,
+                                                "unit": "%"
+                                              },
+                                              "pointer-events": {
+                                                "type": "keyword",
+                                                "value": "none"
+                                              }
+                                            },
+                                            "children": [
+                                              {
+                                                "id": "settings_renderer-option-0-highlight-ink",
+                                                "type": "vector",
+                                                "properties": {
+                                                  "position": {
+                                                    "type": "keyword",
+                                                    "value": "absolute"
+                                                  },
+                                                  "display": {
+                                                    "type": "keyword",
+                                                    "value": "block"
+                                                  },
+                                                  "box-sizing": {
+                                                    "type": "keyword",
+                                                    "value": "border-box"
+                                                  },
+                                                  "opacity": {
+                                                    "type": "number",
+                                                    "value": 1
+                                                  },
+                                                  "left": {
+                                                    "type": "length",
+                                                    "value": 0,
+                                                    "unit": "dp"
+                                                  },
+                                                  "top": {
+                                                    "type": "length",
+                                                    "value": 0,
+                                                    "unit": "dp"
+                                                  },
+                                                  "width": {
+                                                    "type": "length",
+                                                    "value": 100,
+                                                    "unit": "%"
+                                                  },
+                                                  "height": {
+                                                    "type": "length",
+                                                    "value": 100,
+                                                    "unit": "%"
+                                                  },
+                                                  "pointer-events": {
+                                                    "type": "keyword",
+                                                    "value": "none"
+                                                  }
+                                                },
+                                                "children": [],
+                                                "paths": [
+                                                  {
+                                                    "id": "highlight",
+                                                    "commands": [
+                                                      {
+                                                        "id": "point-0",
+                                                        "op": "move",
+                                                        "points": [
+                                                          [
+                                                            3,
+                                                            0
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-1",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": -3
+                                                            },
+                                                            0
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-2",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            },
+                                                            3
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-3",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            },
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": -3
+                                                            }
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-4",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": -3
+                                                            },
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            }
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-5",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            0,
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            }
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-6",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            0,
+                                                            3
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "close",
+                                                        "op": "close"
+                                                      }
+                                                    ],
+                                                    "fill": {
+                                                      "type": "solid",
+                                                      "color": {
+                                                        "type": "color",
+                                                        "value": [
+                                                          0.8902,
+                                                          0.5373,
+                                                          0,
+                                                          0.16
+                                                        ]
+                                                      }
+                                                    },
+                                                    "stroke": {
+                                                      "paint": {
+                                                        "type": "solid",
+                                                        "color": {
+                                                          "type": "color",
+                                                          "value": [
+                                                            0.8902,
+                                                            0.5373,
+                                                            0,
+                                                            1
+                                                          ]
+                                                        }
+                                                      },
+                                                      "widthDp": 1,
+                                                      "minimumPixels": 1,
+                                                      "join": "miter"
+                                                    }
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "id": "settings_renderer-option-0-label",
+                                            "type": "text",
+                                            "properties": {
+                                              "position": {
+                                                "type": "keyword",
+                                                "value": "relative"
+                                              },
+                                              "display": {
+                                                "type": "keyword",
+                                                "value": "block"
+                                              },
+                                              "box-sizing": {
+                                                "type": "keyword",
+                                                "value": "border-box"
+                                              },
+                                              "opacity": {
+                                                "type": "number",
+                                                "value": 1
+                                              },
+                                              "text": {
+                                                "type": "text",
+                                                "value": "#str_41104"
+                                              },
+                                              "font-family": {
+                                                "type": "font",
+                                                "value": "marine"
+                                              },
+                                              "font-size": {
+                                                "type": "length",
+                                                "value": 16,
+                                                "unit": "dp"
+                                              },
+                                              "line-height": {
+                                                "type": "length",
+                                                "value": 23,
+                                                "unit": "dp"
+                                              },
+                                              "color": {
+                                                "type": "color",
+                                                "value": [
+                                                  1,
+                                                  1,
+                                                  1,
+                                                  0.88
+                                                ]
+                                              },
+                                              "white-space": {
+                                                "type": "keyword",
+                                                "value": "normal"
+                                              },
+                                              "padding-left": {
+                                                "type": "length",
+                                                "value": 12,
+                                                "unit": "dp"
+                                              },
+                                              "padding-right": {
+                                                "type": "length",
+                                                "value": 12,
+                                                "unit": "dp"
+                                              },
+                                              "padding-top": {
+                                                "type": "length",
+                                                "value": 7,
+                                                "unit": "dp"
+                                              },
+                                              "padding-bottom": {
+                                                "type": "length",
+                                                "value": 6,
+                                                "unit": "dp"
+                                              }
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "id": "settings_renderer-option-1",
+                                        "type": "group",
+                                        "properties": {
+                                          "position": {
+                                            "type": "keyword",
+                                            "value": "relative"
+                                          },
+                                          "display": {
+                                            "type": "keyword",
+                                            "value": "block"
+                                          },
+                                          "box-sizing": {
+                                            "type": "keyword",
+                                            "value": "border-box"
+                                          },
+                                          "opacity": {
+                                            "type": "number",
+                                            "value": 1
+                                          },
+                                          "width": {
+                                            "type": "length",
+                                            "value": 100,
+                                            "unit": "%"
+                                          },
+                                          "min-height": {
+                                            "type": "length",
+                                            "value": 36,
+                                            "unit": "dp"
+                                          }
+                                        },
+                                        "children": [
+                                          {
+                                            "id": "settings_renderer-option-1-selected",
+                                            "type": "group",
+                                            "properties": {
+                                              "position": {
+                                                "type": "keyword",
+                                                "value": "absolute"
+                                              },
+                                              "display": {
+                                                "type": "keyword",
+                                                "value": "none"
+                                              },
+                                              "box-sizing": {
+                                                "type": "keyword",
+                                                "value": "border-box"
+                                              },
+                                              "opacity": {
+                                                "type": "number",
+                                                "value": 1
+                                              },
+                                              "left": {
+                                                "type": "length",
+                                                "value": 0,
+                                                "unit": "dp"
+                                              },
+                                              "top": {
+                                                "type": "length",
+                                                "value": 0,
+                                                "unit": "dp"
+                                              },
+                                              "width": {
+                                                "type": "length",
+                                                "value": 100,
+                                                "unit": "%"
+                                              },
+                                              "height": {
+                                                "type": "length",
+                                                "value": 100,
+                                                "unit": "%"
+                                              },
+                                              "pointer-events": {
+                                                "type": "keyword",
+                                                "value": "none"
+                                              }
+                                            },
+                                            "children": [
+                                              {
+                                                "id": "settings_renderer-option-1-selected-ink",
+                                                "type": "vector",
+                                                "properties": {
+                                                  "position": {
+                                                    "type": "keyword",
+                                                    "value": "absolute"
+                                                  },
+                                                  "display": {
+                                                    "type": "keyword",
+                                                    "value": "block"
+                                                  },
+                                                  "box-sizing": {
+                                                    "type": "keyword",
+                                                    "value": "border-box"
+                                                  },
+                                                  "opacity": {
+                                                    "type": "number",
+                                                    "value": 1
+                                                  },
+                                                  "left": {
+                                                    "type": "length",
+                                                    "value": 0,
+                                                    "unit": "dp"
+                                                  },
+                                                  "top": {
+                                                    "type": "length",
+                                                    "value": 0,
+                                                    "unit": "dp"
+                                                  },
+                                                  "width": {
+                                                    "type": "length",
+                                                    "value": 100,
+                                                    "unit": "%"
+                                                  },
+                                                  "height": {
+                                                    "type": "length",
+                                                    "value": 100,
+                                                    "unit": "%"
+                                                  },
+                                                  "pointer-events": {
+                                                    "type": "keyword",
+                                                    "value": "none"
+                                                  }
+                                                },
+                                                "children": [],
+                                                "paths": [
+                                                  {
+                                                    "id": "selected",
+                                                    "commands": [
+                                                      {
+                                                        "id": "point-0",
+                                                        "op": "move",
+                                                        "points": [
+                                                          [
+                                                            3,
+                                                            0
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-1",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": -3
+                                                            },
+                                                            0
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-2",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            },
+                                                            3
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-3",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            },
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": -3
+                                                            }
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-4",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": -3
+                                                            },
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            }
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-5",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            0,
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            }
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-6",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            0,
+                                                            3
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "close",
+                                                        "op": "close"
+                                                      }
+                                                    ],
+                                                    "fill": {
+                                                      "type": "solid",
+                                                      "color": {
+                                                        "type": "color",
+                                                        "value": [
+                                                          0.5451,
+                                                          0.5882,
+                                                          0.2941,
+                                                          0.22
+                                                        ]
+                                                      }
+                                                    },
+                                                    "stroke": {
+                                                      "paint": {
+                                                        "type": "solid",
+                                                        "color": {
+                                                          "type": "color",
+                                                          "value": [
+                                                            0.5451,
+                                                            0.5882,
+                                                            0.2941,
+                                                            1
+                                                          ]
+                                                        }
+                                                      },
+                                                      "widthDp": 1,
+                                                      "minimumPixels": 1,
+                                                      "join": "miter"
+                                                    }
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "id": "settings_renderer-option-1-highlight",
+                                            "type": "group",
+                                            "properties": {
+                                              "position": {
+                                                "type": "keyword",
+                                                "value": "absolute"
+                                              },
+                                              "display": {
+                                                "type": "keyword",
+                                                "value": "none"
+                                              },
+                                              "box-sizing": {
+                                                "type": "keyword",
+                                                "value": "border-box"
+                                              },
+                                              "opacity": {
+                                                "type": "number",
+                                                "value": 1
+                                              },
+                                              "left": {
+                                                "type": "length",
+                                                "value": 0,
+                                                "unit": "dp"
+                                              },
+                                              "top": {
+                                                "type": "length",
+                                                "value": 0,
+                                                "unit": "dp"
+                                              },
+                                              "width": {
+                                                "type": "length",
+                                                "value": 100,
+                                                "unit": "%"
+                                              },
+                                              "height": {
+                                                "type": "length",
+                                                "value": 100,
+                                                "unit": "%"
+                                              },
+                                              "pointer-events": {
+                                                "type": "keyword",
+                                                "value": "none"
+                                              }
+                                            },
+                                            "children": [
+                                              {
+                                                "id": "settings_renderer-option-1-highlight-ink",
+                                                "type": "vector",
+                                                "properties": {
+                                                  "position": {
+                                                    "type": "keyword",
+                                                    "value": "absolute"
+                                                  },
+                                                  "display": {
+                                                    "type": "keyword",
+                                                    "value": "block"
+                                                  },
+                                                  "box-sizing": {
+                                                    "type": "keyword",
+                                                    "value": "border-box"
+                                                  },
+                                                  "opacity": {
+                                                    "type": "number",
+                                                    "value": 1
+                                                  },
+                                                  "left": {
+                                                    "type": "length",
+                                                    "value": 0,
+                                                    "unit": "dp"
+                                                  },
+                                                  "top": {
+                                                    "type": "length",
+                                                    "value": 0,
+                                                    "unit": "dp"
+                                                  },
+                                                  "width": {
+                                                    "type": "length",
+                                                    "value": 100,
+                                                    "unit": "%"
+                                                  },
+                                                  "height": {
+                                                    "type": "length",
+                                                    "value": 100,
+                                                    "unit": "%"
+                                                  },
+                                                  "pointer-events": {
+                                                    "type": "keyword",
+                                                    "value": "none"
+                                                  }
+                                                },
+                                                "children": [],
+                                                "paths": [
+                                                  {
+                                                    "id": "highlight",
+                                                    "commands": [
+                                                      {
+                                                        "id": "point-0",
+                                                        "op": "move",
+                                                        "points": [
+                                                          [
+                                                            3,
+                                                            0
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-1",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": -3
+                                                            },
+                                                            0
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-2",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            },
+                                                            3
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-3",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            },
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": -3
+                                                            }
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-4",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": -3
+                                                            },
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            }
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-5",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            0,
+                                                            {
+                                                              "fraction": 1,
+                                                              "dp": 0
+                                                            }
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "point-6",
+                                                        "op": "line",
+                                                        "points": [
+                                                          [
+                                                            0,
+                                                            3
+                                                          ]
+                                                        ]
+                                                      },
+                                                      {
+                                                        "id": "close",
+                                                        "op": "close"
+                                                      }
+                                                    ],
+                                                    "fill": {
+                                                      "type": "solid",
+                                                      "color": {
+                                                        "type": "color",
+                                                        "value": [
+                                                          0.8902,
+                                                          0.5373,
+                                                          0,
+                                                          0.16
+                                                        ]
+                                                      }
+                                                    },
+                                                    "stroke": {
+                                                      "paint": {
+                                                        "type": "solid",
+                                                        "color": {
+                                                          "type": "color",
+                                                          "value": [
+                                                            0.8902,
+                                                            0.5373,
+                                                            0,
+                                                            1
+                                                          ]
+                                                        }
+                                                      },
+                                                      "widthDp": 1,
+                                                      "minimumPixels": 1,
+                                                      "join": "miter"
+                                                    }
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "id": "settings_renderer-option-1-label",
+                                            "type": "text",
+                                            "properties": {
+                                              "position": {
+                                                "type": "keyword",
+                                                "value": "relative"
+                                              },
+                                              "display": {
+                                                "type": "keyword",
+                                                "value": "block"
+                                              },
+                                              "box-sizing": {
+                                                "type": "keyword",
+                                                "value": "border-box"
+                                              },
+                                              "opacity": {
+                                                "type": "number",
+                                                "value": 1
+                                              },
+                                              "text": {
+                                                "type": "text",
+                                                "value": "#str_41104"
+                                              },
+                                              "font-family": {
+                                                "type": "font",
+                                                "value": "marine"
+                                              },
+                                              "font-size": {
+                                                "type": "length",
+                                                "value": 16,
+                                                "unit": "dp"
+                                              },
+                                              "line-height": {
+                                                "type": "length",
+                                                "value": 23,
+                                                "unit": "dp"
+                                              },
+                                              "color": {
+                                                "type": "color",
+                                                "value": [
+                                                  1,
+                                                  1,
+                                                  1,
+                                                  0.88
+                                                ]
+                                              },
+                                              "white-space": {
+                                                "type": "keyword",
+                                                "value": "normal"
+                                              },
+                                              "padding-left": {
+                                                "type": "length",
+                                                "value": 12,
+                                                "unit": "dp"
+                                              },
+                                              "padding-right": {
+                                                "type": "length",
+                                                "value": 12,
+                                                "unit": "dp"
+                                              },
+                                              "padding-top": {
+                                                "type": "length",
+                                                "value": 7,
+                                                "unit": "dp"
+                                              },
+                                              "padding-bottom": {
+                                                "type": "length",
+                                                "value": 6,
+                                                "unit": "dp"
+                                              }
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "id": "settings_renderer-popup-scroll-track",
+                                "type": "group",
+                                "properties": {
+                                  "position": {
+                                    "type": "keyword",
+                                    "value": "absolute"
+                                  },
+                                  "display": {
+                                    "type": "keyword",
+                                    "value": "block"
+                                  },
+                                  "box-sizing": {
+                                    "type": "keyword",
+                                    "value": "border-box"
+                                  },
+                                  "left": {
+                                    "type": "length",
+                                    "value": 0,
+                                    "unit": "dp"
+                                  },
+                                  "top": {
+                                    "type": "length",
+                                    "value": 0,
+                                    "unit": "dp"
+                                  },
+                                  "width": {
+                                    "type": "length",
+                                    "value": 36,
+                                    "unit": "dp"
+                                  },
+                                  "height": {
+                                    "type": "length",
+                                    "value": 36,
+                                    "unit": "dp"
+                                  },
+                                  "opacity": {
+                                    "type": "number",
+                                    "value": 1
+                                  }
+                                },
+                                "children": [
+                                  {
+                                    "id": "settings_renderer-popup-scroll-trough",
+                                    "type": "vector",
+                                    "properties": {
+                                      "position": {
+                                        "type": "keyword",
+                                        "value": "absolute"
+                                      },
+                                      "display": {
+                                        "type": "keyword",
+                                        "value": "block"
+                                      },
+                                      "box-sizing": {
+                                        "type": "keyword",
+                                        "value": "border-box"
+                                      },
+                                      "left": {
+                                        "type": "length",
+                                        "value": 0,
+                                        "unit": "dp"
+                                      },
+                                      "top": {
+                                        "type": "length",
+                                        "value": 0,
+                                        "unit": "dp"
+                                      },
+                                      "width": {
+                                        "type": "length",
+                                        "value": 100,
+                                        "unit": "%"
+                                      },
+                                      "height": {
+                                        "type": "length",
+                                        "value": 100,
+                                        "unit": "%"
+                                      },
+                                      "pointer-events": {
+                                        "type": "keyword",
+                                        "value": "none"
+                                      },
+                                      "opacity": {
+                                        "type": "number",
+                                        "value": 1
+                                      }
+                                    },
+                                    "paths": [
+                                      {
+                                        "id": "outline",
+                                        "commands": [
+                                          {
+                                            "id": "point-0",
+                                            "op": "move",
+                                            "points": [
+                                              [
+                                                16,
+                                                0
+                                              ]
+                                            ]
+                                          },
+                                          {
+                                            "id": "point-1",
+                                            "op": "line",
+                                            "points": [
+                                              [
+                                                22,
+                                                0
+                                              ]
+                                            ]
+                                          },
+                                          {
+                                            "id": "point-2",
+                                            "op": "line",
+                                            "points": [
+                                              [
+                                                22,
+                                                {
+                                                  "fraction": 1,
+                                                  "dp": 0
+                                                }
+                                              ]
+                                            ]
+                                          },
+                                          {
+                                            "id": "point-3",
+                                            "op": "line",
+                                            "points": [
+                                              [
+                                                14,
+                                                {
+                                                  "fraction": 1,
+                                                  "dp": 0
+                                                }
+                                              ]
+                                            ]
+                                          },
+                                          {
+                                            "id": "point-4",
+                                            "op": "line",
+                                            "points": [
+                                              [
+                                                14,
+                                                2
+                                              ]
+                                            ]
+                                          },
+                                          {
+                                            "id": "close",
+                                            "op": "close"
+                                          }
+                                        ],
+                                        "fill": {
+                                          "type": "solid",
+                                          "color": {
+                                            "type": "color",
+                                            "value": [
+                                              0.0353,
+                                              0.0471,
+                                              0.0314,
+                                              0.95
+                                            ]
+                                          }
+                                        },
+                                        "stroke": {
+                                          "paint": {
+                                            "type": "solid",
+                                            "color": {
+                                              "type": "color",
+                                              "value": [
+                                                0.5451,
+                                                0.5882,
+                                                0.2941,
+                                                0.4
+                                              ]
+                                            }
+                                          },
+                                          "widthDp": 1,
+                                          "minimumPixels": 1,
+                                          "join": "miter"
+                                        }
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "id": "settings_renderer-popup-scroll-thumb",
+                                    "type": "group",
+                                    "properties": {
+                                      "position": {
+                                        "type": "keyword",
+                                        "value": "absolute"
+                                      },
+                                      "display": {
+                                        "type": "keyword",
+                                        "value": "block"
+                                      },
+                                      "box-sizing": {
+                                        "type": "keyword",
+                                        "value": "border-box"
+                                      },
+                                      "left": {
+                                        "type": "length",
+                                        "value": 0,
+                                        "unit": "dp"
+                                      },
+                                      "top": {
+                                        "type": "length",
+                                        "value": 0,
+                                        "unit": "dp"
+                                      },
+                                      "width": {
+                                        "type": "length",
+                                        "value": 36,
+                                        "unit": "dp"
+                                      },
+                                      "height": {
+                                        "type": "length",
+                                        "value": 36,
+                                        "unit": "dp"
+                                      },
+                                      "opacity": {
+                                        "type": "number",
+                                        "value": 1
+                                      }
+                                    },
+                                    "children": [
+                                      {
+                                        "id": "settings_renderer-popup-scroll-base",
+                                        "type": "vector",
+                                        "properties": {
+                                          "position": {
+                                            "type": "keyword",
+                                            "value": "absolute"
+                                          },
+                                          "display": {
+                                            "type": "keyword",
+                                            "value": "block"
+                                          },
+                                          "box-sizing": {
+                                            "type": "keyword",
+                                            "value": "border-box"
+                                          },
+                                          "left": {
+                                            "type": "length",
+                                            "value": 0,
+                                            "unit": "dp"
+                                          },
+                                          "top": {
+                                            "type": "length",
+                                            "value": 0,
+                                            "unit": "dp"
+                                          },
+                                          "width": {
+                                            "type": "length",
+                                            "value": 100,
+                                            "unit": "%"
+                                          },
+                                          "height": {
+                                            "type": "length",
+                                            "value": 100,
+                                            "unit": "%"
+                                          },
+                                          "pointer-events": {
+                                            "type": "keyword",
+                                            "value": "none"
+                                          },
+                                          "opacity": {
+                                            "type": "number",
+                                            "value": 1
+                                          }
+                                        },
+                                        "paths": [
+                                          {
+                                            "id": "outline",
+                                            "commands": [
+                                              {
+                                                "id": "point-0",
+                                                "op": "move",
+                                                "points": [
+                                                  [
+                                                    14,
+                                                    0
+                                                  ]
+                                                ]
+                                              },
+                                              {
+                                                "id": "point-1",
+                                                "op": "line",
+                                                "points": [
+                                                  [
+                                                    26,
+                                                    0
+                                                  ]
+                                                ]
+                                              },
+                                              {
+                                                "id": "point-2",
+                                                "op": "line",
+                                                "points": [
+                                                  [
+                                                    26,
+                                                    {
+                                                      "fraction": 1,
+                                                      "dp": -4
+                                                    }
+                                                  ]
+                                                ]
+                                              },
+                                              {
+                                                "id": "point-3",
+                                                "op": "line",
+                                                "points": [
+                                                  [
+                                                    22,
+                                                    {
+                                                      "fraction": 1,
+                                                      "dp": 0
+                                                    }
+                                                  ]
+                                                ]
+                                              },
+                                              {
+                                                "id": "point-4",
+                                                "op": "line",
+                                                "points": [
+                                                  [
+                                                    10,
+                                                    {
+                                                      "fraction": 1,
+                                                      "dp": 0
+                                                    }
+                                                  ]
+                                                ]
+                                              },
+                                              {
+                                                "id": "point-5",
+                                                "op": "line",
+                                                "points": [
+                                                  [
+                                                    10,
+                                                    4
+                                                  ]
+                                                ]
+                                              },
+                                              {
+                                                "id": "close",
+                                                "op": "close"
+                                              }
+                                            ],
+                                            "fill": {
+                                              "type": "solid",
+                                              "color": {
+                                                "type": "color",
+                                                "value": [
+                                                  0.32,
+                                                  0.36,
+                                                  0.16,
+                                                  0.95
+                                                ]
+                                              }
+                                            },
+                                            "stroke": {
+                                              "paint": {
+                                                "type": "solid",
+                                                "color": {
+                                                  "type": "color",
+                                                  "value": [
+                                                    0.5451,
+                                                    0.5882,
+                                                    0.2941,
+                                                    1
+                                                  ]
+                                                }
+                                              },
+                                              "widthDp": 1,
+                                              "minimumPixels": 1,
+                                              "join": "miter"
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "id": "settings_renderer-popup-scroll-active",
+                                        "type": "vector",
+                                        "properties": {
+                                          "position": {
+                                            "type": "keyword",
+                                            "value": "absolute"
+                                          },
+                                          "display": {
+                                            "type": "keyword",
+                                            "value": "block"
+                                          },
+                                          "box-sizing": {
+                                            "type": "keyword",
+                                            "value": "border-box"
+                                          },
+                                          "left": {
+                                            "type": "length",
+                                            "value": 0,
+                                            "unit": "dp"
+                                          },
+                                          "top": {
+                                            "type": "length",
+                                            "value": 0,
+                                            "unit": "dp"
+                                          },
+                                          "width": {
+                                            "type": "length",
+                                            "value": 100,
+                                            "unit": "%"
+                                          },
+                                          "height": {
+                                            "type": "length",
+                                            "value": 100,
+                                            "unit": "%"
+                                          },
+                                          "pointer-events": {
+                                            "type": "keyword",
+                                            "value": "none"
+                                          },
+                                          "opacity": {
+                                            "type": "number",
+                                            "value": 0
+                                          }
+                                        },
+                                        "paths": [
+                                          {
+                                            "id": "outline",
+                                            "commands": [
+                                              {
+                                                "id": "point-0",
+                                                "op": "move",
+                                                "points": [
+                                                  [
+                                                    14,
+                                                    0
+                                                  ]
+                                                ]
+                                              },
+                                              {
+                                                "id": "point-1",
+                                                "op": "line",
+                                                "points": [
+                                                  [
+                                                    26,
+                                                    0
+                                                  ]
+                                                ]
+                                              },
+                                              {
+                                                "id": "point-2",
+                                                "op": "line",
+                                                "points": [
+                                                  [
+                                                    26,
+                                                    {
+                                                      "fraction": 1,
+                                                      "dp": -4
+                                                    }
+                                                  ]
+                                                ]
+                                              },
+                                              {
+                                                "id": "point-3",
+                                                "op": "line",
+                                                "points": [
+                                                  [
+                                                    22,
+                                                    {
+                                                      "fraction": 1,
+                                                      "dp": 0
+                                                    }
+                                                  ]
+                                                ]
+                                              },
+                                              {
+                                                "id": "point-4",
+                                                "op": "line",
+                                                "points": [
+                                                  [
+                                                    10,
+                                                    {
+                                                      "fraction": 1,
+                                                      "dp": 0
+                                                    }
+                                                  ]
+                                                ]
+                                              },
+                                              {
+                                                "id": "point-5",
+                                                "op": "line",
+                                                "points": [
+                                                  [
+                                                    10,
+                                                    4
+                                                  ]
+                                                ]
+                                              },
+                                              {
+                                                "id": "close",
+                                                "op": "close"
+                                              }
+                                            ],
+                                            "fill": {
+                                              "type": "solid",
+                                              "color": {
+                                                "type": "color",
+                                                "value": [
+                                                  0.8902,
+                                                  0.5373,
+                                                  0,
+                                                  1
+                                                ]
+                                              }
+                                            },
+                                            "stroke": {
+                                              "paint": {
+                                                "type": "solid",
+                                                "color": {
+                                                  "type": "color",
+                                                  "value": [
+                                                    0.5451,
+                                                    0.5882,
+                                                    0.2941,
+                                                    1
+                                                  ]
+                                                }
+                                              },
+                                              "widthDp": 1,
+                                              "minimumPixels": 1,
+                                              "join": "miter"
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ],
+                            "mask": {
+                              "paths": [
+                                {
+                                  "id": "cut-silhouette",
+                                  "commands": [
+                                    {
+                                      "id": "point-0",
+                                      "op": "move",
+                                      "points": [
+                                        [
+                                          6,
+                                          0
+                                        ]
+                                      ]
+                                    },
+                                    {
+                                      "id": "point-1",
+                                      "op": "line",
+                                      "points": [
+                                        [
+                                          {
+                                            "fraction": 1,
+                                            "dp": 0
+                                          },
+                                          0
+                                        ]
+                                      ]
+                                    },
+                                    {
+                                      "id": "point-2",
+                                      "op": "line",
+                                      "points": [
+                                        [
+                                          {
+                                            "fraction": 1,
+                                            "dp": 0
+                                          },
+                                          {
+                                            "fraction": 1,
+                                            "dp": -6
+                                          }
+                                        ]
+                                      ]
+                                    },
+                                    {
+                                      "id": "point-3",
+                                      "op": "line",
+                                      "points": [
+                                        [
+                                          {
+                                            "fraction": 1,
+                                            "dp": -6
+                                          },
+                                          {
+                                            "fraction": 1,
+                                            "dp": 0
+                                          }
+                                        ]
+                                      ]
+                                    },
+                                    {
+                                      "id": "point-4",
+                                      "op": "line",
+                                      "points": [
+                                        [
+                                          0,
+                                          {
+                                            "fraction": 1,
+                                            "dp": 0
+                                          }
+                                        ]
+                                      ]
+                                    },
+                                    {
+                                      "id": "point-5",
+                                      "op": "line",
+                                      "points": [
+                                        [
+                                          0,
+                                          6
+                                        ]
+                                      ]
+                                    },
+                                    {
+                                      "id": "close",
+                                      "op": "close"
+                                    }
+                                  ],
+                                  "fill": {
+                                    "type": "solid",
+                                    "color": {
+                                      "type": "color",
+                                      "value": [
+                                        1,
+                                        1,
+                                        1,
+                                        1
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        ],
+                        "control": {
+                          "role": "choice",
+                          "label": "#str_41103",
+                          "action": "edit.r_renderer",
+                          "states": {
+                            "default": "settings_renderer.default",
+                            "hover": "settings_renderer.hover",
+                            "focus": "settings_renderer.focus",
+                            "pressed": "settings_renderer.pressed",
+                            "disabled": "settings_renderer.disabled"
+                          },
+                          "value": {
+                            "state": "settings.draft.r_renderer"
+                          },
+                          "parts": {
+                            "popup": "settings_renderer-popup",
+                            "viewport": "settings_renderer-viewport",
+                            "content": "settings_renderer-content",
+                            "value": "settings_renderer-value"
+                          },
+                          "visibleRows": 2,
+                          "options": [
+                            {
+                              "id": "settings_renderer-option-0",
+                              "node": "settings_renderer-option-0",
+                              "label": "#str_41104",
+                              "labelIndex": 0,
+                              "value": "best",
+                              "parts": {
+                                "label": "settings_renderer-option-0-label",
+                                "selected": "settings_renderer-option-0-selected",
+                                "highlight": "settings_renderer-option-0-highlight"
+                              }
+                            },
+                            {
+                              "id": "settings_renderer-option-1",
+                              "node": "settings_renderer-option-1",
+                              "label": "#str_41104",
+                              "labelIndex": 1,
+                              "value": "arb2",
+                              "parts": {
+                                "label": "settings_renderer-option-1-label",
+                                "selected": "settings_renderer-option-1-selected",
+                                "highlight": "settings_renderer-option-1-highlight"
+                              }
+                            }
+                          ],
+                          "scrollbar": {
+                            "track": "settings_renderer-popup-scroll-track",
+                            "thumb": "settings_renderer-popup-scroll-thumb",
+                            "lineStep": 36,
+                            "minimumThumb": 36
+                          },
+                          "placementBounds": "settings-body"
+                        }
                       }
                     ]
                   }
@@ -82328,6 +85818,20 @@
       "value": {
         "state": "settings.baseline.r_lightGridPreload"
       }
+    },
+    "draftRenderer": {
+      "type": "string",
+      "initial": "",
+      "value": {
+        "state": "settings.draft.r_renderer"
+      }
+    },
+    "baselineRenderer": {
+      "type": "string",
+      "initial": "",
+      "value": {
+        "state": "settings.baseline.r_renderer"
+      }
     }
   },
   "aliases": {
@@ -82519,6 +86023,12 @@
     },
     "baselineLightGridPreload": {
       "variable": "baselineLightGridPreload"
+    },
+    "draftRenderer": {
+      "variable": "draftRenderer"
+    },
+    "baselineRenderer": {
+      "variable": "baselineRenderer"
     }
   }
 }

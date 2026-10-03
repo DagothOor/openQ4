@@ -42,6 +42,10 @@ bool EngineSettingsDisplayHost::SupportsRendererSelection() const {
 	renderRendererSelection_t selection{}; std::uint64_t serial = 0, epoch = 0;
 	return R_RendererModule_QueryRendererSelection(selection,serial,epoch);
 }
+bool EngineSettingsDisplayHost::RendererSelection(renderRendererSelection_t& selection, std::uint64_t& serial) const {
+	std::uint64_t epoch = 0;
+	return R_RendererModule_QueryRendererSelection(selection,serial,epoch);
+}
 bool EngineSettingsDisplayHost::RendererAgrees(const std::string& request, std::uint64_t& serial, std::string& error) const {
 	renderRendererSelection_t selection{}; std::uint64_t epoch = 0;
 	if (!R_RendererModule_QueryRendererSelection(selection,serial,epoch)) {
@@ -553,6 +557,8 @@ void EngineSettingsDisplayHost::StartupFrame(double now, bool allowWork) {
 		// frame-cap default, for instance).
 		if (blocked || !allowWork) return;
 		std::string error; const bool approved=startupConfirmed;
+		// Finishing clears the executor, so name it first.
+		const char* const executor=kind==Kind::Renderer?"renderer":"deferred";
 		if (kind==Kind::Renderer) {
 			const auto api=R_RendererModule_GetStatus().activeApi;
 			std::uint64_t serial=0;
@@ -571,12 +577,12 @@ void EngineSettingsDisplayHost::StartupFrame(double now, bool allowWork) {
 			}
 		}
 		if (!drift.empty() && cvarSystem->GetCVarBool("ui_retainedTrace"))
-			common->Printf("UI_SETTINGS_STARTUP %s=1 reasserted=%d\n",kind==Kind::Renderer?"renderer":"deferred",static_cast<int>(drift.size()));
+			common->Printf("UI_SETTINGS_STARTUP %s=1 reasserted=%d\n",executor,static_cast<int>(drift.size()));
 		if ((!drift.empty() && !settings.Write(drift,error)) || !ValidateOwned(effects.patch,startupTarget,error) ||
 			!CommitConfiguration(error) || !FinishJournal(error)) {
 			blocked=true; recoveryError=error; common->Warning("UI settings startup recovery: %s",error.c_str()); return;
 		}
-		if (cvarSystem->GetCVarBool("ui_retainedTrace")) common->Printf("UI_SETTINGS_STARTUP approved=%d %s=1\n",approved?1:0,kind==Kind::Renderer?"renderer":"deferred");
+		if (cvarSystem->GetCVarBool("ui_retainedTrace")) common->Printf("UI_SETTINGS_STARTUP approved=%d %s=1\n",approved?1:0,executor);
 		common->Printf("UI_SETTINGS startup_recovery=complete\n");
 		return;
 	}

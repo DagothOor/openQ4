@@ -107,9 +107,13 @@ native input, complete effects and the editor remain required. No gate closes.
 The [SYSTEM render-options increment](../ui/system-render-options.md) adds
 Preload Light Grids with its help and a status line naming what the loaded map
 does with its light grids. Apply completes it through the deferred executor
-without Keep/Revert, and the next map load uses it. The renderer fallback,
-display device, multi-monitor, refresh and resolution rows remain; `BEH-002`
-and `FLOW-002` stay partial.
+without Keep/Revert, and the next map load uses it. The following increment
+adds Renderer Fallback: the row drafts `r_renderer` (Auto or ARB2) and applies
+it through the renderer executor's checked restart. It is available where a
+presenting OpenGL renderer reports its selection, and a notice says when the
+renderer fell back from an unavailable or retired request. The display device,
+multi-monitor, refresh and resolution rows remain; `BEH-002` and `FLOW-002`
+stay partial.
 
 The [retained screen increment](../ui/retained-screens.md) builds the title
 screen, the single-player pause menu and the stock loading screens from

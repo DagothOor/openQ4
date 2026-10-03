@@ -1128,6 +1128,7 @@
 	"#str_230079"	"Ta mapa wczytuje siatki światła z góry."
 	"#str_230080"	"Ta mapa wczytuje siatki światła w miarę pojawiania się obszarów."
 	"#str_230081"	"Ta mapa nie ma wypalonych siatek światła."
+	"#str_230082"	"Wybrany renderer jest tu niedostępny; openQ4 używa obsługiwanego."
 	"#str_230100"	"Pozycja celowania"
 	"#str_230101"	"Pozycja chwytu"
 	"#str_230102"	"Spust"

@@ -186,6 +186,16 @@ void LightGridStatus(Service& service, StateValues& values) {
     values["settings.lightGrid.consumed"] = consumed; values["settings.lightGrid.effective"] = effective;
     values["settings.lightGrid.pending"] = pending;
 }
+// The renderer row: whether the renderer fallback can apply here, and whether
+// the running renderer reports a fallback (an unavailable or retired request
+// running the automatic pick).
+void RendererStatus(Service& service, StateValues& values) {
+    renderRendererSelection_t selection{}; std::uint64_t serial = 0;
+    const bool fallback = service.device.RendererSelection(selection,serial) &&
+        (selection.fallback == RENDER_SELECTION_UNAVAILABLE || selection.fallback == RENDER_SELECTION_LEGACY);
+    values["settings.renderer.available"] = service.device.SupportsRendererSelection();
+    values["settings.renderer.fallback"] = fallback;
+}
 const char* Message(SettingsCode code, SettingsPhase phase, bool dirty) {
     switch (code) {
         case SettingsCode::Busy: return "#str_230008";
@@ -561,7 +571,8 @@ const std::map<std::string,std::size_t>& UI_SettingsStateSchema() {
             {"settings.busy",1},{"settings.canApply",1},{"settings.message",2},{"settings.phase",0},{"settings.msaaAvailable",1},
             {"settings.request",2},{"settings.canConfirm",1},{"settings.canRevert",1},{"settings.canRetry",1},{"settings.remaining",0},{"settings.confirmationVisible",1},
             {"settings.lightGrid.committed",1},{"settings.lightGrid.mapLoaded",1},{"settings.lightGrid.consumed",1},
-            {"settings.lightGrid.effective",1},{"settings.lightGrid.pending",1}};
+            {"settings.lightGrid.effective",1},{"settings.lightGrid.pending",1},
+            {"settings.renderer.available",1},{"settings.renderer.fallback",1}};
         for (const auto& [key,type] : SystemSettingsHost::Schema()) {
             result.emplace("settings.draft."+key,type);
             result.emplace("settings.baseline."+key,type);
@@ -613,6 +624,7 @@ bool UI_SettingsRead(std::uint64_t owner, StateValues& values) {
     }
     if (own) {
         LightGridStatus(service,candidate);
+        RendererStatus(service,candidate);
         for (const auto& [key,value] : transaction.Draft()) candidate.emplace("settings.draft."+key,value);
         for (const auto& [key,value] : transaction.Baseline()) candidate.emplace("settings.baseline."+key,value);
     }

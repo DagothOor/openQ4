@@ -1119,6 +1119,7 @@
 	"#str_230079"	"Este mapa precarga su iluminación."
 	"#str_230080"	"Este mapa carga la iluminación a medida que las zonas se hacen visibles."
 	"#str_230081"	"Este mapa no tiene iluminación precalculada."
+	"#str_230082"	"El renderizador elegido no está disponible aquí; openQ4 usa uno compatible."
 	"#str_230100"	"Pose de apuntado"
 	"#str_230101"	"Pose de agarre"
 	"#str_230102"	"Gatillo"

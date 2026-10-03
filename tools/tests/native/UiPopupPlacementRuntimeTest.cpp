@@ -230,12 +230,12 @@ static void ProductionPopup(const std::string& source,const std::string& locales
         const bool loaded=runtime.LoadDocument(source,"guis/menu/settings/system.q4ui",diagnostics);
         for(const auto& d:diagnostics)std::fprintf(stderr,"%s: %s\n",d.pointer.c_str(),d.message.c_str());Check(loaded,"production framed SYSTEM loads");
         std::string error;double time=1;Viewport vp;vp.width=1280;vp.height=720;vp.displayScale=expansion==1?1.25f:2.f;
-        runtime.SetReducedMotion(true,time);Check(runtime.SetState({{"settings.open",true},{"settings.phase",1.},{"settings.busy",false},{"settings.confirmationVisible",false}},error,time),"real SYSTEM editing state");
+        runtime.SetReducedMotion(true,time);Check(runtime.SetState({{"settings.open",true},{"settings.phase",1.},{"settings.busy",false},{"settings.confirmationVisible",false},{"settings.renderer.available",true}},error,time),"real SYSTEM editing state");
         auto frame=[&]{time+=.02;++host.frame;runtime.Frame(vp,time);Check(host.errors==0,"no SYSTEM Runtime error");};
         auto key=[&](MenuInput input){runtime.MenuAction(input,true,time);runtime.MenuAction(input,false,time);};frame();
         for(unsigned layout=0;layout<(std::string(locale)=="english"?2u:1u);++layout) {
         if(layout){vp.width=800;vp.height=600;vp.displayScale=1;frame();}
-        for(const char* id:{"settings_preset","settings_postaa","settings_resolution_scale","settings_vsync"}) {
+        for(const char* id:{"settings_preset","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
             // The engine opens a dropdown while revealing the newly focused row is
             // still scrolling the panel, and pumps pointer motion before the next
             // paint. Neither may retire the opening before it is ever seen.

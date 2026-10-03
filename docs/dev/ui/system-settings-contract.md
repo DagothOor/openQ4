@@ -281,9 +281,11 @@ The normal retained adapter validates and dispatches these operations:
 Confirming, timeout and rollback are implemented transaction states. Display
 restarts apply through Keep/Revert confirmation, and the light-grid preload
 through the [deferred executor](settings-effect-execution.md#deferred-light-grid-executor).
-The renderer fallback applies through its renderer executor. Image reload,
-audio restart, the other renderer-resource settings and preset expansion are
-still refused before Apply writes. That includes changing `com_performancePreset`; a
+The renderer fallback applies through its renderer executor, and the page's
+[Renderer Fallback row](system-render-options.md#renderer-fallback) drafts it
+wherever that executor's admission passes. Image reload, audio restart, the
+other renderer-resource settings and preset expansion are still refused
+before Apply writes. That includes changing `com_performancePreset`; a
 pure complete profile expansion and Auto-Detect draft operation are still
 required. A batch mixing brightness with one refused field applies neither
 change, and a batch that needs two executors is refused with a notice asking

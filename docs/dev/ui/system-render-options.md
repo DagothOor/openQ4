@@ -1,8 +1,9 @@
 # SYSTEM render options
 
-The retained SYSTEM page's render options that take effect later than Apply.
-Today that is **Preload Light Grids** (`r_lightGridPreload`), which the next
-map load uses. The Renderer Fallback row follows in its own increment.
+The retained SYSTEM page's render options that apply through their own
+executors rather than a Keep/Revert question: **Preload Light Grids**
+(`r_lightGridPreload`), which the next map load uses, and **Renderer
+Fallback** (`r_renderer`), which restarts the renderer.
 
 ## Preload Light Grids
 
@@ -30,6 +31,39 @@ explanation, and the plate and focus frame grow around it.
   | The loaded map streams | `#str_230080` This map streams light grids as areas come into view. |
   | The map has no baked light grids | `#str_230081` This map has no baked light grids. |
 
+## Renderer Fallback
+
+The row sits last in the render column, after V-Sync, cloned from that choice:
+the label `#str_41103` and two options from `#str_41104`, Auto (`best`) and
+ARB2 (`arb2`), the values the settings catalog accepts from the page.
+
+- **Draft.** The choice proposes `r_renderer` through the existing
+  `edit.r_renderer` action, and the `draftRenderer`/`baselineRenderer` aliases
+  tell the draft from the applied choice. A request the page does not offer,
+  such as a retired back-end name from an old configuration, shows as typed
+  and selects no option until the player picks one.
+- **Apply.** The change completes through the
+  [renderer executor](settings-effect-execution.md#renderer-fallback-executor)
+  without a Keep/Revert question: the renderer restarts on the same display,
+  and the attempt completes once the renderer's own report agrees. A draft
+  that also changes display or preload settings is refused with the notice to
+  apply them separately.
+- **Availability.** Only a presenting OpenGL renderer that has reported its
+  selection can prove the change. Elsewhere (on Vulkan, which has one back
+  end, or while the renderer is not ready) the row is disabled and dims to
+  0.45, like MSAA. Focus passes over it, as over every disabled control.
+  While the page is busy an available row dims to 0.4 with the rest of its
+  column. Like V-Sync and the other restart-backed rows, a window the
+  recovery record cannot describe is still refused at Apply, before anything
+  is written: a borderless window on Wayland has no position to restore.
+- **Notice.** While the running renderer reports a fallback to its automatic
+  pick, because the request is unavailable here or names a retired back end,
+  a notice under the value reads `#str_230082`: "The selected renderer is
+  unavailable here; openQ4 is using a supported one." It describes the
+  applied renderer, so it hides while a different pick is drafted. It sits
+  inside the card, so focus reveals it, and the popup opens below it. On
+  Vulkan, where the row is disabled, a retired request still shows it.
+
 ## Service status
 
 The settings service publishes five owner-only Booleans, declared by the page:
@@ -50,13 +84,22 @@ the load set up; `effective` means it preloaded them, including a preload that
 left some areas out; `pending` means the committed choice differs from what
 the loaded map used.
 
-`tools/ui/update_system_render_options.py` owns the row, its help and status,
-the five state declarations, the aliases, the bindings and the feedback
-timelines, together with the confirmation title's recovery binding. The row
-follows the page's shared editing rule (open, editing, not busy, no
-confirmation, discard dialog or unconfirmed numeric draft) and dims to 0.4
-otherwise, like Irradiance Volumes. With the row in place
-`RETAINED_SYSTEM_MISSING_SETTINGS` no longer lists `r_lightGridPreload`.
+Two more owner-only Booleans describe the renderer row.
+`settings.renderer.available` is the renderer executor's own admission test:
+a ready, presenting OpenGL renderer with a selection report for its current
+module. `settings.renderer.fallback` is set while the renderer's latest report
+says it fell back from an unavailable or retired request to its automatic
+pick. Without a report, neither is set.
+
+`tools/ui/update_system_render_options.py` owns both rows, their help, status
+and notice lines, the seven state declarations, the aliases, the bindings and
+the feedback timelines, together with the confirmation title's recovery
+binding. Both rows follow the page's shared editing rule (open, editing, not
+busy, no confirmation, discard dialog or unconfirmed numeric draft) and dim to
+0.4 otherwise, like Irradiance Volumes and V-Sync. The renderer row also needs
+the renderer to be available. With both rows in place
+`RETAINED_SYSTEM_MISSING_SETTINGS` no longer lists `r_lightGridPreload` or
+`r_renderer`.
 
 ## Qualification
 
@@ -83,6 +126,40 @@ otherwise, like Irradiance Volumes. With the row in place
 Evidence: `.tmp/ui/system-render-options/validation-evidence.json`, SHA-256
 `092fe0eb98ffc56f6dc38fc2141b6bbe302f9620c37c1798ed9395e753f6b237`.
 
-This evidence covers the Preload Light Grids row only. The remaining SYSTEM
-rows, the editor round trip and the full platform, display and input matrix
-stay open.
+This evidence covers the Preload Light Grids row only.
+
+### Renderer Fallback
+
+- `tools/tests/ui_settings_service.py` drives the renderer status through a
+  session: no report, a reporting renderer, each reported fallback kind, a
+  fallback while the row cannot apply, the report going away and another
+  owner.
+- `tools/tests/native/UiSystemRenderOptionsTest.cpp` checks the exact `arb2`
+  proposal with no write, the aliases, the closed choice naming each option,
+  the row disabled and dimmed without a selection report, dimmed with its
+  column while the page is busy, and the notice: its own text inside the card
+  for a reported fallback, hidden while a different pick is drafted. A
+  retired request (`nv20`) shows as typed, selects no option and gives way
+  to Auto. At every size and density it reveals the whole card, the
+  notice included, and fits the label, value and notice. The other SYSTEM
+  choice tests (scrolling popups, popup placement and large text) now include
+  the row, with the fixtures publishing the capability as they do MSAA's.
+- `tools/tests/ui_settings_display_service.py` checks that the startup trace
+  names the executor that recovered. It used to read the executor after
+  finishing had cleared it, so a renderer recovery was traced as deferred.
+- In SP map loads of `game/airdefense2` with console verbs only, OpenGL
+  started on the retired `nv20` request. The notice showed under the
+  name. Applying Auto restarted the renderer (`request=best`), the journal
+  went Pending then Confirmed and the notice disappeared. Applying ARB2 then
+  restarted it again (`request=arb2`), and the configuration archived
+  `seta r_renderer "arb2"` with the journal removed. With the configuration
+  read-only, an ARB2 apply could not save, so the Confirmed record stayed. The
+  next launch replayed it and committed on the first full frame
+  (`UI_SETTINGS_STARTUP approved=1 renderer=1`). On Vulkan the row was
+  disabled at 0.45 and Accept left the draft unchanged.
+
+Evidence: `.tmp/ui/system-renderer-fallback/validation-evidence.json`, SHA-256
+`abf8cfcf300430ff6f2026b8eef18dff78a8869644bee56c1c6044ab8cf796a7`.
+
+The remaining SYSTEM rows, the editor round trip and the full platform,
+display and input matrix stay open.

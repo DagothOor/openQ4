@@ -1119,6 +1119,7 @@
 	"#str_230079"	"Tato mapa přednačítá své světelné mřížky."
 	"#str_230080"	"Tato mapa načítá světelné mřížky postupně, jak se oblasti zobrazují."
 	"#str_230081"	"Tato mapa nemá předpočítané světelné mřížky."
+	"#str_230082"	"Zvolený renderer tu není k dispozici; openQ4 používá podporovaný."
 	"#str_230100"	"Poloha míření"
 	"#str_230101"	"Poloha úchopu"
 	"#str_230102"	"Spoušť"

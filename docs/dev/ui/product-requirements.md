@@ -513,6 +513,8 @@ On engine `218745151e4778026c53c7cb034de6b5da478635` the retained SYSTEM page ga
 
 On engine `f88d8c7cfdfc2c9c116b1a45d66c8b7a78f26d12` the renderer fallback gains its executor: `r_renderer` applies automatically through a checked device restart on the captured display, proved by the renderer's own selection report, with schema-2 recovery and startup replay. The host, service and exact-value harnesses, a mutation pass and the full Meson suite qualify it. `BEH-002` gains partial evidence without a status change. Evidence: `.tmp/ui/renderer-fallback-executor/validation-evidence.json`, SHA-256 `7213f4abf2a342f6665306862afa3a19139c09e32e835795985a14866cbea819`.
 
+On engine `3219f4e5fb0e88ca64cc6b58841fb0703d8a1517` the retained SYSTEM page gains Renderer Fallback: the choice drafts `r_renderer` (Auto or ARB2) where the renderer executor admits it, shows a notice while the renderer reports a fallback from an unavailable or retired request, and applies through the executor's checked restart. The service and host harnesses, native page tests across seven locales, sizes and densities, a mutation pass and in-game OpenGL, cold-recovery and Vulkan runs qualify it. `FLOW-002` and `BEH-002` gain partial evidence without a status change. Evidence: `.tmp/ui/system-renderer-fallback/validation-evidence.json`, SHA-256 `abf8cfcf300430ff6f2026b8eef18dff78a8869644bee56c1c6044ab8cf796a7`.
+
 There are **87 partial, 252 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.

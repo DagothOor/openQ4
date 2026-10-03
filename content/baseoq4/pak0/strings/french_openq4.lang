@@ -1119,6 +1119,7 @@
 	"#str_230079"	"Cette carte précharge ses grilles de lumière."
 	"#str_230080"	"Cette carte charge ses grilles de lumière au fil des zones visibles."
 	"#str_230081"	"Cette carte n’a pas de grilles de lumière précalculées."
+	"#str_230082"	"Le moteur de rendu choisi n’est pas disponible ici ; openQ4 en utilise un autre pris en charge."
 	"#str_230100"	"Pose de visée"
 	"#str_230101"	"Pose de prise en main"
 	"#str_230102"	"Gâchette"

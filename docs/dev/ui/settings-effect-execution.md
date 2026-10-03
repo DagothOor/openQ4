@@ -503,7 +503,11 @@ SHA-256 `4909d049af40f5c7a8a8436bba2e85caffe6168b9ca676cb64ce213e90664598`.
 `r_renderer` (Renderer Fallback) applies through its own executor: a checked
 device restart on the display the renderer has now, proved by the renderer's
 own selection report. Like the deferred preload it completes automatically,
-with no Keep/Revert question.
+with no Keep/Revert question. The SYSTEM page drafts it from its
+[Renderer Fallback row](system-render-options.md#renderer-fallback), which is
+available exactly where the admission below passes. Like the display
+executor, Prepare can still refuse a window the recovery record cannot
+describe (a borderless window on Wayland), before anything is written.
 
 - **Admission.** A draft whose only non-immediate change is `r_renderer`
   needs an owning view and a renderer that can report its selection: a ready,
@@ -542,7 +546,9 @@ for a report that ignores the request, publishes nothing new or promotes past
 an explicit name, an unavailable fallback accepted, restore, startup in both
 directions with no display initialization or geometry lease, a disagreeing
 startup, a missing captured monitor, a Vulkan launch, a contradicting record
-and an exact subnormal rider. `tools/tests/ui_settings_service.py` drives the service
+and an exact subnormal rider. Startup completion is traced with the executor
+that recovered, read before finishing clears it.
+`tools/tests/ui_settings_service.py` drives the service
 route: mixed drafts refused, no report refused, and an automatic apply that
 restarts, commits and finishes. The exact-value list gains two renderer replay
 mutants.

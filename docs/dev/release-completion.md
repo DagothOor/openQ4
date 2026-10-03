@@ -600,6 +600,14 @@
   next map. If the game closes before the change is saved, the next launch
   finishes or undoes it.
 
+- The opt-in SYSTEM page adds **Renderer Fallback** at the end of its render
+  options: Auto, or ARB2 as the explicit rollback. Apply restarts the renderer
+  in place without a Keep/Revert question, and if the game closes before the
+  change is saved, the next launch finishes or undoes it. If your
+  configuration names a renderer openQ4 no longer ships, a note under the
+  choice says the game is using a supported one; pick Auto to clear it. The
+  choice works on OpenGL; Vulkan has a single renderer, so there it is dimmed.
+
 - The experimental SYSTEM page adds window and custom fullscreen width/height
   fields with localized whole-pixel validation. Custom dimensions select Custom
   resolution automatically. Unsupported display combinations remain editable

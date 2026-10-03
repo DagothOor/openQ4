@@ -1119,6 +1119,7 @@
 	"#str_230079"	"This map preloads its light grids."
 	"#str_230080"	"This map streams light grids as areas come into view."
 	"#str_230081"	"This map has no baked light grids."
+	"#str_230082"	"The selected renderer is unavailable here; openQ4 is using a supported one."
 	"#str_230100"	"Aim pose"
 	"#str_230101"	"Grip pose"
 	"#str_230102"	"Trigger"

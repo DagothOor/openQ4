@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 BOUNDARIES = r'''
 #include <cstring>
+#include <cstdarg>
 #include "tools/tests/native/FloatFlushMode.h"
 #include "src/ui/SettingsDisplayService.h"
 #include "src/framework/SettingsPersistence.h"
@@ -30,7 +31,12 @@ static int checks=0;
 static void Check(bool condition,const char* message) {
     ++checks;if(!condition){std::fprintf(stderr,"FAIL: %s\n",message);std::exit(1);}
 }
-struct Common { void Warning(const char*,...){trace.push_back("warning");} void Printf(const char*,...){trace.push_back("print");} } commonObject,*common=&commonObject;
+struct Common { void Warning(const char*,...){trace.push_back("warning");}
+    void Printf(const char* format,...){
+        char text[512]{};va_list args;va_start(args,format);std::vsnprintf(text,sizeof(text),format,args);va_end(args);
+        std::string line(text);if(!line.empty()&&line.back()=='\n')line.pop_back();trace.push_back("print:"+line);
+    } } commonObject,*common=&commonObject;
+static bool Traced(const std::string& line){return std::find(trace.begin(),trace.end(),"print:"+line)!=trace.end();}
 static std::map<std::string,std::string> files;
 static std::set<std::string> leases;
 static const std::string journalFile="E:/qualified/baseoq4/ui-settings-recovery.dat", lockFile="E:/qualified/baseoq4/.settings-recovery.lock";
@@ -154,7 +160,7 @@ CASES = r'''
 static std::string error;
 static StateValues Live(SystemSettingsHost& host){StateValues values;Check(host.Read(values,error),"read live catalog");return values;}
 static void ResetFixture(){
-    files.clear();leases.clear();geometryToken=0;readFailure=replaceFailure=replacePublishes=removeFailure=configFailure=changedSaveRoot=false;
+    files.clear();leases.clear();geometryToken=0;readFailure=replaceFailure=replacePublishes=removeFailure=configFailure=changedSaveRoot=traceEnabled=false;
     geometryFailure=geometryPartial=false;queryOkay=restartOkay=true;displayOrder={1,2};displayCount=2;primaryDisplay=1;currentDisplay=2;configWrites=restarts=initializations=0;archived.clear();
     Seed();localCVarSystem.variables.at("r_swapInterval").value="1";actual=Actual();actual.window.hidden=false;actual.window.focused=true;
     geometry={actual.window.windowX,actual.window.windowY,1280,720,actual.window.windowX,actual.window.windowY,1280,720,true};
@@ -463,8 +469,9 @@ static void DeferredCases(){
      Check(host.RecoveryActive() && !host.StartupActive() && configWrites==0 && files.contains(journalFile),"replayed values wait for a full frame before persistence");
      Check(host.InitializeDisplay(error) && initializations==0,"a deferred record never initializes a recorded display");
      host.StartupFrame(1,false);Check(configWrites==0 && files.contains(journalFile),"a loading frame never persists deferred recovery");
-     host.StartupFrame(1,true);
-     Check(configWrites==1 && !host.RecoveryActive() && !files.contains(journalFile) && leases.empty(),"a full frame commits the recovered choice then retires the record");}
+     traceEnabled=true;host.StartupFrame(1,true);
+     Check(configWrites==1 && !host.RecoveryActive() && !files.contains(journalFile) && leases.empty(),"a full frame commits the recovered choice then retires the record");
+     Check(Traced(std::string("UI_SETTINGS_STARTUP approved=")+(confirmed?"1":"0")+" deferred=1"),"the completion trace names the deferred executor");}
     for(bool confirmed:{false,true}){ResetFixture();SystemSettingsHost settings;auto a=DeferredForStartup(settings,confirmed);
      if(!confirmed)for(const auto& [key,value]:a.patch)localCVarSystem.variables.at(key).value=FormatPresentationValue(StatePresentation(a.baseline.at(key)));
      EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"startup replays the deferred record before the renderer");
@@ -617,8 +624,9 @@ static void RendererCases(){
      Check(host.InitializeDisplay(error) && initializations==0 && !geometryToken,"a renderer record initializes no recorded display and leases no geometry");
      PublishSelection(); // The renderer starts and resolves the recovered request.
      host.StartupFrame(1,false);Check(configWrites==0,"a loading frame never commits renderer recovery");
-     host.StartupFrame(1,true);
-     Check(configWrites==1 && !host.RecoveryActive() && !files.contains(journalFile),"a full frame with an agreeing selection commits and removes the record");}
+     traceEnabled=true;host.StartupFrame(1,true);
+     Check(configWrites==1 && !host.RecoveryActive() && !files.contains(journalFile),"a full frame with an agreeing selection commits and removes the record");
+     Check(Traced(std::string("UI_SETTINGS_STARTUP approved=")+(confirmed?"1":"0")+" renderer=1"),"the completion trace names the renderer executor");}
     {ResetFixture();SystemSettingsHost settings;RendererForStartup(settings,true);
      EngineSettingsDisplayHost host(settings);Check(host.Startup(error),"startup replays a renderer record that will disagree");
      selectionFault=1;PublishSelection();host.StartupFrame(1,true);
@@ -691,9 +699,9 @@ def main(production_mutations=(), emit_directory=None):
     names = ("bool Identifier(", "std::string PointerPart(", "void Diagnose(", "bool Utf8(",
              "bool LexicalForms(", "bool Parse(", "bool ValidStateValue(", "bool ParseStateValues(")
     validation = '\n'.join(document[document.index(name):document.index('bool Parse(', document.index(name))] if name == 'bool LexicalForms(' else function_body(document, name) for name in names)
-    support = host_test.SUPPORT.replace("static int writes=0;", "static std::vector<std::string> trace;\nstatic int writes=0;")
+    support = host_test.SUPPORT.replace("static int writes=0;", "static std::vector<std::string> trace;\nstatic bool traceEnabled=false;\nstatic int writes=0;")
     support = support.replace("++writes; if(key!=refuse)", '++writes;trace.push_back("cvar-write"); if(key!=refuse)')
-    support = support.replace('idCVar* Find(const char* name)', 'bool GetCVarBool(const char*){return false;}\n    int GetCVarInteger(const char* name){return std::atoi(FindInternal(name)->value.c_str());}\n    idCVar* Find(const char* name)')
+    support = support.replace('idCVar* Find(const char* name)', 'bool GetCVarBool(const char* name){return traceEnabled && std::string(name)=="ui_retainedTrace";}\n    int GetCVarInteger(const char* name){return std::atoi(FindInternal(name)->value.c_str());}\n    idCVar* Find(const char* name)')
     support = support.replace("static int displayCount=2;", "static int displayCount=2;static std::vector<unsigned> displayOrder{1,2};")
     support = support.replace("result[i]=i+1;", "result[i]=displayOrder.at(i);")
     support = support.replace("services.RefreshNativeWindowHandles=", 'services.PrepareWindowSystem=+[]{return true;};\n    services.RefreshNativeWindowHandles=')

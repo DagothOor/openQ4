@@ -23,7 +23,7 @@ only once the page offers every setting of the stock SYSTEM page, so the
 default never hides one. The session lists what it still lacks in
 `RETAINED_SYSTEM_MISSING_SETTINGS`, and the gate test keeps that list equal to
 what the two pages offer: today the display mode list, display device,
-multi-monitor, refresh rate and video quality rows.
+multi-monitor and refresh rate rows.
 
 `tools/tests/ui_retained_gate.py` holds the gate: it checks the CVar defaults,
 that every retained document path in the session is reached only behind the
@@ -850,8 +850,8 @@ connection traced the players they published. Evidence:
   change going back cannot be reversed, and the crumb of a title too long for
   the 13 dp floor (Italian, Polish) is cut at the step.
 - The SYSTEM page stays opt-in until it offers every stock setting: it still
-  lacks the display mode list, display device, multi-monitor, refresh rate and
-  video quality.
+  lacks the display mode list, display device, multi-monitor and refresh
+  rate.
 - The loading screen has no touch prompt (touch counts as desktop input).
   JOINING does not yet hand over to a Welcome menu. The arsenal fills in only
   where the map spawns its items: a listen server's own load, not a client

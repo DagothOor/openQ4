@@ -205,8 +205,8 @@ struct idCommonLocal {
 static struct DeviceData {
     SettingsDisplayObservation observation{1,1,0,0,0,true,false,true,false};
     bool held=false,startup=false,blocked=false,refusePrepare=false,refusePersist=false,refuseRestart=false,refuseFinish=false;
-    bool msaaSupported=true,automaticReady=true,receiptValid=false,rendererSelection=false;
-    renderLightGridLoadReceipt_t receipt{};std::uint64_t receiptSerial=0;
+    bool msaaSupported=true,automaticReady=true,receiptValid=false,rendererSelection=false,selectionReported=false;
+    renderLightGridLoadReceipt_t receipt{};std::uint64_t receiptSerial=0;renderRendererSelection_t selection{};
     int prepares=0,cancels=0,restarts=0,restores=0,observes=0,persists=0,finishes=0,startups=0,frames=0,shutdowns=0;
 } deviceData;
 class EngineSettingsDisplayHost final:public SettingsDisplayHost {
@@ -246,6 +246,9 @@ public:
     bool SupportsMultisampling()const{return deviceData.msaaSupported;}
     bool ReadyForAutomatic()const{return deviceData.automaticReady;}
     bool SupportsRendererSelection()const{return deviceData.rendererSelection;}
+    bool RendererSelection(renderRendererSelection_t& selection,std::uint64_t& serial)const{
+        if(!deviceData.selectionReported)return false;selection=deviceData.selection;serial=1;return true;
+    }
     bool LightGridLoad(renderLightGridLoadReceipt_t& receipt,std::uint64_t& serial)const{
         if(!deviceData.receiptValid)return false;receipt=deviceData.receipt;serial=deviceData.receiptSerial;return true;
     }
@@ -315,7 +318,8 @@ static std::uint64_t Pending() {
 }
 static void Validation() {
     const auto& schema=UI_SettingsStateSchema();
-    Check(schema.size()==32 && schema.at("settings.lightGrid.pending")==1 && schema.at("settings.lightGrid.mapLoaded")==1 && schema.at("settings.msaaAvailable")==1 && schema.at("settings.message")==2 && schema.at("settings.open")==1 &&
+    Check(schema.size()==34 && schema.at("settings.lightGrid.pending")==1 && schema.at("settings.lightGrid.mapLoaded")==1 && schema.at("settings.msaaAvailable")==1 && schema.at("settings.message")==2 && schema.at("settings.open")==1 &&
+          schema.at("settings.renderer.available")==1 && schema.at("settings.renderer.fallback")==1 &&
           schema.at("settings.phase")==0,"service status schema types");
     for(const auto& [key,type]:SystemSettingsHost::Schema())
         Check(schema.at("settings.draft."+key)==type && schema.at("settings.baseline."+key)==type,"typed snapshot schema");
@@ -897,6 +901,30 @@ static void LightGridStatus() {
     const auto other=UI_SettingsCreateOwner();StateValues values;
     Check(UI_SettingsRead(other,values) && !values.contains("settings.lightGrid.pending"),"other owners get no light-grid status");
 }
+// The renderer row's status: whether the fallback can apply here, and whether
+// the running renderer reports a fallback to its automatic pick.
+static void RendererState(std::uint64_t owner,bool available,bool fallback,const char* why) {
+    const auto values=Read(owner);
+    Check(values.at("settings.renderer.available")==StateValue(available) && values.at("settings.renderer.fallback")==StateValue(fallback),why);
+}
+static void RendererStatus() {
+    const auto owner=Begin();
+    RendererState(owner,false,false,"without a selection report there is no row and no notice");
+    deviceData.rendererSelection=true;
+    RendererState(owner,true,false,"a renderer that reports its selection offers the row");
+    deviceData.selectionReported=true;deviceData.selection={};
+    for(const auto& [kind,fallback]:{std::pair{RENDER_SELECTION_REQUESTED,false},std::pair{RENDER_SELECTION_UNAVAILABLE,true},std::pair{RENDER_SELECTION_LEGACY,true}}) {
+        deviceData.selection.fallback=kind;
+        RendererState(owner,true,fallback,"the notice follows the reported fallback");
+    }
+    deviceData.rendererSelection=false;
+    RendererState(owner,false,true,"a reported fallback shows while the row cannot apply");
+    deviceData.selectionReported=false;
+    RendererState(owner,false,false,"without a report there is no notice");
+    const auto other=UI_SettingsCreateOwner();StateValues values;
+    Check(UI_SettingsRead(other,values) && !values.contains("settings.renderer.available") && !values.contains("settings.renderer.fallback"),
+          "other owners get no renderer status");
+}
 // The renderer fallback restarts the device and completes automatically once
 // the renderer's selection agrees; it never mixes with another executor.
 static void RendererRoute() {
@@ -1225,7 +1253,7 @@ int main(int argc,char** argv) {
     else if(name=="deferred_close")DeferredClose();else if(name=="deferred_apply_exit")DeferredApplyExit();
     else if(name=="deferred_apply_exit_restore")DeferredApplyExitRestore();else if(name=="unsupported_effects")UnsupportedEffects();
     else if(name=="deferred_retry_renews")DeferredRetryRenews();else if(name=="light_grid_status")LightGridStatus();
-    else if(name=="renderer_route")RendererRoute();
+    else if(name=="renderer_route")RendererRoute();else if(name=="renderer_status")RendererStatus();
     else if(name=="exit_immediate")ExitImmediate(false);else if(name=="exit_noop")ExitImmediate(true);
     else if(name.starts_with("exit_invalidate_"))ExitInvalidate(name.substr(16));
     else if(name.starts_with("exit_failure_"))ExitFailure(name.substr(13));
@@ -1250,7 +1278,7 @@ SCENARIOS = (
     'timeout_frame', 'capability', 'msaa_capability', 'display_draft_preflight', 'display_keep', 'display_persist_failure',
     'display_close_queued', 'display_close_written', 'startup_shutdown', 'stale_display_actions', 'level_load_policy', 'level_load_unreadable',
     'deferred_apply', 'deferred_mixed', 'deferred_not_ready', 'deferred_persist_failure', 'deferred_close', 'deferred_apply_exit',
-    'deferred_apply_exit_restore', 'unsupported_effects', 'deferred_retry_renews', 'light_grid_status', 'renderer_route',
+    'deferred_apply_exit_restore', 'unsupported_effects', 'deferred_retry_renews', 'light_grid_status', 'renderer_route', 'renderer_status',
     'frame_outside','frame_skipped','frame_submit_only','frame_present_only',
     'frame_readback_before_draw','frame_readback_after_draw','frame_readback_during_end',
     'frame_nested','frame_aborted','frame_begin_aborted','frame_wrong_request','frame_shutdown',
