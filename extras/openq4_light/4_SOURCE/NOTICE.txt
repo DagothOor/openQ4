@@ -1,0 +1,16 @@
+The GLSL shaders in this package (glprogs/ssao.fs, glprogs/lightgrid_indirect.fs)
+are modified versions of the shaders shipped with openQ4
+(https://github.com/themuffinator/openQ4), which is licensed under the
+GNU General Public License version 3. The modified shaders are distributed under
+the same licence; the full text is in LICENSE_GPL-3.0.txt.
+
+Changes: GTAO (Jimenez et al. 2016) instead of the stock SSAO, per-frame noise for
+TAA, 2x2 quad filter, finite occluder thickness, multi-bounce correction; shadow
+fill floor and GTAO applied to the baked indirect light only; backface probe
+weighting for probes inside entity models.
+
+Each .pk4 file is a plain zip archive; the shader sources inside are the same as
+in this folder.
+
+Quake 4 is a trademark of id Software / ZeniMax Media. No Quake 4 game data is
+included in this package.
