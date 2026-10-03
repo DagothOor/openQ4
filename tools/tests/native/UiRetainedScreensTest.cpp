@@ -137,7 +137,7 @@ static void CheckSchema() {
 
 static const std::set<std::string> SessionCommands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
 	"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
-	"mpClose","mpMainMenu","mpDisconnect","mpStockPage"};
+	"mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction"};
 
 static void CheckSessionActions(const Document& document) {
 	for (const auto& [id,action] : document.Model().actions) {
@@ -231,6 +231,16 @@ static void CheckEscape(ScreenHost& host, const char* path) {
 	}
 	Check(cardWidth >= 648-.5f && cardWidth <= 928+.5f,"the card is at least the specified 648 dp and fits a 4:3 view");
 	viewport.width = 1280; viewport.height = 720;
+	// The game publishes the Team page before the card opens: on a team, a
+	// switch it allows with the sizes it would leave, a spectate it refuses
+	// with its reason, and no third action.
+	Check(runtime.SetState({{"mp.team.band",std::string("MARINES")},{"mp.team.band_color",0.0},{"mp.team.band_score",std::string("12")},
+		{"mp.team.band_detail",std::string("4 - 3")},
+		{"mp.action0.shown",true},{"mp.action0.available",true},{"mp.action0.label",std::string("SWITCH TEAM")},
+		{"mp.action0.detail",std::string("MARINES 3 - 4 STROGG")},
+		{"mp.action1.shown",true},{"mp.action1.available",false},{"mp.action1.label",std::string("SPECTATE")},
+		{"mp.action1.reason",std::string("Spectating is disabled on this server.")},
+		{"mp.action2.shown",false},{"mp.chat0",std::string("Anderson: gg")}},error,1.5),"publish the Team page");
 	// Opening: the softening ramps over 250 ms while the card rises 12 dp and
 	// fades in over 150 ms; the current page's primary action takes focus.
 	host.softFocus = true;
@@ -248,7 +258,28 @@ static void CheckEscape(ScreenHost& host, const char* path) {
 	Check(Near(number("scene-softfocus","backdrop-blur"),7.5f,.01f) && Near(number("scene-softfocus","backdrop-saturate"),.8f,.001f),
 		"softened at 250 ms with modal.softfocus's values");
 	Check(text("scene-softfocus","display") == "block" && text("scrim","display") == "none","soft focus replaces the scrim");
-	Check(runtime.FocusedControl() == "page-team-open","the first page's primary action has focus");
+	Check(runtime.FocusedControl() == "team-slot-0","the Team page's first action has focus");
+	// The Team page: the band in the team's color, an available action with
+	// its detail, an unavailable one dimmed with its lock and reason, and a
+	// slot the game leaves empty hidden.
+	Check(text("team-band-0","display") == "block" && text("team-band-1","display") == "none","the band takes the team's color");
+	Check(text("team-slot-0-detail","display") == "block" && text("team-slot-0-reason","display") == "none" &&
+		text("team-slot-0-lock","display") == "none" && Near(number("team-slot-0","opacity"),1,.001f),"an available action shows its detail");
+	Check(text("team-slot-1-reason","display") == "block" && text("team-slot-1-lock","display") == "block" &&
+		Near(number("team-slot-1","opacity"),.6f,.001f),"an unavailable one dims with its lock and reason");
+	Check(text("team-slot-2-slot","display") == "none","an empty slot is hidden");
+	const auto slot0 = bounds("team-slot-0-slot"), slot1 = bounds("team-slot-1-slot");
+	Check(slot1.y >= slot0.y+slot0.height,"the actions stack without overlap");
+	Check(runtime.RunEvent("team_slot_0",2.31,effects,error) && effects.actions.size() == 1 &&
+		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpTeamAction" &&
+		std::get<double>(runtime.GetState().at("card.team_action")) == 0,"an available action asks the game");
+	Check(runtime.RunEvent("team_slot_1",2.32,effects,error) && effects.actions.empty(),"an unavailable one does not");
+	runtime.Frame(viewport,2.37);
+	const auto shaking = runtime.PresentedValue("team-slot-1-slot","transform");
+	Check(shaking && std::abs(shaking->data[0]) > .5f,"it shakes instead");
+	runtime.Frame(viewport,2.7);
+	const auto settled = runtime.PresentedValue("team-slot-1-slot","transform");
+	Check(settled && Near(static_cast<float>(settled->data[0]),0,.01f),"and settles after 300 ms");
 	// Each tab: the strip lays its tabs in order without overlap inside the
 	// card, and only the current tab rises.
 	const auto card = bounds("card");
@@ -299,6 +330,20 @@ static void CheckEscape(ScreenHost& host, const char* path) {
 	Check(runtime.FocusedControl() == "disconnectModal_no","the confirmation's NO has focus");
 	Check(runtime.RunEvent("disconnectModalHide",6.4,effects,error),"NO closes it");
 	runtime.Frame(viewport,6.8);
+	// The Server page: its rules and rotation, the current map in orange and
+	// the slots past the rotation hidden; its tab keeps the focus.
+	Check(runtime.SetState({{"mp.server.name",std::string("openQ4 test")},{"mp.server.message",std::string("Welcome\nRules: be fair")},
+		{"mp.rule0",std::string("Team Deathmatch")},{"mp.rotation0",std::string("The Fragging Yard")},{"mp.rotation1",std::string("Lost Fleet")},
+		{"mp.rotation2",std::string("Bloodwork")},{"mp.rotation_count",3.0},{"mp.rotation_current",1.0}},error,6.85),"publish the Server page");
+	Check(runtime.RunEvent("tab_server",6.9,effects,error),"to the Server tab");
+	runtime.Frame(viewport,7.06);
+	Check(runtime.FocusedControl() == "tab-server","the Server page's tab keeps the focus");
+	const auto current = runtime.PresentedValue("server-rotation-1","color"), other = runtime.PresentedValue("server-rotation-0","color");
+	Check(current && Near(static_cast<float>(current->data[0]),.89f,.01f) && other && Near(static_cast<float>(other->data[3]),.7f,.01f),
+		"the current map is orange");
+	Check(text("server-rotation-2","display") == "block" && text("server-rotation-3","display") == "none","only the rotation's maps show");
+	const auto message = bounds("server-message"), rules = bounds("server-rule-0");
+	Check(message.y+message.height <= rules.y+.5f,"the message stays above the rules");
 	// A long map name clips before the header's trailing texts.
 	Check(runtime.SetState({{"mp.title",std::string(60,'W')},{"mp.mode",std::string("Team Deathmatch")},{"mp.clock",std::string("9:48")},
 		{"mp.score",std::string("MARINES 0 - 0 STROGG")}},error,7),"publish the header");

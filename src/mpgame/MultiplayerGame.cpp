@@ -15650,56 +15650,422 @@ void idMultiplayerGame::SetRetainedMenuCover( bool covered, idUserInterface *car
 		return;
 	}
 	retainedMenuCovered = true;
-	for ( int i = 0; i < 4; i++ ) {
-		retainedMenuPublished[ i ].Clear();
-	}
+	retainedMenuPublished.Clear();
 	PublishRetainedMenu( card );
+}
+
+/*
+================
+MPRetainedPlainText
+
+Player and server text for the card: colour codes, controls and malformed
+UTF-8 dropped, tabs as spaces, at most `maxLines` lines in `maxBytes` bytes,
+and a leading "#str_" broken so a name never translates. The session keeps
+the same rule for the loading screen's server card.
+================
+*/
+static idStr MPRetainedPlainText( const char *text, int maxBytes, int maxLines ) {
+	idStr plain = text != NULL ? text : "";
+	plain.RemoveEscapes();
+	idStr out;
+	int lines = 1;
+	for ( int i = 0; i < plain.Length(); i++ ) {
+		const unsigned char c = static_cast<unsigned char>( plain[ i ] );
+		if ( c == '\n' || c == '\t' ) {
+			const char last = out.Length() > 0 ? out[ out.Length() - 1 ] : '\n';
+			if ( c != '\t' && lines < maxLines && last != '\n' ) {
+				lines++;
+				out += '\n';
+			} else if ( last != '\n' && last != ' ' && out.Length() < maxBytes ) {
+				out += ' ';
+			}
+			continue;
+		}
+		if ( c < 0x20 || c == 0x7f || ( c >= 0x80 && c < 0xc0 ) || c >= 0xf8 ||
+			( c == ' ' && ( out.Length() == 0 || out[ out.Length() - 1 ] == '\n' ) ) ) {
+			continue;
+		}
+		const int length = c >= 0xf0 ? 4 : c >= 0xe0 ? 3 : c >= 0xc0 ? 2 : 1;
+		bool whole = i + length <= plain.Length();
+		for ( int byte = 1; whole && byte < length; byte++ ) {
+			whole = ( static_cast<unsigned char>( plain[ i + byte ] ) & 0xc0 ) == 0x80;
+		}
+		if ( !whole ) {
+			continue;
+		}
+		if ( out.Length() + length > maxBytes ) {
+			break;
+		}
+		out.Append( plain.c_str() + i, length );
+		i += length - 1;
+	}
+	while ( out.Length() > 0 && ( out[ out.Length() - 1 ] == '\n' || out[ out.Length() - 1 ] == ' ' ) ) {
+		out.CapLength( out.Length() - 1 );
+	}
+	if ( idStr::Icmpn( out.c_str(), "#str_", 5 ) == 0 ) {
+		out.Insert( ' ', 0 );
+	}
+	return out;
+}
+
+/*
+================
+idMultiplayerGame::TeamJoinRefusal
+
+Joining `team` is refused when the player is on it already, or, with
+si_autoBalance, when it has more players than the other team without them
+(the stock CheckTeamBalance rule).
+================
+*/
+const char *idMultiplayerGame::TeamJoinRefusal( int team ) {
+	idPlayer *localPlayer = gameLocal.GetLocalPlayer();
+	if ( localPlayer == NULL || team < 0 || team >= TEAM_MAX ) {
+		return NULL;
+	}
+	static const char *const already[ TEAM_MAX ] = { "#str_202040", "#str_202042" };
+	static const char *const full[ TEAM_MAX ] = { "#str_202039", "#str_202041" };
+	if ( localPlayer->team == team && !localPlayer->spectating ) {
+		return already[ team ];
+	}
+	if ( !gameLocal.serverInfo.GetBool( "si_autoBalance" ) || !gameLocal.IsTeamGame() ) {
+		return NULL;
+	}
+	int teamCount[ TEAM_MAX ] = { 0, 0 };
+	for ( int i = 0; i < gameLocal.numClients; ++i ) {
+		idEntity *ent = gameLocal.entities[ i ];
+		if ( ent && ent->IsType( idPlayer::GetClassType() ) && IsInGame( i ) && ent != localPlayer ) {
+			idPlayer *candidate = static_cast< idPlayer * >( ent );
+			if ( !candidate->spectating && candidate->team >= 0 && candidate->team < TEAM_MAX ) {
+				teamCount[ candidate->team ]++;
+			}
+		}
+	}
+	return teamCount[ team ] > teamCount[ 1 - team ] ? full[ team ] : NULL;
+}
+
+/*
+================
+idMultiplayerGame::AutoJoinTeam
+
+The team "join auto" picks: the one with fewer players in it, Marines on a
+tie (JoinTeam's own rule).
+================
+*/
+int idMultiplayerGame::AutoJoinTeam( void ) {
+	int teamCount[ TEAM_MAX ] = { 0, 0 };
+	for ( int i = 0; i < gameLocal.numClients; i++ ) {
+		idEntity *ent = gameLocal.entities[ i ];
+		if ( ent && ent->IsType( idPlayer::GetClassType() ) ) {
+			idPlayer *candidate = static_cast< idPlayer * >( ent );
+			if ( !candidate->spectating && candidate->team >= 0 && candidate->team < TEAM_MAX ) {
+				teamCount[ candidate->team ]++;
+			}
+		}
+	}
+	return teamCount[ TEAM_STROGG ] < teamCount[ TEAM_MARINE ] ? TEAM_STROGG : TEAM_MARINE;
+}
+
+/*
+================
+idMultiplayerGame::PredictNextMap
+
+The map after the current one in si_mapCycle, wrapping, as
+idGameLocal::NextMap picks it; "" without a cycle.
+================
+*/
+idStr idMultiplayerGame::PredictNextMap( void ) const {
+	idStrList maps;
+	idStr cycle = gameLocal.serverInfo.GetString( "si_mapCycle" );
+	cycle.Replace( ";", " " );
+	idLexer src( cycle.c_str(), cycle.Length(), "PredictNextMap", LEXFL_NOFATALERRORS | LEXFL_ALLOWPATHNAMES | LEXFL_NOERRORS );
+	idToken token;
+	while ( src.ReadToken( &token ) ) {
+		maps.Append( token );
+	}
+	if ( maps.Num() == 0 ) {
+		return "";
+	}
+	const char *current = gameLocal.serverInfo.GetString( "si_map" );
+	for ( int i = 0; i < maps.Num(); i++ ) {
+		if ( maps[ i ].Icmp( current ) == 0 ) {
+			return maps[ ( i + 1 ) % maps.Num() ];
+		}
+	}
+	return maps[ 0 ];
+}
+
+/*
+================
+idMultiplayerGame::RetainedTeamSlots
+
+The Team page's actions for the local player now: on a team, Switch team
+(with the sizes it would leave), Spectate and Ready; spectating a team mode,
+join the team auto join picks, then the other; outside team modes, Join game
+or Spectate, and Ready. Each says why when it is unavailable.
+================
+*/
+void idMultiplayerGame::RetainedTeamSlots( retainedTeamSlot_t slots[ RETAINED_TEAM_SLOTS ] ) {
+	for ( int i = 0; i < RETAINED_TEAM_SLOTS; i++ ) {
+		slots[ i ].action = RTA_NONE;
+		slots[ i ].label.Clear();
+		slots[ i ].reason.Clear();
+		slots[ i ].detail.Clear();
+		slots[ i ].available = false;
+	}
+	idPlayer *player = gameLocal.GetLocalPlayer();
+	if ( player == NULL ) {
+		return;
+	}
+	static const char *const teamTitles[ TEAM_MAX ] = { "#str_200197", "#str_200199" };
+	const bool spectating = player->spectating;
+	const auto spectate = [&]( retainedTeamSlot_t &slot ) {
+		slot.action = RTA_SPECTATE;
+		slot.label = common->GetLocalizedString( "#str_200195" );
+		slot.available = gameLocal.serverInfo.GetBool( "si_spectators" );
+		if ( !slot.available ) {
+			slot.reason = common->GetLocalizedString( "#str_231020" );
+		}
+	};
+	const auto ready = [&]( retainedTeamSlot_t &slot ) {
+		slot.action = RTA_READY;
+		const bool isReady = !idStr::Icmp( cvarSystem->GetCVarString( "ui_ready" ), "Ready" );
+		slot.label = common->GetLocalizedString( isReady ? "#str_231018" : "#str_231017" );
+		slot.available = gameLocal.serverInfo.GetBool( "si_useReady" ) && gameState->GetMPGameState() == WARMUP;
+		if ( !slot.available ) {
+			slot.reason = common->GetLocalizedString( "#str_231019" );
+		}
+	};
+	const auto join = [&]( retainedTeamSlot_t &slot, int team, retainedTeamAction_t action ) {
+		slot.action = action;
+		slot.label = va( common->GetLocalizedString( "#str_231015" ), common->GetLocalizedString( teamTitles[ team ] ) );
+		const char *refusal = TeamJoinRefusal( team );
+		slot.available = refusal == NULL;
+		if ( refusal != NULL ) {
+			slot.reason = common->GetLocalizedString( refusal );
+		}
+	};
+	if ( gameLocal.IsTeamGame() ) {
+		if ( !spectating && player->team >= 0 && player->team < TEAM_MAX ) {
+			const int other = 1 - player->team;
+			retainedTeamSlot_t &swap = slots[ 0 ];
+			swap.action = other == TEAM_MARINE ? RTA_JOIN_MARINE : RTA_JOIN_STROGG;
+			swap.label = common->GetLocalizedString( "#str_231014" );
+			const char *refusal = TeamJoinRefusal( other );
+			swap.available = refusal == NULL;
+			if ( refusal != NULL ) {
+				swap.reason = common->GetLocalizedString( refusal );
+			}
+			int teamCount[ TEAM_MAX ] = { 0, 0 };
+			NumActualClients( false, teamCount );
+			teamCount[ player->team ]--;
+			teamCount[ other ]++;
+			swap.detail = va( "%s %d - %d %s", common->GetLocalizedString( teamTitles[ TEAM_MARINE ] ), teamCount[ TEAM_MARINE ],
+				teamCount[ TEAM_STROGG ], common->GetLocalizedString( teamTitles[ TEAM_STROGG ] ) );
+			spectate( slots[ 1 ] );
+			ready( slots[ 2 ] );
+		} else {
+			const int first = AutoJoinTeam();
+			join( slots[ 0 ], first, RTA_JOIN_AUTO );
+			join( slots[ 1 ], 1 - first, 1 - first == TEAM_MARINE ? RTA_JOIN_MARINE : RTA_JOIN_STROGG );
+		}
+	} else if ( spectating ) {
+		retainedTeamSlot_t &enter = slots[ 0 ];
+		enter.action = RTA_JOIN_AUTO;
+		enter.label = common->GetLocalizedString( "#str_231016" );
+		enter.available = true;
+	} else {
+		spectate( slots[ 0 ] );
+		ready( slots[ 1 ] );
+	}
+}
+
+bool idMultiplayerGame::PublishRetainedValue( idUserInterface *card, const char *key, const char *value ) {
+	if ( retainedMenuPublished.FindKey( key ) != NULL && !idStr::Cmp( retainedMenuPublished.GetString( key ), value ) ) {
+		return false;
+	}
+	retainedMenuPublished.Set( key, value );
+	card->SetStateString( key, value );
+	return true;
 }
 
 /*
 ================
 idMultiplayerGame::PublishRetainedMenu
 
-The card's header (section 14.18): the map, the mode, the clock and the
-score, written only when one changes, with a new mp.revision so the session
-publishes them. Team modes read "MARINES 12 - 9 STROGG" with the player's
-team first; other modes give the player's place and score.
+The card's state (section 14.18), written only where it changed, with a new
+mp.revision so the session publishes it. The header holds the map, the mode,
+the clock and the score: "MARINES 12 - 9 STROGG" with the player's team
+first in team modes, the player's place and score in the others. The Team
+page holds the player's band, three actions with what they would do or why
+they cannot, and the last three chat lines; the Server page the server's
+name, address and message, seven rules and the map rotation.
 ================
 */
 void idMultiplayerGame::PublishRetainedMenu( idUserInterface *card ) {
 	if ( card == NULL || !retainedMenuCovered ) {
 		return;
 	}
+	bool changed = false;
+	const auto publish = [&]( const char *key, const char *value ) { changed |= PublishRetainedValue( card, key, value ); };
 	idStr mapName;
-	idStr texts[ 4 ];
-	texts[ 0 ] = ResolveScoreboardMapName( gameLocal.serverInfo.GetString( "si_map" ), mapName );
-	texts[ 1 ] = LocalizeGametype();
-	texts[ 2 ] = GameTime();
+	publish( "mp.title", ResolveScoreboardMapName( gameLocal.serverInfo.GetString( "si_map" ), mapName ) );
+	publish( "mp.mode", LocalizeGametype() );
+	publish( "mp.clock", GameTime() );
+	static const char *const teamTitles[ TEAM_MAX ] = { "#str_200197", "#str_200199" };
 	idPlayer *player = gameLocal.GetLocalPlayer();
+	const bool playing = player != NULL && !player->spectating;
+	idStr score;
 	if ( gameLocal.IsTeamGame() ) {
-		static const char *const teamNames[ TEAM_MAX ] = { "#str_200197", "#str_200199" };
 		int first = TEAM_MARINE;
-		if ( player != NULL && !player->spectating && player->team == TEAM_STROGG ) {
+		if ( playing && player->team == TEAM_STROGG ) {
 			first = TEAM_STROGG;
 		}
 		const int second = first == TEAM_MARINE ? TEAM_STROGG : TEAM_MARINE;
-		texts[ 3 ] = va( "%s %d - %d %s", common->GetLocalizedString( teamNames[ first ] ), GetScoreForTeam( first ),
-			GetScoreForTeam( second ), common->GetLocalizedString( teamNames[ second ] ) );
-	} else if ( player != NULL && !player->spectating ) {
-		texts[ 3 ] = GetPlayerRankText( player );
+		score = va( "%s %d - %d %s", common->GetLocalizedString( teamTitles[ first ] ), GetScoreForTeam( first ),
+			GetScoreForTeam( second ), common->GetLocalizedString( teamTitles[ second ] ) );
+	} else if ( playing ) {
+		score = GetPlayerRankText( player );
 	}
-	static const char *const keys[ 4 ] = { "mp.title", "mp.mode", "mp.clock", "mp.score" };
-	bool changed = false;
-	for ( int i = 0; i < 4; i++ ) {
-		if ( texts[ i ].Cmp( retainedMenuPublished[ i ] ) != 0 ) {
-			retainedMenuPublished[ i ] = texts[ i ];
-			card->SetStateString( keys[ i ], texts[ i ].c_str() );
-			changed = true;
+	publish( "mp.score", score.c_str() );
+
+	// The Team page's band: the player's team in its colour with its score
+	// and both teams' sizes; spectators and deathmatch get their own band.
+	int teamCount[ TEAM_MAX ] = { 0, 0 };
+	const int players = NumActualClients( false, teamCount );
+	if ( gameLocal.IsTeamGame() && playing && player->team >= 0 && player->team < TEAM_MAX ) {
+		publish( "mp.team.band", common->GetLocalizedString( teamTitles[ player->team ] ) );
+		publish( "mp.team.band_color", va( "%d", player->team ) );
+		publish( "mp.team.band_score", va( "%d", GetScoreForTeam( player->team ) ) );
+		publish( "mp.team.band_detail", va( "%d - %d", teamCount[ player->team ], teamCount[ 1 - player->team ] ) );
+	} else if ( !playing ) {
+		publish( "mp.team.band", common->GetLocalizedString( "#str_200281" ) );
+		publish( "mp.team.band_color", "2" );
+		publish( "mp.team.band_score", "" );
+		publish( "mp.team.band_detail", gameLocal.IsTeamGame() ? va( "%d - %d", teamCount[ TEAM_MARINE ], teamCount[ TEAM_STROGG ] ) : va( "%d", players ) );
+	} else {
+		bool tied = false;
+		const int rank = GetPlayerRank( player, tied );
+		publish( "mp.team.band", common->GetLocalizedString( "#str_200038" ) );
+		publish( "mp.team.band_color", "3" );
+		publish( "mp.team.band_score", va( "%d", GetScore( player ) ) );
+		publish( "mp.team.band_detail", va( "%d / %d", rank + 1, players ) );
+	}
+	retainedTeamSlot_t slots[ RETAINED_TEAM_SLOTS ];
+	RetainedTeamSlots( slots );
+	for ( int i = 0; i < RETAINED_TEAM_SLOTS; i++ ) {
+		publish( va( "mp.action%d.shown", i ), slots[ i ].action != RTA_NONE ? "1" : "0" );
+		publish( va( "mp.action%d.available", i ), slots[ i ].available ? "1" : "0" );
+		publish( va( "mp.action%d.label", i ), slots[ i ].label.c_str() );
+		publish( va( "mp.action%d.reason", i ), slots[ i ].reason.c_str() );
+		publish( va( "mp.action%d.detail", i ), slots[ i ].detail.c_str() );
+	}
+	// The last three chat lines, oldest first.
+	idStrList chat;
+	for ( int start = 0; start < chatHistory.Length(); ) {
+		int end = chatHistory.Find( '\n', start );
+		if ( end < 0 ) {
+			end = chatHistory.Length();
 		}
+		if ( end > start ) {
+			chat.Append( chatHistory.Mid( start, end - start ) );
+		}
+		start = end + 1;
 	}
+	for ( int i = 0; i < 3; i++ ) {
+		const int line = chat.Num() - 3 + i;
+		publish( va( "mp.chat%d", i ), line >= 0 ? MPRetainedPlainText( chat[ line ].c_str(), 160, 1 ).c_str() : "" );
+	}
+
+	// The Server page.
+	const idDict &si = gameLocal.serverInfo;
+	publish( "mp.server.name", MPRetainedPlainText( si.GetString( "si_name" ), 96, 1 ).c_str() );
+	publish( "mp.server.address", MPRetainedPlainText( networkSystem->GetServerAddress(), 64, 1 ).c_str() );
+	publish( "mp.server.message", MPRetainedPlainText( si.GetString( "si_motd" ), 256, 3 ).c_str() );
+	const char *limitLabel = "";
+	int limitValue = 0;
+	MPResolveMatchLimit( limitLabel, limitValue );
+	idStr limits;
+	if ( limitValue > 0 ) {
+		limits = va( "%s %d", limitLabel, limitValue );
+	}
+	if ( si.GetInt( "si_timeLimit" ) > 0 ) {
+		limits += limits.Length() ? " - " : "";
+		limits += va( "%s %d", common->GetLocalizedString( "#str_200061" ), si.GetInt( "si_timeLimit" ) );
+	}
+	const idStr nextMap = PredictNextMap();
+	idStr nextTitle;
+	if ( nextMap.Length() ) {
+		idStr nextName;
+		nextTitle = ResolveScoreboardMapName( nextMap.c_str(), nextName );
+	}
+	const char *on = common->GetLocalizedString( "#str_231021" ), *off = common->GetLocalizedString( "#str_231022" );
+	publish( "mp.rule0", LocalizeGametype() );
+	publish( "mp.rule1", ResolveScoreboardMapName( si.GetString( "si_map" ), mapName ) );
+	publish( "mp.rule2", limits.Length() ? limits.c_str() : "-" );
+	publish( "mp.rule3", va( "%d / %d", NumActualClients( true ), si.GetInt( "si_maxPlayers" ) ) );
+	publish( "mp.rule4", si.GetBool( "si_teamDamage" ) ? on : off );
+	publish( "mp.rule5", si.GetBool( "si_autobalance" ) ? on : off );
+	publish( "mp.rule6", nextTitle.Length() ? nextTitle.c_str() : "-" );
+	idStr cycle = si.GetString( "si_mapCycle" );
+	cycle.Replace( ";", " " );
+	idLexer src( cycle.c_str(), cycle.Length(), "PublishRetainedMenu", LEXFL_NOFATALERRORS | LEXFL_ALLOWPATHNAMES | LEXFL_NOERRORS );
+	idToken token;
+	int rotation = 0, current = -1;
+	while ( rotation < 16 && src.ReadToken( &token ) ) {
+		idStr name;
+		if ( token.Icmp( si.GetString( "si_map" ) ) == 0 ) {
+			current = rotation;
+		}
+		publish( va( "mp.rotation%d", rotation++ ), ResolveScoreboardMapName( token.c_str(), name ) );
+	}
+	for ( int i = rotation; i < 16; i++ ) {
+		publish( va( "mp.rotation%d", i ), "" );
+	}
+	publish( "mp.rotation_count", va( "%d", rotation ) );
+	publish( "mp.rotation_current", va( "%d", current ) );
 	if ( changed ) {
 		card->SetStateInt( "mp.revision", ++retainedMenuRevision );
 	}
+}
+
+/*
+================
+idMultiplayerGame::HandleRetainedMenuCommand
+
+The card's commands. "retained team <slot>" chooses one of the Team page's
+actions, derived again here from the player's state, never from the card;
+an action that is unavailable now does nothing and keeps the menu open.
+Joining, spectating and readying close the menu, as the stock buttons do.
+================
+*/
+bool idMultiplayerGame::HandleRetainedMenuCommand( const idCmdArgs &args, int &icmd ) {
+	if ( args.Argc() - icmd < 1 ) {
+		return false;
+	}
+	const idStr sub = args.Argv( icmd++ );
+	if ( !sub.Icmp( "team" ) && args.Argc() - icmd >= 1 ) {
+		const idStr slotText = args.Argv( icmd++ );
+		if ( slotText.Length() != 1 || slotText[ 0 ] < '0' || slotText[ 0 ] >= '0' + RETAINED_TEAM_SLOTS ) {
+			return false;
+		}
+		retainedTeamSlot_t slots[ RETAINED_TEAM_SLOTS ];
+		RetainedTeamSlots( slots );
+		const retainedTeamSlot_t &slot = slots[ slotText[ 0 ] - '0' ];
+		if ( slot.action == RTA_NONE || !slot.available ) {
+			return false;
+		}
+		switch ( slot.action ) {
+			case RTA_JOIN_MARINE: JoinTeam( "marine" ); break;
+			case RTA_JOIN_STROGG: JoinTeam( "strogg" ); break;
+			case RTA_JOIN_AUTO: JoinTeam( "auto" ); break;
+			case RTA_SPECTATE: JoinTeam( "spectator" ); break;
+			case RTA_READY: ToggleReady(); break;
+			default: return false;
+		}
+		DisableMenu();
+		return true;
+	}
+	return false;
 }
 
 /*
@@ -16233,6 +16599,12 @@ const char* idMultiplayerGame::HandleGuiCommands( const char *_menuCommand ) {
 		} else if (	!idStr::Icmp( cmd, "join" )	) {
 			if ( args.Argc() - icmd	>= 1 ) {
 				JoinTeam( args.Argv( icmd++ ) );
+			}
+			continue;
+		} else if ( !idStr::Icmp( cmd, "retained" ) ) {
+			// openQ4: the retained card's commands (section 14.18).
+			if ( HandleRetainedMenuCommand( args, icmd ) ) {
+				return NULL;
 			}
 			continue;
 		} else if (	!idStr::Icmp( cmd, "quit" )	) {

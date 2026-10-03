@@ -312,11 +312,23 @@ def in_game_plate(doc: Document, ident: str, key: str, left: float, top: float, 
                  control=control)
 
 
+def page_group(doc: Document, index: int, ident: str, width: float, height: float, children: list, controls: list) -> dict:
+    """A page of the card: shown while it is current or fading out. Its
+    controls answer only while it is current, so a page fading out takes no
+    input (their disabled visuals equal their rest)."""
+    current = {"op": "==", "args": [{"state": "card.tab"}, index]}
+    for control in controls:
+        doc.bind(f"{control}.enabled", control, "enabled", current)
+    shown = {"op": "||", "args": [current, {"op": "==", "args": [{"state": "card.leaving"}, index]}]}
+    doc.bind(f"page-{ident}.display", f"page-{ident}", "display", {"op": "select", "args": [shown, "block", "none"]})
+    page_height = height - PAGE_TOP - PROMPT_BOTTOM - PROMPT_H - 16
+    return group(f"page-{ident}", {**absolute(left=INSET, top=PAGE_TOP, width=width - 2 * INSET, height=page_height),
+                                   "display": keyword("none"), "opacity": number(1)}, children)
+
+
 def handoff_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, str]:
     """An interim page: it says the page opens in the classic menu and offers
-    that as its primary action, which records the page and runs mpStockPage.
-    Its controls answer only while it is the current page, so a page fading
-    out takes no input (its disabled visuals equal its rest)."""
+    that as its primary action, which records the page and runs mpStockPage."""
     event = f"stock_{ident}"
     doc.events[event] = [{"op": "setState", "values": {"card.stock_page": index}}, {"op": "action", "action": "mpStockPage"}]
     primary = f"page-{ident}-open"
@@ -329,13 +341,243 @@ def handoff_page(doc: Document, index: int, ident: str, width: float, height: fl
     if plate_width > page_width:
         raise SystemExit(f"the hand-off action needs {plate_width:.0f} dp, past the page's {page_width:g} dp")
     plate = in_game_plate(doc, primary, HANDOFF_ACTION, 0, 36, width=round(plate_width, 3), primary=True, event=event)
-    current = {"op": "==", "args": [{"state": "card.tab"}, index]}
-    doc.bind(f"{primary}.enabled", primary, "enabled", current)
-    shown = {"op": "||", "args": [current, {"op": "==", "args": [{"state": "card.leaving"}, index]}]}
-    doc.bind(f"page-{ident}.display", f"page-{ident}", "display", {"op": "select", "args": [shown, "block", "none"]})
+    return page_group(doc, index, ident, width, height, [note, plate], [primary]), primary
+
+
+# ---------------------------------------------------------------- Team page
+
+TEAM_SLOTS = 3
+SLOT_TOP, SLOT_PITCH = 50.0, 62.0
+SLOT_W = 640.0                # a slot's plate; its reason or detail runs under the label
+ERROR = "#E46D56"             # an unavailable action's reason (section 14.18)
+MP_MARINE, MP_STROGG, MP_SPECTATOR, MP_NEUTRAL = "#6AA42B", "#FF7B04", "#999999", "#8B964B"
+# Every label a slot can show, in every language: its own strings, and the
+# join form with each team's name.
+SLOT_LABELS = ("#str_231014", "#str_231016", "#str_231017", "#str_231018", "#str_200195")
+JOIN_FORMAT, TEAM_NAMES = "#str_231015", ("#str_200197", "#str_200199")
+
+
+def any_text(key: str) -> dict:
+    """`key`'s text in every shipped language, from any of its tables (the
+    English table where a language's own lacks it, as the engine falls back)."""
+    import re
+    texts = {}
+    for language in ("english",) + tuple(b.LANGUAGES):
+        for path in sorted(b.STRINGS.glob(f"{language}_*.lang")):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                match = re.match(r'\s*"(#str_\d+)"\s+"(.*)"\s*$', line)
+                if match and match.group(1) == key:
+                    texts[language] = match.group(2)
+    return {language: texts.get(language, texts["english"]) for language in b.LANGUAGES}
+
+
+def check_slot_labels() -> None:
+    """Fail generation when a slot's label and lock would leave the plate."""
+    room = SLOT_W - 26 - 20 - 20       # after the marker, before the lock and the fade
+    widest = {}
+    for key in SLOT_LABELS:
+        for language, text in any_text(key).items():
+            widest[(key, language)] = b.text_width("marine", text, 20)
+    formats = table_text(JOIN_FORMAT)
+    for team in TEAM_NAMES:
+        for language, name in any_text(team).items():
+            widest[(JOIN_FORMAT + " " + team, language)] = b.text_width("marine", formats[language].replace("%s", name), 20)
+    over = {key: round(width) for key, width in widest.items() if width > room}
+    if over:
+        raise SystemExit(f"Team page labels past their {room:g} dp: {over}")
+
+
+def padlock(ident: str, tint: list) -> dict:
+    """The lock after an unavailable action's label: a shackle over a body."""
+    return vector(ident, {"position": keyword("relative"), "display": keyword("none"), "width": length(12), "height": length(14),
+                          "margin-left": length(8), "flex-shrink": number(0)}, [
+        path("shackle", [(3, 7), (3, 3.5), (4.5, 1.5), (7.5, 1.5), (9, 3.5), (9, 7)], closed=False, stroke=stroke(solid(tint), 1.5)),
+        path("body", [(1, 6.5), (11, 6.5), (11, 13.5), (1, 13.5)], fill=solid(tint)),
+    ])
+
+
+def slot_plate(doc: Document, index: int, width: float) -> tuple[dict, str]:
+    """A Team page action: an in-game plate whose label, availability and
+    reason the game publishes (mp.action<i>.*). An unavailable action stays in
+    place, dimmed, with a lock after its label and its reason in the error
+    color on the plate; choosing it shakes the plate for 300 ms and pulses the
+    reason, and nothing else happens. An available one records its slot and
+    runs mpTeamAction, which the game derives again from the player's state."""
+    ident = f"team-slot-{index}"
+    key = f"mp.action{index}"
+    for name, kind in (("shown", "boolean"), ("available", "boolean"), ("label", "string"), ("reason", "string"), ("detail", "string")):
+        doc.state[f"{key}.{name}"] = {"type": kind, "initial": False if kind == "boolean" else ""}
+    plate = in_game_plate(doc, ident, PLACEHOLDER, 0, 0, width=width, primary=index == 0, event=f"team_slot_{index}")
+    # The label leaves the plate's own box for a row with the lock after it.
+    label_node = next(child for child in plate["children"] if child["id"] == f"{ident}-label")
+    plate["children"].remove(label_node)
+    label_node["properties"].update({"position": keyword("relative"), "display": keyword("block"), "flex-shrink": number(1),
+                                     "min-width": length(0), "overflow": keyword("hidden")})
+    for prop in ("left", "top", "width"):
+        label_node["properties"].pop(prop, None)
+    doc.bind(f"{ident}-label.text", f"{ident}-label", "text", {"state": f"{key}.label"})
+    lock = padlock(f"{ident}-lock", rgb(ERROR))
+    unavailable = {"op": "!", "args": [{"state": f"{key}.available"}]}
+    doc.bind(f"{ident}-lock.display", f"{ident}-lock", "display", {"op": "select", "args": [unavailable, "block", "none"]})
+    row = group(f"{ident}-row", {**absolute(left=26, top=0, width=width - 46, height=45), "display": keyword("flex"),
+                                 "flex-direction": keyword("row"), "align-items": keyword("center"), "pointer-events": keyword("none")},
+                [label_node, lock])
+    plate["children"].append(row)
+    # The plate dims with its label; the reason beside it keeps its color.
+    plate["properties"]["opacity"] = number(1)
+    doc.bind(f"{ident}.opacity", ident, "opacity", {"op": "select", "args": [{"state": f"{key}.available"}, 1, 0.6]})
+    side = {**absolute(left=26, top=40, width=width - 26, height=18), "white-space": keyword("nowrap"), "overflow": keyword("hidden"),
+            "display": keyword("none")}
+    reason = label(f"{ident}-reason", PLACEHOLDER, {**side, **typeface("lowpixel", 14, 18, rgb(ERROR)), "opacity": number(1)})
+    detail = label(f"{ident}-detail", PLACEHOLDER, {**side, **typeface("lowpixel", 14, 18, [1, 1, 1, 0.7])})
+    doc.bind(f"{ident}-reason.text", f"{ident}-reason", "text", {"state": f"{key}.reason"})
+    doc.bind(f"{ident}-detail.text", f"{ident}-detail", "text", {"state": f"{key}.detail"})
+    doc.bind(f"{ident}-reason.display", f"{ident}-reason", "display", {"op": "select", "args": [unavailable, "block", "none"]})
+    doc.bind(f"{ident}-detail.display", f"{ident}-detail", "display",
+             {"op": "select", "args": [{"state": f"{key}.available"}, "block", "none"]})
+    holder = group(f"{ident}-slot", {**absolute(left=0, top=SLOT_TOP + SLOT_PITCH * index, width=width, height=58),
+                                     "transform": transform(), "display": keyword("none")}, [plate, reason, detail])
+    doc.bind(f"{ident}-slot.display", f"{ident}-slot", "display", {"op": "select", "args": [{"state": f"{key}.shown"}, "block", "none"]})
+    shake = f"shake-{ident}"
+    doc.timelines.add(shake, 300, [
+        track(f"{ident}-slot", "transform", [(0, transform()), (50, transform(tx=-6)), (110, transform(tx=6)), (170, transform(tx=-4)),
+                                             (230, transform(tx=3)), (300, transform())]),
+        track(f"{ident}-reason", "opacity", [(0, number(1)), (100, number(0.35)), (200, number(1)), (300, number(1))]),
+    ])
+    doc.events[f"team_slot_{index}"] = [
+        {"op": "if", "condition": {"state": f"{key}.available"},
+         "then": [{"op": "setState", "values": {"card.team_action": index}}, {"op": "action", "action": "mpTeamAction"}],
+         "else": [{"op": "playTimeline", "timeline": shake}]},
+    ]
+    return holder, ident
+
+
+def team_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, str]:
+    """The Team page (section 14.18): the player's team in its header band
+    with its score and both teams' sizes (spectators and deathmatch their own
+    bands), the actions the game offers now, and the last three chat lines."""
+    check_slot_labels()
+    page_width = width - 2 * INSET
     page_height = height - PAGE_TOP - PROMPT_BOTTOM - PROMPT_H - 16
-    return group(f"page-{ident}", {**absolute(left=INSET, top=PAGE_TOP, width=page_width, height=page_height),
-                                   "display": keyword("none"), "opacity": number(1)}, [note, plate]), primary
+    doc.state.update({
+        "card.team_action": {"type": "number", "initial": -1},
+        "mp.team.band": {"type": "string", "initial": ""},
+        "mp.team.band_color": {"type": "number", "initial": 3},
+        "mp.team.band_score": {"type": "string", "initial": ""},
+        "mp.team.band_detail": {"type": "string", "initial": ""},
+        **{f"mp.chat{line}": {"type": "string", "initial": ""} for line in range(3)},
+    })
+    band_h, cut = 36.0, 8.0
+    bands = []
+    for color_index, tint in enumerate((MP_MARINE, MP_STROGG, MP_SPECTATOR, MP_NEUTRAL)):
+        # The header band (section 6): an upper-leading cut, top and leading
+        # rails, the fill full to half the width and fading toward the end.
+        node = f"team-band-{color_index}"
+        bands.append(vector(node, {**absolute(left=0, top=0, width=page_width, height=band_h), "display": keyword("none")}, [
+            path("fill", [(cut, 0), ({"fraction": 1}, 0), ({"fraction": 1}, band_h), (0, band_h), (0, cut)],
+                 fill=linear((0, 0), ({"fraction": 1}, 0), [(0, rgb(tint, 0.49)), (0.5, rgb(tint, 0.49)), (0.75, rgb(tint, 0.25)),
+                                                         (0.95, rgb(tint, 0.05)), (1, rgb(tint, 0))])),
+            path("rail", [(0.75, band_h), (0.75, cut), (cut, 0.75), ({"fraction": 0.6}, 0.75)], closed=False,
+                 stroke=stroke(linear((0, 0), ({"fraction": 0.6}, 0), [(0, rgb(tint)), (0.7, rgb(tint)), (1, rgb(tint, 0))]), 1.5)),
+        ]))
+        doc.bind(f"{node}.display", node, "display",
+                 {"op": "select", "args": [{"op": "==", "args": [{"state": "mp.team.band_color"}, color_index]}, "block", "none"]})
+    band_title = label("team-band-title", PLACEHOLDER, {**absolute(left=20, top=0, width=page_width * 0.5, height=band_h),
+                       **typeface("marine", 20, band_h, [1, 1, 1, 0.95]), "white-space": keyword("nowrap")})
+    band_score = label("team-band-score", PLACEHOLDER, {**absolute(left=page_width * 0.5, top=0, width=page_width * 0.2, height=band_h),
+                       **typeface("lowpixel", 20, band_h, rgb(VALUE)), "text-align": keyword("right"), "white-space": keyword("nowrap")})
+    band_detail = label("team-band-detail", PLACEHOLDER, {**absolute(left=page_width * 0.72, top=0, width=page_width * 0.26, height=band_h),
+                        **typeface("lowpixel", 17, band_h, [1, 1, 1, 0.8]), "white-space": keyword("nowrap")})
+    doc.bind("team-band-title.text", "team-band-title", "text", {"state": "mp.team.band"})
+    doc.bind("team-band-score.text", "team-band-score", "text", {"state": "mp.team.band_score"})
+    doc.bind("team-band-detail.text", "team-band-detail", "text", {"state": "mp.team.band_detail"})
+    slots, controls = [], []
+    for slot in range(TEAM_SLOTS):
+        holder, control = slot_plate(doc, slot, min(page_width, SLOT_W))
+        slots.append(holder)
+        controls.append(control)
+    chat = [label(f"team-chat-{line}", PLACEHOLDER, {**absolute(left=0, top=page_height - 22 * (3 - line), width=page_width, height=20),
+                  **typeface("lowpixel", 15, 20, [1, 1, 1, 0.65]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+            for line in range(3)]
+    for line in range(3):
+        doc.bind(f"team-chat-{line}.text", f"team-chat-{line}", "text", {"state": f"mp.chat{line}"})
+    doc.session("mpTeamAction", "mpTeamAction")
+    children = [*bands, band_title, band_score, band_detail, *slots, *chat]
+    return page_group(doc, index, ident, width, height, children, controls), controls[0]
+
+
+# -------------------------------------------------------------- Server page
+
+ROTATION_SLOTS = 16
+RULES = ("#str_231023", "#str_231024", "#str_231025", "#str_200038", "#str_231026", "#str_231027", "#str_231028")
+HEADING = [0.545, 0.588, 0.294, 1]   # #8B964B, the multiplayer headings' olive
+
+
+def server_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, str]:
+    """The Server page (section 14.18): the name and address, the server's
+    message in #FFFF8D, the rules in two columns (mode, map, limits, players,
+    friendly fire, balance and next map) and the map rotation, the current map
+    in orange. It has no actions; its tab keeps the focus."""
+    page_width = width - 2 * INSET
+    doc.state.update({
+        "mp.server.name": {"type": "string", "initial": ""},
+        "mp.server.address": {"type": "string", "initial": ""},
+        "mp.server.message": {"type": "string", "initial": ""},
+        **{f"mp.rule{rule}": {"type": "string", "initial": ""} for rule in range(len(RULES))},
+        **{f"mp.rotation{slot}": {"type": "string", "initial": ""} for slot in range(ROTATION_SLOTS)},
+        "mp.rotation_count": {"type": "number", "initial": 0},
+        "mp.rotation_current": {"type": "number", "initial": -1},
+    })
+    name = label("server-name", PLACEHOLDER, {**absolute(left=0, top=0, width=page_width, height=28),
+                 **typeface("marine", 20, 28, [1, 1, 1, 0.9]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+    address_label = label("server-address-label", "#str_231030", {**absolute(left=0, top=30, width=120, height=20),
+                          **typeface("lowpixel", 14, 20, HEADING), "white-space": keyword("nowrap")})
+    address = label("server-address", PLACEHOLDER, {**absolute(left=124, top=30, width=page_width - 124, height=20),
+                    **typeface("profont", 15, 20, [1, 1, 1, 0.75]), "white-space": keyword("nowrap")})
+    message = label("server-message", PLACEHOLDER, {**absolute(left=0, top=56, width=page_width, height=60),
+                    **typeface("lowpixel", 17, 20, b.rgb("#FFFF8D")), "white-space": keyword("pre-line"), "overflow": keyword("hidden")})
+    for node, state in (("server-name", "mp.server.name"), ("server-address", "mp.server.address"), ("server-message", "mp.server.message")):
+        doc.bind(f"{node}.text", node, "text", {"state": state})
+    # Two columns of rules, the left one wider for the limits; each column's
+    # labels take the width of its longest in any language.
+    rules = []
+    split = round(page_width * 0.55, 3)
+    columns_x = (0.0, split)
+    columns_w = (split - 12, page_width - split)
+    label_w = [max(b.text_width("lowpixel", text, 14) for key in RULES[start:stop] for text in any_text(key).values()) + 6
+               for start, stop in ((0, 4), (4, len(RULES)))]
+    for rule, key in enumerate(RULES):
+        side = 0 if rule < 4 else 1
+        left, top = columns_x[side], 124 + 24 * (rule % 4)
+        rules.append(label(f"server-rule-{rule}-label", key, {**absolute(left=left, top=top, width=round(label_w[side], 3), height=22),
+                           **typeface("lowpixel", 14, 22, HEADING), "white-space": keyword("nowrap")}))
+        value_left = round(left + label_w[side] + 6, 3)
+        value = label(f"server-rule-{rule}", PLACEHOLDER, {**absolute(left=value_left, top=top, width=round(columns_w[side] - label_w[side] - 6, 3),
+                      height=22), **typeface("lowpixel", 15, 22, [1, 1, 1, 0.85]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+        doc.bind(f"server-rule-{rule}.text", f"server-rule-{rule}", "text", {"state": f"mp.rule{rule}"})
+        rules.append(value)
+    heading = label("server-rotation-label", "#str_231029", {**absolute(left=0, top=228, width=page_width, height=20),
+                    **typeface("lowpixel", 14, 20, HEADING), "white-space": keyword("nowrap")})
+    rotation = []
+    columns, pitch_x = 4, page_width / 4
+    for slot in range(ROTATION_SLOTS):
+        node = f"server-rotation-{slot}"
+        rotation.append(label(node, PLACEHOLDER, {**absolute(left=pitch_x * (slot % columns), top=250 + 19 * (slot // columns),
+                                                            width=pitch_x - 8, height=19),
+                              **typeface("lowpixel", 15, 19, [1, 1, 1, 0.7]), "white-space": keyword("nowrap"), "overflow": keyword("hidden"),
+                              "display": keyword("none")}))
+        doc.bind(f"{node}.text", node, "text", {"state": f"mp.rotation{slot}"})
+        doc.bind(f"{node}.display", node, "display",
+                 {"op": "select", "args": [{"op": "<", "args": [slot, {"state": "mp.rotation_count"}]}, "block", "none"]})
+        current = {"op": "==", "args": [{"state": "mp.rotation_current"}, slot]}
+        hot = rgb(ORANGE)
+        doc.bind(f"{node}.color", node, "color", [{"op": "select", "args": [current, hot[channel], rest]}
+                                                  for channel, rest in enumerate((1, 1, 1, 0.7))])
+    children = [name, address_label, address, message, *rules, heading, *rotation]
+    return page_group(doc, index, ident, width, height, children, []), f"tab-{ident}"
+
+
+PAGE_BUILDERS = {"team": team_page, "server": server_page}
 
 
 def prompt_row(width: float, height: float, back_verb: str, trailing: list) -> dict:
@@ -464,8 +706,8 @@ def card_motion(doc: Document, tabs: list, primaries: list) -> None:
 
 def escape_document() -> dict:
     """The Escape card (section 14.18), opened with the menu key during a
-    match, Resume leading its prompt bar. Every page hands off to its stock
-    page for now."""
+    match, Resume leading its prompt bar. The Team and Server pages are built;
+    the others hand off to their stock pages for now."""
     doc = Document("openq4.mp_escape")
     width, height = fitted_card_width([key for _, key, _ in ESCAPE_TABS]), ESCAPE_H
     doc.state.update({
@@ -486,7 +728,7 @@ def escape_document() -> dict:
                 bound_text("header-score", doc, "mp.score", "lowpixel", 15, [1, 1, 1, 0.85])]
     pages, primaries = [], []
     for index, (ident, _key, _window) in enumerate(ESCAPE_TABS):
-        page, primary = handoff_page(doc, index, ident, width, height)
+        page, primary = PAGE_BUILDERS.get(ident, lambda d, i, n, w, h: handoff_page(d, i, n, w, h))(doc, index, ident, width, height)
         pages.append(page)
         primaries.append(primary)
     actions = [link(doc, "prompt-mainmenu", MAIN_MENU, action="mpMainMenu"),

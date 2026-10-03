@@ -529,7 +529,9 @@ On engine `34dba978638b3255d8d67e74a7eea374c151b07c` event programs gain a focus
 
 On engine `8ad1fcac762283b29e76fb36f6fa7a251e73effb` the multiplayer Escape card covers the game's in-match menu behind ui_retainedMultiplayer: the card, its header, the eight-tab strip, the prompt bar, the Disconnect confirmation and the softening, with every page still handing off to its stock page and the card 890 dp wide to fit the strip. The gate and native screens tests, a mutation pass and a live probe on OpenGL and Vulkan qualify it. `FLOW-046` and `WID-008` move from pending to partial; `BEH-007` and `REN-016` gain partial evidence. Evidence: `.tmp/ui/retained-mp-escape/validation-evidence.json`, SHA-256 `39b8f759d2e6445b321c64507f125dcc015334dbbcb6ffaf0bb363df6e3255cf`.
 
-There are **91 partial, 248 pending and one verified requirement**, counting the
+On engine `a7db82f34de864059cf66441b2ad63dfce5cec14` the multiplayer Escape card gains its Team page, with the game's join, spectate and ready actions, their refusals and reasons, the team band and recent chat, and its Server page, with the server's message, rules and map rotation. The gate and native screens tests, a mutation pass and a live probe qualify it. `FLOW-007` moves from pending to partial and `FLOW-046` gains partial evidence. Evidence: `.tmp/ui/retained-mp-team-server/validation-evidence.json`, SHA-256 `470d27af66c563373136d5db16f862eb0d3f1c935e3b1dfe6609896f18b56fb3`.
+
+There are **92 partial, 247 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock

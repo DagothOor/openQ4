@@ -105,8 +105,11 @@ static const int RETAINED_MP_PROTOCOL = 1;
 // ui_retainedMultiplayer opts into the card. ui_retained_gate.py keeps this
 // list equal to the card's hand-off pages.
 static const char *const RETAINED_MP_ESCAPE_MISSING_PAGES[] = {
-	"team", "players", "vote", "match", "settings", "voice", "server", "admin", NULL
+	"players", "vote", "match", "settings", "voice", "admin", NULL
 };
+// The Team page's action slots (card.team_action); the game derives each
+// slot's action again from the player's state when it is chosen.
+static const int RETAINED_MP_TEAM_SLOTS = 3;
 // The stock menu buttons the card's hand-offs press, by the card's page
 // index (card.stock_page), in the generator's order.
 static const char *const RETAINED_MP_STOCK_PAGES[] = {
@@ -5643,7 +5646,17 @@ void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, con
 		return;
 	}
 	const char *command = NULL;
-	if ( !idStr::Icmp( request, "mpClose" ) ) {
+	idStr teamCommand;
+	if ( !idStr::Icmp( request, "mpTeamAction" ) ) {
+		const int slot = gui->State().GetInt( "card.team_action", "-1" );
+		if ( slot < 0 || slot >= RETAINED_MP_TEAM_SLOTS ) {
+			common->Warning( "retained UI: the multiplayer card asked for team action %d", slot );
+			return;
+		}
+		// An action that is unavailable now keeps the menu open.
+		teamCommand = va( "play main_menu_selection ; retained team %d", slot );
+		command = teamCommand.c_str();
+	} else if ( !idStr::Icmp( request, "mpClose" ) ) {
 		command = "play main_menu_selection ; close";
 	} else if ( !idStr::Icmp( request, "mpMainMenu" ) ) {
 		command = "play main_menu_selection ; mainMenu";

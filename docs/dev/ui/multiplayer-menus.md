@@ -2,20 +2,21 @@
 
 The retained multiplayer menus replace the stock full-screen multiplayer menu
 with one card over the live, softened match (section 14.18 of the
-[visual specification](../ui-visual-design.md), requirement `FLOW-046`). This
-increment builds the Escape card's shell: the card, its header, the eight-tab
-strip, the prompt bar, the Disconnect confirmation, the softening and its
-release, and the session and game plumbing that let the card cover the game's
-own menu. Every page still hands off to its stock page, so the card stays
-opt-in. The Welcome card and the pages themselves follow in later increments
-(the plan's B2 to B9).
+[visual specification](../ui-visual-design.md), requirement `FLOW-046`). The
+Escape card's shell came first: the card, its header, the eight-tab strip, the
+prompt bar, the Disconnect confirmation, the softening and its release, and the
+session and game plumbing that let the card cover the game's own menu. The
+Team and Server pages are built on it; the other six pages still hand off to
+their stock pages, so the card stays opt-in. The Welcome card and the other
+pages follow in later increments (the plan's B3 to B9).
 
 ## The gate
 
 `ui_retainedMultiplayer` (default 0) opts into the card. `ui_retained` alone
 includes it only once no page hands off any more: the session lists the
-Escape pages that still do in `RETAINED_MP_ESCAPE_MISSING_PAGES`, today all
-eight, and `tools/tests/ui_retained_gate.py` keeps that list equal to the
+Escape pages that still do in `RETAINED_MP_ESCAPE_MISSING_PAGES`, today
+Players, Vote, Match, Settings, Voice and Admin, and
+`tools/tests/ui_retained_gate.py` keeps that list equal to the
 document's hand-off pages (its `stock_<page>` programs). Players never see a
 mix of card and stock pages unless they opt in.
 
@@ -76,14 +77,65 @@ center at every view, 477 dp tall.
   and breaks the baseline under it; a #5A652A wash fades below the strip over
   one tab height. Inactive labels sit at 0.55 and rise to 0.85 on hover; focus
   turns a label orange. Q and E keycaps at the strip's ends switch tabs.
-- **Pages.** Content is inset 24 dp. Each page says it opens in the classic
-  multiplayer menu and offers that as its primary action, an in-game plate
-  (b6_light, 0.62 for the primary action and 0.28 for others, 1.00 with the
-  orange marker when focused).
+- **Pages.** Content is inset 24 dp. Actions are in-game plates (b6_light,
+  0.62 for the primary action and 0.28 for others, 1.00 with the orange marker
+  when focused). A page not built yet says it opens in the classic
+  multiplayer menu and offers that as its primary action.
 - **Prompt bar.** Inside the card's bottom inset: Resume on Escape, Tabs on Q
   and E, Select on Enter, then Main Menu and Disconnect as actions at the
   trailing end. Disconnect asks first in the stock confirmation, which
   soft-focuses the card and the view beneath it.
+
+### The Team page
+
+The game decides what the Team page offers, from the local player's state:
+
+| Player | Actions |
+| --- | --- |
+| On a team | Switch team, with the team sizes it would leave; Spectate; Ready |
+| Spectating a team mode | Join the team auto join would pick; join the other team |
+| Playing another mode | Spectate; Ready |
+| Spectating another mode | Join game |
+
+Above them a band in the team's color (#6AA42B Marine, #FF7B04 Strogg,
+#999999 for spectators, #8B964B elsewhere) names the team with its score and
+both teams' sizes; in deathmatch it gives the player's score and place. The
+last three chat lines close the page.
+
+An action the game cannot take now stays in place, dimmed, with a lock after
+its label and the reason under it in #E46D56: a team the balance rule
+refuses or the player is already on (the stock "too many players" and
+"already on" messages), spectating a server that does not allow it, and Ready
+outside a warm-up that uses it. Choosing one shakes it for 300 ms and pulses
+its reason, and nothing else happens. An available action records its slot
+and runs `mpTeamAction`; the game derives the slot's action again from the
+player's state, refuses it if it is no longer available, and otherwise joins,
+spectates or readies and closes the menu, as the stock buttons do.
+
+### The Server page
+
+The server's name and address, its message (`si_motd`, three lines) in
+#FFFF8D, the rules in two columns (mode, map, limits, players, friendly fire,
+team balance and the next map in `si_mapCycle`) and the map rotation, the
+current map in orange. Each column's labels take the width of the longest in
+any language. The page has no actions; its tab keeps the focus.
+
+### The game's data
+
+The game publishes everything the card shows through one cache, writing a key
+only when it changes and moving `mp.revision` when anything did:
+
+- the header: `mp.title`, `mp.mode`, `mp.clock`, `mp.score`;
+- the Team page: `mp.team.band`, `mp.team.band_color`, `mp.team.band_score`,
+  `mp.team.band_detail`, `mp.action<0-2>.{shown,available,label,reason,detail}`
+  and `mp.chat<0-2>`;
+- the Server page: `mp.server.{name,address,message}`, `mp.rule<0-6>`,
+  `mp.rotation<0-15>`, `mp.rotation_count` and `mp.rotation_current`.
+
+Player and server text (the server's name and message, the chat) is cleaned as
+the loading screen's server card cleans it: colour codes, controls and
+malformed UTF-8 dropped, its lines and bytes bounded, and a leading `#str_`
+broken so a name never translates.
 
 ### Width
 
@@ -116,6 +168,7 @@ The card's verbs are the stock menu's own commands with its selection sound:
 | `mpMainMenu` | `play main_menu_selection ; mainMenu` |
 | `mpDisconnect` (after the confirmation) | `play main_menu_selection ; disconnect` |
 | `mpStockPage` | the stock page's own button, by `card.stock_page` |
+| `mpTeamAction` | `play main_menu_selection ; retained team <slot>`, by `card.team_action` |
 
 A hand-off presents the stock menu at once and presses the page's button as
 soon as the menu's opening shows it, within 500 ms; the stock menu then keeps
@@ -174,12 +227,44 @@ without affecting players:
 Evidence: `.tmp/ui/retained-mp-escape/validation-evidence.json`, SHA-256
 `39b8f759d2e6445b321c64507f125dcc015334dbbcb6ffaf0bb363df6e3255cf`.
 
+The Team and Server pages add:
+
+- gate cases for `mpTeamAction`: the slot the card records reaches the game as
+  `retained team <slot>`, the menu closes when the game acts and stays open
+  when it refuses, and slots outside the three are refused; pins that the
+  game derives the slot's action again before acting and closes the menu
+  after it, and that the session, the game and the document agree on three
+  slots;
+- native checks of the Team page (the band's color, an available action with
+  its detail, an unavailable one dimmed with its lock and reason, an empty
+  slot hidden, the action an available slot asks for, the shake instead for
+  an unavailable one) and the Server page (the rotation's current map in
+  orange, only the rotation's maps shown, the message above the rules, the
+  tab keeping the focus);
+- a generator check that every action label, with each team's name, fits its
+  plate in every language;
+- a live probe on a Team DM listen server with a server message and a map
+  cycle: the band and the actions as a team player, the balance rule
+  refusing a switch with its reason, Ready during the warm-up, Spectate
+  taken through the game and closing the menu, the spectator's two join
+  actions, a join closing the menu again, and the Server page's message,
+  rules, next map and rotation.
+
+Evidence: `.tmp/ui/retained-mp-team-server/validation-evidence.json`, SHA-256
+`470d27af66c563373136d5db16f862eb0d3f1c935e3b1dfe6609896f18b56fb3`.
+
 The card's acceptance continues under `FLOW-046`.
 
 ## Known limitations
 
-- Every page hands off to its stock page, and the stock menu then keeps the
+- Six pages hand off to their stock pages, and the stock menu then keeps the
   menu until it closes; the card does not come back over it.
+- Choosing an unavailable action does not announce its reason to the
+  accessibility text backing yet, and a controller gives no rumble.
+- The Team page has no Tourney queue or arena controls; Tourney offers what
+  deathmatch does.
+- The stock team-refusal messages are English in French and Italian, whose
+  tables lack them.
 - There is no Welcome card: the connect-time join offer keeps the stock join
   card.
 - The prompt bar shows keyboard keycaps only; controller glyphs wait for the

@@ -379,6 +379,15 @@ public:
 	void			SetRetainedMenuCover( bool covered, idUserInterface *card );
 	void			PublishRetainedMenu( idUserInterface *card );
 	bool			RetainedMenuCovered( void ) const { return retainedMenuCovered; }
+	// The card's commands ("retained ..."); true when the menu closes.
+	bool			HandleRetainedMenuCommand( const idCmdArgs &args, int &icmd );
+	// What joining a team would refuse, as the stock CheckTeamBalance tells
+	// it ("#str_202039" to "#str_202042"), or NULL; and the team "join auto"
+	// picks.
+	const char *	TeamJoinRefusal( int team );
+	int				AutoJoinTeam( void );
+	// The map si_mapCycle plays after the current one, or "" without a cycle.
+	idStr			PredictNextMap( void ) const;
 
 	const char*		HandleGuiCommands( const char *menuCommand );
 
@@ -1146,7 +1155,18 @@ private:
 	// published to it, and the revision that tells the session they changed.
 	bool			retainedMenuCovered;
 	int				retainedMenuRevision;
-	idStr			retainedMenuPublished[ 4 ];
+	idDict			retainedMenuPublished;
+	// The Team page's three action slots (section 14.18), derived from the
+	// local player's state each time they are published or chosen.
+	enum retainedTeamAction_t { RTA_NONE, RTA_JOIN_MARINE, RTA_JOIN_STROGG, RTA_JOIN_AUTO, RTA_SPECTATE, RTA_READY };
+	struct retainedTeamSlot_t {
+		retainedTeamAction_t	action;
+		idStr					label, reason, detail;
+		bool					available;
+	};
+	static const int RETAINED_TEAM_SLOTS = 3;
+	void			RetainedTeamSlots( retainedTeamSlot_t slots[ RETAINED_TEAM_SLOTS ] );
+	bool			PublishRetainedValue( idUserInterface *card, const char *key, const char *value );
 	bool			arenaEntranceCameraResolved;
 	// Which presentation the latched camera belongs to.  The entrance and the
 	// final tableau both latch a collision-safe anchor, but they resolve it

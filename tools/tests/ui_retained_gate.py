@@ -796,6 +796,22 @@ int main() {
         legacyActionAvailable = true;
         // Out-of-range pages are refused and change nothing.
         s.guiActive = nullptr; s.UpdateRetainedMultiplayer(); s.guiActive = &mpMenu; s.UpdateRetainedMultiplayer();
+        // The Team page's actions: the game derives the slot's action again and
+        // closes the menu when it acts; an action it refuses now keeps it open.
+        gameObject.answer = [](const char*) -> const char* { return "continue"; };
+        card->state["card.team_action"] = "1"; s.HandleRetainedSessionRequest(card, "mpTeamAction");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; retained team 1" && s.guiRetainedMultiplayer == card);
+        gameObject.answer = [](const char*) -> const char* { return nullptr; };
+        s.HandleRetainedSessionRequest(card, "mpTeamAction");
+        CHECK(s.guiActive == nullptr && s.guiRetainedMultiplayer == nullptr && card->named.back() == "release");
+        s.guiActive = &mpMenu; s.guiRetainedReleasing = nullptr; s.UpdateRetainedMultiplayer(); CHECK(s.guiRetainedMultiplayer == card);
+        const size_t asked = gameObject.guiCommands.size();
+        for (const char* slot : {"-1", "3"}) {
+            card->state["card.team_action"] = slot; s.HandleRetainedSessionRequest(card, "mpTeamAction");
+            CHECK(gameObject.guiCommands.size() == asked && s.guiRetainedMultiplayer == card &&
+                  commonObject.warnings.back().find("team action") != std::string::npos);
+        }
+        gameObject.answer = nullptr;
         for (const char* page : {"-1", "8"}) {
             card->state["card.stock_page"] = page; s.HandleRetainedSessionRequest(card, "mpStockPage");
             CHECK(s.guiRetainedMultiplayer == card && !s.retainedMultiplayerUncovered);
@@ -1522,6 +1538,17 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
     reset = document['events']['onActivate'][0]
     assert reset['op'] == 'if' and reset['condition'] == {'state': 'card.released'}
     assert document['events']['onBack'] == [{'op': 'action', 'action': 'mpClose'}]
+    # The Team page's slots: the session bounds the slot, the game derives its
+    # action again from the player's state, and the document offers as many.
+    slots = int(re.search(r'static const int RETAINED_MP_TEAM_SLOTS = (\d+);', menu).group(1))
+    header = (ROOT / 'src/mpgame/MultiplayerGame.h').read_text(encoding='utf-8', errors='replace')
+    assert f'static const int RETAINED_TEAM_SLOTS = {slots};' in header
+    assert slots == retained_mp_menus.TEAM_SLOTS and all(f'team_slot_{slot}' in document['events'] for slot in range(slots))
+    command = function_body(mp_game, 'bool idMultiplayerGame::HandleRetainedMenuCommand(')
+    assert command.index('RetainedTeamSlots( slots );') < command.index('if ( slot.action == RTA_NONE || !slot.available ) {') < \
+        command.index('DisableMenu();')
+    # HandleGuiCommands' _XENON branches defeat a brace count; pin the statement.
+    assert mp_game.replace('\r\n', '\n').count('if ( HandleRetainedMenuCommand( args, icmd ) ) {\n\t\t\t\treturn NULL;') == 1
 
 
 def main() -> int:
