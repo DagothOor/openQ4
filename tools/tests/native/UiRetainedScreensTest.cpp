@@ -136,7 +136,8 @@ static void CheckSchema() {
 }
 
 static const std::set<std::string> SessionCommands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
-	"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu"};
+	"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
+	"mpClose","mpMainMenu","mpDisconnect","mpStockPage"};
 
 static void CheckSessionActions(const Document& document) {
 	for (const auto& [id,action] : document.Model().actions) {
@@ -188,8 +189,151 @@ static bool Additive(const ScreenHost& host) {
 	return false;
 }
 
+// The multiplayer Escape card (section 14.18): centered at every view, motion
+// and release, the tab programs, the leaving page, hand-offs and the header.
+static void CheckEscape(ScreenHost& host, const char* path) {
+	const auto source = Read(path);
+	Document document; std::vector<Diagnostic> diagnostics;
+	const bool valid = document.Load(source,diagnostics);
+	for (const auto& diagnostic : diagnostics) std::fprintf(stderr,"mp_escape %s: %s\n",diagnostic.pointer.c_str(),diagnostic.message.c_str());
+	Check(valid && document.Model().id == "openq4.mp_escape" && document.Model().canvasHeight == 720,"the Escape card validates");
+	CheckSessionActions(document);
+	// The softened view stands outside the card's composition: a node inside
+	// a composited group gets no soft focus.
+	const auto& root = document.Model().root;
+	Check(root.children.size() == 3 && root.children[0].id == "scene-softfocus" && root.children[1].id == "scrim" &&
+		root.children[2].id == "chrome","the softened view, its scrim stand-in, then the card and its modal");
+	Runtime runtime(host);
+	Check(runtime.Initialize() && runtime.LoadDocument(source,"guis/menu/mp_escape.q4ui",diagnostics),"the card loads into a runtime");
+	Viewport viewport; viewport.canvasHeight = 720;
+	std::string error;
+	Runtime::EventEffects effects;
+	const char* const tabs[] = {"team","players","vote","match","settings","voice","server","admin"};
+	const auto bounds = [&](const std::string& id) { Bounds b; Check(runtime.GetBounds(id,b),"a card node is laid out"); return b; };
+	const auto number = [&](const char* node, const char* property) {
+		const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented value"); return static_cast<float>(value->data[0]);
+	};
+	const auto text = [&](const char* node, const char* property) {
+		const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented keyword"); return value->text;
+	};
+	// Centered on the projection center at 16:9, 1080 p and 4:3, never closer
+	// than 16 dp to the sides, the same size on every tab.
+	float cardWidth = 0;
+	for (const auto& [width,height] : std::vector<std::pair<int,int>>{{1280,720},{1920,1080},{1024,768}}) {
+		viewport.width = width; viewport.height = height;
+		runtime.Frame(viewport,1);
+		const auto card = bounds("card");
+		const float scale = height/720.f;
+		if (!cardWidth) cardWidth = card.width/scale;
+		Check(Near(card.x+card.width/2,width/2.f) && Near(card.y+card.height/2,height/2.f),"the card is centered");
+		Check(Near(card.width,cardWidth*scale,1) && Near(card.height,477*scale,1),"the card keeps its size at every view");
+		Check(card.x >= 16*scale-.5f,"the card clears the view's sides by 16 dp");
+	}
+	Check(cardWidth >= 648-.5f && cardWidth <= 928+.5f,"the card is at least the specified 648 dp and fits a 4:3 view");
+	viewport.width = 1280; viewport.height = 720;
+	// Opening: the softening ramps over 250 ms while the card rises 12 dp and
+	// fades in over 150 ms; the current page's primary action takes focus.
+	host.softFocus = true;
+	Check(runtime.RunEvent("open",2,effects,error),"the card opens");
+	// 30 ms in: the ease-out has covered most of the way but not all of it.
+	runtime.Frame(viewport,2.03);
+	Check(number("card","opacity") > .05f && number("card","opacity") < .99f,"part way through its fade");
+	const auto rising = runtime.PresentedValue("card","transform");
+	Check(rising && rising->data[1] > .05f && rising->data[1] < 12,"and rising from 12 dp");
+	runtime.Frame(viewport,2.2);
+	Check(Near(number("card","opacity"),1,.001f) && Near(static_cast<float>(runtime.PresentedValue("card","transform")->data[1]),0,.01f),
+		"risen and shown at 150 ms");
+	Check(number("scene-softfocus","backdrop-blur") < 7.4f,"the softening is still ramping");
+	runtime.Frame(viewport,2.3);
+	Check(Near(number("scene-softfocus","backdrop-blur"),7.5f,.01f) && Near(number("scene-softfocus","backdrop-saturate"),.8f,.001f),
+		"softened at 250 ms with modal.softfocus's values");
+	Check(text("scene-softfocus","display") == "block" && text("scrim","display") == "none","soft focus replaces the scrim");
+	Check(runtime.FocusedControl() == "page-team-open","the first page's primary action has focus");
+	// Each tab: the strip lays its tabs in order without overlap inside the
+	// card, and only the current tab rises.
+	const auto card = bounds("card");
+	float previousRight = card.x;
+	for (const char* tab : tabs) {
+		const auto box = bounds(std::string("tab-")+tab);
+		Check(box.x >= previousRight-.5f && box.x+box.width <= card.x+card.width,"tabs keep their order inside the card");
+		previousRight = box.x+box.width;
+		const auto label = bounds(std::string("tab-")+tab+"-label");
+		Check(label.x >= box.x && label.x+label.width <= box.x+box.width+.5f,"a label stays inside its tab");
+	}
+	Check(text("tab-team-active","display") == "block" && text("tab-players-active","display") == "none","only the current tab rises");
+	// Q, E and the strip's keycaps: the next tab at once, its page cross-fading
+	// over 150 ms, the leaving page shown but out of reach meanwhile.
+	Check(runtime.RunEvent("onTabNext",3,effects,error),"E moves to the next tab");
+	Check(std::get<double>(runtime.GetState().at("card.tab")) == 1 && std::get<double>(runtime.GetState().at("card.leaving")) == 0,
+		"the players tab is current and the team page is leaving");
+	runtime.Frame(viewport,3.075);
+	Check(text("page-team","display") == "block" && text("page-players","display") == "block","both pages show while they cross-fade");
+	Check(number("page-players","opacity") > .1f && number("page-players","opacity") < .9f && number("page-team","opacity") < .9f,
+		"one fades in as the other fades out");
+	Check(!runtime.CanActivateControl("page-team-open",3.075) && runtime.CanActivateControl("page-players-open",3.075),
+		"the leaving page takes no input");
+	Check(runtime.FocusedControl() == "page-players-open","the arriving page's primary action has focus");
+	runtime.Frame(viewport,3.2);
+	Check(text("page-team","display") == "none" && Near(number("page-players","opacity"),1,.001f) &&
+		std::get<double>(runtime.GetState().at("card.leaving")) == -1,"the cross-fade ends with one page");
+	Check(text("tab-players-active","display") == "block" && text("tab-team-active","display") == "none","the new tab rises");
+	// The strip wraps both ways; choosing the current tab changes nothing.
+	Check(runtime.RunEvent("tab_admin",4,effects,error) && runtime.RunEvent("onTabNext",4.01,effects,error),"E past the last tab");
+	Check(std::get<double>(runtime.GetState().at("card.tab")) == 0,"wraps to the first");
+	Check(runtime.RunEvent("onTabPrevious",4.02,effects,error) && std::get<double>(runtime.GetState().at("card.tab")) == 7,"Q wraps back");
+	runtime.Frame(viewport,4.3);
+	Check(runtime.RunEvent("tab_admin",4.4,effects,error) && std::get<double>(runtime.GetState().at("card.leaving")) == -1 &&
+		effects.actions.empty(),"the current tab does nothing");
+	// A page in development hands off to its stock page through the session.
+	Check(runtime.RunEvent("stock_admin",5,effects,error) && effects.actions.size() == 1 &&
+		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpStockPage" &&
+		std::get<double>(runtime.GetState().at("card.stock_page")) == 7,"Admin hands off to the stock Admin page");
+	Check(runtime.RunEvent("onBack",5.1,effects,error) && effects.actions.size() == 1 &&
+		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpClose","Back resumes the match");
+	// The prompt bar sits inside the card's bottom inset, Disconnect last.
+	const auto prompts = bounds("prompts"), disconnect = bounds("prompt-disconnect"), menu = bounds("prompt-mainmenu");
+	Check(prompts.y+prompts.height <= card.y+card.height-15 && prompts.y > card.y+card.height-60,"the prompt bar closes the card");
+	Check(menu.x < disconnect.x && disconnect.x+disconnect.width <= card.x+card.width-23,"Main Menu, then Disconnect, at the trailing end");
+	Check(runtime.RunEvent("disconnectModalShow",6,effects,error),"Disconnect asks first");
+	runtime.Frame(viewport,6.3);
+	Check(runtime.FocusedControl() == "disconnectModal_no","the confirmation's NO has focus");
+	Check(runtime.RunEvent("disconnectModalHide",6.4,effects,error),"NO closes it");
+	runtime.Frame(viewport,6.8);
+	// A long map name clips before the header's trailing texts.
+	Check(runtime.SetState({{"mp.title",std::string(60,'W')},{"mp.mode",std::string("Team Deathmatch")},{"mp.clock",std::string("9:48")},
+		{"mp.score",std::string("MARINES 0 - 0 STROGG")}},error,7),"publish the header");
+	runtime.Frame(viewport,7.1);
+	const auto title = bounds("header-title"), mode = bounds("header-mode"), score = bounds("header-score");
+	Check(title.x+title.width <= mode.x+.5f && mode.x+mode.width <= bounds("header-clock").x,"the title yields to the mode, clock and score");
+	Check(score.x+score.width <= card.x+card.width-24+.5f,"the score keeps the card's inset");
+	// Every way out hides the card at once and releases the softening over
+	// 250 ms; the next activation brings it back.
+	Check(runtime.RunEvent("release",8,effects,error),"the card closes");
+	runtime.Frame(viewport,8.125);
+	Check(text("chrome","display") == "none" && Near(number("scene-softfocus","backdrop-blur"),3.75f,.05f),"closed at once, releasing");
+	runtime.Frame(viewport,8.3);
+	Check(Near(number("scene-softfocus","backdrop-blur"),0,.01f),"released after 250 ms");
+	Check(runtime.RunEvent("onActivate",9,effects,error) && runtime.RunEvent("open",9,effects,error),"the card opens again");
+	runtime.Frame(viewport,9.3);
+	Check(text("chrome","display") == "block" && Near(number("card","opacity"),1,.001f),"shown again");
+	// Reduced motion: no rise, the softening and fade in 80 ms.
+	host.reducedMotion = true;
+	runtime.SetReducedMotion(true,10);
+	Check(runtime.RunEvent("release",10,effects,error) && runtime.RunEvent("onActivate",10.5,effects,error) &&
+		runtime.RunEvent("open",10.5,effects,error),"reopened under reduced motion");
+	runtime.Frame(viewport,10.54);
+	const auto still = runtime.PresentedValue("card","transform");
+	Check(still && Near(static_cast<float>(still->data[1]),0,.01f),"no rise");
+	Check(number("scene-softfocus","backdrop-blur") > 1 && number("scene-softfocus","backdrop-blur") < 7,"the softening ramps over 80 ms");
+	runtime.Frame(viewport,10.59);
+	Check(Near(number("card","opacity"),1,.001f) && Near(number("scene-softfocus","backdrop-blur"),7.5f,.01f),"in within 80 ms");
+	host.reducedMotion = false;
+	runtime.SetReducedMotion(false,11);
+	host.softFocus = false;
+}
+
 int main(int argc, char** argv) {
-	Check(argc == 7,"usage: title.q4ui pause.q4ui loading.q4ui pause_strogg.q4ui singleplayer.q4ui campaigns.q4ui");
+	Check(argc == 8,"usage: title.q4ui pause.q4ui loading.q4ui pause_strogg.q4ui singleplayer.q4ui campaigns.q4ui mp_escape.q4ui");
 	CheckSchema();
 	ScreenHost host;
 	CheckTransformedClip(host);
@@ -1240,6 +1384,7 @@ int main(int argc, char** argv) {
 			"reduced motion fades the arrival in within 80 ms");
 		sub.SetReducedMotion(false,7.2);
 	}
+	CheckEscape(host,argv[7]);
 	Check(host.errors == 0,"no retained diagnostics");
 	std::printf("retained screens: %d checks passed\n",checks);
 	return 0;

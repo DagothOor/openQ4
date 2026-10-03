@@ -68,7 +68,7 @@ struct StrList : std::vector<std::string> {
     void Append(const char* value){push_back(value);}
     int FindIndex(const char* value) const{auto found=std::find(begin(),end(),value);return found==end()?-1:static_cast<int>(found-begin());}
 };
-struct CVar {bool value=false;bool GetBool() const{return value;}} ui_retainedSystem,ui_retained;
+struct CVar {bool value=false;bool GetBool() const{return value;}} ui_retainedSystem,ui_retained,ui_retainedMultiplayer;
 enum {SE_NONE=0,INHIBIT_SESSION=1};
 struct sysEvent_t {int evType=SE_NONE;};
 using HandleGuiCommand_t=bool (*)(const char*);
@@ -157,6 +157,10 @@ struct idSessionLocal {
     idUserInterface* guiRetainedHome=nullptr;int retainedHomeUpdates=0;
     void UpdateRetainedHome(){++retainedHomeUpdates;}void RetainedHomeFrameEvent(){CHECK(guiRetainedHome==nullptr);}
     void UpdateRetainedSubpage(){}
+    // Nor does the multiplayer card: these scenarios have no match.
+    void UpdateRetainedMultiplayer(){}void RetainedMultiplayerFrameEvent(){}
+    idUserInterface* guiRetainedMultiplayer=nullptr;
+    void HandleRetainedMultiplayerRequest(idUserInterface*,const char*){CHECK(false);}void HandleGameMenuReturn(const char*){CHECK(false);}
     void HandleRetainedSessionRequest(idUserInterface*,const char*){CHECK(false);}
     void SetSaveGameGuiVars(){}void SetMainMenuGuiVars(bool){++mainRefresh;}
     void PumpApplicationActions(idUserInterface* only=nullptr) {

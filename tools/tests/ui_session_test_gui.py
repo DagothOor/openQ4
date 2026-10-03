@@ -108,6 +108,9 @@ struct idSessionLocal {
     void UpdateRetainedHome() {}
     void RetainedHomeFrameEvent() {}
     void UpdateRetainedSubpage() {}
+    // Nor does the multiplayer card.
+    void UpdateRetainedMultiplayer() {}
+    void RetainedMultiplayerFrameEvent() {}
     void DispatchCommand(idUserInterface* gui,const char* command) {
         assert(gui && !gui->retired && command && *command);
         ++dispatches;

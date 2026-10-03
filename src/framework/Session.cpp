@@ -3808,6 +3808,11 @@ void idSessionLocal::Clear() {
 	retainedSubpageBegan = 0;
 	retainedSubpageUntil = 0;
 	retainedHomeReturning = false;
+	guiRetainedEscape = guiRetainedMultiplayer = NULL;
+	retainedMultiplayerUncovered = false;
+	retainedMultiplayerRevision = -1;
+	retainedMultiplayerHandoff = -1;
+	retainedMultiplayerHandoffUntil = 0;
 	retainedStock.Clear();
 	retainedHandoffUntil = 0;
 	retainedPointerX = retainedPointerY = 0.0f;
@@ -4392,11 +4397,14 @@ static void Session_OpenQ4GuiAction_f( const idCmdArgs &args ) {
 
 static void Session_RetainedGui_f( const idCmdArgs &args ) {
 #ifndef ID_DEDICATED
-	// While a retained home screen covers the legacy menu it is the GUI that
-	// receives input, so the semantic diagnostics address it.
+	// While a retained home screen covers the legacy menu, or the multiplayer
+	// card the game's menu, it is the GUI that receives input, so the semantic
+	// diagnostics address it.
 	idUserInterface* gui = sessLocal.GetActiveGUI();
 	if ( sessLocal.guiRetainedHome != NULL && gui == sessLocal.guiMainMenu ) {
 		gui = sessLocal.guiRetainedHome;
+	} else if ( sessLocal.RetainedMultiplayerCovers() ) {
+		gui = sessLocal.guiRetainedMultiplayer;
 	}
 	if ( UI_RetainedDiagnostic( gui, args ) ) {
 		sessLocal.DispatchCommand( gui, "openq4-retained-actions" );
@@ -8262,6 +8270,11 @@ void idSessionLocal::Draw() {
 			// ui_retained: the retained title or pause screen covers the legacy
 			// menu while it rests at home or hands a page over.
 			DrawRetainedHome( presentationTime );
+		} else if ( RetainedMultiplayerCovers() ) {
+			// The multiplayer card covers the game's menu, which keeps its
+			// timelines running unseen; the game view is drawn above.
+			UI_RunTimeEvents( guiActive, presentationTime );
+			guiRetainedMultiplayer->Redraw( presentationTime );
 		} else {
 			guiActive->Redraw( presentationTime );
 		}

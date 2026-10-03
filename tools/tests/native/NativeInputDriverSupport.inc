@@ -48,6 +48,8 @@ public:
     bool RetainedHomeInputBlocked() const{return false;}
     // The Single Player sub-page change is covered by the retained screens suite.
     bool RetainedSubpageEvent(const sysEvent_t*){return false;}
+    // So is the multiplayer card, which never covers a menu here.
+    idUserInterface* guiRetainedMultiplayer=nullptr;bool RetainedMultiplayerCovers() const{return false;}
     bool mapSpawned=true;GameEndpoint* game=nullptr;std::function<void()> callback;
     unsigned setGuiCalls=0,startMenuCalls=0;
     bool ProcessEvent(const sysEvent_t*);void MenuEvent(const sysEvent_t*);

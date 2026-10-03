@@ -71,7 +71,8 @@ bool ApplicationState(const DocumentModel& model, const idDict& dictionary, Stat
 bool SessionMenuCommand(const std::string& command) {
 	static const std::set<std::string> commands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
 		"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
-        "campaigns","campaignQuake4","campaignAwakening","campaignArena","campaignBack","campaignHome"};
+        "campaigns","campaignQuake4","campaignAwakening","campaignArena","campaignBack","campaignHome",
+        "mpClose","mpMainMenu","mpDisconnect","mpStockPage"};
 	return commands.contains(command);
 }
 

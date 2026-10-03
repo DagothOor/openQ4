@@ -373,6 +373,12 @@ public:
 	void			ShowInitialJoinMenu( void );
 	void			UpdateJoinScreenGui( void );
 	void			SetJoinScreenSoftFocus( bool enabled );
+	// openQ4: the retained menu card (section 14.18). The session covers
+	// mainGui with it and asks for its mp.* keys; the menu, its state and its
+	// commands stay here, and mainGui stops drawing while covered.
+	void			SetRetainedMenuCover( bool covered, idUserInterface *card );
+	void			PublishRetainedMenu( idUserInterface *card );
+	bool			RetainedMenuCovered( void ) const { return retainedMenuCovered; }
 
 	const char*		HandleGuiCommands( const char *menuCommand );
 
@@ -1136,6 +1142,11 @@ private:
 	// that happens - a listen-server host is offered the screen again after its
 	// own player entity respawns - so this cannot be a one-shot GUI state bit.
 	bool			joinScreenPending;
+	// The session's retained card covers mainGui; the header texts last
+	// published to it, and the revision that tells the session they changed.
+	bool			retainedMenuCovered;
+	int				retainedMenuRevision;
+	idStr			retainedMenuPublished[ 4 ];
 	bool			arenaEntranceCameraResolved;
 	// Which presentation the latched camera belongs to.  The entrance and the
 	// final tableau both latch a collision-safe anchor, but they resolve it

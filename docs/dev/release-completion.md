@@ -634,6 +634,13 @@
   could keep moving on its own after a push, as it never saw the stick
   released.
 
+- Menu development: with `ui_retainedMultiplayer 1`, the in-match
+  multiplayer menu becomes a card over the softened match instead of a
+  full-screen page, with the map, mode, clock and score in its header, eight
+  tabs that Q and E (or the shoulder buttons) switch, and Resume, Main Menu
+  and Disconnect, which asks first. Its pages still open the classic pages for
+  now, and the menu shown when you first join a server stays classic.
+
 - The opt-in SYSTEM page adds **Preload Light Grids** under Irradiance Volumes.
   Apply saves it without a Keep/Revert question, since it takes effect when the
   next map loads, and a line under it says whether the current map preloads or

@@ -896,7 +896,8 @@ if build_engine or get_option('build_native_tests')
              meson.project_source_root() / 'content/baseoq4/pak0/guis/loading/loading.q4ui',
              meson.project_source_root() / 'content/baseoq4/pak0/guis/menu/pause_strogg.q4ui',
              meson.project_source_root() / 'content/baseoq4/pak0/guis/menu/singleplayer.q4ui',
-             meson.project_source_root() / 'content/baseoq4/pak0/guis/menu/campaigns.q4ui'], timeout: 60)
+             meson.project_source_root() / 'content/baseoq4/pak0/guis/menu/campaigns.q4ui',
+             meson.project_source_root() / 'content/baseoq4/pak0/guis/menu/mp_escape.q4ui'], timeout: 60)
     openq4_ui_value_schema_test = executable(
       'openq4-ui-value-schema-test',
       files('tools/tests/native/UiValueControlSchemaTest.cpp'),

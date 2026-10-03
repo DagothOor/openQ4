@@ -5108,6 +5108,13 @@ void idGameLocal::HandleMainMenuCommands( const char *menuCommand, idUserInterfa
 		gui->SetStateString( "server_limit", limits.c_str() );
 		gui->SetStateBool( "server_team_mode", MPGameTypeHasAny( info->type, GTF_TEAM ) );
 		gui->SetStateBool( "server_answered", true );
+	} else if ( !idStr::Icmp( menuCommand, "retainedMultiplayerCover" ) ) {
+		// openQ4: the session's retained menu card covers mainGui.
+		mpGame.SetRetainedMenuCover( true, gui );
+	} else if ( !idStr::Icmp( menuCommand, "retainedMultiplayerUncover" ) ) {
+		mpGame.SetRetainedMenuCover( false, gui );
+	} else if ( !idStr::Icmp( menuCommand, "retainedMultiplayerState" ) ) {
+		mpGame.PublishRetainedMenu( gui );
 	} else if ( !idStr::Icmp( menuCommand, "initCreateServerSettings" ) ) {
 		// openQ4: the vote gametype index is the menu dropdown index
 		gui->SetStateInt( "currentGametype", mpGame.GameTypeToVote( si_gameType.GetString() ) );

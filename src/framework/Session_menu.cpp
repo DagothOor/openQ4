@@ -52,6 +52,7 @@ idCVar gui_set_sys_scroll( "gui_set_sys_scroll", "0", CVAR_GUI | CVAR_INTEGER, "
 idCVar gui_set_audio_scroll( "gui_set_audio_scroll", "0", CVAR_GUI | CVAR_INTEGER, "audio menu scroll step", 0.0f, 0.0f );
 idCVar gui_set_game_scroll( "gui_set_game_scroll", "0", CVAR_GUI | CVAR_INTEGER, "game menu scroll step", 0, 48 );
 idCVar ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL, "use the in-development retained SYSTEM page, which ui_retained includes only once every stock setting works there" );
+idCVar ui_retainedMultiplayer( "ui_retainedMultiplayer", "0", CVAR_GUI | CVAR_BOOL, "use the in-development retained multiplayer menu card, which ui_retained includes only once all its pages are built" );
 // The single gate for the retained (RmlUi) interface, on by default. Each
 // screen presents its stock GUI instead when its retained document is missing
 // or cannot load, or when the legacy menu it covers lacks a page it hands off
@@ -92,6 +93,33 @@ static bool Session_RetainedSystemEnabled( void ) {
 	return ui_retainedSystem.GetBool() || ( Session_RetainedScreensEnabled() &&
 		RETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL && RETAINED_SYSTEM_INCOMPLETE_SETTINGS[0] == NULL );
 }
+
+// The multiplayer menu card (section 14.18), which covers the game's own menu
+// while it is open over a match.
+static const char *const RETAINED_MP_ESCAPE_GUI = "guis/menu/mp_escape.q4ui";
+// The version of the game's answer to retainedMultiplayerCover that the card
+// relies on; a game module without it keeps its stock menu.
+static const int RETAINED_MP_PROTOCOL = 1;
+// The Escape card's pages that still hand off to their stock pages. While
+// any remain, the gate leaves the stock menu in place and only
+// ui_retainedMultiplayer opts into the card. ui_retained_gate.py keeps this
+// list equal to the card's hand-off pages.
+static const char *const RETAINED_MP_ESCAPE_MISSING_PAGES[] = {
+	"team", "players", "vote", "match", "settings", "voice", "server", "admin", NULL
+};
+// The stock menu buttons the card's hand-offs press, by the card's page
+// index (card.stock_page), in the generator's order.
+static const char *const RETAINED_MP_STOCK_PAGES[] = {
+	"main_b_jointeam", "main_b_players", "main_b_vote", "main_b_matchcontrol",
+	"main_b_settings", "main_b_voiceconfig", "main_b_serverinfo", "main_b_admin"
+};
+// How long a hand-off waits for the stock menu's column to show its button.
+static const int RETAINED_MP_HANDOFF_MSEC = 500;
+
+static bool Session_RetainedMultiplayerEnabled( void ) {
+	return ui_retainedMultiplayer.GetBool() || ( Session_RetainedScreensEnabled() && RETAINED_MP_ESCAPE_MISSING_PAGES[0] == NULL );
+}
+
 
 static const int MENU_CONTROLLER_AXIS_THRESHOLD = 50;
 static const int MENU_CONTROLLER_REPEAT_INITIAL_MSEC = 320;
@@ -3745,6 +3773,7 @@ void idSessionLocal::DispatchCommand( idUserInterface *gui, const char *menuComm
 			if ( gui == guiSystem ) ReturnSystemSettings();
 			else if ( gui == guiTest ) TestGUI( NULL );
 			else if ( gui == guiRetainedHome ) HandleRetainedSessionRequest( gui, "resume" );
+			else if ( gui == guiRetainedMultiplayer ) HandleRetainedMultiplayerRequest( gui, "mpClose" );
 			else if ( gui == guiActive ) ExitMenu();
 		}
 		return;
@@ -3768,23 +3797,7 @@ void idSessionLocal::DispatchCommand( idUserInterface *gui, const char *menuComm
 	} else if ( gui == guiRestartMenu ) {
 		HandleRestartMenuCommands( menuCommand );
 	} else if ( game && guiActive && guiActive->State().GetBool( "gameDraw" ) ) {
-		const char *cmd = game->HandleGuiCommands( menuCommand );
-		if ( !cmd ) {
-			openq4::NativeInputBeforeSessionChange();
-			guiActive = NULL;
-		} else if ( idStr::Icmp( cmd, "main" ) == 0 ) {
-			StartMenu();
-		} else if ( idStr::Icmpn( cmd, "main ", 5 ) == 0 ) {
-			StartMenu();
-			idStr mainMenuEvent = cmd + 5;
-			mainMenuEvent.StripLeading( ' ' );
-			if ( mainMenuEvent.Length() > 0 ) {
-				guiMainMenu->HandleNamedEvent( mainMenuEvent.c_str() );
-			}
-		} else if ( strstr( cmd, "sound " ) == cmd ) {
-			// pipe the GUI sound commands not handled by the game to the main menu code
-			HandleMainMenuCommands( cmd );
-		}
+		HandleGameMenuReturn( game->HandleGuiCommands( menuCommand ) );
 	} else if ( guiHandle ) {
 		if ( (*guiHandle)( menuCommand ) ) {
 			return;
@@ -4152,6 +4165,20 @@ void idSessionLocal::MenuEvent( const sysEvent_t *event ) {
 		return;
 	}
 
+	if ( RetainedMultiplayerCovers() ) {
+		// The card owns input while it covers the game's menu. A function key
+		// it leaves alone runs its binding, as over the stock menu (F1 and F2
+		// vote).
+		idUserInterface *card = guiRetainedMultiplayer;
+		menuCommand = card->HandleEvent( event, common->GetPresentationTime() );
+		if ( menuCommand && menuCommand[0] ) {
+			DispatchCommand( card, menuCommand );
+		} else if ( event->evType == SE_KEY && event->evValue2 == 1 && event->evValue >= K_F1 && event->evValue <= K_F12 ) {
+			idKeyInput::ExecKeyBinding( event->evValue );
+		}
+		return;
+	}
+
 	if ( event->evType == SE_KEY && event->evValue2 == 1 ) {
 		if ( HandleMainMenuSettingsScrollInput( guiActive, event->evValue ) ) {
 			return;
@@ -4211,6 +4238,9 @@ void idSessionLocal::GuiFrameEvents() {
 	UpdateRetainedHome();
 	RetainedHomeFrameEvent();
 	UpdateRetainedSubpage();
+	// Likewise the multiplayer card, before its menu's own frame.
+	UpdateRetainedMultiplayer();
+	RetainedMultiplayerFrameEvent();
 
 	if ( guiTest ) {
 		gui = guiTest;
@@ -5214,6 +5244,11 @@ bool idSessionLocal::RetainedSubpageEvent( const sysEvent_t *event ) {
 
 void idSessionLocal::HandleRetainedSessionRequest( idUserInterface *gui, const char *request ) {
 #ifndef ID_DEDICATED
+	if ( gui != NULL && gui == guiRetainedMultiplayer ) {
+		// The multiplayer card's verbs, and only its verbs, reach the game.
+		HandleRetainedMultiplayerRequest( gui, request );
+		return;
+	}
     if ( gui && request && gui == guiActive &&
          ( !idStr::Icmp( gui->Name(), RETAINED_SINGLEPLAYER_GUI ) || !idStr::Icmp( gui->Name(), RETAINED_CAMPAIGNS_GUI ) ) ) {
         // A change of level in progress takes no further request.
@@ -5367,7 +5402,23 @@ void idSessionLocal::PrepareRetainedLevel( const char *mapPath, bool multiplayer
 	retainedPauseStrogg = -1;
 	guiRetainedReleasing = NULL;
 	retainedReleaseUntil = 0;
-	if ( !Session_RetainedScreensEnabled() || multiplayer ) {
+	// A map change ends the multiplayer card's cover and any stock page's
+	// takeover, without a release: the next view is a new map.
+	RetireRetainedMultiplayer( false );
+	retainedMultiplayerUncovered = false;
+	retainedMultiplayerHandoff = -1;
+	if ( multiplayer ) {
+		// The multiplayer card loads here too, and each map opens it on its
+		// first page.
+		if ( Session_RetainedMultiplayerEnabled() && guiRetainedEscape == NULL ) {
+			guiRetainedEscape = FindRetainedGui( RETAINED_MP_ESCAPE_GUI, false, false );
+		}
+		if ( guiRetainedEscape != NULL ) {
+			guiRetainedEscape->SetStateInt( "card.tab", 0 );
+		}
+		return;
+	}
+	if ( !Session_RetainedScreensEnabled() ) {
 		return;
 	}
 	if ( guiRetainedPause == NULL ) {
@@ -5386,6 +5437,228 @@ void idSessionLocal::PrepareRetainedLevel( const char *mapPath, bool multiplayer
 #endif
 }
 
+// The game's in-match menu: its multiplayer menu, drawn over the game. The
+// chat, buy and summary screens are other GUIs and are never covered.
+static bool Session_IsGameMenu( idUserInterface *gui ) {
+	return gui != NULL && gui->State().GetBool( "gameDraw" ) && !idStr::Icmp( gui->Name(), "guis/mpmain.gui" );
+}
+
+bool idSessionLocal::RetainedMultiplayerCovers() const {
+	return guiRetainedMultiplayer != NULL && Session_IsGameMenu( guiActive );
+}
+
+/*
+===============
+idSessionLocal::UpdateRetainedMultiplayer
+
+The multiplayer menu card (section 14.18) covers the game's menu while it is
+open over a match. The game keeps the menu: its state, its commands, its
+legacy pages and the Match Control adapter all stay on mpmain.gui, which only
+stops drawing. The card presents when the gate allows it, the game answers
+the cover protocol and allows the cover now, and neither a test GUI, a
+retained preview nor a mod's own mpmain.gui is in the way; otherwise the
+stock menu presents, and a document that cannot present falls back for the
+session. A stock page the card hands off to keeps the menu until it closes.
+===============
+*/
+void idSessionLocal::UpdateRetainedMultiplayer() {
+#ifndef ID_DEDICATED
+	const int now = common->GetPresentationTime();
+	if ( !Session_IsGameMenu( guiActive ) ) {
+		// The menu closing ends a stock page's takeover.
+		retainedMultiplayerUncovered = false;
+		retainedMultiplayerHandoff = -1;
+	} else if ( retainedMultiplayerHandoff >= 0 ) {
+		// The stock page's button answers once the menu's opening shows its
+		// column (UI_RunLegacyWindowAction acts only on visible windows).
+		idStr command;
+		if ( UI_RunLegacyWindowAction( guiActive, RETAINED_MP_STOCK_PAGES[ retainedMultiplayerHandoff ], false, command ) ) {
+			retainedMultiplayerHandoff = -1;
+			if ( command.Length() > 0 ) {
+				DispatchCommand( guiActive, command.c_str() );
+			}
+		} else if ( now >= retainedMultiplayerHandoffUntil ) {
+			common->Warning( "retained UI: the multiplayer menu's '%s' page did not become available",
+				RETAINED_MP_STOCK_PAGES[ retainedMultiplayerHandoff ] );
+			retainedMultiplayerHandoff = -1;
+		}
+	}
+	const bool context = Session_RetainedMultiplayerEnabled() && game != NULL && mapSpawned && IsMultiplayer() &&
+		Session_IsGameMenu( guiActive ) && guiTest == NULL && !RetainedUI_IsOpen() && !retainedMultiplayerUncovered;
+	if ( !context ) {
+		if ( guiRetainedMultiplayer != NULL ) {
+			// Closing the menu releases the softened view over the running game;
+			// anything that takes the screen instead drops it at once.
+			RetireRetainedMultiplayer( guiActive == NULL && mapSpawned );
+		}
+		return;
+	}
+	if ( guiRetainedMultiplayer == NULL ) {
+		if ( retainedStock.FindIndex( RETAINED_MP_ESCAPE_GUI ) >= 0 ) {
+			return;
+		}
+		if ( Session_ModSuppliesFile( "guis/mpmain.gui" ) ) {
+			common->DPrintf( "retained UI: the mod supplies its own multiplayer menu, so it presents instead of '%s'\n", RETAINED_MP_ESCAPE_GUI );
+			retainedStock.Append( RETAINED_MP_ESCAPE_GUI );
+			return;
+		}
+		if ( guiRetainedEscape == NULL ) {
+			guiRetainedEscape = FindRetainedGui( RETAINED_MP_ESCAPE_GUI, false, false );
+		} else if ( UI_RetainedViewFailed( guiRetainedEscape ) ) {
+			common->Warning( "retained UI: '%s' stopped drawing; the stock menu presents instead", RETAINED_MP_ESCAPE_GUI );
+			retainedStock.AddUnique( RETAINED_MP_ESCAPE_GUI );
+			guiRetainedEscape = NULL;
+		}
+		idUserInterface *card = guiRetainedEscape;
+		if ( card == NULL ) {
+			return;
+		}
+		card->SetStateInt( "mp.protocol", 0 );
+		card->SetStateBool( "mp.cover_allowed", false );
+		game->HandleMainMenuCommands( "retainedMultiplayerCover", card );
+		if ( card->State().GetInt( "mp.protocol" ) != RETAINED_MP_PROTOCOL ) {
+			common->DPrintf( "retained UI: the game module does not answer the multiplayer card's protocol %d; the stock menu presents\n",
+				RETAINED_MP_PROTOCOL );
+			retainedStock.Append( RETAINED_MP_ESCAPE_GUI );
+			return;
+		}
+		if ( !card->State().GetBool( "mp.cover_allowed" ) ) {
+			// Not now (the connect-time join offer, an Arena Campaign match):
+			// the stock menu keeps this opening.
+			retainedMultiplayerUncovered = true;
+			return;
+		}
+		guiRetainedMultiplayer = card;
+		retainedMultiplayerRevision = card->State().GetInt( "mp.revision" );
+		card->StateChanged( now );
+		card->Activate( true, now );
+		card->HandleNamedEvent( "open" );
+		PumpApplicationActions( card );
+		return;
+	}
+	// The game writes only what changed, under a new revision.
+	game->HandleMainMenuCommands( "retainedMultiplayerState", guiRetainedMultiplayer );
+	const int revision = guiRetainedMultiplayer->State().GetInt( "mp.revision" );
+	if ( revision != retainedMultiplayerRevision ) {
+		retainedMultiplayerRevision = revision;
+		guiRetainedMultiplayer->StateChanged( now );
+	}
+#endif
+}
+
+/*
+===============
+idSessionLocal::RetireRetainedMultiplayer
+
+The card stops covering. With `release`, the menu closed over the running
+game: the closed card keeps drawing only its softened view while it releases
+over 250 ms, as the pause screen does.
+===============
+*/
+void idSessionLocal::RetireRetainedMultiplayer( bool release ) {
+#ifndef ID_DEDICATED
+	idUserInterface *card = guiRetainedMultiplayer;
+	if ( card == NULL ) {
+		return;
+	}
+	const int now = common->GetPresentationTime();
+	guiRetainedMultiplayer = NULL;
+	if ( game != NULL ) {
+		game->HandleMainMenuCommands( "retainedMultiplayerUncover", card );
+	}
+	card->Activate( false, now );
+	if ( release && mapSpawned && guiActive == NULL ) {
+		card->HandleNamedEvent( "release" );
+		guiRetainedReleasing = card;
+		retainedReleaseUntil = now + RETAINED_RELEASE_MSEC;
+	}
+	PumpApplicationActions( card );
+#endif
+}
+
+void idSessionLocal::RetainedMultiplayerFrameEvent() {
+	if ( !RetainedMultiplayerCovers() ) {
+		return;
+	}
+	sysEvent_t ev;
+	memset( &ev, 0, sizeof( ev ) );
+	ev.evType = SE_NONE;
+	idUserInterface *card = guiRetainedMultiplayer;
+	const char *cmd = card->HandleEvent( &ev, common->GetPresentationTime() );
+	if ( cmd && cmd[0] ) {
+		DispatchCommand( card, cmd );
+	}
+}
+
+void idSessionLocal::HandleGameMenuReturn( const char *cmd ) {
+	if ( !cmd ) {
+		openq4::NativeInputBeforeSessionChange();
+		guiActive = NULL;
+	} else if ( idStr::Icmp( cmd, "main" ) == 0 ) {
+		StartMenu();
+	} else if ( idStr::Icmpn( cmd, "main ", 5 ) == 0 ) {
+		StartMenu();
+		idStr mainMenuEvent = cmd + 5;
+		mainMenuEvent.StripLeading( ' ' );
+		if ( mainMenuEvent.Length() > 0 ) {
+			guiMainMenu->HandleNamedEvent( mainMenuEvent.c_str() );
+		}
+	} else if ( strstr( cmd, "sound " ) == cmd ) {
+		// pipe the GUI sound commands not handled by the game to the main menu code
+		HandleMainMenuCommands( cmd );
+	}
+}
+
+/*
+===============
+idSessionLocal::HandleRetainedMultiplayerRequest
+
+The card's verbs, each the stock menu's own command with its selection
+sound: Resume closes the menu, Main Menu leaves for the main menu with the
+match running, Disconnect (after the card's own confirmation) leaves the
+server, and a page still in development hands off to its stock page. Every
+other request is refused, as the card's own verbs are anywhere else.
+===============
+*/
+void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, const char *request ) {
+#ifndef ID_DEDICATED
+	if ( gui == NULL || request == NULL || gui != guiRetainedMultiplayer || !RetainedMultiplayerCovers() || game == NULL ) {
+		return;
+	}
+	const char *command = NULL;
+	if ( !idStr::Icmp( request, "mpClose" ) ) {
+		command = "play main_menu_selection ; close";
+	} else if ( !idStr::Icmp( request, "mpMainMenu" ) ) {
+		command = "play main_menu_selection ; mainMenu";
+	} else if ( !idStr::Icmp( request, "mpDisconnect" ) ) {
+		command = "play main_menu_selection ; disconnect";
+	} else if ( !idStr::Icmp( request, "mpStockPage" ) ) {
+		const int count = static_cast<int>( sizeof( RETAINED_MP_STOCK_PAGES ) / sizeof( RETAINED_MP_STOCK_PAGES[0] ) );
+		const int page = gui->State().GetInt( "card.stock_page", "-1" );
+		if ( page < 0 || page >= count ) {
+			common->Warning( "retained UI: the multiplayer card asked for stock page %d", page );
+			return;
+		}
+		// The stock menu presents at once, and presses the page's button as
+		// soon as its column shows (UpdateRetainedMultiplayer).
+		retainedMultiplayerUncovered = true;
+		retainedMultiplayerHandoff = page;
+		retainedMultiplayerHandoffUntil = common->GetPresentationTime() + RETAINED_MP_HANDOFF_MSEC;
+		RetireRetainedMultiplayer( false );
+		UpdateRetainedMultiplayer();
+		return;
+	} else {
+		common->Warning( "retained UI: unhandled multiplayer request '%s'", request );
+		return;
+	}
+	HandleGameMenuReturn( game->HandleGuiCommands( command ) );
+	// A closed menu releases the softened view in this frame, not the next.
+	if ( !Session_IsGameMenu( guiActive ) ) {
+		RetireRetainedMultiplayer( guiActive == NULL && mapSpawned );
+	}
+#endif
+}
+
 void idSessionLocal::ReportRetainedScreens() {
 	// stock= lists the retained documents that fell back to their stock
 	// screens this session.
@@ -5394,10 +5667,12 @@ void idSessionLocal::ReportRetainedScreens() {
 		stock += i > 0 ? "," : "";
 		stock += retainedStock[i];
 	}
-	common->Printf( "OPENQ4_RETAINED enabled=%d system=%d home=%s title=%d pause=%d strogg=%d handoff=%d release=%d views=%d stock=%s\n",
-		Session_RetainedScreensEnabled() ? 1 : 0, Session_RetainedSystemEnabled() ? 1 : 0,
+	// multiplayer= is the card's gate; mp= the card covering the game's menu.
+	common->Printf( "OPENQ4_RETAINED enabled=%d system=%d multiplayer=%d home=%s title=%d pause=%d strogg=%d handoff=%d release=%d mp=%s views=%d stock=%s\n",
+		Session_RetainedScreensEnabled() ? 1 : 0, Session_RetainedSystemEnabled() ? 1 : 0, Session_RetainedMultiplayerEnabled() ? 1 : 0,
 		guiRetainedHome != NULL ? guiRetainedHome->Name() : "-",
 		guiRetainedTitle != NULL ? 1 : 0, guiRetainedPause != NULL ? 1 : 0, guiRetainedPauseStrogg != NULL ? 1 : 0,
-		RetainedHomeInputBlocked() ? 1 : 0, guiRetainedReleasing != NULL ? 1 : 0, RetainedUI_ViewCount(),
+		RetainedHomeInputBlocked() ? 1 : 0, guiRetainedReleasing != NULL ? 1 : 0,
+		RetainedMultiplayerCovers() ? "escape" : "-", RetainedUI_ViewCount(),
 		stock.Length() > 0 ? stock.c_str() : "-" );
 }

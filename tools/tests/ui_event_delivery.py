@@ -71,6 +71,13 @@ struct idSessionLocal {
     void UpdateRetainedSubpage() {}
     bool RetainedSubpageEvent(const sysEvent_t*) { return false; }
     void HandleRetainedSessionRequest(idUserInterface*,const char*) { assert(false); }
+    // The multiplayer card is covered by the retained screens suite.
+    idUserInterface* guiRetainedMultiplayer=nullptr;
+    void UpdateRetainedMultiplayer() {}
+    void RetainedMultiplayerFrameEvent() {}
+    bool RetainedMultiplayerCovers() const { return false; }
+    void HandleRetainedMultiplayerRequest(idUserInterface*,const char*) { assert(false); }
+    void HandleGameMenuReturn(const char*) { assert(false); }
 };
 static void PumpControllerMenuNavigation(idSessionLocal*) {}
 static void SyncMainMenuSettingsScrollPages(idUserInterface* gui) {

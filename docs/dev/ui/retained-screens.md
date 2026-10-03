@@ -28,6 +28,11 @@ and the window and custom size fields take no typed digits
 ([SYSTEM resolution rows](system-resolution-rows.md#the-gate)). The gate test
 derives both lists from the code.
 
+`ui_retainedMultiplayer` likewise opts into the multiplayer menu card, which
+covers the game's in-match menu; `ui_retained` includes it only once none of
+its pages hands off to a stock page any more
+([multiplayer menus](multiplayer-menus.md#the-gate)).
+
 `tools/tests/ui_retained_gate.py` holds the gate: it checks the CVar defaults,
 that every retained document path in the session is reached only behind the
 gate, that the documents are current with their generator and request only
@@ -477,9 +482,10 @@ loads on demand and reports it once.
 ## Diagnostics
 
 `ui_retainedStatus` prints one `OPENQ4_RETAINED` line: the gate, the SYSTEM
-opt-in, the presented home screen, which home documents are loaded, whether a
-hand-off is in progress, whether a closed pause screen is releasing the
-softened view, the number of live retained views (0 while the gate is off)
+and multiplayer opt-ins, the presented home screen, which home documents are loaded, whether a
+hand-off is in progress, whether a closed pause screen or multiplayer card
+is releasing the softened view, the multiplayer card covering the game's menu
+(`mp=escape`), the number of live retained views (0 while the gate is off)
 and, after `stock=`, the documents that fell back to their stock
 screens this session (`-` when none). `ui_retainedTrace 1` also logs each
 session request with whether the adapter accepted it, and each loading phase as
@@ -867,8 +873,10 @@ connection traced the players they published. Evidence:
   has no Settings row yet (`ui_retainedOpaqueBacking` is a CVar). A node
   inside a composition layer gets no soft focus, because only the base
   surface is read. Only the confirmation width exists.
-- The multiplayer Escape and Welcome menus (section 14.18) keep the stock
-  menus: the retained home screen is never presented in a multiplayer game.
+- The multiplayer Escape card is opt-in (`ui_retainedMultiplayer`) while its
+  pages hand off to the stock menu, and the Welcome card is not built
+  ([multiplayer menus](multiplayer-menus.md#known-limitations)); the
+  retained home screen is never presented in a multiplayer game.
 - The sub-page level covers Single Player's Campaign only. Arena opens its
   stock selector, Multiplayer's Join Game, Create Server and Demos keep the
   stock menus, and Campaign's New Campaign and Chapters are not yet levels of

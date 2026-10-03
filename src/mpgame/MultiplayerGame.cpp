@@ -1235,6 +1235,8 @@ idMultiplayerGame::idMultiplayerGame() {
 	arenaPresentationBlurEnabled = false;
 	joinScreenSoftFocusEnabled = false;
 	joinScreenPending = false;
+	retainedMenuCovered = false;
+	retainedMenuRevision = 0;
 	arenaEntranceCameraResolved = false;
 	arenaEntranceCameraIsEntrance = false;
 	arenaVictorLookLatched = false;
@@ -9747,6 +9749,7 @@ void idMultiplayerGame::Clear() {
 	SetArenaCampaignDepthOfField( false );
 	SetJoinScreenSoftFocus( false );
 	joinScreenPending = false;
+	retainedMenuCovered = false;
 		
 	pingUpdateTime = 0;
 	vote = VOTE_NONE;
@@ -15618,6 +15621,89 @@ void idMultiplayerGame::SetJoinScreenSoftFocus( bool enabled ) {
 
 /*
 ================
+idMultiplayerGame::SetRetainedMenuCover
+
+openQ4: the session's retained menu card (section 14.18) covers mainGui. The
+card learns the protocol it can rely on and whether it may cover now: it does
+not carry the connect-time join offer yet, and an Arena Campaign match keeps
+its own menu. Uncovering gives the join panel its soft focus back while the
+offer stands.
+================
+*/
+static const int RETAINED_MENU_PROTOCOL = 1;
+
+void idMultiplayerGame::SetRetainedMenuCover( bool covered, idUserInterface *card ) {
+	if ( card == NULL ) {
+		return;
+	}
+	if ( !covered ) {
+		retainedMenuCovered = false;
+		if ( joinScreenPending && currentMenu == 1 ) {
+			SetJoinScreenSoftFocus( true );
+		}
+		return;
+	}
+	const bool allowed = currentMenu == 1 && mainGui != NULL && !joinScreenPending && !IsArenaCampaignMatch();
+	card->SetStateInt( "mp.protocol", RETAINED_MENU_PROTOCOL );
+	card->SetStateBool( "mp.cover_allowed", allowed );
+	if ( !allowed ) {
+		return;
+	}
+	retainedMenuCovered = true;
+	for ( int i = 0; i < 4; i++ ) {
+		retainedMenuPublished[ i ].Clear();
+	}
+	PublishRetainedMenu( card );
+}
+
+/*
+================
+idMultiplayerGame::PublishRetainedMenu
+
+The card's header (section 14.18): the map, the mode, the clock and the
+score, written only when one changes, with a new mp.revision so the session
+publishes them. Team modes read "MARINES 12 - 9 STROGG" with the player's
+team first; other modes give the player's place and score.
+================
+*/
+void idMultiplayerGame::PublishRetainedMenu( idUserInterface *card ) {
+	if ( card == NULL || !retainedMenuCovered ) {
+		return;
+	}
+	idStr mapName;
+	idStr texts[ 4 ];
+	texts[ 0 ] = ResolveScoreboardMapName( gameLocal.serverInfo.GetString( "si_map" ), mapName );
+	texts[ 1 ] = LocalizeGametype();
+	texts[ 2 ] = GameTime();
+	idPlayer *player = gameLocal.GetLocalPlayer();
+	if ( gameLocal.IsTeamGame() ) {
+		static const char *const teamNames[ TEAM_MAX ] = { "#str_200197", "#str_200199" };
+		int first = TEAM_MARINE;
+		if ( player != NULL && !player->spectating && player->team == TEAM_STROGG ) {
+			first = TEAM_STROGG;
+		}
+		const int second = first == TEAM_MARINE ? TEAM_STROGG : TEAM_MARINE;
+		texts[ 3 ] = va( "%s %d - %d %s", common->GetLocalizedString( teamNames[ first ] ), GetScoreForTeam( first ),
+			GetScoreForTeam( second ), common->GetLocalizedString( teamNames[ second ] ) );
+	} else if ( player != NULL && !player->spectating ) {
+		texts[ 3 ] = GetPlayerRankText( player );
+	}
+	static const char *const keys[ 4 ] = { "mp.title", "mp.mode", "mp.clock", "mp.score" };
+	bool changed = false;
+	for ( int i = 0; i < 4; i++ ) {
+		if ( texts[ i ].Cmp( retainedMenuPublished[ i ] ) != 0 ) {
+			retainedMenuPublished[ i ] = texts[ i ];
+			card->SetStateString( keys[ i ], texts[ i ].c_str() );
+			changed = true;
+		}
+	}
+	if ( changed ) {
+		card->SetStateInt( "mp.revision", ++retainedMenuRevision );
+	}
+}
+
+/*
+================
 idMultiplayerGame::ShowInitialJoinMenu
 ================
 */
@@ -15833,6 +15919,7 @@ void idMultiplayerGame::DisableMenu( void ) {
 	// picked a side, chose to spectate or backed out of it.
 	joinScreenPending = false;
 	SetJoinScreenSoftFocus( false );
+	retainedMenuCovered = false;
 	if ( currentMenu == 1 ) {
 		mainGui->Activate( false, gameLocal.time );
 	} else if ( currentMenu == 2 ) {
@@ -17018,7 +17105,10 @@ bool idMultiplayerGame::Draw( int clientNum ) {
 		}
 		if ( currentMenu == 1 ) {
 			UpdateMainGui();
-			mainGui->Redraw( gameLocal.time );
+			// The session draws its retained card in the menu's place.
+			if ( !retainedMenuCovered ) {
+				mainGui->Redraw( gameLocal.time );
+			}
 		} else if( currentMenu == 2 ) {
 			msgmodeGui->Redraw( gameLocal.time );
 		} else if( currentMenu == 3 ) {

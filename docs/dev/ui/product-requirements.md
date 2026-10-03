@@ -527,7 +527,9 @@ On engine `9605f1dbbefc953b4c22af1650d5bf69e34e63cc` the session's controller me
 
 On engine `34dba978638b3255d8d67e74a7eea374c151b07c` event programs gain a focus instruction, which moves focus as the program commits or after the next layout and yields to newer input, and Q, E and the gamepad shoulders run a document's tab events. The behavior, document and runtime suites, the adapter test and a mutation pass qualify it; no document uses them yet. `INP-010` and `INP-011` move from pending to partial. Evidence: `.tmp/ui/event-focus-tabs/validation-evidence.json`, SHA-256 `a46e0a80f07dade3ec51c8fe9a363e4deb53d3aff60860f86ccc522793c86df0`.
 
-There are **89 partial, 250 pending and one verified requirement**, counting the
+On engine `8ad1fcac762283b29e76fb36f6fa7a251e73effb` the multiplayer Escape card covers the game's in-match menu behind ui_retainedMultiplayer: the card, its header, the eight-tab strip, the prompt bar, the Disconnect confirmation and the softening, with every page still handing off to its stock page and the card 890 dp wide to fit the strip. The gate and native screens tests, a mutation pass and a live probe on OpenGL and Vulkan qualify it. `FLOW-046` and `WID-008` move from pending to partial; `BEH-007` and `REN-016` gain partial evidence. Evidence: `.tmp/ui/retained-mp-escape/validation-evidence.json`, SHA-256 `39b8f759d2e6445b321c64507f125dcc015334dbbcb6ffaf0bb363df6e3255cf`.
+
+There are **91 partial, 248 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock
