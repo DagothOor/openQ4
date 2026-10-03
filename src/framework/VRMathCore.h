@@ -318,6 +318,54 @@ inline vrVec3_t VR_MultiplyRows( const vrVec3_t &v, const vrVec3_t rows[3] ) {
 
 /*
 ====================
+Two-handed aim
+
+The off hand steadies the gun when its palm closes in front of the weapon
+hand, close to the line the gun points along: a foregrip's reach, up to
+0.65 m ahead and within 0.2 m of the aim (both in metres, scaled to units).
+====================
+*/
+inline bool VR_OffHandOnForegrip( const vrVec3_t &weaponPalm, const vrVec3_t &aimForward,
+		const vrVec3_t &offPalm, float unitsPerMetre ) {
+	const vrVec3_t reach = VR_Sub( offPalm, weaponPalm );
+	const float along = VR_Dot( reach, aimForward );
+	if ( along < 0.05f * unitsPerMetre || along > 0.65f * unitsPerMetre ) {
+		return false;
+	}
+	return VR_Length( VR_Sub( reach, VR_Scale( aimForward, along ) ) ) < 0.2f * unitsPerMetre;
+}
+
+// The gun held in both hands points from the rear palm through the front
+// one. It keeps the weapon hand's roll: left comes from that hand's up, so
+// tilting the rear wrist still cants the gun. Rows are forward, left, up.
+// False when the palms coincide.
+inline bool VR_TwoHandedAxis( const vrVec3_t &rearPalm, const vrVec3_t &frontPalm, const vrVec3_t &rearUp, vrVec3_t rows[3] ) {
+	vrVec3_t forward = VR_Sub( frontPalm, rearPalm );
+	const float length = VR_Length( forward );
+	if ( length < 1e-3f ) {
+		return false;
+	}
+	forward = VR_Scale( forward, 1.0f / length );
+	vrVec3_t left = VR_Cross( rearUp, forward );
+	float leftLength = VR_Length( left );
+	if ( leftLength < 1e-3f ) {
+		// the rear hand's up runs along the gun: take the world's
+		left = VR_Cross( VR_Vec3( 0.0f, 0.0f, 1.0f ), forward );
+		leftLength = VR_Length( left );
+		if ( leftLength < 1e-3f ) {
+			left = VR_Vec3( 0.0f, 1.0f, 0.0f );
+			leftLength = 1.0f;
+		}
+	}
+	left = VR_Scale( left, 1.0f / leftLength );
+	rows[0] = forward;
+	rows[1] = left;
+	rows[2] = VR_Cross( forward, left );
+	return true;
+}
+
+/*
+====================
 Turning
 
 A snap turn fires once when the stick passes the press threshold and re-arms

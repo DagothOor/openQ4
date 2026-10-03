@@ -63,6 +63,9 @@ EYE_SEPARATION_M = 0.064
 # For the aim marker the weapon hand points 10 degrees down from 0.35 m below
 # the eyes, so the shot meets the ground a few metres ahead.
 LASER_HAND_POSE = "0.2 1.25 -0.35 0 -10 0"
+# The off hand on the foregrip: 0.3 m along the laser pose's aim (10 degrees
+# down) and 5 cm above it, so holding the gun in both hands levels the aim.
+FOREGRIP_POSE = "0.2 1.248 -0.645 0 0 0"
 
 
 def read_events(path: Path) -> list[dict]:
@@ -145,7 +148,13 @@ def main(argv: list[str] | None = None) -> None:
         f"when {marker('laser_off')} capture {profile / 'xr_laser_off'}",
         f"when {marker('laser_dot')} capture {profile / 'xr_laser_dot'}",
         f"when {marker('laser_beam')} capture {profile / 'xr_laser_beam'}",
+        f"when {marker('two_grab')} hand left {FOREGRIP_POSE}",
+        f"when {marker('two_squeeze')} button left squeeze 1",
+        f"when {marker('two_off')} capture {profile / 'xr_two_off'}",
+        f"when {marker('two_dot')} capture {profile / 'xr_two_dot'}",
+        f"when {marker('two_release')} button left squeeze 0",
         f"when {marker('laser_done')} hand right 0.2 1.25 -0.35 0 0 0",
+        f"when {marker('laser_done')} hand left -0.2 1.25 -0.35 0 0 0",
         f"when {marker('fire')} button right trigger 1",
         f"when {marker('fire_release')} button right trigger 0",
         f"when {marker('room_walk')} head 0 0 0 0 1.6 -0.5",
@@ -179,7 +188,14 @@ def main(argv: list[str] | None = None) -> None:
         "condump vr_marker_laser_aim.txt", "g_stopTime 1", "vr_aimLaser 0", "waitMsec 800",
         "condump vr_marker_laser_off.txt", "waitMsec 500", "vr_aimLaser 1", "waitMsec 500",
         "condump vr_marker_laser_dot.txt", "waitMsec 500", "vr_aimLaser 2", "waitMsec 500",
-        "condump vr_marker_laser_beam.txt", "waitMsec 500", "vr_aimLaser 1", "g_stopTime 0",
+        "condump vr_marker_laser_beam.txt", "waitMsec 500", "vr_aimLaser 1",
+        # two hands: the off-hand grip closing on the foregrip steadies the gun
+        # along both palms instead of opening the weapon wheel
+        "echo VR_TWO_HANDS", "condump vr_marker_two_grab.txt", "waitMsec 400",
+        "condump vr_marker_two_squeeze.txt", "waitMsec 500", "vr_aimLaser 0", "waitMsec 500",
+        "condump vr_marker_two_off.txt", "waitMsec 500", "vr_aimLaser 1", "waitMsec 500",
+        "condump vr_marker_two_dot.txt", "waitMsec 500",
+        "condump vr_marker_two_release.txt", "waitMsec 400", "echo VR_TWO_HANDS_DONE", "g_stopTime 0",
         "condump vr_marker_laser_done.txt", "waitMsec 500",
         # the right trigger's default binding fires the weapon
         "echo VR_FIRE", "condump vr_marker_fire.txt", "waitMsec 400",
@@ -298,12 +314,14 @@ def main(argv: list[str] | None = None) -> None:
     captures = {}
     for e in events:
         if e.get("event") == "capture":
-            stage = next(s for s in ("gameplay", "turned", "menu", "laser_off", "laser_dot", "laser_beam")
+            stage = next(s for s in ("gameplay", "turned", "menu", "laser_off", "laser_dot", "laser_beam",
+                                     "two_off", "two_dot")
                          if f"xr_{s}_" in Path(e["path"]).name)
             captures[f"{stage}_{e['layer']}"] = e
     for name in ("gameplay_left", "gameplay_right", "gameplay_quad1", "turned_left", "turned_right", "menu_quad1",
                  "laser_off_left", "laser_off_right", "laser_dot_left", "laser_dot_right",
-                 "laser_beam_left", "laser_beam_right"):
+                 "laser_beam_left", "laser_beam_right", "two_off_left", "two_off_right", "two_dot_left",
+                 "two_dot_right"):
         assert name in captures and captures[name]["written"], f"missing capture {name}: {sorted(captures)}"
     for name in ("gameplay_left", "gameplay_right", "turned_left", "turned_right"):
         assert captures[name]["lit_fraction"] > 0.2, f"eye capture {name} is mostly black: {captures[name]}"
@@ -356,6 +374,22 @@ def main(argv: list[str] | None = None) -> None:
     assert disparity > 0.0, f"the marker's disparity puts it behind the eyes ({disparity:.5f})"
     marker_depth = EYE_SEPARATION_M / disparity
     assert 1.0 < marker_depth < 40.0, f"the marker fuses at {marker_depth:.2f} m, not on the ground a few metres ahead"
+
+    # two hands on the gun: the squeeze held the gun instead of opening the
+    # weapon wheel, buzzed the off hand, and the aim rose with the front palm
+    two_hands = text.partition("VR_TWO_HANDS")[2].partition("VR_TWO_HANDS_DONE")[0]
+    assert "OpenXR: two-handed aim held" in two_hands, "the off-hand squeeze on the foregrip did not hold the gun"
+    assert "OpenXR: two-handed aim released" in two_hands, "letting go of the foregrip did not release the gun"
+    assert "OpenXR: JOY1 down" not in two_hands, "the foregrip squeeze also opened the weapon wheel"
+    assert any(e.get("event") == "haptic" and e.get("hand") == "/user/hand/left" and e.get("duration_ns") == 20_000_000
+               for e in events), "taking the foregrip did not buzz the off hand"
+    for eye in ("left", "right"):
+        box, _ = changed_box(image("xr_two_off", eye), image("xr_two_dot", eye))
+        assert box is not None, f"the two-handed aim marker changed nothing in the {eye} eye"
+        x, y = (box[0] + box[2] - 1) / 2.0, (box[1] + box[3] - 1) / 2.0
+        _, two_y = eye_tangents(eye, x, y, 1200, 1320)
+        assert two_y > dots[eye][1] + 0.05, \
+            f"holding the gun in both hands should raise the {eye} eye's aim ({dots[eye][1]:.3f} to {two_y:.3f})"
 
     with Image.open(profile / "xr_gameplay_quad1.tga") as hud:
         alpha = hud.convert("RGBA").getchannel("A")

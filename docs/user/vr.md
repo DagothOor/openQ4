@@ -67,7 +67,7 @@ can rebind them in the controls menu like any gamepad button.
 | B | Crouch | Back |
 | X | Reload | - |
 | Y | Flashlight | - |
-| Off-hand grip | Weapon wheel | - |
+| Off-hand grip | Weapon wheel, or hold the gun in both hands | - |
 | Weapon-hand grip | Last weapon | - |
 | Off-hand stick click | Run / walk | - |
 | Menu button | Menu | Close menu |
@@ -87,9 +87,16 @@ dims when something between you and the target hides it. Set `vr_aimMode 0`
 to aim with your head instead; the HUD crosshair only shows when you aim with
 your head.
 
+To steady a gun, hold it in both hands: put your off hand in front of your
+weapon hand, where a rifle's foregrip would be, and squeeze its grip. The
+off-hand controller gives a short buzz, and the gun then points from your
+rear hand through your front hand until you let go. Squeezing the off-hand
+grip anywhere else opens the weapon wheel as usual.
+
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `vr_aimLaser` | 1 | 0 no marker, 1 laser dot, 2 laser dot and a beam from the gun |
+| `vr_twoHanded` | 1 | 1 the off-hand grip on the foregrip holds the gun in both hands, 0 it always opens the weapon wheel |
 
 The controllers vibrate: your weapon hand with every shot, and both hands
 when you're hit, harder for bigger hits. Set `vr_hapticStrength` between 0
@@ -157,8 +164,8 @@ still doesn't sit naturally, nudge it relative to the controller:
 | `vr_weaponOffsetZ` | 0 | up |
 | `vr_weaponPitch` | 0 | tilt in degrees; positive tilts down |
 
-If you used an earlier VR build, set `vr_weaponOffsetX` and `vr_weaponOffsetZ`
-back to 0: the old defaults of -5 and -3 now push the gun out of your hand.
+If you played an earlier VR build, its offsets of -5 and -3 would push the gun
+out of your hand, so openQ4 resets that pair to 0 once at startup.
 
 ## Multiplayer
 

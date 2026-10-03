@@ -159,6 +159,7 @@ idCVar com_product_lang_ext( "com_product_lang_ext", "1", CVAR_INTEGER | CVAR_SY
 idCVar r_skipGlowOverlay( "r_skipGlowOverlay", "0", CVAR_ARCHIVE | CVAR_RENDERER, "skip glow overlays when non-zero" );
 static idCVar r_borderlessDefaultMigrated( "r_borderlessDefaultMigrated", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for legacy bordered window defaults" );
 static idCVar net_rateDefaultMigrated( "net_rateDefaultMigrated", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for the legacy 25600 B/s network rate caps" );
+static idCVar vr_weaponOffsetDefaultMigrated( "vr_weaponOffsetDefaultMigrated", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for the VR weapon offsets that held weapons replaced" );
 
 static void Common_MigrateLegacyConsoleAllowCVar( void ) {
 	idCVar *legacyAllowConsole = cvarSystem->Find( "com_allowConsole" );
@@ -262,6 +263,28 @@ static void Common_MigrateLegacyNetworkRateCaps( void ) {
 	}
 
 	net_rateDefaultMigrated.SetBool( true );
+}
+
+/*
+==================
+Common_MigrateLegacyVRWeaponOffsets
+
+The first VR builds placed the view weapon at the controller's aim with
+archived offsets of -5 along it and -3 up. Weapons are now held by their own
+grip and the offsets only fine-tune that hold, so the old defaults would push
+every gun back out of the hand. Only that exact pair is reset, once.
+==================
+*/
+static void Common_MigrateLegacyVRWeaponOffsets( void ) {
+	if ( vr_weaponOffsetDefaultMigrated.GetBool() ) {
+		return;
+	}
+	if ( cvarSystem->GetCVarFloat( "vr_weaponOffsetX" ) == -5.0f && cvarSystem->GetCVarFloat( "vr_weaponOffsetZ" ) == -3.0f ) {
+		common->Printf( "Migrating legacy VR config: weapons are held by their own grip, vr_weaponOffsetX -5 and vr_weaponOffsetZ -3 -> 0\n" );
+		cvarSystem->SetCVarFloat( "vr_weaponOffsetX", 0.0f, CVAR_ARCHIVE );
+		cvarSystem->SetCVarFloat( "vr_weaponOffsetZ", 0.0f, CVAR_ARCHIVE );
+	}
+	vr_weaponOffsetDefaultMigrated.SetBool( true );
 }
 
 static int commonLastPresentationCap = -1;
@@ -7054,6 +7077,7 @@ void idCommonLocal::InitGame( void ) {
 	Common_MigrateLinuxLegacyLowVRamTexturePreset();
 	Common_MigrateLegacyBorderlessWindowDefault();
 	Common_MigrateLegacyNetworkRateCaps();
+	Common_MigrateLegacyVRWeaponOffsets();
 
 	// cvars are initialized, but not the rendering system. Allow preference startup dialog
 	Sys_DoPreferences();

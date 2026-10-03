@@ -62,6 +62,8 @@ idCVar vr_weaponOffsetZ( "vr_weaponOffsetZ", "0", CVAR_SYSTEM | CVAR_ARCHIVE | C
 	"moves the held view weapon up, in game units" );
 idCVar vr_weaponPitch( "vr_weaponPitch", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
 	"view weapon pitch relative to the controller's aim, in degrees (positive tilts down)", -60.0f, 60.0f );
+idCVar vr_twoHanded( "vr_twoHanded", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL,
+	"1 = squeezing the off-hand grip on the gun's foregrip, in front of the weapon hand, holds the gun in both hands; elsewhere that squeeze opens the weapon wheel" );
 idCVar vr_roomScale( "vr_roomScale", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL,
 	"1 = in single player the body walks after your head as you move about the room; 0 = it stays put and leaning stops at vr_headOffsetLimit" );
 idCVar vr_hapticStrength( "vr_hapticStrength", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,

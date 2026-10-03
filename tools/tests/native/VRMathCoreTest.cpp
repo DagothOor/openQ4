@@ -153,6 +153,39 @@ static void TestRotationBetween( void ) {
 	Check( NearVec( VR_MultiplyRows( VR_Vec3( 0.2f, 0.3f, 0.4f ), rows ), VR_Vec3( 0.2f, 0.3f, 0.4f ) ), "parallel vectors leave everything alone" );
 }
 
+static void TestTwoHandedAim( void ) {
+	const float upm = 40.0f;	// units per metre
+	const vrVec3_t palm = VR_Vec3( 10.0f, -8.0f, -14.0f );
+	const vrVec3_t forward = VR_Vec3( 1.0f, 0.0f, 0.0f );
+	// a foregrip 30 cm ahead and a hand's width up
+	Check( VR_OffHandOnForegrip( palm, forward, VR_Add( palm, VR_Vec3( 0.3f * upm, 0.0f, 0.08f * upm ) ), upm ), "a palm on the foregrip steadies the gun" );
+	Check( !VR_OffHandOnForegrip( palm, forward, VR_Add( palm, VR_Vec3( -0.1f * upm, 0.0f, 0.0f ) ), upm ), "a palm behind the gun does not" );
+	Check( !VR_OffHandOnForegrip( palm, forward, VR_Add( palm, VR_Vec3( 0.3f * upm, 0.35f * upm, 0.0f ) ), upm ), "a palm out to the side does not" );
+	Check( !VR_OffHandOnForegrip( palm, forward, VR_Add( palm, VR_Vec3( 0.8f * upm, 0.0f, 0.0f ) ), upm ), "a palm beyond a foregrip's reach does not" );
+	Check( !VR_OffHandOnForegrip( palm, forward, VR_Add( palm, VR_Vec3( 0.02f * upm, 0.0f, 0.0f ) ), upm ), "a palm against the weapon hand does not" );
+
+	// the front palm 30 cm ahead and 5 cm up tilts the aim up by atan( 5 / 30 )
+	vrVec3_t rows[3];
+	const vrVec3_t front = VR_Add( palm, VR_Vec3( 0.3f * upm, 0.0f, 0.05f * upm ) );
+	Check( VR_TwoHandedAxis( palm, front, VR_Vec3( 0.0f, 0.0f, 1.0f ), rows ), "the two-handed axis builds" );
+	Check( Near( VR_PitchDegrees( rows[0] ), -std::atan2( 0.05f, 0.3f ) * VR_RAD2DEG, 0.01f ), "the gun points through the front palm" );
+	for ( int i = 0; i < 3; i++ ) {
+		Check( Near( VR_Length( rows[i] ), 1.0f, 0.0005f ), "two-handed rows are unit length" );
+	}
+	Check( Near( VR_Dot( rows[0], rows[1] ), 0.0f, 0.0005f ) && Near( VR_Dot( rows[1], rows[2] ), 0.0f, 0.0005f ), "two-handed rows are square" );
+	Check( Near( VR_Dot( VR_Cross( rows[0], rows[1] ), rows[2] ), 1.0f, 0.0005f ), "two-handed rows are right-handed" );
+	Check( rows[2].z > 0.9f, "the gun stays upright" );
+
+	// a rear wrist canted 30 degrees cants the gun the same way
+	const float cant = 30.0f * VR_DEG2RAD;
+	VR_TwoHandedAxis( palm, VR_Add( palm, VR_Vec3( 0.3f * upm, 0.0f, 0.0f ) ), VR_Vec3( 0.0f, -std::sin( cant ), std::cos( cant ) ), rows );
+	Check( Near( rows[2].y, -std::sin( cant ), 0.001f ) && Near( rows[2].z, std::cos( cant ), 0.001f ), "the rear wrist's roll carries over" );
+
+	// an up running along the gun falls back to the world's
+	Check( VR_TwoHandedAxis( palm, VR_Add( palm, VR_Vec3( 0.3f * upm, 0.0f, 0.0f ) ), VR_Vec3( 1.0f, 0.0f, 0.0f ), rows ) && rows[2].z > 0.99f, "a degenerate up still gives an upright gun" );
+	Check( !VR_TwoHandedAxis( palm, palm, VR_Vec3( 0.0f, 0.0f, 1.0f ), rows ), "coinciding palms give no axis" );
+}
+
 static void TestTurning( void ) {
 	vrSnapTurnState_t snap = { false };
 	Check( VR_SnapTurn( snap, 0.5f, 45.0f ) == 0.0f, "below the press threshold does nothing" );
@@ -211,6 +244,7 @@ int main() {
 	TestProjection();
 	TestEyeImage();
 	TestRotationBetween();
+	TestTwoHandedAim();
 	TestTurning();
 	TestOffsets();
 	TestQuad();

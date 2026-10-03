@@ -58,7 +58,9 @@
   controller haptics on each shot and hit, single-player room scale (the body
   walks after the head with collision), weapons held at full size by each
   model's own grip with the barrel along the aim (measured from its idle
-  pose; every stock weapon checked), and a Virtual Reality section in
+  pose; every stock weapon checked; earlier builds' archived offsets reset
+  once), two-handed aim with the off hand on the foregrip, and a Virtual
+  Reality section in
   Settings > Game Options (nine rows, twelve languages). Building that section
   fixed the Game Options and display section selectors, which ignored clicks.
   The VR math core passes natively and under ASan/UBSan on Linux; the source

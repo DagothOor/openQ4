@@ -260,6 +260,8 @@ private:
 	void					PostKey( int key, bool down );
 	void					UpdateKey( int slot, int key, bool down );
 	bool					MenuMode( void ) const;
+	bool					OffHandOnForegrip( int weaponHand ) const;
+	void					ApplyTwoHandedAim( int weaponHand );
 	void					UpdateMenuPointer( int weaponHand, bool menu );
 	void					AnchorScreen( void );
 	void					ScreenQuadSize( float &width, float &height ) const;
@@ -338,6 +340,7 @@ private:
 	float					moveRight;
 	vrSnapTurnState_t		snapTurn;
 	int						heldKeys[16];
+	bool					twoHanded;		// the off hand holds the gun's foregrip (vr_twoHanded)
 };
 
 static idVRSystemOpenXR *	vrOpenXR = NULL;
@@ -475,6 +478,7 @@ idVRSystemOpenXR::idVRSystemOpenXR( void ) {
 	moveForward = moveRight = 0.0f;
 	snapTurn.latched = false;
 	memset( heldKeys, 0, sizeof( heldKeys ) );
+	twoHanded = false;
 }
 
 /*
@@ -946,6 +950,7 @@ void idVRSystemOpenXR::DestroySession( void ) {
 	for ( int i = 0; i < 16; i++ ) {
 		UpdateKey( i, heldKeys[i], false );
 	}
+	twoHanded = false;
 }
 
 bool idVRSystemOpenXR::CreateSwapchain( swapchain_t &swapchain, int width, int height ) {
@@ -1401,6 +1406,43 @@ bool idVRSystemOpenXR::MenuMode( void ) const {
 	return ( console != NULL && console->Active() ) || ( ::session != NULL && ::session->IsGUIActive() ) || RetainedUI_IsOpen();
 }
 
+// The off hand's palm is on the gun's foregrip: ahead of the weapon hand's
+// palm and close to the line it aims along (VR_OffHandOnForegrip).
+bool idVRSystemOpenXR::OffHandOnForegrip( int weaponHand ) const {
+	const int offHand = 1 - weaponHand;
+	const vrPose_t &aim = frame.aim[weaponHand];
+	const vrPose_t &rear = frame.grip[weaponHand];
+	const vrPose_t &front = frame.grip[offHand];
+	if ( !aim.valid || !rear.valid || !front.valid ) {
+		return false;
+	}
+	return VR_OffHandOnForegrip( VR_Vec3( rear.origin.x, rear.origin.y, rear.origin.z ),
+		VR_Vec3( aim.axis[0].x, aim.axis[0].y, aim.axis[0].z ),
+		VR_Vec3( front.origin.x, front.origin.y, front.origin.z ), vr_worldScale.GetFloat() );
+}
+
+// Two hands on the gun: the weapon hand's aim keeps its origin and roll and
+// points from its palm through the other one, so the usercmd, the drawn gun,
+// the laser and the shots all follow the steadier two-handed line.
+void idVRSystemOpenXR::ApplyTwoHandedAim( int weaponHand ) {
+	const int offHand = 1 - weaponHand;
+	vrPose_t &aim = frame.aim[weaponHand];
+	const vrPose_t &rear = frame.grip[weaponHand];
+	const vrPose_t &front = frame.grip[offHand];
+	if ( !aim.valid || !rear.valid || !front.valid ) {
+		return;
+	}
+	vrVec3_t rows[3];
+	if ( !VR_TwoHandedAxis( VR_Vec3( rear.origin.x, rear.origin.y, rear.origin.z ),
+			VR_Vec3( front.origin.x, front.origin.y, front.origin.z ),
+			VR_Vec3( aim.axis[2].x, aim.axis[2].y, aim.axis[2].z ), rows ) ) {
+		return;
+	}
+	for ( int i = 0; i < 3; i++ ) {
+		aim.axis[i].Set( rows[i].x, rows[i].y, rows[i].z );
+	}
+}
+
 void idVRSystemOpenXR::PostKey( int key, bool down ) {
 	if ( key > 0 ) {
 		if ( vr_debug.GetInteger() > 0 ) {
@@ -1536,7 +1578,24 @@ void idVRSystemOpenXR::SyncInput( float frameSeconds ) {
 		weapon.trigger > ( heldTrigger != 0 ? 0.55f : 0.75f ) );
 	UpdateKey( VR_SLOT_OFF_TRIGGER, K_JOY16, off.trigger > ( heldKeys[VR_SLOT_OFF_TRIGGER] ? 0.55f : 0.75f ) );
 	UpdateKey( VR_SLOT_WEAPON_SQUEEZE, K_JOY2, weapon.squeeze > ( heldKeys[VR_SLOT_WEAPON_SQUEEZE] ? 0.55f : 0.75f ) );
-	UpdateKey( VR_SLOT_OFF_SQUEEZE, K_JOY1, off.squeeze > ( heldKeys[VR_SLOT_OFF_SQUEEZE] ? 0.55f : 0.75f ) );
+	// The off-hand squeeze opens the weapon wheel, unless it closes on the
+	// gun's foregrip: then it steadies the gun in both hands until released.
+	// Which one is decided when the squeeze closes and kept while it is held.
+	const bool offSqueezed = off.squeeze > ( ( heldKeys[VR_SLOT_OFF_SQUEEZE] || twoHanded ) ? 0.55f : 0.75f );
+	if ( !offSqueezed ) {
+		if ( twoHanded && vr_debug.GetInteger() > 0 ) {
+			common->Printf( "OpenXR: two-handed aim released\n" );
+		}
+		twoHanded = false;
+	} else if ( !twoHanded && heldKeys[VR_SLOT_OFF_SQUEEZE] == 0 && !menu && vr_twoHanded.GetBool()
+			&& vr_aimMode.GetInteger() == VR_AIM_HAND && OffHandOnForegrip( weaponHand ) ) {
+		twoHanded = true;
+		Vibrate( offHand, 0.35f, 20 );
+		if ( vr_debug.GetInteger() > 0 ) {
+			common->Printf( "OpenXR: two-handed aim held\n" );
+		}
+	}
+	UpdateKey( VR_SLOT_OFF_SQUEEZE, K_JOY1, offSqueezed && !twoHanded );
 	UpdateKey( VR_SLOT_RIGHT_PRIMARY, K_JOY3, hands[VR_HAND_RIGHT].primary );
 	UpdateKey( VR_SLOT_RIGHT_SECONDARY, K_JOY4, hands[VR_HAND_RIGHT].secondary );
 	UpdateKey( VR_SLOT_LEFT_PRIMARY, K_JOY6, hands[VR_HAND_LEFT].primary );
@@ -1568,6 +1627,11 @@ void idVRSystemOpenXR::SyncInput( float frameSeconds ) {
 		} else {
 			turn = VR_SnapTurn( snapTurn, weapon.stickX, vr_snapTurnAngle.GetFloat() );
 		}
+	}
+
+	// two hands on the gun: it points from the rear palm through the front one
+	if ( twoHanded && !menu ) {
+		ApplyTwoHandedAim( weaponHand );
 	}
 
 	// aim: the weapon hand's pointing ray, or the head
