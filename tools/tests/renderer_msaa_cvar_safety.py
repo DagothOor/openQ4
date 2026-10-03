@@ -68,19 +68,47 @@ def test_gfxinfo_reports_effective_aa_state():
                 "a rejected modern transaction must not suppress native AA reporting")
     assert_true("texture-msaa-unavailable" in init_cpp, "gfxInfo should explain unavailable texture MSAA")
     assert_true("gl-max-clamp" in init_cpp, "gfxInfo should report GL max sample clamping")
+    # Once a main scene has drawn, gfxInfo reports the samples of the target it
+    # drew into rather than r_multiSamples clamped to GL_MAX_SAMPLES: Xvfb's
+    # sample-less window, a changed r_multiSamples awaiting vid_restart and the
+    # game's forward target under supersampling all made that prediction wrong.
+    observed_start = init_cpp.find("static bool R_GfxInfoObservedMSAA(")
+    observed = init_cpp[observed_start:init_cpp.find("static void R_GfxInfoPrintAAState( void ) {")]
+    assert_true(observed_start >= 0, "gfxInfo should report the main scene's observed MSAA")
+    assert_true("if ( backEnd.mainSceneTargetContext != tr.glContextGeneration ) {\n\t\treturn false;" in observed,
+                "only a main scene drawn in the current context should be observed")
+    assert_true("const int targetSamples = backEnd.mainSceneTargetSamples;" in observed,
+                "gfxInfo should report the recorded render texture samples")
     # Without multisample textures (Apple's GL 2.1 context) every render texture
     # is single-sample, so the scene is multisampled only when its view drew
     # straight into the window; report that instead of the requested count.
-    assert_true('"default-framebuffer"' in init_cpp and '"default-framebuffer-single-sample"' in init_cpp,
+    assert_true('"default-framebuffer"' in observed and '"default-framebuffer-single-sample"' in observed,
                 "gfxInfo should report window MSAA when the scene drew into the default framebuffer")
-    assert_true("mainSceneDrewToWindow ? R_DefaultFramebufferSamples() : 0" in init_cpp,
+    window_branch = observed.find("if ( backEnd.mainSceneTargetIsWindow ) {")
+    assert_true(0 <= window_branch < observed.find("R_DefaultFramebufferSamples()"),
                 "gfxInfo should read the window's samples only for a scene that drew there")
+    assert_true('"scene-target"' in observed and '"scene-target-single-sample"' in observed,
+                "gfxInfo should explain a scene target whose samples differ from the request")
+    # The modern executor reports its own resolve, and before any main scene has
+    # drawn (startup self-tests) the count is still predicted.
+    assert_true("mainSceneObserved = !modernVisiblePost && R_GfxInfoObservedMSAA(" in init_cpp,
+                "the modern executor's resolve report should take precedence over the observed target")
+    assert_true("if ( !mainSceneObserved && requestedMSAA > 1 ) {" in init_cpp,
+                "gfxInfo should keep predicting MSAA until a main scene has drawn")
     draw_common = read_repo_file(Path("src") / "renderer" / "draw_common.cpp")
     draw_view = draw_common[draw_common.find("void\tRB_STD_DrawView( void ) {"):]
     target_chosen = draw_view.find("backEnd.renderTexture = rbSceneRenderTexture;")
-    target_recorded = draw_view.find("backEnd.mainSceneTargetIsWindow = ( backEnd.renderTexture == NULL );")
+    target_recorded = draw_view.find("backEnd.mainSceneTargetIsWindow = ( sceneTarget == NULL );")
     assert_true(0 <= target_chosen < target_recorded,
                 "the main view should record its target after the renderer picks its own scene target")
+    assert_true("? backEnd.renderTexture : R_GetDefaultRenderTarget();" in draw_view,
+                "a VR frame's eye texture stands in for the window as the scene target")
+    # A levelshot, envshot or light-grid capture renders its own view outside the
+    # game's forward target; it must not replace the gameplay frame's record.
+    assert_true("&& !tr.takingScreenshot && tr.tiledViewport[0] == 0 ) {" in draw_view,
+                "screenshot and capture views should keep the gameplay frame's record")
+    assert_true("backEnd.mainSceneTargetSamples = sceneColor != NULL ? Max( 0, sceneColor->GetOpts().numMSAASamples ) : 0;" in draw_view,
+                "the main view should record its target's color samples")
     assert_true(
         "Renderer AA: MSAA requested=%d effective=%d reason=%s GL_MAX_SAMPLES=%s alphaToCoverage=%d PostAA=%d(%s) postAAEffective=%d postAAReason=%s screenFraction=%d%% supersampling=%s resolutionScaleMode=%d" in init_cpp,
         "gfxInfo should print the AA summary fields",

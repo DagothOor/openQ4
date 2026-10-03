@@ -15401,12 +15401,22 @@ void	RB_STD_DrawView( void ) {
 		backEnd.renderTexture->MakeCurrent();
 	}
 
-	// gfxInfo reports the MSAA this scene got. Without multisample textures
-	// (Apple's GL 2.1 context) every render texture is single-sample, so only
-	// a scene drawn straight into the window framebuffer is multisampled.
-	if ( RB_IsMainScenePostProcessView( backEnd.viewDef ) ) {
+	// gfxInfo reports the MSAA this scene got: the color samples of the render
+	// texture it drew into (the game's forward target, the renderer's own scene
+	// target, or a VR frame's eye texture standing in for the window) or the
+	// window's. Without multisample textures (Apple's GL 2.1 context) every
+	// render texture is single-sample, so only a scene drawn straight into the
+	// window framebuffer is multisampled. Captures keep the gameplay frame's
+	// record: a levelshot, envshot or light-grid view bypasses the game's target.
+	if ( RB_IsMainScenePostProcessView( backEnd.viewDef )
+			&& !tr.takingScreenshot && tr.tiledViewport[0] == 0 ) {
+		idRenderTexture *sceneTarget = backEnd.renderTexture != NULL
+			? backEnd.renderTexture : R_GetDefaultRenderTarget();
+		const idImage *sceneColor = sceneTarget != NULL && sceneTarget->GetNumColorImages() > 0
+			? sceneTarget->GetColorImage( 0 ) : NULL;
 		backEnd.mainSceneTargetContext = tr.glContextGeneration;
-		backEnd.mainSceneTargetIsWindow = ( backEnd.renderTexture == NULL );
+		backEnd.mainSceneTargetIsWindow = ( sceneTarget == NULL );
+		backEnd.mainSceneTargetSamples = sceneColor != NULL ? Max( 0, sceneColor->GetOpts().numMSAASamples ) : 0;
 	}
 
 	RB_DisplaySpecialEffects( backEnd.viewDef->viewEntitys, true );

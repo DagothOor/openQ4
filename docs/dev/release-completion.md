@@ -85,6 +85,29 @@
   multisampled window was not available. See
   [display settings](../user/display-settings.md).
 
+- [x] Make `gfxInfo` report the MSAA the 3D scene actually rendered with on
+  every OpenGL context. Once a map has drawn, the effective count comes from the
+  target the scene drew into (the game's forward target, the renderer's own
+  scene target or the window) instead of `r_multiSamples` clamped to
+  `GL_MAX_SAMPLES`. That prediction went wrong in three cases: with
+  supersampling (`r_screenFraction` above 100) it claimed
+  `effective=0 reason=supersampling` while the scene kept its MSAA; after an
+  `r_multiSamples` change it showed the new count before `vid_restart` or a map
+  load applied it; and with a window that has no samples, as under Xvfb, a
+  request raised after the map loaded claimed 4x for a single-sample scene. A
+  target whose count differs from the request now reports
+  `reason=scene-target` or `reason=scene-target-single-sample`, and a scene
+  drawn straight into the window reports `default-framebuffer`. Screenshots and
+  levelshots keep the gameplay frame's report, and the startup self-tests,
+  which draw no scene, still show the predicted count. Rendering is unchanged.
+  On Windows GL, Air Defense 1 at 4x now reports 4x at 150% and after an
+  unapplied `r_multiSamples 8`, and ten PBR laboratory suites covering
+  captures, scaling, supersampling and restarts report the same counts as
+  before. Under Mesa llvmpipe on Xvfb, Air Defense 1 loaded at 0x reports
+  `effective=0` after `r_multiSamples 8` where it claimed
+  `effective=4 reason=gl-max-clamp`, and the foundation self-tests are
+  unchanged. See [display settings](../user/display-settings.md).
+
 - [x] Turn shadow maps on in the `quality` and `ultra` performance presets and
   default projected-light filtering to PCSS-lite (`r_shadowMapFilterMode 2`)
   with a 2-texel minimum radius (`r_shadowMapFilterRadius 2.0`). Lower presets

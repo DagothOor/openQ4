@@ -4352,6 +4352,61 @@ static int R_GfxInfoGLMaxSamples( bool &available ) {
 	return maxSamples;
 }
 
+#ifndef OPENQ4_RENDERER_VK_MODULE
+/*
+================
+R_GfxInfoObservedMSAA
+
+The samples of the target the last main scene view drew into, as
+RB_STD_DrawView recorded them. Returns false until a main scene has drawn in
+this context, for example during startup self-tests.
+================
+*/
+static bool R_GfxInfoObservedMSAA( const int requestedMSAA, const int glMaxSamples,
+		const bool maxSamplesAvailable, const bool textureMSAAAvailable,
+		int &effectiveMSAA, const char *&msaaReason ) {
+	if ( backEnd.mainSceneTargetContext != tr.glContextGeneration ) {
+		return false;
+	}
+
+	if ( backEnd.mainSceneTargetIsWindow ) {
+		// The window carries the samples SDL reported.
+		const int windowSamples = R_DefaultFramebufferSamples();
+		effectiveMSAA = windowSamples > 1 ? windowSamples : 0;
+		msaaReason = effectiveMSAA > 1 ? "default-framebuffer"
+			: requestedMSAA > 1 ? "default-framebuffer-single-sample" : "off";
+		return true;
+	}
+
+	const int targetSamples = backEnd.mainSceneTargetSamples;
+	if ( targetSamples > 1 ) {
+		effectiveMSAA = targetSamples;
+		if ( targetSamples == requestedMSAA ) {
+			msaaReason = "active";
+		} else if ( maxSamplesAvailable && targetSamples == glMaxSamples && requestedMSAA > glMaxSamples ) {
+			// image allocation clamps a multisample texture to the limit
+			msaaReason = "gl-max-clamp";
+		} else {
+			// A target keeps the count it was created with: an r_multiSamples
+			// change waits for vid_restart or a map load, and a refused count
+			// retries lower.
+			msaaReason = "scene-target";
+		}
+	} else {
+		effectiveMSAA = 0;
+		if ( requestedMSAA <= 1 ) {
+			msaaReason = "off";
+		} else if ( !textureMSAAAvailable ) {
+			// every render texture is single-sample here, the forward target too
+			msaaReason = "texture-msaa-unavailable";
+		} else {
+			msaaReason = "scene-target-single-sample";
+		}
+	}
+	return true;
+}
+#endif
+
 static void R_GfxInfoPrintAAState( void ) {
 	bool maxSamplesAvailable = false;
 	const int glMaxSamples = R_GfxInfoGLMaxSamples( maxSamplesAvailable );
@@ -4370,13 +4425,18 @@ static void R_GfxInfoPrintAAState( void ) {
 	const bool textureMSAAAvailable = glTexImage2DMultisample != NULL
 		&& ( glConfig.backendCaps.glVersion >= 3.2f
 			|| GLCapabilityProbe_HasExtension( "GL_ARB_texture_multisample" ) );
-	const bool mainSceneDrewToWindow = backEnd.mainSceneTargetContext == tr.glContextGeneration
-		&& backEnd.mainSceneTargetIsWindow;
 #endif
 
 	int effectiveMSAA = 0;
 	const char *msaaReason = "off";
-	if ( requestedMSAA > 1 ) {
+	// Once a main scene has drawn in this context, report the samples of the
+	// target it drew into. Before that (startup self-tests) predict them.
+	bool mainSceneObserved = false;
+#ifndef OPENQ4_RENDERER_VK_MODULE
+	mainSceneObserved = !modernVisiblePost && R_GfxInfoObservedMSAA( requestedMSAA,
+		glMaxSamples, maxSamplesAvailable, textureMSAAAvailable, effectiveMSAA, msaaReason );
+#endif
+	if ( !mainSceneObserved && requestedMSAA > 1 ) {
 #ifdef OPENQ4_RENDERER_VK_MODULE
 		extern int VK_PostProcess_SceneSamples( void );
 		effectiveMSAA = VK_PostProcess_SceneSamples();
@@ -4391,16 +4451,9 @@ static void R_GfxInfoPrintAAState( void ) {
 			msaaReason = "supersampling";
 		} else if ( !textureMSAAAvailable ) {
 			// Every render texture is single-sample here, including the game's
-			// forward target, so the scene got MSAA only if its last view drew
-			// straight into the window: the route with every post effect off.
-			// The window carries the samples SDL reported.
-			const int windowSamples = mainSceneDrewToWindow ? R_DefaultFramebufferSamples() : 0;
-			if ( windowSamples > 1 ) {
-				effectiveMSAA = windowSamples;
-				msaaReason = "default-framebuffer";
-			} else {
-				msaaReason = mainSceneDrewToWindow ? "default-framebuffer-single-sample" : "texture-msaa-unavailable";
-			}
+			// forward target, so a scene gets MSAA only by drawing straight into
+			// the window: the route with every post effect off. None has yet.
+			msaaReason = "texture-msaa-unavailable";
 		} else {
 			effectiveMSAA = requestedMSAA;
 			msaaReason = "active";

@@ -754,6 +754,7 @@ typedef struct {
 	// where the last main scene view drew, for gfxInfo's effective MSAA
 	int					mainSceneTargetContext;	// tr.glContextGeneration when recorded, 0 = none yet
 	bool				mainSceneTargetIsWindow;	// true = the default framebuffer, false = a render texture
+	int					mainSceneTargetSamples;	// the render texture's color samples, 0 = single-sample
 
 	const viewEntity_t *currentSpace;		// for detecting when a matrix must change
 	idScreenRect		currentScissor;
