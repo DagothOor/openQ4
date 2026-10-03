@@ -102,7 +102,11 @@ static void CheckPage(View& v,int width,int height,float density,float textScale
     Check(field.has_value(),"editor retains typed identity");
     Contained(v.Box("settings_brightness_number-caret"),viewport,"scaled caret fits the numeric viewport");
     v.Key(MenuInput::Back);v.Frame();
-    for(auto* id:{"settings_preset","settings_fullscreen_policy","settings_msaa","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
+    // Two displays show the device and span rows.
+    Check(v.runtime.SetState({{"settings.display.available",true},{"settings.display.spanAvailable",true},{"settings.display.count",2.0},
+        {"settings.display.optionCount",3.0},{"settings.display.0.label",std::string("1: Primary monitor")},
+        {"settings.display.1.label",std::string("2: Secondary monitor")}},v.error,v.time),v.error.c_str());v.Frame();
+    for(auto* id:{"settings_preset","settings_display_device","settings_multiscreen","settings_fullscreen_policy","settings_msaa","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
         Check(v.runtime.FocusControl(id,v.time),"large-text choice can receive focus");v.Frame();
         v.Key(MenuInput::Accept);v.Frame();
         auto state=v.runtime.GetWidgetState(id);
@@ -147,6 +151,7 @@ static void CheckPage(View& v,int width,int height,float density,float textScale
 int main(int argc,char** argv) {
     Check(argc==3 || argc==4,"page, locale directory and optional single-locale arguments");
     const auto source=Read(argv[1]);const std::string directory=argv[2];
+    unsigned ran=0;
     for(auto* locale:{"english","spanish","polish","russian","french","italian","german"}) {
         if(argc==4 && std::string(argv[3])!=locale)continue;
         for(float expansion:{1.f,1.4f}) {
@@ -158,6 +163,8 @@ int main(int argc,char** argv) {
         CheckPage(view,1920,1080,1.5f,1.5f);
         CheckPage(view,3440,1440,2,2);
         }
+        ++ran;
     }
+    Check(ran>0,"the named locale is one this test covers");
     std::printf("SYSTEM text scale: %u checks passed\n",checks);
 }

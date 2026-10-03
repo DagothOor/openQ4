@@ -116,9 +116,12 @@ renderer fell back from an unavailable or retired request. The
 those rows will read. It builds the device, resolution and refresh lists from
 one cached topology capture, with localized labels, publishes them to the page
 owner and turns a pick checked against the list's token into settings. A
-display picked from the list must still be that monitor at Apply. The display
-device, multi-monitor, refresh and resolution rows remain; `BEH-002` and
-`FLOW-002` stay partial.
+display picked from the list must still be that monitor at Apply. The
+[display rows increment](../ui/system-display-rows.md) adds Display Device and
+Expand Across Displays over those lists, hidden on one display unless the draft
+names a display or a span the lists cannot offer, or holds a change not yet
+applied. The refresh and resolution rows remain; `BEH-002` and `FLOW-002` stay
+partial.
 
 The [retained screen increment](../ui/retained-screens.md) builds the title
 screen, the single-player pause menu and the stock loading screens from

@@ -6,6 +6,7 @@
 #include <RmlUi/Core/ElementText.h>
 #include <fstream>
 #include <iomanip>
+#include <map>
 #include <sstream>
 
 static Json::Value BoundedChoice(bool bar=true) {
@@ -224,6 +225,9 @@ static void RenderedTextWidth() {
 }
 static void ProductionPopup(const std::string& source,const std::string& locales) {
     Document model;std::vector<Diagnostic> modelErrors;Check(model.Load(source,modelErrors),"production source parses independently");
+    // The most and fewest lines the long monitor name took: it must wrap
+    // somewhere, and keep one line where the safe area holds it.
+    unsigned wrappedLines=0,singleLines=~0u;
     for(const char* locale:{"english","french","russian","italian","spanish","polish","german"})for(float expansion:{1.f,1.4f}) {
         std::fprintf(stderr,"popup locale=%s glyph-width=%g\n",locale,expansion);
         PopupPageHost host;host.Locale(locales+"/"+locale+"_openq4.lang");host.Locale(locales+"/"+locale+"_guis.lang");host.expansion=expansion;Runtime runtime(host);std::vector<Diagnostic> diagnostics;
@@ -231,11 +235,20 @@ static void ProductionPopup(const std::string& source,const std::string& locales
         for(const auto& d:diagnostics)std::fprintf(stderr,"%s: %s\n",d.pointer.c_str(),d.message.c_str());Check(loaded,"production framed SYSTEM loads");
         std::string error;double time=1;Viewport vp;vp.width=1280;vp.height=720;vp.displayScale=expansion==1?1.25f:2.f;
         runtime.SetReducedMotion(true,time);Check(runtime.SetState({{"settings.open",true},{"settings.phase",1.},{"settings.busy",false},{"settings.confirmationVisible",false},{"settings.renderer.available",true}},error,time),"real SYSTEM editing state");
+        // Two displays show the device and span rows; the device slots read these
+        // labels. The second is a long name of short words, as the builder cuts
+        // names to 48 code points: where it is wider than the safe area the list
+        // wraps it instead of refusing to open.
+        const std::map<std::string,std::string> displays{{"settings.display.0.label","1: Primary monitor"},
+            {"settings.display.1.label","2: Extremely Wide Vendor Monitor Model With Words"}};
+        StateValues lists{{"settings.display.available",true},{"settings.display.spanAvailable",true},{"settings.display.count",2.},{"settings.display.optionCount",3.}};
+        for(const auto& [key,label]:displays)lists[key]=label;
+        Check(runtime.SetState(lists,error,time),"published display lists");
         auto frame=[&]{time+=.02;++host.frame;runtime.Frame(vp,time);Check(host.errors==0,"no SYSTEM Runtime error");};
         auto key=[&](MenuInput input){runtime.MenuAction(input,true,time);runtime.MenuAction(input,false,time);};frame();
         for(unsigned layout=0;layout<(std::string(locale)=="english"?2u:1u);++layout) {
         if(layout){vp.width=800;vp.height=600;vp.displayScale=1;frame();}
-        for(const char* id:{"settings_preset","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
+        for(const char* id:{"settings_preset","settings_display_device","settings_multiscreen","settings_postaa","settings_resolution_scale","settings_vsync","settings_renderer"}) {
             // The engine opens a dropdown while revealing the newly focused row is
             // still scrolling the panel, and pumps pointer motion before the next
             // paint. Neither may retire the opening before it is ever seen.
@@ -253,6 +266,12 @@ static void ProductionPopup(const std::string& source,const std::string& locales
             auto widget=runtime.GetWidgetState(id);Check(widget&&widget->popupOpen&&widget->scroll&&widget->scroll->available,"production bounded popup first frame is usable");
             const auto& choice=std::get<ChoiceSpec>(model.Model().FindNode(id)->control->widget);
             for(const auto& option:choice.options) {
+                // A state label is the application's text; a slot past the list has none.
+                if(!option.labelState.empty()) {
+                    const auto published=displays.find(option.labelState);const auto inner=Element(option.labelPart.c_str())->GetInnerRML();
+                    Check(published==displays.end()?inner.empty():inner==Rml::StringUtilities::EncodeRml(published->second),"every state-labelled option reads its published label");
+                    continue;
+                }
                 Check(host.Translate(option.label)!=option.label,"every production option localization key resolves");
                 const auto inner=Element(option.labelPart.c_str())->GetInnerRML();
                 Check(!inner.empty()&&inner.find("#str_")==std::string::npos,"every essential production option has nonempty translated text");
@@ -276,12 +295,111 @@ static void ProductionPopup(const std::string& source,const std::string& locales
                 Check(plate->GetTagName()=="q4-vector"&&Near(frameBox.x,popupBox.x)&&Near(frameBox.y,popupBox.y),"editable frame spans the entire popup box");
                 Check(model.Model().FindNode(choice.popup)->mask.has_value(),"popup canonical cut mask remains editable");
             };
-            validate();key(MenuInput::End);frame();validate();Check(runtime.TakeActions().empty(),"SYSTEM placement/highlight generates no setting edits");key(MenuInput::Back);frame();
+            validate();key(MenuInput::End);frame();validate();Check(runtime.TakeActions().empty(),"SYSTEM placement/highlight generates no setting edits");
+            if(std::string(id)=="settings_display_device") {
+                auto* label=Element("settings_display_device-option-2-label");unsigned lines=0;
+                for(int child=0;child<label->GetNumChildren();++child)if(auto* text=dynamic_cast<Rml::ElementText*>(label->GetChild(child)))lines+=unsigned(text->GetLines().size());
+                wrappedLines=std::max(wrappedLines,lines);singleLines=std::min(singleLines,lines);
+            }
+            key(MenuInput::Back);frame();
             Check(!runtime.GetWidgetState(id)->popupOpen,"SYSTEM bounded popup closes normally");
         }
         }
         Check(host.masks>0,"actual Rml cut-mask decorator submitted to host");
     }
+    Check(wrappedLines>=2,"a monitor name wider than the safe area wraps onto several readable lines");
+    Check(singleLines==1,"where the safe area holds the name it keeps one line");
+}
+// One wrapped list in a hard place. Whether it opens depends on the safe
+// area, the text size and the name; either way it must settle, opened and
+// measured or refused, rather than alternating between widths.
+struct WrapCase { std::string label; int width,height; float density,text,expansion; const char* transform; int opens; };
+static void WrappedOpening(const std::string& source,const std::string& locales,const WrapCase& c) {
+    std::fprintf(stderr,"wrapped opening %dx%d density=%g text=%g transform=%s\n",c.width,c.height,c.density,c.text,c.transform?c.transform:"none");
+    PopupPageHost host;host.Locale(locales+"/english_openq4.lang");host.Locale(locales+"/english_guis.lang");host.expansion=c.expansion;
+    Runtime runtime(host);std::vector<Diagnostic> diagnostics;Check(runtime.LoadDocument(source,"guis/menu/settings/system.q4ui",diagnostics),"production SYSTEM loads");
+    std::string error;double time=1;Viewport vp;vp.width=c.width;vp.height=c.height;vp.displayScale=c.density;vp.textScale=c.text;
+    runtime.SetReducedMotion(true,time);
+    Check(runtime.SetState({{"settings.open",true},{"settings.phase",1.},{"settings.busy",false},{"settings.confirmationVisible",false},{"settings.renderer.available",true},
+        {"settings.display.available",true},{"settings.display.spanAvailable",true},{"settings.display.count",2.},{"settings.display.optionCount",3.},
+        {"settings.display.0.label",std::string("1: Primary monitor")},{"settings.display.1.label",c.label}},error,time),"published display lists");
+    auto frame=[&]{time+=.02;++host.frame;runtime.Frame(vp,time);Check(host.errors==0,"no SYSTEM Runtime error");};
+    frame();
+    if(c.transform) {
+        Check(Element("settings-body")->SetProperty("transform",c.transform),"scroll body transform accepted");
+        Rml::GetContext(0)->Update();Rml::GetContext(0)->GetRootElement()->UpdateGeometryForProjection();frame();
+    }
+    Check(runtime.FocusControl("settings_display_device",time),"the device row focuses");frame();
+    runtime.MenuAction(MenuInput::Accept,true,time);runtime.MenuAction(MenuInput::Accept,false,time);
+    for(int i=0;i<12;++i)frame();
+    auto settled=[&]{const auto w=runtime.GetWidgetState("settings_display_device");return w&&(!w->popupOpen||(w->scroll&&w->scroll->available));};
+    Check(settled(),"the wrapped opening settles, opened and measured or refused");
+    const bool open=runtime.GetWidgetState("settings_display_device")->popupOpen;
+    const float width=Element("settings_display_device-popup")->GetBox().GetSize(Rml::BoxArea::Border).x;
+    for(int i=0;i<3;++i){frame();Check(settled()&&runtime.GetWidgetState("settings_display_device")->popupOpen==open,"a settled opening stays as it is");}
+    if(open)Check(std::abs(Element("settings_display_device-popup")->GetBox().GetSize(Rml::BoxArea::Border).x-width)<.5f,"a settled opening keeps its width");
+    if(c.opens>=0)Check(open==(c.opens!=0),c.opens?"the wrapped list opens":"the list that cannot fit is refused");
+    if(open) {
+        auto* label=Element("settings_display_device-option-2-label");unsigned lines=0;
+        for(int child=0;child<label->GetNumChildren();++child)if(auto* text=dynamic_cast<Rml::ElementText*>(label->GetChild(child)))lines+=unsigned(text->GetLines().size());
+        Check(lines>=2,"the opened long name wraps");
+    }
+}
+// One runtime through several sizes and list lengths, as a player who resizes
+// the window and plugs displays in would see it. Rows the list count hid, and
+// every row of a closed list, keep the boxes of their last layout; an opening
+// must lay them out again before those boxes can refuse it. The stale labels
+// and the short connected name fit a fresh view at every one of these sizes.
+static void SequentialOpenings(const std::string& source,const std::string& locales) {
+    struct Size { int width,height; float density; };
+    // Large and small layouts alternate, so rows hidden at one size show
+    // again at the next with the boxes of the last.
+    const Size sizes[]={{1024,768,2},{640,480,1},{1366,768,2},{800,600,1.25f},{1280,720,2},{640,480,1},{3440,1440,3},{800,600,1},{1920,1080,2},{640,480,1}};
+    for(const char* locale:{"english","german"}) {
+        PopupPageHost host;host.Locale(locales+"/"+locale+"_openq4.lang");host.Locale(locales+"/"+locale+"_guis.lang");host.expansion=1.4f;
+        Runtime runtime(host);std::vector<Diagnostic> diagnostics;Check(runtime.LoadDocument(source,"guis/menu/settings/system.q4ui",diagnostics),"production SYSTEM loads");
+        std::string error;double time=1;Viewport vp;vp.textScale=2;
+        runtime.SetReducedMotion(true,time);
+        Check(runtime.SetState({{"settings.open",true},{"settings.phase",1.},{"settings.busy",false},{"settings.confirmationVisible",false},
+            {"settings.renderer.available",true},{"settings.draft.r_screen",1.}},error,time),"real SYSTEM editing state");
+        auto frame=[&]{time+=.02;++host.frame;runtime.Frame(vp,time);Check(host.errors==0,"no SYSTEM Runtime error");};
+        auto key=[&](MenuInput input){runtime.MenuAction(input,true,time);runtime.MenuAction(input,false,time);};
+        const auto missing=host.strings.at("#str_230087");
+        unsigned refused=0,openings=0;
+        // Two slots lay out the first rows at this size; eight then show the
+        // rest, which still hold the previous size's boxes, at the same width.
+        for(const auto& size:sizes)for(unsigned slots:{2u,8u}) {
+            vp.width=size.width;vp.height=size.height;vp.displayScale=size.density;vp.FitToMinimum(640,480);
+            // One connected display and the rest of the slots stale, as after
+            // unplugging monitors with a later display drafted.
+            StateValues lists{{"settings.display.available",true},{"settings.display.spanAvailable",false},{"settings.display.count",1.},
+                {"settings.display.optionCount",double(1+slots)},{"settings.display.0.label",std::string("1: Primary monitor")}};
+            for(unsigned slot=1;slot<8;++slot) {
+                auto label=missing;const auto at=label.find("%d");if(at!=std::string::npos)label.replace(at,2,std::to_string(slot+1));
+                lists["settings.display."+std::to_string(slot)+".label"]=slot<slots?label:std::string();
+            }
+            Check(runtime.SetState(lists,error,time),"published display lists");frame();frame();
+            Check(runtime.FocusControl("settings_display_device",time),"the stale device row focuses");frame();
+            key(MenuInput::Accept);for(int i=0;i<3;++i)frame();
+            const auto widget=runtime.GetWidgetState("settings_display_device");++openings;
+            if(!widget||!widget->popupOpen||!widget->scroll||!widget->scroll->available) {
+                ++refused;std::fprintf(stderr,"sequential opening refused: %s %dx%d density=%g slots=%u\n",locale,size.width,size.height,size.density,slots);
+                continue;
+            }
+            key(MenuInput::End);frame();key(MenuInput::Back);frame();
+            Check(!runtime.GetWidgetState("settings_display_device")->popupOpen,"the list closes");
+        }
+        std::fprintf(stderr,"sequential openings %s: %u of %u refused\n",locale,refused,openings);
+        Check(refused==0,"rows left by an earlier layout never refuse an opening a fresh view allows");
+    }
+}
+static void WrappedOpenings(const std::string& source,const std::string& locales) {
+    // break-word breaks a run with no spaces inside the word, so it opens.
+    WrappedOpening(source,locales,{"2: "+std::string(45,'W'),800,600,1,2,1.4f,nullptr,1});
+    // A rotated safe area projects larger than it lays out: the list settles
+    // either way, and never bounces back to a wider width.
+    for(const char* rotation:{"rotate(20deg)","rotate(-35deg)"})
+        WrappedOpening(source,locales,{"2: Extremely Wide Vendor Monitor Model With Words",1280,720,2,1,1.4f,rotation,-1});
 }
 static void BoundedRuntime(TestHost& host) {
     for(float ratio:{1.f,1.25f,2.f})for(bool borderBox:{false,true}) {
@@ -305,6 +423,6 @@ static void BoundedRuntime(TestHost& host) {
 int main(int argc,char** argv) {
     const bool productionOnly=argc==4&&std::string(argv[3])=="production-only";
     if(!productionOnly){SchemaPlacement();{TestHost host;BoundedRuntime(host);TransformedBounds(host);ChangedBounds(host);UnpaintedOpening(host);InputBeforeFirstPaint(host);Check(host.errors==0,"no Runtime errors");}RenderedTextWidth();}
-    if(argc>=3)ProductionPopup(ReadPopupSource(argv[1]),argv[2]);
+    if(argc>=3){ProductionPopup(ReadPopupSource(argv[1]),argv[2]);WrappedOpenings(ReadPopupSource(argv[1]),argv[2]);SequentialOpenings(ReadPopupSource(argv[1]),argv[2]);}
     std::printf("UiPopupPlacementRuntimeTest: %u checks passed\n",checks);return 0;
 }

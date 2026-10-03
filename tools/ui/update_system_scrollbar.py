@@ -78,6 +78,7 @@ def compose(document):
     else:
         raise ValueError('SYSTEM body must remain inside its panel')
     tail_prefixes = ('settings_window_width.', 'settings_window_height.', 'settings_custom_width.', 'settings_custom_height.',
+                     'settings_display_device.', 'settings_multiscreen.',
                      'settings_fullscreen.', 'settings_borderless.', 'settings_fullscreen_policy.', 'settings_msaa.',
                      'settings_ui_scale.', 'settings_text_scale.', 'settings_reset_sizes.',
                      'settings_preset.', 'settings_autodetect.',

@@ -965,6 +965,13 @@ if build_engine or get_option('build_native_tests')
       install: false)
     test('openq4-ui-system-display-controls', openq4_ui_system_display_controls_test,
       args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings'], timeout: 600)
+    openq4_ui_system_display_catalog_test = executable('openq4-ui-system-display-catalog-test',
+      files('tools/tests/native/UiSystemDisplayCatalogTest.cpp', 'src/framework/PerformancePreset.cpp'),
+      include_directories: root_include_dir,
+      dependencies: [openq4_retained_dep, rmlui_project.get_variable('rmlui_dep'), jsoncpp_project.get_variable('jsoncpp_dep')],
+      install: false)
+    test('openq4-ui-system-display-catalog', openq4_ui_system_display_catalog_test,
+      args: [files('content/baseoq4/pak0/guis/menu/settings/system.q4ui'), meson.current_source_dir() / 'content/baseoq4/pak0/strings'], timeout: 1800)
     openq4_ui_system_dimensions_test = executable('openq4-ui-system-dimensions-test',
       files('tools/tests/native/UiSystemDimensionsTest.cpp', 'src/framework/PerformancePreset.cpp'),
       include_directories: root_include_dir,

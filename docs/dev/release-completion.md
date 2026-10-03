@@ -604,6 +604,18 @@
   next map. If the game closes before the change is saved, the next launch
   finishes or undoes it.
 
+- The opt-in SYSTEM page adds **Display Device** and **Expand Across
+  Displays** at the top of its display column when you have more than one
+  display. Pick Auto or a display by name; a display that is no longer
+  connected is still named, so you can switch away from it. Expand Across
+  Displays answers Yes for a borderless window or desktop fullscreen when your
+  displays can be spanned, and says why when they cannot. Choices you cannot
+  pick are dimmed. On a single display both rows stay hidden, as before,
+  unless one holds a display that is gone, a span, or a change you have not
+  applied yet. Dropdowns now wrap an option too wide for the screen, such as a
+  long monitor name at a large text size, instead of refusing to open, as long
+  as one wrapped row fits.
+
 - The opt-in SYSTEM page adds **Renderer Fallback** at the end of its render
   options: Auto, or ARB2 as the explicit rollback. Apply restarts the renderer
   in place without a Keep/Revert question, and if the game closes before the

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Static contract for native macOS dedicated-server smoke coverage."""
 
+import re
 from pathlib import Path
 
 
@@ -114,6 +115,10 @@ def main() -> None:
     guard = meson.rindex("if dedicated_shares_client_sources", 0, facade)
     if not snapshot < guard < facade < driver:
         raise AssertionError("macOS dedicated server: take back the disabled native input facade after the client snapshot")
+    # Sharing is the default every target without its own list inherits.
+    require(meson[snapshot:snapshot + 120], "\n  dedicated_shares_client_sources = true\n", "dedicated targets share the client list by default")
+    for added in re.finditer(r"openq4_dedicated_sources\s*\+=\s*(files\([^)]*\)|\[[^\]]*\])", meson):
+        reject(added.group(1), "NativeInputDriver", "the dedicated server never links the client's native input driver")
     for platform in ("  if windows_gl_free_ded\n", "  if host_system == 'linux'\n"):
         block = meson[meson.index(platform, snapshot):facade]
         require(block[:200], "dedicated_shares_client_sources = false", "dedicated targets with their own source list")

@@ -122,6 +122,13 @@ struct ChoiceOption {
 	std::string labelState;
 	StateValue value;
 	Expression enabled = [] { Expression value; value.literal = true; value.type = 1; return value; }();
+	// An option whose availability can change. While it is unavailable its
+	// label, when it has an authored colour, reads at the disabled-text
+	// strength, and the runtime owns that colour.
+	bool Conditional() const {
+		return !enabled.op.empty() || !enabled.state.empty() ||
+			!(std::holds_alternative<bool>(enabled.literal) && std::get<bool>(enabled.literal));
+	}
 	std::string labelPart, selectedPart, highlightPart;
 	std::optional<unsigned> labelIndex; // Index in a translated semicolon list; absent means the whole label.
 };

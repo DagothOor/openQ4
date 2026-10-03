@@ -160,5 +160,6 @@ language's openQ4 table keeps them. A missing string keeps the English text.
 Evidence: `.tmp/ui/system-display-catalog/validation-evidence.json`, SHA-256
 `aaf2b08b88a32d8096460f8031f6b176f31974c5c67ce7ca548839f40f624e2f`.
 
-The display device, span, resolution and refresh rows, their visible behaviour
-and the gate change remain open.
+Display Device and Expand Across Displays now read the lists
+([SYSTEM display rows](system-display-rows.md)). The resolution and refresh
+rows and the gate change remain open.

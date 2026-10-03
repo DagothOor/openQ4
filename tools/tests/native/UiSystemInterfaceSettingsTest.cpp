@@ -66,9 +66,12 @@ static void Run(const std::string& source,const std::string& folder,const char* 
 }
 int main(int argc,char** argv) {
  Check(argc==3||argc==4,"source, locale folder and optional locale");const auto source=Read(argv[1]);
+ unsigned ran=0;
  for(const auto* locale:{"english","spanish","polish","russian","french","italian","german"}) {
   if(argc==4&&std::string(argv[3])!=locale)continue;
   for(float expansion:{1.f,1.4f})Run(source,argv[2],locale,expansion);
+  ++ran;
  }
+ Check(ran>0,"the named locale is one this test covers");
  std::printf("SYSTEM interface settings: %u checks passed\n",checks);
 }

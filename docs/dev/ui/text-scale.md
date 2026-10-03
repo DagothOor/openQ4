@@ -56,8 +56,47 @@ an opening because a row is too tall. Previously a translation wrapped at the
 old width could falsely fail the full-row height check, even when it fit at the
 new width. The intermediate layout remains unmeasured and cannot accept an
 option. Final projected containment, minimum readable row size and stale-gesture
-guards remain enforced. An intrinsically wider label than the safe area still
-refuses opening; general wrapped-option placement remains unfinished.
+guards remain enforced.
+
+A dropdown whose widest option is wider than the safe area now wraps it instead
+of refusing to open. The list prefers each option's natural width and narrows
+toward the widest run that the label's own `white-space` and `word-break` rules
+cannot break, the same runs RmlUi wraps at. Under `break-word`, which every
+SYSTEM label inherits from the page, a word may break anywhere, so that run is
+the widest single character; it is measured per character, in linear time,
+rather than by RmlUi's zero-width layout, whose cost grows with the cube of a
+word's length. Narrowed rows are measured again after they wrap, before the
+opening can accept an option. That adds one settling pass, so a frame now
+allows four layout passes and still stops at the first pass that changes
+nothing.
+
+Within one opening the width only narrows. A narrower width wraps rows taller,
+so growing back would undo the step that made them fit; where a projected
+(rotated or skewed) safe area cannot hold one row at any width, the list is
+refused instead of alternating between widths frame after frame. A new opening
+or a changed placement context starts again from the natural width. Rows a
+pass has just shown or changed, and every row of a popup shown in that pass,
+still hold the boxes of their last layout, perhaps at another size or for
+another list. They may place the popup, but a refusal waits for the next
+pass's layout: refusing on them would hide the rows again before they were
+laid out, so the same opening would be refused every time. A list that cannot
+fit one wrapped row still refuses to open, and so does a label with a single
+unbreakable run wider than the safe area. Reducing the readable font or
+clipping an option is still never a fit.
+
+The popup-placement runtime test opens the SYSTEM device list with a long
+multi-word monitor name in seven languages at two glyph widths (1280x720 at
+125% and 200% density, and 800x600 in English): the name wraps where the safe
+area is too narrow, keeps one line where it is not, and every wrapped line
+stays inside its row. It also opens a 48-character name with no spaces at
+800x600 with 200% text, which only breaking inside the word can fit, and a
+rotated scroll body at two angles, which must settle opened and measured or
+refused within a few frames and then keep its width. Finally one runtime
+opens a stale device list through ten alternating sizes in English and
+German, two slots then eight at each, so rows hidden at one size show again
+at the next still holding the boxes of the last; every opening must open, as a
+fresh view does.
+Before the stale-box rule one of those openings was refused.
 
 Author the page through
 [`update_system_text_layout.py`](../../../tools/ui/update_system_text_layout.py)

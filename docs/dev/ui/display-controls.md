@@ -51,8 +51,9 @@ ownership. The 20-second readiness limit, fresh owner/presentation checks and
 The settings service now builds the display, resolution and refresh lists
 ([SYSTEM display lists](system-display-catalog.md)). That page records two
 deliberate departures: display names are cut to 48 code points, and the
-refresh list does not add the desktop rate to every size. The full SYSTEM
-migration still needs the rows that read those lists, dimension editors,
+refresh list does not add the desktop rate to every size. Display Device and
+Expand Across Displays read the lists ([SYSTEM display rows](system-display-rows.md)).
+The full SYSTEM migration still needs the resolution and refresh rows, dimension editors,
 dependent-setting presentation, Defaults,
 complete effect/preset execution, native text entry, complete artwork and
 motion qualification, and the editor round trip. Visible fullscreen,

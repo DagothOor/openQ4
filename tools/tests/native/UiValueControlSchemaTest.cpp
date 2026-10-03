@@ -132,6 +132,24 @@ static void Schema() {
 		Check(document.Source()==saved && document.Model().FindNode("slider")->control->role==ControlRole::Slider,"failed load preserves exact source and prior compiled controls");
 	};
 	reject([](auto& r){r["root"]["children"][0]["control"]["role"]="checkbox-like";});
+	{
+		// A conditional option's authored label colour is the runtime's; an
+		// unconditional option's stays authorable.
+		auto bound=[](Json::Value& r,const char* node){
+			auto& rows=r["root"]["children"][2]["children"][0]["children"][0]["children"][0]["children"];
+			for (Json::ArrayIndex row=0;row<rows.size();++row) for (auto& part:rows[row]["children"]) if (part["id"].asString().ends_with("-label")) {
+				Json::Value colour(Json::arrayValue); for (double c:{1.0,1.0,1.0,.88}) colour.append(c);
+				part["properties"]["color"]=Typed("color",colour);
+			}
+			Json::Value binding; binding["id"]=std::string(node)+".colour"; binding["node"]=node; binding["property"]="color";
+			binding["value"]=Json::Value(Json::arrayValue); for (double c:{1.0,1.0,1.0,.5}) binding["value"].append(c);
+			r["bindings"].append(binding);
+		};
+		reject([&](auto& r){bound(r,"option-1-label");});
+		auto accepted=source; bound(accepted,"option-0-label"); std::vector<Diagnostic> diagnostics;
+		Check(document.Load(Text(accepted),diagnostics),"an unconditional option's label colour stays authorable");
+		Check(document.Load(Text(source),diagnostics)&&document.Source()==saved,"restore the original schema");
+	}
 	reject([](auto& r){r["root"]["children"][0]["control"]["value"]=1;});
 	reject([](auto& r){r["root"]["children"][0]["control"]["mixed"]=1;});
 	reject([](auto& r){r["root"]["children"][0]["control"]["parts"].removeMember("mixed");});

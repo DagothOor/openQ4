@@ -96,7 +96,10 @@ static std::string Source() {
 			const auto partId=id+"-"+part; option["parts"][part]=partId;
 			auto node=Box(partId,part==std::string("label")?12:0,0,part==std::string("label")?168:6,40,part==std::string("label")?"text":"group");
 			if (part==std::string("selected")) Colour(node,{0,.7,.2,1});
-			if (part==std::string("highlight")) Colour(node,{.9,.5,0,1}); row["children"].append(node);
+			if (part==std::string("highlight")) Colour(node,{.9,.5,0,1});
+			// The conditional option's label colour dims while it is unavailable.
+			if (i==2 && part==std::string("label")) node["properties"]["color"]=Typed("color",Array({.9,.9,.9,.88}));
+			row["children"].append(node);
 		}
 		c["options"].append(option); content["children"].append(row);
 	}
@@ -242,6 +245,12 @@ static void PopupAndPersistence(TestHost& host) {
 	Check(host.HasInk(.02f,.03f,.04f,.25f),"portal own and ancestor opacity compose once");
 	Check(view.runtime.PlayTimeline("unfade-parent",view.time)&&view.runtime.PlayTimeline("unfade-popup",view.time),"restore popup paint for interaction checks");view.Frame();
 	// Row 2 lies immediately below the clipped popup and must never be chosen.
+	auto strength=[&]{return Rml::GetContext(0)->GetDocument(0)->GetElementById("option-2-label")->GetComputedValues().color().alpha/255.0;};
+	Check(std::abs(strength()-.40)<.01,"an unavailable option's label reads at the disabled-text strength");
+	view.State({{"thirdEnabled",true}});view.Frame();
+	Check(std::abs(strength()-.88)<.01,"an available option keeps its authored label colour");
+	view.State({{"thirdEnabled",false}});view.Frame();
+	Check(std::abs(strength()-.40)<.01,"losing availability dims the label again");
 	view.State({{"thirdEnabled",true}});view.Frame();
 	view.Click(popup.x+25,popup.y+popup.height+15);const auto outsideActions=view.runtime.TakeActions();
 	if (!outsideActions.empty() || view.Widget("choice").popupOpen) {

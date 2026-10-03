@@ -3,6 +3,8 @@
 #include "PopupPlacement.h"
 #include <RmlUi/Core/Box.h>
 #include <RmlUi/Core/ComputedValues.h>
+#include <RmlUi/Core/Core.h>
+#include <RmlUi/Core/FontEngineInterface.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementUtilities.h>
@@ -29,10 +31,35 @@ bool Within(Rml::Element* element, Rml::Element* root) {
 	for (; element; element = element->GetParentNode()) if (element == root) return true;
 	return false;
 }
+// Under break-word or break-all Rml may break inside any word, so the
+// narrowest such a label lays out is its widest character. Measure the
+// characters directly: Rml's zero-width line search tries every prefix of
+// every word, which grows with the cube of a word's length.
+bool WidestCharacter(Rml::ElementText* text, float& output) {
+	auto* engine = Rml::GetFontEngineInterface(); const auto handle = text->GetFontFaceHandle();
+	if (!engine || !handle) return false;
+	const auto& computed = text->GetComputedValues();
+	const Rml::TextShapingContext shaping{computed.language(),computed.direction(),computed.font_kerning(),computed.letter_spacing()};
+	auto decoded = Rml::StringUtilities::DecodeRml(text->GetText());
+	if (computed.text_transform() == Rml::Style::TextTransform::Uppercase) decoded = Rml::StringUtilities::ToUpper(decoded);
+	else if (computed.text_transform() == Rml::Style::TextTransform::Lowercase) decoded = Rml::StringUtilities::ToLower(decoded);
+	float widest = 0;
+	const char* end = decoded.data()+decoded.size();
+	for (const char* p = decoded.data(); p < end;) {
+		const char* next = Rml::StringUtilities::SeekForwardUTF8(p+1,end);
+		const int width = engine->GetStringWidth(handle,Rml::StringView(p,next),shaping);
+		if (width < 0) return false;
+		widest = std::max(widest,static_cast<float>(width)); p = next;
+	}
+	output = widest; return true;
+}
 // Measure the same formatted tokens as Rml's inline layout, rather than raw
 // translated bytes. Canonical labels contain one plain ElementText child.
 // Bound intrinsic work and refuse extra content instead of undermeasuring it.
-bool LabelWidth(Rml::Element* label, float& output) {
+// The natural width is the widest unwrapped line; the wrapped width is the
+// widest run the label's own white-space and word-break rules cannot break,
+// the narrowest the label can lay out without overflowing.
+bool LabelWidth(Rml::Element* label, float& output, bool wrapped = false) {
 	if (!label) return false;
 	// An empty translation has no text node. Preserve its exact empty width;
 	// this is compatibility behavior, not proof that localization succeeded.
@@ -40,14 +67,21 @@ bool LabelWidth(Rml::Element* label, float& output) {
 	if (label->GetNumChildren() != 1) return false;
 	auto* text = dynamic_cast<Rml::ElementText*>(label->GetChild(0));
 	if (!text || !text->GetFontFaceHandle() || text->GetText().size() > 65536) return false;
+	if (wrapped) {
+		const auto& computed = text->GetComputedValues(); const auto space = computed.white_space();
+		const bool breaks = space == Rml::Style::WhiteSpace::Normal || space == Rml::Style::WhiteSpace::Prewrap || space == Rml::Style::WhiteSpace::Preline;
+		if (breaks && computed.word_break() != Rml::Style::WordBreak::Normal) return WidestCharacter(text,output);
+	}
 	const int length = static_cast<int>(text->GetText().size());
 	float width = 0;
 	for (int begin = 0; begin < length;) {
 		Rml::String line; int consumed = 0; float lineWidth = 0;
 		// Unlimited intrinsic line width retains explicit hard line breaks while
-		// avoiding wrapping to the old, possibly narrower popup. These flags
-		// match the first inline text box: trim prefix, decode entities, no empty wrap.
-		text->GenerateLine(line,consumed,lineWidth,begin,std::numeric_limits<float>::max(),0,true,true,false);
+		// avoiding wrapping to the old, possibly narrower popup. A zero width
+		// instead yields one unbreakable run per line, as Rml wraps them. These
+		// flags match the first inline text box: trim prefix, decode entities,
+		// no empty wrap.
+		text->GenerateLine(line,consumed,lineWidth,begin,wrapped ? 0.0f : std::numeric_limits<float>::max(),0,true,true,false);
 		if (consumed <= 0 || consumed > length-begin || !std::isfinite(lineWidth) || lineWidth < 0) return false;
 		width = std::max(width,lineWidth); begin += consumed;
 	}
@@ -82,6 +116,13 @@ struct ValueControlView::Impl {
 		std::vector<float> placementFingerprint;
 		std::uint64_t placementOpening = 0;
 		bool placementReady = false;
+		// The widest a wrapping list may still be placed in this opening and
+		// placement context. It only falls: a narrower width wraps the rows
+		// taller, and growing back would undo that, so a list that cannot fit
+		// is refused instead of alternating between widths.
+		float widthCeiling = std::numeric_limits<float>::infinity();
+		std::uint64_t ceilingOpening = 0;
+		std::optional<PlacementContext> ceilingContext;
 		// The options the list last painted; the rest are hidden and unmeasured.
 		std::size_t optionCount = std::numeric_limits<std::size_t>::max();
 	};
@@ -120,6 +161,16 @@ struct ValueControlView::Impl {
 		return Property(id,"display",visible ? shown : "none");
 	}
 	std::string Translate(const std::string& value) const { return translate ? translate(value) : value; }
+	// An unavailable option's label reads at the visual specification's
+	// disabled-text strength, 40%, from its authored colour.
+	bool Availability(const ChoiceOption& option, bool available) {
+		if (!option.Conditional()) return false;
+		const auto& properties = authored.at(option.labelPart); const auto found = properties.find("color");
+		if (found == properties.end() || found->second.type != ValueType::Colour) return false;
+		auto colour = found->second;
+		if (!available) colour.data[3] = std::min(colour.data[3],0.40);
+		return Property(option.labelPart,"color",colour.Css());
+	}
 	static std::size_t Shown(const Entry& entry, const ChoiceSpec& choice) { return std::min(entry.optionCount,choice.options.size()); }
 	// A state label is the application's text; it translates as any text does.
 	std::string Label(const ChoiceOption& option, const ControlReadback& readback, std::size_t index) const {
@@ -279,7 +330,7 @@ struct ValueControlView::Impl {
 		return changed;
 	}
 	bool Popup(Entry& entry, const ChoiceSpec& choice, const WidgetViewState& view, Interaction& interaction, const std::string& id, int width, int height, float ratio,
-		const std::function<double(const std::string&)>& opacity) {
+		const std::function<double(const std::string&)>& opacity, bool rowsChanged) {
 		entry.scrollReady=false;
 		entry.placementReady=false;
 		entry.placementOpening=view.popupOpen?view.popupToken:0;
@@ -300,7 +351,13 @@ struct ValueControlView::Impl {
 		for (const auto& id : entry.opacityAncestry) alpha *= std::clamp(opacity(id),0.0,1.0);
 		changed |= Property(choice.popup,"filter",alpha < 1 ? "opacity("+Number(alpha)+")" : "none");
 		const bool open = view.popupOpen && entry.anchor->IsVisible(true) && width > 0 && height > 0;
-		changed |= Display(choice.popup,open); if (!open) return changed;
+		const bool shown = Display(choice.popup,open); changed |= shown; if (!open) return changed;
+		// A popup shown in this pass, and rows changed in it, still hold the
+		// boxes of their last layout: another size, text scale or list. Those
+		// boxes may place the popup but never refuse it, as a refusal hides the
+		// rows again before they are ever laid out, so it would recur on every
+		// opening. Refusal waits for the next pass's layout.
+		const bool stale = shown || rowsChanged;
 		auto* popup = Element(choice.popup); auto* viewport = Element(choice.viewport); auto* content = Element(choice.content);
 		Rml::Rectanglef anchor;
 		// Runtime synchronizes stacking geometry and transform caches after
@@ -359,43 +416,59 @@ struct ValueControlView::Impl {
 		float x = std::clamp(anchor.Left(),margin,std::max(margin,width-margin-outerWidth));
 		float y = std::clamp(flip ? anchor.Top()-outerHeight : anchor.Bottom(),margin,std::max(margin,height-margin-outerHeight));
 		if (entry.placementBounds) {
-			float minimumRow=0,minimumRowWidth=36*ratio;
+			float minimumRow=0,minimumRowWidth=36*ratio,naturalRowWidth=36*ratio;
 			for (std::size_t i=0;i<starts.size();++i) {
 				const auto& option=choice.options[i];auto* row=Element(option.node);auto* label=Element(option.labelPart);
 				const auto& box=row->GetBox();
 				minimumRow=std::max(minimumRow,ends[i]-starts[i]+
 					std::max(0.f,box.GetEdge(Rml::BoxArea::Margin,Rml::BoxEdge::Top))+
 					std::max(0.f,box.GetEdge(Rml::BoxArea::Margin,Rml::BoxEdge::Bottom)));
-				// A long formatted option grows the popup or refuses its opening;
-				// reducing the readable font or clipping the option is not a fit.
-				float textWidth = 0;
-				if (!LabelWidth(label,textWidth)) {
+				// A long formatted option grows the popup to its natural width where
+				// the safe area allows, else wraps at its word boundaries, else
+				// refuses the opening; reducing the readable font or clipping the
+				// option is not a fit.
+				float textWidth = 0, wrappedWidth = 0;
+				if (!LabelWidth(label,textWidth) || !LabelWidth(label,wrappedWidth,true)) {
+					if (stale) return true;
 					interaction.InvalidateChoicePopup(id,view.popupToken);
 					return Display(choice.popup,false)||changed;
 				}
 				const float leading=label->GetAbsoluteOffset(Rml::BoxArea::Content).x-row->GetAbsoluteOffset(Rml::BoxArea::Border).x;
-				minimumRowWidth=std::max(minimumRowWidth,std::max(0.f,leading)+textWidth+
+				const float edges=std::max(0.f,leading)+
 					std::max(0.f,label->GetBox().GetEdge(Rml::BoxArea::Padding,Rml::BoxEdge::Right))+
 					std::max(0.f,box.GetEdge(Rml::BoxArea::Padding,Rml::BoxEdge::Right))+
 					std::max(0.f,box.GetEdge(Rml::BoxArea::Margin,Rml::BoxEdge::Left))+
-					std::max(0.f,box.GetEdge(Rml::BoxArea::Margin,Rml::BoxEdge::Right)));
+					std::max(0.f,box.GetEdge(Rml::BoxArea::Margin,Rml::BoxEdge::Right));
+				naturalRowWidth=std::max(naturalRowWidth,edges+textWidth);
+				minimumRowWidth=std::max(minimumRowWidth,edges+std::min(wrappedWidth,textWidth));
 			}
 			const auto frame=popup->GetBox().GetFrameSize(Rml::BoxArea::Border)+popup->GetBox().GetFrameSize(Rml::BoxArea::Padding);
 			const float gutter=choice.scrollbar?Element(choice.scrollbar->track)->GetBox().GetSize(Rml::BoxArea::Border).x+8*ratio:0;
-			const float minimumWidth=std::max(AuthoredLength(choice.popup,"min-width",ratio,0),minimumRowWidth+frame.x+viewportFrame.x+gutter);
+			const float authoredMinimum=AuthoredLength(choice.popup,"min-width",ratio,0);
+			const float minimumWidth=std::max(authoredMinimum,minimumRowWidth+frame.x+viewportFrame.x+gutter);
+			const float naturalWidth=std::max(authoredMinimum,naturalRowWidth+frame.x+viewportFrame.x+gutter);
 			PopupRegion region;PopupPlacement placement;
 			if (!entry.placementContext || !Region(entry,width,height,ratio,region,true)) {
 				interaction.InvalidateChoicePopup(id,view.popupToken);
 				return Display(choice.popup,false)||changed;
 			}
 			const PopupRect anchorBox{anchor.Left(),anchor.Top(),anchor.Width(),anchor.Height()};
-			const float preferredWidth=std::max(anchor.Width(),minimumWidth);
+			// The placement narrows from the natural width toward the wrapped one
+			// only when the safe area cannot hold it; narrower rows then wrap and
+			// are measured again before the opening can accept an option.
+			if (entry.ceilingOpening != view.popupToken || entry.ceilingContext != entry.placementContext) {
+				entry.ceilingOpening = view.popupToken; entry.ceilingContext = entry.placementContext;
+				entry.widthCeiling = std::numeric_limits<float>::infinity();
+			}
+			const float preferredWidth=std::max(minimumWidth,std::min(std::max(anchor.Width(),naturalWidth),entry.widthCeiling));
 			const bool fits=PlacePopup(region,anchorBox,preferredWidth,minimumWidth,
 				std::max(desired,minimumRow+chrome),minimumRow+chrome,placement);
 			if (!fits && !PlacePopup(region,anchorBox,preferredWidth,minimumWidth,1,1,placement)) {
+				if (stale) return true;
 				interaction.InvalidateChoicePopup(id,view.popupToken);
 				return Display(choice.popup,false)||changed;
 			}
+			if (!stale) entry.widthCeiling = std::min(entry.widthCeiling,static_cast<float>(placement.rectangle.width));
 			// Rows still describe the previous width. Resolve the new width and
 			// its scrollbar gutter before testing a complete row's height, or a
 			// formerly wrapped translation can incorrectly refuse a valid opening.
@@ -403,7 +476,7 @@ struct ValueControlView::Impl {
 			const bool widthChanged=PopupWidth(choice,static_cast<float>(placement.rectangle.width),ratio);
 			changed|=widthChanged;
 			if (!fits) {
-				if (widthChanged) return true;
+				if (widthChanged || stale) return true;
 				interaction.InvalidateChoicePopup(id,view.popupToken);
 				return Display(choice.popup,false)||changed;
 			}
@@ -550,18 +623,21 @@ bool ValueControlView::Paint(Interaction& interaction, const std::map<std::strin
 		} else if (const auto* choice = std::get_if<ChoiceSpec>(&entry.control.widget)) {
 			std::string value = impl->ValueText(accepted.value);
 			entry.optionCount = accepted.optionCount ? std::min(*accepted.optionCount,choice->options.size()) : choice->options.size();
+			bool rows = false;
 			for (std::size_t i = 0; i < choice->options.size(); ++i) {
 				const auto& option = choice->options[i];
 				// A hidden option still names the value it holds.
 				const auto label = impl->Label(option,accepted,i); const bool selected = option.value == accepted.value;
 				if (selected) value = label;
-				changed |= impl->Text(option.labelPart,label);
-				changed |= impl->Display(option.selectedPart,selected);
-				changed |= impl->Display(option.highlightPart,view->popupOpen && view->highlight == option.id);
-				if (choice->optionCount) changed |= impl->Display(option.node,i < entry.optionCount);
+				rows |= impl->Text(option.labelPart,label);
+				changed |= impl->Availability(option,i < accepted.enabledOptions.size() && accepted.enabledOptions[i]);
+				rows |= impl->Display(option.selectedPart,selected);
+				rows |= impl->Display(option.highlightPart,view->popupOpen && view->highlight == option.id);
+				if (choice->optionCount) rows |= impl->Display(option.node,i < entry.optionCount);
 			}
+			changed |= rows;
 			changed |= impl->Text(choice->valueText,value);
-			changed |= impl->Popup(entry,*choice,*view,interaction,id,width,height,ratio,opacity);
+			changed |= impl->Popup(entry,*choice,*view,interaction,id,width,height,ratio,opacity,rows);
 		}
 	}
 	return changed;

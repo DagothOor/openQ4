@@ -1321,6 +1321,10 @@ private:
 				reserve(option.labelPart,"text"); reserve(option.selectedPart,"display"); reserve(option.highlightPart,"display");
 				// A counted list hides the options past its count.
 				if (choice->optionCount) reserve(option.node,"display");
+				// An option that can become unavailable dims its label's colour.
+				const auto* label = model.FindNode(option.labelPart);
+				if (option.Conditional() && label->properties.contains("color") && label->properties.at("color").type == ValueType::Colour)
+					owned.emplace(option.labelPart,"color");
 				for (size_t j = 0; j < i; ++j) separate(option.node,choice->options[j].node);
 			}
 		}

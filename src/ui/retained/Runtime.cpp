@@ -2036,8 +2036,11 @@ bool Runtime::Layout(const Viewport& viewport,double seconds) {
 	impl->context->SetDensityIndependentPixelRatio(viewport.DpRatio());
 	impl->context->Update();
 	// Owned widget wrappers remain derived layout. Bounded settling lets a
-	// newly opened popup measure its authored rows before its first rendering.
-	for (unsigned pass = 0; pass < 3; ++pass) {
+	// newly opened popup measure its authored rows before its first rendering,
+	// including rows it wraps to fit a narrower safe area: showing, narrowing,
+	// re-measuring the wrapped rows and settling take one pass each. A frame
+	// stops at the first pass that changes nothing.
+	for (unsigned pass = 0; pass < 4; ++pass) {
 		impl->context->GetRootElement()->UpdateGeometryForProjection();
 		const auto before = impl->interaction.Focused();
 		if(!impl->UpdateInteraction(-1,true))return false;
