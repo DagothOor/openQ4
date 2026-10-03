@@ -170,6 +170,18 @@
   `effective=4 reason=gl-max-clamp`, and the foundation self-tests are
   unchanged. See [display settings](../user/display-settings.md).
 
+- [x] Draw the OpenGL `r_showShadows` stencil shadow volumes in colour again.
+  Modes 1 and 3 drew black lines and the additive mode 2 drew nothing, because
+  the stock shadow vertex programs (`shadow.vp` and the `md5rshadow` family)
+  never write a colour, so the per-volume `glColor` never reached the screen.
+  The debug pass now takes its colours from a fragment program compiled into
+  the renderer, and ordinary stencil shadows are untouched. On Air Defense 1
+  all three modes match the Vulkan view and the `r_useShadowVertexProgram 0`
+  path, including after `vid_restart`, and normal frames before and after the
+  debug view are pixel-identical. Packed MD5R volumes take the same program;
+  the opt-in MD5R conversions did not put any in view, so that path has no
+  runtime capture.
+
 - [x] Turn shadow maps on in the `quality` and `ultra` performance presets and
   default projected-light filtering to PCSS-lite (`r_shadowMapFilterMode 2`)
   with a 2-texel minimum radius (`r_shadowMapFilterRadius 2.0`). Lower presets

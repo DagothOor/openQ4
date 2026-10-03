@@ -2111,6 +2111,7 @@ void	RB_ResetAppleGL21RouteCounters( void );
 void	RB_ReportAppleGL21RouteCounters( void );
 void	RB_ARB2_MD5R_DrawDepthElements( const drawSurf_t *surf );
 void	RB_ARB2_MD5R_DrawShadowElements( const drawSurf_t *surf, int numIndexes );
+bool	RB_ARB2_BindStencilShadowDebugProgram( void );
 void	RB_ARB2_MD5R_DrawBasicFog( const drawSurf_t *surf );
 void	RB_ARB2_LoadMD5RLocalViewOrigin( const drawSurf_t *surf );
 void	RB_ARB2_LoadMD5RMVPMatrix( const drawSurf_t *surf );

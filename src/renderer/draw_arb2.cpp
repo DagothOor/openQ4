@@ -16666,6 +16666,7 @@ typedef struct {
 	GLenum			target;
 	GLuint			ident;
 	char			name[64];
+	const char *	builtinText;	// compiled into the renderer; NULL reads glprogs/<name>
 	bool			valid;
 	bool			warnedOnUse;
 	bool			requiredForLighting;
@@ -16675,6 +16676,20 @@ typedef struct {
 } progDef_t;
 
 static	const int	MAX_GLPROGS = 200;
+
+// openQ4's own programs ship inside the renderer instead of glprogs/. Their ids
+// sit past the last PROG_USER + index a material program can take, clear of
+// the retail fixed range too.
+static const GLuint	FPROG_STENCIL_SHADOW_DEBUG = PROG_USER + MAX_GLPROGS;
+
+// r_showShadows volume color. shadow.vp and the md5rshadow family write only
+// result.position, so while one is bound the primary color is undefined (black
+// on NVIDIA) and glColor never reaches the screen. RB_T_Shadow uploads the
+// color to program.local[0] instead.
+static const char arb2StencilShadowDebugProgram[] =
+	"!!ARBfp1.0\n"
+	"MOV result.color, program.local[0];\n"
+	"END\n";
 
 // a single file can have both a vertex program and a fragment program
 static progDef_t	progs[MAX_GLPROGS] = {
@@ -16729,6 +16744,8 @@ static progDef_t	progs[MAX_GLPROGS] = {
 	{ GL_VERTEX_PROGRAM_ARB, ARB2_MD5R_BASIC_FOG_VPROG_BASE + 1, "md5rbasicfog1.vp" },
 	{ GL_VERTEX_PROGRAM_ARB, ARB2_MD5R_BASIC_FOG_VPROG_BASE + 2, "md5rbasicfog4.vp" },
 
+	{ GL_FRAGMENT_PROGRAM_ARB, FPROG_STENCIL_SHADOW_DEBUG, "stencilShadowDebug.fp", arb2StencilShadowDebugProgram },
+
 	// additional programs can be dynamically specified in materials
 };
 
@@ -16753,7 +16770,7 @@ static bool RB_IsRequiredLightingARBProgram( const progDef_t &prog ) {
 }
 
 static void RB_SetARBProgramPath( progDef_t &prog ) {
-	idStr fullPath = "glprogs/";
+	idStr fullPath = ( prog.builtinText != NULL ) ? "builtin/" : "glprogs/";
 	fullPath += prog.name;
 	fullPath.BackSlashesToSlashes();
 	idStr::Copynz( prog.normalizedPath, fullPath.c_str(), sizeof( prog.normalizedPath ) );
@@ -17015,14 +17032,31 @@ bool R_BindARBProgram( GLenum target, GLuint ident, const char *usage, bool requ
 	return true;
 }
 
+/*
+==================
+RB_ARB2_BindStencilShadowDebugProgram
+
+Enables the r_showShadows volume color program for one RB_StencilShadowPass.
+When it cannot bind, the volumes keep plain glColor, which only reaches the
+screen while no shadow vertex program is bound.
+==================
+*/
+bool RB_ARB2_BindStencilShadowDebugProgram( void ) {
+	if ( !R_BindARBProgram( GL_FRAGMENT_PROGRAM_ARB, FPROG_STENCIL_SHADOW_DEBUG, "r_showShadows volume color", true ) ) {
+		return false;
+	}
+	glEnable( GL_FRAGMENT_PROGRAM_ARB );
+	return true;
+}
+
 void R_LoadARBProgram( int progIndex ) {
 	int		ofs;
 	int		err;
 	progDef_t &prog = progs[progIndex];
-	idStr	fullPath = "glprogs/";
+	idStr	fullPath = ( prog.builtinText != NULL ) ? "builtin/" : "glprogs/";
 	fullPath += prog.name;
 	fullPath.BackSlashesToSlashes();
-	char	*fileBuffer;
+	char	*fileBuffer = NULL;
 	char	*buffer;
 	idList<char> programBuffer;
 	char	*start = NULL, *end;
@@ -17044,21 +17078,27 @@ void R_LoadARBProgram( int progIndex ) {
 		return;
 	}
 
-	// load the program even if we don't support it, so
-	// fs_copyfiles can generate cross-platform data dumps
-	fileSystem->ReadFile( fullPath.c_str(), (void **)&fileBuffer, NULL );
-	if ( !fileBuffer ) {
-		common->Printf( ": File not found\n" );
-		RB_SetARBProgramFailure( prog, "file not found" );
-		return;
+	const char *programSource = prog.builtinText;
+	if ( programSource == NULL ) {
+		// load the program even if we don't support it, so
+		// fs_copyfiles can generate cross-platform data dumps
+		fileSystem->ReadFile( fullPath.c_str(), (void **)&fileBuffer, NULL );
+		if ( !fileBuffer ) {
+			common->Printf( ": File not found\n" );
+			RB_SetARBProgramFailure( prog, "file not found" );
+			return;
+		}
+		programSource = fileBuffer;
 	}
 
 	// copy to resizable memory and free; this buffer is edited while selecting the program section
-	const int programLength = idStr::Length( fileBuffer );
+	const int programLength = idStr::Length( programSource );
 	programBuffer.SetNum( programLength + 1 );
-	memcpy( programBuffer.Ptr(), fileBuffer, programLength + 1 );
+	memcpy( programBuffer.Ptr(), programSource, programLength + 1 );
 	buffer = programBuffer.Ptr();
-	fileSystem->FreeFile( fileBuffer );
+	if ( fileBuffer != NULL ) {
+		fileSystem->FreeFile( fileBuffer );
+	}
 
 	if ( !glConfig.isInitialized ) {
 		RB_SetARBProgramFailure( prog, "pending GL initialization" );

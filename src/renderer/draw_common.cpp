@@ -11333,6 +11333,11 @@ the shadow volumes face INSIDE
 // two-pass sequence on saturating INCR/DECR hardware
 static bool rb_twoSidedStencilThisPass = false;
 
+// decided once per stencil shadow pass in RB_StencilShadowPass: r_showShadows
+// draws its colors through a fragment program, because the shadow vertex
+// programs never write result.color
+static bool rb_shadowDebugColorProgramThisPass = false;
+
 // space PP_LIGHT_ORIGIN was last uploaded for; tracked separately from
 // backEnd.currentSpace because packed MD5R shadow surfaces advance
 // currentSpace without uploading env[4], and their skinned palette rows
@@ -11413,30 +11418,38 @@ static void RB_T_Shadow( const drawSurf_t *surf ) {
 
 	// debug visualization
 	if ( r_showShadows.GetInteger() ) {
+		idVec3 color;
 		if ( r_showShadows.GetInteger() == 3 ) {
 			if ( external ) {
-				glColor3f( 0.1/backEnd.overBright, 1/backEnd.overBright, 0.1/backEnd.overBright );
+				color.Set( 0.1f, 1.0f, 0.1f );
 			} else {
 				// these are the surfaces that require the reverse
-				glColor3f( 1/backEnd.overBright, 0.1/backEnd.overBright, 0.1/backEnd.overBright );
+				color.Set( 1.0f, 0.1f, 0.1f );
 			}
 		} else {
 			// draw different color for turboshadows
 			if ( surf->geo->shadowCapPlaneBits & SHADOW_CAP_INFINITE ) {
 				if ( numIndexes == tri->numIndexes ) {
-					glColor3f( 1/backEnd.overBright, 0.1/backEnd.overBright, 0.1/backEnd.overBright );
+					color.Set( 1.0f, 0.1f, 0.1f );
 				} else {
-					glColor3f( 1/backEnd.overBright, 0.4/backEnd.overBright, 0.1/backEnd.overBright );
+					color.Set( 1.0f, 0.4f, 0.1f );
 				}
 			} else {
 				if ( numIndexes == tri->numIndexes ) {
-					glColor3f( 0.1/backEnd.overBright, 1/backEnd.overBright, 0.1/backEnd.overBright );
+					color.Set( 0.1f, 1.0f, 0.1f );
 				} else if ( numIndexes == tri->numShadowIndexesNoFrontCaps ) {
-					glColor3f( 0.1/backEnd.overBright, 1/backEnd.overBright, 0.6/backEnd.overBright );
+					color.Set( 0.1f, 1.0f, 0.6f );
 				} else {
-					glColor3f( 0.6/backEnd.overBright, 1/backEnd.overBright, 0.1/backEnd.overBright );
+					color.Set( 0.6f, 1.0f, 0.1f );
 				}
 			}
+		}
+		color /= backEnd.overBright;
+
+		glColor3fv( color.ToFloatPtr() );
+		if ( rb_shadowDebugColorProgramThisPass ) {
+			const idVec4 programColor( color.x, color.y, color.z, 1.0f );
+			glProgramLocalParameter4fvARB( GL_FRAGMENT_PROGRAM_ARB, 0, programColor.ToFloatPtr() );
 		}
 
 		glStencilOp( GL_KEEP, GL_KEEP, GL_KEEP );
@@ -11545,6 +11558,11 @@ void RB_StencilShadowPass( const drawSurf_t *drawSurfs ) {
 		GL_State( GLS_DEPTHMASK | GLS_COLORMASK | GLS_ALPHAMASK | GLS_DEPTHFUNC_LESS );
 	}
 
+	// shadow.vp and the md5rshadow family leave the primary color undefined,
+	// so the volumes' glColor would draw black whenever one is bound
+	rb_shadowDebugColorProgramThisPass = r_showShadows.GetInteger() != 0
+		&& RB_ARB2_BindStencilShadowDebugProgram();
+
 	if ( r_shadowPolygonFactor.GetFloat() || r_shadowPolygonOffset.GetFloat() ) {
 		glPolygonOffset( r_shadowPolygonFactor.GetFloat(), -r_shadowPolygonOffset.GetFloat() );
 		glEnable( GL_POLYGON_OFFSET_FILL );
@@ -11565,6 +11583,11 @@ void RB_StencilShadowPass( const drawSurf_t *drawSurfs ) {
 	rb_shadowLightOriginSpace = NULL;
 
 	RB_RenderDrawSurfChainWithFunction( drawSurfs, RB_T_Shadow );
+
+	if ( rb_shadowDebugColorProgramThisPass ) {
+		glDisable( GL_FRAGMENT_PROGRAM_ARB );
+		rb_shadowDebugColorProgramThisPass = false;
+	}
 
 	GL_Cull( CT_FRONT_SIDED );
 
