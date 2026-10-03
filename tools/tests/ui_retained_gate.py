@@ -162,10 +162,13 @@ struct idUserInterface {
     float cursorX = 320, cursorY = 240;
     float CursorX() { return cursorX; }
     float CursorY() { return cursorY; }
+    void SetCursor(float x, float y) { cursorX = x; cursorY = y; }
     void StateChanged(int) {}
 };
 enum { AXIS_SIDE = 0, AXIS_FORWARD = 1 };
 static int stickX = 0, stickY = 0;
+static bool vrInputFocus = false;
+static bool VR_HasInputFocus() { return vrInputFocus; }
 static bool Sys_GetJoystickAxisState(int axis, int& value) { value = axis == AXIS_SIDE ? stickX : stickY; return true; }
 static int MenuControllerAbs(int value) { return value < 0 ? -value : value; }
 struct idMath {
@@ -326,6 +329,11 @@ int main() {
         // A held look stick leads; released, the lean returns to the pointer.
         stickX = -127; s.RetainedHomeFrameEvent(); CHECK(title->state["pointer_x"] == std::to_string(-1.0f));
         stickX = 10; s.RetainedHomeFrameEvent(); CHECK(title->state["pointer_x"] == std::to_string(1.0f));
+        // The VR pointer moves by its offset from the covered menu's cursor:
+        // in VR that cursor follows the screen's, and only in VR.
+        CHECK(s.guiMainMenu->cursorX == 320 && s.guiMainMenu->cursorY == 240);
+        vrInputFocus = true; s.RetainedHomeFrameEvent(); vrInputFocus = false;
+        CHECK(s.guiMainMenu->cursorX == 640 && s.guiMainMenu->cursorY == 120);
         // A page hand-off runs the legacy home button's own action.
         s.HandleRetainedSessionRequest(title, "loadGame");
         CHECK(legacyActions.back() == "main_b_loadgame" && title->named.back() == "depart");

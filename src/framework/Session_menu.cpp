@@ -5014,6 +5014,12 @@ void idSessionLocal::RetainedHomeFrameEvent() {
 	if ( guiRetainedHome == NULL || guiActive != guiMainMenu ) {
 		return;
 	}
+	// The VR pointer moves the cursor by its offset from the active GUI's
+	// cursor, but this screen takes the input and keeps its own: hold the
+	// covered menu's cursor on it.
+	if ( VR_HasInputFocus() ) {
+		guiMainMenu->SetCursor( guiRetainedHome->CursorX(), guiRetainedHome->CursorY() );
+	}
 	sysEvent_t ev;
 	memset( &ev, 0, sizeof( ev ) );
 	ev.evType = SE_NONE;

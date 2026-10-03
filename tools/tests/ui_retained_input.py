@@ -99,6 +99,7 @@ std::unique_ptr<FakeRuntime> runtime;
 struct EditCall {};
 openq4::ui::Input input;
 bool inputFocused=true,inputSuspended=false,inputResourceSuspended=false,analogNeedsNeutral=true;
+bool InputFocused() { return inputFocused; }
 int analogDirection=-1;
 unsigned inputGeneration=1,closes=0;
 double now=0;

@@ -122,6 +122,11 @@ public:
 
 extern idVRSystem *			vrSystem;
 
+// True while a session presents and the runtime routes controller input to
+// openQ4. Menus then take that input whether or not the desktop window, which
+// the player cannot see, holds focus (engine only).
+bool						VR_HasInputFocus( void );
+
 /*
 ===============================================================================
 

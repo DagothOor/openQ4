@@ -128,6 +128,7 @@ struct CVars {
 struct Console { bool open=false; bool Active() const { return open; } } consoleObject,*console=&consoleObject;
 static bool windowFocused=true;
 bool Sys_SDL_IsGameWindowFocused() { return windowFocused; }
+bool VR_HasInputFocus() { return false; }
 struct Renderer {
     bool viewport=false;
     bool GetUseUIViewportFor2D() const { return viewport; }

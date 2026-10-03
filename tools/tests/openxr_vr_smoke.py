@@ -19,7 +19,8 @@ Checks:
 - the controller's menu button opens the pause menu on an opaque, world-locked
   virtual screen in front of the still-rendered world, the weapon hand points
   at it (the pointer is drawn where the ray meets the screen) and the trigger
-  clicks there as a mouse button;
+  clicks Resume there, which closes the menu even though the desktop window
+  holds no focus;
 - the runtime can end VR: the game carries on on the desktop, keeps
   vr_enable for the next launch and waits for vr_restart;
 - the log carries no errors.
@@ -39,9 +40,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # Where the scripted controller points: straight ahead from this far right of
 # and above the eyes, onto a screen vr_screenWidth metres wide hung straight
-# ahead (the simulated head looks down -Z from 1.6 m).
-POINTER_RIGHT_M = 0.75
-POINTER_UP_M = 0.2
+# ahead (the simulated head looks down -Z from 1.6 m). This is the pause
+# menu's Resume row.
+POINTER_RIGHT_M = -0.84
+POINTER_UP_M = 0.15
 SCREEN_WIDTH_M = 3.0
 
 
@@ -142,7 +144,9 @@ def main(argv: list[str] | None = None) -> None:
         "condump vr_marker_point.txt", "waitMsec 700",
         "condump vr_marker_pointed.txt", "waitMsec 700",
         "condump vr_marker_click.txt", "waitMsec 300",
-        "condump vr_marker_unclick.txt", "waitMsec 500",
+        # Resume dispatches on release, then the menu takes 250 ms to go; a
+        # debug build draws the paused stereo world at only ~13 fps
+        "condump vr_marker_unclick.txt", "waitMsec 2000",
         "condump vr_marker_exit.txt", "waitMsec 1500",
         "echo VR_AFTER_EXIT", "vr_status", "vr_enable",
         "echo VR_SMOKE_COMPLETE", "quit",
@@ -286,6 +290,10 @@ def main(argv: list[str] | None = None) -> None:
     assert border < 90, f"the pointer at ({px}, {py}) lacks its dark ring (brightest ring channel {border})"
     assert "OpenXR: MOUSE1 down" in menu_log and "OpenXR: MOUSE1 up" in menu_log, \
         "the trigger did not click as a mouse button while pointing at the menu"
+    # the hidden test window never has focus, as a desktop window seldom does
+    # while the player wears the headset: the click must still reach the menu
+    assert any([layer["type"] for layer in f["layers"]] == ["projection", "quad"] and f["layers"][1]["flags"] & 0x2
+               for f in menu_frames), "clicking Resume with the pointer did not close the pause menu"
 
     # the runtime ends VR: the game carries on and keeps the player's setting
     before_exit, _, after_exit = menu_log.partition("VR_AFTER_EXIT")

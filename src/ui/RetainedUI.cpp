@@ -671,6 +671,9 @@ bool WindowFocused() {
 	return true;
 #endif
 }
+// A headset session with input focus drives menus from its controllers, while
+// the desktop window the player cannot see may hold no focus at all.
+bool InputFocused() { return inputFocused || VR_HasInputFocus(); }
 void SetApplicationOpen(bool value) {
 	if (RetainedUI_IsOpen() == value) return;
 	openq4::NativeInputBeforeInputBlockerChange();
@@ -1229,7 +1232,7 @@ void RetainedUI_FrameInput() {
     EditCall call;
 	if (!RetainedUI_IsOpen()) return;
 	const bool ready = PreviewInputReady();
-	SuspendInput(!inputFocused || (console && console->Active()) || engineWindowState.uiViewportWidth <= 0 || engineWindowState.uiViewportHeight <= 0);
+	SuspendInput(!InputFocused() || (console && console->Active()) || engineWindowState.uiViewportWidth <= 0 || engineWindowState.uiViewportHeight <= 0);
 	if (!ready || inputSuspended) return;
 	int x = 0, y = 0;
 	Sys_GetJoystickAxisState(AXIS_YAW,x); Sys_GetJoystickAxisState(AXIS_PITCH,y);
@@ -1282,7 +1285,7 @@ bool RetainedUI_ProcessEvent(const sysEvent_s* event) {
 	if (!ready) {
 		// Keep focus/console suspension policy, but a resource wait alone must
 		// retain quarantine. Releases still retire it without reaching the view.
-		SuspendInput(!inputFocused || (console && console->Active()) || engineWindowState.uiViewportWidth <= 0 || engineWindowState.uiViewportHeight <= 0);
+		SuspendInput(!InputFocused() || (console && console->Active()) || engineWindowState.uiViewportWidth <= 0 || engineWindowState.uiViewportHeight <= 0);
 		ReleaseQuarantinedInput(decoded);
 		return true;
 	}

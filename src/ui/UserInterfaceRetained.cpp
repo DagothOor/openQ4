@@ -467,7 +467,8 @@ struct idUserInterfaceRetained::Impl {
 	bool AcceptInput() {
 		bool focus = true;
 #if defined(USE_SDL3)
-		focus = Sys_SDL_IsGameWindowFocused();
+		// a headset session's controllers drive menus the desktop window can't see
+		focus = Sys_SDL_IsGameWindowFocused() || VR_HasInputFocus();
 #endif
 		const bool pause = !active || !interactive || !focus || console->Active();
 		if (pause && !suspended) Quarantine(!focus);

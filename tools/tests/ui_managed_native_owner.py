@@ -53,6 +53,7 @@ RUNTIME_SUPPORT=r'''
 using namespace openq4::ui;
 static bool windowFocused=true;
 bool Sys_SDL_IsGameWindowFocused(){return windowFocused;}
+bool VR_HasInputFocus(){return false;}
 struct Console {bool open=false;bool Active(){return open;}} consoleObject;
 Console* console=&consoleObject;
 double RetainedUI_PresentationTime(){return 1;}

@@ -101,3 +101,12 @@ idVRSystem *vrSystem = VR_GetOpenXRSystem();
 static idVRSystemNull vrSystemNull;
 idVRSystem *vrSystem = &vrSystemNull;
 #endif
+
+bool VR_HasInputFocus( void ) {
+	if ( vrSystem == NULL ) {
+		return false;
+	}
+	vrFrameState_t state;
+	vrSystem->GetFrameState( state );
+	return state.active && state.focused;
+}
