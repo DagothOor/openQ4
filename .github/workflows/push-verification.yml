@@ -770,7 +770,9 @@ jobs:
     name: ${{ matrix.name }}
     needs: script-smoke
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    # About 300 Python checks, the build and the Meson suite: a passing run
+    # takes longer than 90 minutes on the hosted runners.
+    timeout-minutes: 150
     env:
       OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}
     strategy:
@@ -1013,7 +1015,7 @@ jobs:
     name: Windows Push Verification
     needs: script-smoke
     runs-on: windows-2025-vs2026
-    timeout-minutes: 90
+    timeout-minutes: 150
     env:
       OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}
     steps:
@@ -1112,7 +1114,7 @@ jobs:
     name: Windows ARM64 Push Verification
     needs: script-smoke
     runs-on: windows-11-arm
-    timeout-minutes: 90
+    timeout-minutes: 150
     env:
       OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}
       OPENQ4_VS_TARGET_ARCH: arm64
