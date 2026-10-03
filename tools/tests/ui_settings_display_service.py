@@ -732,6 +732,7 @@ def main(production_mutations=(), emit_directory=None):
     validation = '\n'.join(document[document.index(name):document.index('bool Parse(', document.index(name))] if name == 'bool LexicalForms(' else function_body(document, name) for name in names)
     support = host_test.SUPPORT.replace("static int writes=0;", "static std::vector<std::string> trace;\nstatic bool traceEnabled=false;\nstatic int writes=0;")
     support = support.replace("struct idStr : std::string { using std::string::string; using std::string::operator=; };",
+                              "#include <cstring>\n"
                               "struct idStr : std::string { using std::string::string; using std::string::operator=; "
                               "static int Cmp(const char* a,const char* b){return std::strcmp(a,b);} };")
     support = support.replace("++writes; if(key!=refuse)", '++writes;trace.push_back("cvar-write"); if(key!=refuse)')
