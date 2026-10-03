@@ -1191,6 +1191,7 @@ extern idCVar r_hdrVibrance;			// post-process vibrance when tone mapping is ena
 extern idCVar r_hdrSaturation;			// post-process saturation when tone mapping is enabled
 extern idCVar r_hdrContrast;			// post-process contrast when tone mapping is enabled
 extern idCVar r_hdrAutoExposure;		// automatically derive exposure from scene luminance
+extern idCVar r_hdrAutoExposureClassic;	// allow auto exposure on the classic renderer path
 extern idCVar r_hdrAutoExposureAsync;	// async PBO readback for the auto-exposure luminance sample
 extern idCVar r_hdrKeyValue;			// exposure key value used by auto exposure
 extern idCVar r_hdrMinExposure;			// minimum auto-exposure multiplier

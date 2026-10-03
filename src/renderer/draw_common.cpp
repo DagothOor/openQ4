@@ -1592,12 +1592,17 @@ static bool RB_ModernVisibleSceneTargetRequested( void ) {
 	return R_ModernGLExecutor_ModernVisibleRequestedForPost() && r_hdrSceneTarget.GetBool();
 }
 
+// r_hdrAutoExposureClassic lets the classic (non-modern-visible) renderer use
+// the same luminance pyramid and eye adaptation: the classic tone-map pass in
+// RB_STD_Bloom already applies the adapted exposure, only this gate kept it off.
 static bool RB_HDRAutoExposureRequested( void ) {
-	return r_hdrAutoExposure.GetBool() && r_hdrToneMap.GetBool() && R_ModernGLExecutor_ModernVisibleRequestedForPost();
+	return r_hdrAutoExposure.GetBool() && r_hdrToneMap.GetBool()
+		&& ( R_ModernGLExecutor_ModernVisibleRequestedForPost() || r_hdrAutoExposureClassic.GetBool() );
 }
 
 static bool RB_HDRAutoExposureEnabled( void ) {
-	return r_hdrAutoExposure.GetBool() && r_hdrToneMap.GetBool() && R_ModernGLExecutor_ModernVisiblePostProcessHandoffActive();
+	return r_hdrAutoExposure.GetBool() && r_hdrToneMap.GetBool()
+		&& ( R_ModernGLExecutor_ModernVisiblePostProcessHandoffActive() || r_hdrAutoExposureClassic.GetBool() );
 }
 
 static bool RB_ViewRequestsSceneRenderTarget( const viewDef_t *viewDef ) {
