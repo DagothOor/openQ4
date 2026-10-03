@@ -604,6 +604,9 @@
   next map. If the game closes before the change is saved, the next launch
   finishes or undoes it.
 
+- With the opt-in SYSTEM page enabled, choosing System from the multiplayer
+  menu's settings now opens it too, instead of the stock page.
+
 - The opt-in SYSTEM page adds **Display Device** and **Expand Across
   Displays** at the top of its display column when you have more than one
   display. Pick Auto or a display by name; a display that is no longer

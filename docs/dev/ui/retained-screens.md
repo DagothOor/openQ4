@@ -58,8 +58,33 @@ screen keeps its retained form:
 The SYSTEM page and the campaign selectors follow the same rules. When the
 opted-in SYSTEM page cannot load, the click that asked for it opens the stock
 SYSTEM page, and the SYSTEM button opens the stock page directly from then on.
-When the Single Player or campaign selector cannot load, the stock selector
-opens.
+Should the session ever refuse an open while the page is still available (no
+current state does: a message box or test GUI takes the menu's clicks first),
+that request opens the stock page with a developer warning, and the button keeps
+the retained page. When the Single Player or campaign selector cannot load, the
+stock selector opens.
+
+The multiplayer menu reaches the SYSTEM page through the main menu: the game
+returns `main fromMp_toSystem`, and the main menu's `fromMp_toSystem` event
+shows the stock SYSTEM sub-page (`desktop::dest` 22). With the retained page
+available, the event instead starts `anim_retainedSystemFromMp`, whose
+timeline asks the session on the next frame to open the retained page
+(`openRetainedSystemFromMp`) over the main menu as it comes up from the match.
+The request goes through a timeline because a command set in a named event the
+session fires is never collected. The branch runs no page transition, so it
+leaves `desktop::active` alone; the stock route raises it for its transition,
+which lowers it again. Both routes show the same SYSTEM page. Back returns to
+the main menu as the multiplayer menu's Main Menu choice leaves it: its main
+page, or the server browser when the match was joined from there. An open the
+session refuses sends `fromMp_toSystemStock`, the stock route.
+`tools/tests/ui_system_session_route.py` compiles the route against counted
+doubles and pins the menu script. The `system-mp-game` capture scenario takes
+the real route from a listen server's in-game menu, and `system-mp-route` and
+`fallback-system-mp` fire the event at the title; each checks that the main
+menu is usable again after Back.
+
+SYSTEM route evidence: `.tmp/ui/system-session-route/validation-evidence.json`,
+SHA-256 `f363fcb9d87b3a04aa4ba5617f2fa1982a9909d7d8618a99717eee18c3de2003`.
 
 Pictures fall back as well. CONTINUE shows the newest save's picture only when
 its file exists: an autosave names its level's loadscreen, and any other save

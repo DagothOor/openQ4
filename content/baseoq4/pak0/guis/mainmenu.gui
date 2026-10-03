@@ -669,7 +669,23 @@ windowDef Desktop
 		set "desktop::dest" "21" ;
 	}
 
+	// The multiplayer menu's SYSTEM route. With the retained SYSTEM page the
+	// session opens the page over the menu as it comes up, which Back then
+	// shows; the menu runs no page transition of its own, so desktop::active,
+	// which only a transition lowers again, stays as it is. A page that cannot
+	// open sends fromMp_toSystemStock, the stock route.
 	onNamedEvent fromMp_toSystem {
+		if ("gui::retainedSystem" == 1) {
+			set "desktop::dest" "0" ;
+			resettime "anim_retainedSystemFromMp" "0" ;
+		} else {
+			set "desktop::active" "1" ;
+			resettime "anim_in" "0" ;
+			set "desktop::dest" "22" ;
+		}
+	}
+
+	onNamedEvent fromMp_toSystemStock {
 		set "desktop::active" "1" ;
 		resettime "anim_in" "0" ;
 		set "desktop::dest" "22" ;
@@ -13302,6 +13318,23 @@ windowDef Desktop
 				} 
 			}
 
+		}
+
+		// Asks the session for the retained SYSTEM page on the frame after
+		// fromMp_toSystem. The session fires that event, and a command set in
+		// a named event is never collected; one set on a timeline is. It runs
+		// after anim_in, which the menu's activation may restart in the same
+		// frame, so its request ends that frame's commands.
+		windowDef anim_retainedSystemFromMp
+		{
+			rect	0,0,1,1
+			visible	1
+			notime	1
+
+			onTime 0 {
+				set "cmd" "openRetainedSystemFromMp" ;
+				set "notime" "1" ;
+			}
 		}
 		windowDef anim_out
 		{

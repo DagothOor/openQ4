@@ -173,6 +173,29 @@ SCENARIOS = {
         'waitMsec 1500', 'openq4_system report', 'ui_retainedStatus', 'screenshot "screenshots/system-optin.tga"',
         'openq4_system back', 'waitMsec 1000', 'openq4_system report',
     ]),
+    # Opted into, the multiplayer menu's SYSTEM route (the event the game sends
+    # through "main fromMp_toSystem") opens the retained page over the main
+    # page, and Back returns to it.
+    'system-mp-route': (None, [
+        'waitMsec 4000', 'GuiEvent fromMp_toSystem', 'waitMsec 1500', 'openq4_system report', 'ui_retainedStatus',
+        'screenshot "screenshots/system-mp-route.tga"', 'openq4_system back', 'waitMsec 1000', 'openq4_system report',
+        'openq4_guiGet desktop::dest', 'openq4_guiGet desktop::active', 'openq4_guiGet desktop::curr', 'ui_retainedStatus',
+    ]),
+    # Opted into, the real route on a listen server: the in-game menu's
+    # Settings page and SYSTEM button send "mainmenu fromMp_toSystem", the game
+    # returns "main fromMp_toSystem", and the main menu opens the retained page.
+    # After Back the main menu must take input again (desktop::active 0).
+    'system-mp-game': ('mp:mp/q4dm1', [
+        'openq4_assertMenuActivation 4000 game', 'waitMsec 1500', 'openq4_guiAction main_b_settings', 'waitMsec 1500',
+        'openq4_guiAction set_b_system', 'waitMsec 3000', 'openq4_system report', 'ui_retainedStatus',
+        'screenshot "screenshots/system-mp-game.tga"', 'openq4_system back', 'waitMsec 1500', 'openq4_system report',
+        'openq4_guiGet desktop::active', 'openq4_guiGet desktop::curr', 'screenshot "screenshots/system-mp-game-back.tga"',
+    ]),
+    # Opted into, a SYSTEM page that cannot load: the multiplayer route opens the stock page.
+    'fallback-system-mp': (None, [
+        'waitMsec 4000', 'GuiEvent fromMp_toSystem', 'waitMsec 2500', 'openq4_guiGet p_settings_sys::visible',
+        'openq4_guiGet desktop::active', 'openq4_system report', 'ui_retainedStatus', 'screenshot "screenshots/fallback-system-mp.tga"',
+    ]),
     # Opted into, a SYSTEM page that cannot load: the same click opens the stock page.
     'fallback-system': (None, [
         'waitMsec 4000', 'openq4_guiAction main_b_settings', 'waitMsec 1500', 'openq4_guiAction set_b_system',
@@ -240,6 +263,8 @@ def stock_menu_without_demos(runtime: Path) -> str:
 
 # CVars a scenario sets beyond the common ones.
 SCENARIO_CVARS = {'system-optin': {'ui_retainedSystem': '1'}, 'fallback-system': {'ui_retainedSystem': '1'},
+                  'system-mp-route': {'ui_retainedSystem': '1'}, 'fallback-system-mp': {'ui_retainedSystem': '1'},
+                  'system-mp-game': {'ui_retainedSystem': '1'},
                   'fallback-loading': {'developer': '1'}, 'subpage-reduced': {'ui_retainedReducedMotion': '1'}}
 
 # The private mod the fallback scenarios run as, and the files it provides.
@@ -248,6 +273,7 @@ OVERRIDES = {
     'fallback-document': {'guis/menu/title.q4ui': lambda runtime: BROKEN_DOCUMENT},
     'fallback-menu': {'guis/mainmenu.gui': stock_menu_without_demos},
     'fallback-system': {'guis/menu/settings/system.q4ui': lambda runtime: BROKEN_DOCUMENT},
+    'fallback-system-mp': {'guis/menu/settings/system.q4ui': lambda runtime: BROKEN_DOCUMENT},
     'fallback-campaign': {'guis/menu/singleplayer.q4ui': lambda runtime: BROKEN_DOCUMENT},
     'fallback-loading': {'guis/loading/splevel.gui': lambda runtime: MOD_LOADING_GUI,
                          'guis/loading/generic.gui': lambda runtime: MOD_LOADING_GUI},
@@ -309,7 +335,15 @@ def run(args, scenario: str) -> dict:
     command = [str(args.runtime.resolve() / ('openQ4-client_x64.exe' if os.name == 'nt' else 'openQ4-client_x64'))]
     for key, value in overrides.items():
         command += ['+set', key, value]
-    if level:
+    if level and level.startswith('mp:'):
+        # A listen server the local player joins at once, as mp_control_smoke.py hosts.
+        for key, value in {'com_gameMode': 'MP', 'net_serverDedicated': '0', 'net_LANServer': '1', 'si_pure': '0',
+                           'si_maxPlayers': '4', 'si_gameType': 'DM', 'bot_minPlayers': '0', 'ui_autoJoin': '1',
+                           'ui_spectate': 'Play', 'net_allowCheats': '1'}.items():
+            command += ['+set', key, value]
+        command += ['+set', 'g_autoExecAfterMapLoad', cfg.name, '+set', 'g_autoExecAfterMapLoadDelayMs', '3000',
+                    '+spawnServer', level[3:]]
+    elif level:
         command += ['+set', 'g_autoExecAfterMapLoad', cfg.name, '+set', 'g_autoExecAfterMapLoadDelayMs', '3000', '+map', level]
     else:
         command += ['+exec', cfg.name]

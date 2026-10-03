@@ -25,6 +25,7 @@ SUPPORT = r'''
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -34,6 +35,7 @@ namespace openq4 { void NativeInputBeforeSessionChange() noexcept {} }
 struct idStr : std::string {
     using std::string::string;
     operator const char*() const {return c_str();}
+    int Length() const {return static_cast<int>(size());}
     static int Icmp(const char* a,const char* b) {
         while(*a && *b && std::tolower(*a)==std::tolower(*b)){++a;++b;}
         return std::tolower(*a)-std::tolower(*b);
@@ -54,9 +56,12 @@ struct Common {
         char text[2048];va_list args;va_start(args,fmt);std::vsnprintf(text,sizeof(text),fmt,args);va_end(args);output+=text;
     }
     void DPrintf(const char*,...) {}
-    std::vector<std::string> warnings;
+    std::vector<std::string> warnings,devWarnings;
     void Warning(const char* fmt,...) {
         char text[2048];va_list args;va_start(args,fmt);std::vsnprintf(text,sizeof(text),fmt,args);va_end(args);warnings.push_back(text);
+    }
+    void DWarning(const char* fmt,...) {
+        char text[2048];va_list args;va_start(args,fmt);std::vsnprintf(text,sizeof(text),fmt,args);va_end(args);devWarnings.push_back(text);
     }
 } commonObject,*common=&commonObject;
 struct StrList : std::vector<std::string> {
@@ -76,7 +81,13 @@ struct Sound {
 struct idUserInterface {
     std::string source;
     bool active=false,retired=false,valid=true,canReturn=true,close=false;
-    int activates=0,deactivates=0,drains=0,backs=0,frames=0;
+    int activates=0,deactivates=0,drains=0,backs=0,frames=0,stateChanges=0;
+    // The state dictionary, and the window variables a GUI script reads,
+    // which only StateChanged brings up to date.
+    std::map<std::string,bool> stateBools,scriptBools;std::vector<std::string> named;
+    void SetStateBool(const char* key,bool value){CHECK(!retired);stateBools[key]=value;}
+    bool staleScript=false; // A GUI whose window variables miss the update.
+    void StateChanged(int time){CHECK(!retired && time==100);++stateChanges;if(!staleScript)scriptBools=stateBools;}
     std::function<void()> onBack,onActivate,onDeactivate,onDrain;
     explicit idUserInterface(const char* name):source(name){}
     const char* Name() const{CHECK(!retired);return source.c_str();}
@@ -91,7 +102,10 @@ struct idUserInterface {
         CHECK(!retired && event->evType==SE_NONE && time==100);++frames;return close?"typed":"";
     }
     void HandleNamedEvent(const char* event) {
-        CHECK(!retired && std::string(event)=="onBack");++backs;if(onBack)onBack();
+        CHECK(!retired);
+        // The main menu's stock SYSTEM route; every other event is the page's Back.
+        if(std::string(event)=="fromMp_toSystemStock"){named.push_back(event);return;}
+        CHECK(std::string(event)=="onBack");++backs;if(onBack)onBack();
     }
 };
 struct Manager {
@@ -128,6 +142,7 @@ struct idSessionLocal {
     Sound *sw=nullptr,*menuSoundWorld=nullptr,*requestedSoundWorld=nullptr;
     int mainRefresh=0;
     bool OpenSystemSettings();bool ReturnSystemSettings();void CloseSystemSettings();void ReportSystemSettings();
+    bool RetainedSystemAvailable() const;void OpenSystemSettingsRoute(bool fromMultiplayer);
     void SetGUI(idUserInterface*,HandleGuiCommand_t);void ExitMenu();void GuiFrameEvents();
     void SetPlayingSoundWorld();void SetPlayingSoundWorld(Sound* sound){requestedSoundWorld=sound;}
     bool IsMultiplayer(){return multiplayer;}
@@ -154,7 +169,22 @@ struct idSessionLocal {
 } sessLocal;
 static void PumpControllerMenuNavigation(idSessionLocal*){}
 static void SyncMainMenuSettingsScrollPages(idUserInterface* gui){CHECK(!gui || !gui->retired);}
-static bool UI_DispatchApplicationActions(idUserInterface*,const char* command,bool& close){close=std::string(command)=="typed";return true;}
+static std::vector<std::string> dispatched;
+// The main menu's command handler, where a scenario asks for it: the button's
+// own request routes again.
+static idSessionLocal* reenter=nullptr;static int reentries=0;
+static bool UI_DispatchApplicationActions(idUserInterface*,const char* command,bool& close) {
+    dispatched.push_back(command);close=std::string(command)=="typed";
+    if(reenter && std::string(command)=="openRetainedSystem"){++reentries;reenter->OpenSystemSettingsRoute(false);}
+    return true;
+}
+// The SYSTEM button's stock action reads gui::retainedSystem when it runs,
+// through the window variables, so a stale variable asks for the retained page.
+static int legacyActions=0;static bool legacyRetained=true;
+static bool UI_RunLegacyWindowAction(idUserInterface* gui,const char* window,bool back,idStr& command) {
+    CHECK(gui && std::string(window)=="set_b_system" && !back);++legacyActions;
+    legacyRetained=gui->scriptBools["retainedSystem"];command.assign(legacyRetained?"openRetainedSystem":"refreshSystemSettings");return true;
+}
 static bool UI_TakeSessionRequest(idUserInterface*,const char*,idStr&){return false;}
 static bool ParentHandler(const char*){return true;}
 struct Scenario {
@@ -162,6 +192,7 @@ struct Scenario {
     idSessionLocal& session=sessLocal;
     idUserInterface* parent;
     Scenario(){sessLocal=idSessionLocal{};uiManager=&manager;preview=false;ui_retainedSystem.value=true;ui_retained.value=false;common->output.clear();common->warnings.clear();events.clear();userCommands.inhibited=false;
+        common->devWarnings.clear();dispatched.clear();legacyActions=0;legacyRetained=true;reenter=nullptr;reentries=0;
         parent=manager.Make("guis/mainmenu.gui");parent->active=true;
         session.guiActive=session.guiMainMenu=parent;session.guiHandle=ParentHandler;
         session.guiMsg=manager.Make("guis/msg.gui");session.sw=&gameSound;session.menuSoundWorld=&menuSound;session.requestedSoundWorld=&menuSound;
@@ -244,6 +275,53 @@ int main(){
         Session_SystemSettings_f({{"openq4_system","open"}});CHECK(s.session.guiSystem && s.session.guiSystem!=child && s.manager.loads==2);
         auto* fresh=s.session.guiSystem;s.session.DispatchCommand(fresh,"typed");CHECK(fresh->retired && s.parent->active);
     }
+    {
+        // The SYSTEM button opens the page; nothing else runs.
+        Scenario s;s.parent->stateBools["retainedSystem"]=s.parent->scriptBools["retainedSystem"]=true;s.session.OpenSystemSettingsRoute(false);
+        CHECK(s.session.guiSystem && legacyActions==0 && s.parent->named.empty() && common->devWarnings.empty());
+    }
+    {
+        // Refused while still available. No session state does this today;
+        // a held message box stands in for any refusal. The stock page opens
+        // for this click alone, and the button keeps the page.
+        Scenario s;s.parent->stateBools["retainedSystem"]=s.parent->scriptBools["retainedSystem"]=true;s.session.guiMsgRestore=s.parent;
+        s.session.OpenSystemSettingsRoute(false);
+        CHECK(!s.session.guiSystem && legacyActions==1 && !legacyRetained && s.parent->stateBools["retainedSystem"] && s.parent->scriptBools["retainedSystem"]);
+        CHECK(dispatched==std::vector<std::string>{"refreshSystemSettings"} && common->devWarnings.size()==1 && s.session.retainedStock.empty());
+        // The multiplayer route falls back the same way, through its stock event.
+        s.session.OpenSystemSettingsRoute(true);
+        CHECK(legacyActions==1 && s.parent->named==std::vector<std::string>{"fromMp_toSystemStock"});
+        CHECK(s.parent->stateBools["retainedSystem"] && common->devWarnings.size()==2 && s.manager.loads==0);
+        // Once nothing holds the menu, both routes open the page again.
+        s.session.guiMsgRestore=nullptr;s.session.OpenSystemSettingsRoute(false);CHECK(s.session.guiSystem && legacyActions==1);
+    }
+    {
+        // A page that cannot load falls back for the session: the stock page
+        // opens, and the button opens it directly from then on.
+        Scenario s;s.parent->stateBools["retainedSystem"]=s.parent->scriptBools["retainedSystem"]=true;s.manager.missing=true;
+        s.session.OpenSystemSettingsRoute(false);
+        CHECK(legacyActions==1 && !legacyRetained && !s.parent->stateBools["retainedSystem"] && !s.parent->scriptBools["retainedSystem"] && common->devWarnings.empty());
+        CHECK(s.session.retainedStock.FindIndex(RETAINED_SYSTEM_GUI)==0 && dispatched==std::vector<std::string>{"refreshSystemSettings"});
+        s.parent->stateBools["retainedSystem"]=s.parent->scriptBools["retainedSystem"]=true;s.session.OpenSystemSettingsRoute(true);
+        CHECK(s.parent->named==std::vector<std::string>{"fromMp_toSystemStock"} && !s.parent->stateBools["retainedSystem"] && !s.parent->scriptBools["retainedSystem"] && s.manager.loads==1);
+    }
+    {
+        // Should the stock action read a stale gui::retainedSystem, it asks for
+        // the retained page again; the nested request does nothing, where it
+        // would otherwise recurse without end.
+        Scenario s;s.parent->stateBools["retainedSystem"]=s.parent->scriptBools["retainedSystem"]=true;
+        s.parent->staleScript=true;s.session.guiMsgRestore=s.parent;reenter=&s.session;
+        s.session.OpenSystemSettingsRoute(false);
+        CHECK(legacyActions==1 && legacyRetained && reentries==1 && dispatched==std::vector<std::string>{"openRetainedSystem"});
+        // The guard is released: the next request routes again.
+        s.parent->staleScript=false;reenter=nullptr;s.session.OpenSystemSettingsRoute(false);
+        CHECK(legacyActions==2 && !legacyRetained && dispatched.back()=="refreshSystemSettings");
+    }
+    {
+        // From multiplayer the page opens over the main menu.
+        Scenario s;s.session.OpenSystemSettingsRoute(true);CHECK(s.session.guiSystem && s.parent->named.empty() && legacyActions==0);
+        CHECK(s.session.ReturnSystemSettings() && s.parent->active);
+    }
     std::printf("SYSTEM Session route: %d checks passed\n",checks);
 }
 '''
@@ -253,6 +331,7 @@ def main():
     menu_path = ROOT / 'src/framework/Session_menu.cpp'
     session_path = ROOT / 'src/framework/Session.cpp'
     header_path = ROOT / 'src/framework/Session_local.h'
+    gui_path = ROOT / 'content/baseoq4/pak0/guis/mainmenu.gui'
     menu = menu_path.read_text(encoding='utf-8')
     session = session_path.read_text(encoding='utf-8')
     header = header_path.read_text(encoding='utf-8')
@@ -261,6 +340,7 @@ def main():
     bodies = [menu[gate_start:menu.index('static const int MENU_CONTROLLER_AXIS_THRESHOLD', gate_start)]]
     bodies += [function_body(menu, signature) for signature in (
         'bool idSessionLocal::OpenSystemSettings(', 'bool idSessionLocal::ReturnSystemSettings(',
+        'bool idSessionLocal::RetainedSystemAvailable(', 'void idSessionLocal::OpenSystemSettingsRoute(',
         'void idSessionLocal::CloseSystemSettings(', 'void idSessionLocal::ReportSystemSettings(',
         'void idSessionLocal::SetGUI(', 'void idSessionLocal::ExitMenu(', 'void idSessionLocal::GuiFrameEvents(')]
     bodies += [function_body(session, 'void idSessionLocal::SetPlayingSoundWorld()'),
@@ -272,7 +352,30 @@ def main():
     end = dispatch.index('\n\tif ( gui == guiMainMenu )', start)
     bodies.append('void idSessionLocal::DispatchCommand(idUserInterface* gui,const char* menuCommand) {\n' + dispatch[start:end] + '\n}')
     main_menu = function_body(menu, 'void idSessionLocal::HandleMainMenuCommands(')
-    assert 'if ( !idStr::Icmp( cmd, "openRetainedSystem" ) ) {\n\t\t\tif ( !OpenSystemSettings() && !RetainedSystemAvailable() ) {' in main_menu
+    for command, multiplayer in (('openRetainedSystem', 'false'), ('openRetainedSystemFromMp', 'true')):
+        assert f'if ( !idStr::Icmp( cmd, "{command}" ) ) {{\n\t\t\tOpenSystemSettingsRoute( {multiplayer} );\n\t\t\treturn;' in main_menu
+    # The multiplayer menu's SYSTEM route: the retained page over the main
+    # page, else the stock route, which a refused open also takes.
+    gui = gui_path.read_text(encoding='utf-8')
+    to_system = gui[gui.index('onNamedEvent fromMp_toSystem {'):]
+    to_system = to_system[:to_system.index('onNamedEvent fromMp_toSystemStock {')]
+    assert ('onNamedEvent fromMp_toSystem {\n\t\tif ("gui::retainedSystem" == 1) {\n\t\t\tset "desktop::dest" "0" ;\n'
+            '\t\t\tresettime "anim_retainedSystemFromMp" "0" ;\n\t\t} else {\n\t\t\tset "desktop::active" "1" ;\n'
+            '\t\t\tresettime "anim_in" "0" ;\n\t\t\tset "desktop::dest" "22" ;\n\t\t}\n\t}') in to_system
+    # Only a page transition lowers desktop::active again, and the retained
+    # branch runs none, so it must never raise it.
+    retained_branch = to_system[to_system.index('if ("gui::retainedSystem" == 1) {'):to_system.index('} else {')]
+    assert 'desktop::active' not in retained_branch and 'anim_in' not in retained_branch
+    # The session fires the event, so the request comes from a timeline: a
+    # command set in a named event is never collected. It follows anim_in, so
+    # anim_in's own frame command runs first.
+    asker = gui[gui.index('windowDef anim_retainedSystemFromMp\n'):]
+    asker = asker[:asker.index('\n\t\t}\n')]
+    assert 'notime\t1' in asker and 'onTime 0 {\n\t\t\t\tset "cmd" "openRetainedSystemFromMp" ;\n\t\t\t\tset "notime" "1" ;' in asker
+    anims, at = gui.index('\n\twindowDef p_anims\n'), gui.index('windowDef anim_retainedSystemFromMp\n')
+    assert anims < gui.index('windowDef anim_in\n') < at and '\n\twindowDef ' not in gui[anims + 1:at]
+    stock = gui[gui.index('onNamedEvent fromMp_toSystemStock {'):]
+    assert stock[:stock.index('}')].count('set "desktop::dest" "22" ;') == 1
     assert 'ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL' in menu
     assert 'ui_retained( "ui_retained", "1", CVAR_GUI | CVAR_BOOL | CVAR_ARCHIVE,' in menu
     assert 'return ui_retainedSystem.GetBool() || ( Session_RetainedScreensEnabled() && RETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL );' in menu
@@ -298,7 +401,7 @@ def main():
     run_result = subprocess.run([str(binary)], env=environment, capture_output=True, text=True) if compile_result.returncode == 0 else None
     result = {
         'passed': run_result is not None and run_result.returncode == 0,
-        'sources': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in (menu_path, session_path, header_path, Path(__file__))},
+        'sources': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in (menu_path, session_path, header_path, gui_path, Path(__file__))},
         'extracted_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
         'command': command,
         'compile': {'exit': compile_result.returncode, 'stdout': compile_result.stdout, 'stderr': compile_result.stderr},

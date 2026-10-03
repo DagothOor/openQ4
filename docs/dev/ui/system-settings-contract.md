@@ -137,7 +137,11 @@ Across Displays read them ([SYSTEM display rows](system-display-rows.md)), hidde
 on one display as here unless they hold something to undo; the resolution and
 refresh rows follow.
 
-`fromMp_toSystem` targets desktop page 22. On entry, the menu issues
+`fromMp_toSystem` targets desktop page 22 for the stock page; with the retained
+page available it asks the session to open the retained page over the main menu
+instead, falling back to this stock route
+([retained screens](retained-screens.md#falling-back-to-the-stock-screens)).
+On entry, the menu issues
 `refreshSystemSettings`, which refreshes display data, inverse quality booleans
 and renderer capabilities, then calls `StateChanged`. `forceAspect0` selects the
 effective resolution widget; the other two widgets are compatibility duplicates.

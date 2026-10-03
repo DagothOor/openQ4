@@ -237,6 +237,9 @@ public:
 	// Whether the local player is Strogg, Kane after his stroggification.
 	bool				RetainedPauseIsStrogg();
 	bool				RetainedSystemAvailable() const;
+	// The SYSTEM button and the multiplayer menu's SYSTEM route: the retained
+	// page, or the stock page when it cannot open.
+	void				OpenSystemSettingsRoute( bool fromMultiplayer );
 	// Resolve the screens and their pictures where the stock menus resolve
 	// theirs: at startup, and inside each single-player level load.
 	void				PreloadRetainedScreens();

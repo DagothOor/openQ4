@@ -1158,10 +1158,11 @@ def main() -> int:
     system_open = function_body(menu, 'bool idSessionLocal::OpenSystemSettings(')
     assert 'FindRetainedGui( RETAINED_SYSTEM_GUI, false, false )' in system_open and 'retainedStock.Append( RETAINED_SYSTEM_GUI );' in system_open
     main_menu = function_body(menu, 'void idSessionLocal::HandleMainMenuCommands(')
-    system_click = main_menu[main_menu.index('if ( !idStr::Icmp( cmd, "openRetainedSystem" ) ) {'):]
-    system_click = system_click[:system_click.index('return;')]
-    assert 'if ( !OpenSystemSettings() && !RetainedSystemAvailable() ) {' in system_click
-    assert 'UI_RunLegacyWindowAction( guiMainMenu, "set_b_system", false, command )' in system_click, 'a failed SYSTEM page must open the stock one'
+    for command, multiplayer in (('openRetainedSystem', 'false'), ('openRetainedSystemFromMp', 'true')):
+        assert f'if ( !idStr::Icmp( cmd, "{command}" ) ) {{\n\t\t\tOpenSystemSettingsRoute( {multiplayer} );\n\t\t\treturn;' in main_menu
+    system_route = function_body(menu, 'void idSessionLocal::OpenSystemSettingsRoute(')
+    assert 'UI_RunLegacyWindowAction( guiMainMenu, "set_b_system", false, command )' in system_route, 'a failed SYSTEM page must open the stock one'
+    assert 'guiMainMenu->HandleNamedEvent( "fromMp_toSystemStock" );' in system_route, 'a failed multiplayer SYSTEM route must open the stock page'
     home_document = function_body(menu, 'idUserInterface *idSessionLocal::RetainedHomeDocument(')
     assert 'UI_RetainedViewFailed( home )' in home_document and 'retainedStock.AddUnique( path );' in home_document
     assert 'retainedStock.Clear();' in function_body(session, 'void idSessionLocal::Clear(')

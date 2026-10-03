@@ -119,8 +119,11 @@ Button-only instances continue to write version 2; existing supported version
 ## Session ownership
 
 `ui_retainedSystem` is a non-archived, default-off development option. The normal
-SYSTEM tab submits `openRetainedSystem`; the narrow
-`openq4_system open/report/back` diagnostics call the same Session operation.
+SYSTEM tab submits `openRetainedSystem` and the multiplayer menu's SYSTEM route
+`openRetainedSystemFromMp`; both open through a route that shows the stock
+page when the retained one cannot open. The narrow
+`openq4_system open/report/back` diagnostics call the Session open, return and
+report operations directly, without that fallback.
 The packaged resource is `guis/menu/settings/system.q4ui`, with canonical ID
 `openq4.system`. The source and settings contract must validate before the
 parent is deactivated.

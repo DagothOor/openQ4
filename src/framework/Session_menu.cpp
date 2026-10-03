@@ -1768,6 +1768,48 @@ bool idSessionLocal::OpenSystemSettings() {
 #endif
 }
 
+// The SYSTEM button, and the multiplayer menu's SYSTEM route through the main
+// menu, open the retained page. A page that fell back opens the stock one, now
+// and from then on. No current state refuses a page that is still available
+// when these requests arrive; should one, that request opens the stock page
+// instead of vanishing, and the button keeps the retained page.
+void idSessionLocal::OpenSystemSettingsRoute( bool fromMultiplayer ) {
+	// The stock action asks for the retained page again if it ever reads a
+	// stale gui::retainedSystem; a nested request then does nothing.
+	static bool routing = false;
+	if ( routing || guiMainMenu == NULL || OpenSystemSettings() ) {
+		return;
+	}
+	routing = true;
+	const bool available = RetainedSystemAvailable();
+	if ( available ) {
+		common->DWarning( "retained UI: the SYSTEM page could not open; the stock page opens for this request" );
+	}
+	if ( fromMultiplayer ) {
+		// The stock route reads no state; it shows the stock SYSTEM page.
+		if ( !available ) {
+			guiMainMenu->SetStateBool( "retainedSystem", false );
+			guiMainMenu->StateChanged( common->GetPresentationTime() );
+		}
+		guiMainMenu->HandleNamedEvent( "fromMp_toSystemStock" );
+		routing = false;
+		return;
+	}
+	// The button's action opens the stock page only while gui::retainedSystem
+	// is clear: from now on once the page fell back, else for this action.
+	guiMainMenu->SetStateBool( "retainedSystem", false );
+	guiMainMenu->StateChanged( common->GetPresentationTime() );
+	idStr command;
+	if ( UI_RunLegacyWindowAction( guiMainMenu, "set_b_system", false, command ) && command.Length() > 0 ) {
+		DispatchCommand( guiMainMenu, command.c_str() );
+	}
+	if ( available ) {
+		guiMainMenu->SetStateBool( "retainedSystem", true );
+		guiMainMenu->StateChanged( common->GetPresentationTime() );
+	}
+	routing = false;
+}
+
 bool idSessionLocal::ReturnSystemSettings() {
 #ifdef ID_DEDICATED
 	return false;
@@ -2741,16 +2783,12 @@ void idSessionLocal::HandleMainMenuCommands( const char *menuCommand ) {
 		}
 
 		if ( !idStr::Icmp( cmd, "openRetainedSystem" ) ) {
-			if ( !OpenSystemSettings() && !RetainedSystemAvailable() ) {
-				// The retained page fell back: this click opens the stock
-				// SYSTEM page, and the button opens it directly from now on.
-				guiMainMenu->SetStateBool( "retainedSystem", false );
-				guiMainMenu->StateChanged( common->GetPresentationTime() );
-				idStr command;
-				if ( UI_RunLegacyWindowAction( guiMainMenu, "set_b_system", false, command ) && command.Length() > 0 ) {
-					DispatchCommand( guiMainMenu, command.c_str() );
-				}
-			}
+			OpenSystemSettingsRoute( false );
+			return;
+		}
+
+		if ( !idStr::Icmp( cmd, "openRetainedSystemFromMp" ) ) {
+			OpenSystemSettingsRoute( true );
 			return;
 		}
 
