@@ -97,7 +97,7 @@ See [Display Settings](docs/user/display-settings.md).
 ### Resolution Scaling
 
 - `r_screenFraction 10..200` — render scale in percent. Below `100` renders fewer pixels; above `100` supersamples.
-- `r_resolutionScaleMode` — `0` legacy cropped viewport, `1` bilinear upscale, `2` high-quality upscale with sharpening.
+- `r_resolutionScaleMode` — `0` legacy cropped viewport, `1` bilinear upscale, `2` high-quality upscale with sharpening, `3` nearest-neighbour upscale. The single-player game presents its below-native scene through `idRenderSystem::PresentScaledScene` so modes `2` and `3` reach it; multiplayer and other direct views use the renderer's own scene target.
 - `r_resolutionScaleSharpness 0.0..1.5` — sharpening strength for mode `2`.
 
 ### Renderer

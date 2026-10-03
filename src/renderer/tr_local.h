@@ -500,7 +500,8 @@ typedef enum {
 	RC_SET_POSTPROCESS_SMAA_QUALITY,
 	RC_SWAP_BUFFERS,	// can't just assume swap at end of list because
 						// of forced list submission before syncs
-	RC_VR_TARGET		// openQ4: switch the frame's default target (VR eye / virtual screen)
+	RC_VR_TARGET,		// openQ4: switch the frame's default target (VR eye / virtual screen)
+	RC_PRESENT_SCALED_SCENE	// openQ4: r_resolutionScaleMode upscale of the game's below-native scene
 } renderCommand_t;
 
 typedef struct {
@@ -575,6 +576,20 @@ typedef struct {
 	int				debugMode;
 	advancedScreenSpaceConfig_t advancedScreenSpace;
 } resolveTemporalPresentationCommand_t;
+
+// openQ4: the game's finished scene at the below-native scene extent, drawn
+// over the whole native output with the r_resolutionScaleMode filter. The mode
+// and sharpness are the values at enqueue, like every other command snapshot.
+typedef struct {
+	renderCommand_t		commandId, * next;
+	idRenderTexture*	sceneColorTarget;
+	int				sceneWidth;
+	int				sceneHeight;
+	int				outputWidth;
+	int				outputHeight;
+	int				mode;			// 2 sharpened, 3 nearest-neighbour
+	float			sharpness;		// r_resolutionScaleSharpness, mode 2 only
+} presentScaledSceneCommand_t;
 
 typedef struct {
 	renderCommand_t		commandId, * next;
@@ -922,6 +937,7 @@ public:
 	virtual void			SetVRFrame( const renderVRFrame_t *frame );
 	virtual bool			SetVRRenderTarget( int eye );
 	virtual void			GetVRFrameResult( renderVRFrameResult_t &result ) const;
+	virtual bool			PresentScaledScene( idRenderTexture *sceneColorTarget );
 public:
 	// internal functions
 							idRenderSystemLocal( void );
@@ -2419,6 +2435,12 @@ void RB_ShowImages( void );
 // suppress history reads/writes without mutating frame-memory ownership.
 bool RB_ResolveTemporalPresentation(
 	const resolveTemporalPresentationCommand_t &command );
+
+// Backend implementation of RC_PRESENT_SCALED_SCENE. The front end queues the
+// command only after the game stops drawing its own upscale, so an accepted
+// command always fills the output: a mode whose program is unavailable falls
+// back to the plain bilinear upscale. False only for an unusable scene target.
+bool RB_PresentScaledScene( const presentScaledSceneCommand_t &command );
 
 // GL temporal history may only consume depth copied successfully for the
 // command's immutable frame/generation snapshot. Resolve commands invalidate

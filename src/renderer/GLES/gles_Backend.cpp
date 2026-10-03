@@ -591,6 +591,14 @@ bool RB_ResolveTemporalPresentation( const resolveTemporalPresentationCommand_t 
 	return false;
 }
 
+// The front end never queues RC_PRESENT_SCALED_SCENE on an ES context: the ES
+// modes crop and resolve the world render inside the bound scene target
+// (PushSceneResolutionScale), so the game keeps its own full-screen copy.
+bool RB_PresentScaledScene( const presentScaledSceneCommand_t &command ) {
+	( void )command;
+	return false;
+}
+
 void RB_InvalidateTemporalDepthStamp( idRenderTexture *target ) { ( void )target; }
 
 void RB_StampTemporalDepthResolved( idRenderTexture *target, int frameNumber,

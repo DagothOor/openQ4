@@ -795,6 +795,18 @@ public:
 
 	// What the last VR frame actually rendered, for layer submission.
 	virtual void			GetVRFrameResult( renderVRFrameResult_t &result ) const = 0;
+
+	// --- Scaled scene presentation (appended slot; render API 22, game API 51) ---
+
+	// Upscales sceneColorTarget, the finished single-sample scene at the latched
+	// below-native scene extent, over the whole native output with the filter
+	// r_resolutionScaleMode selects: 2 sharpened, 3 nearest-neighbour. It is
+	// queued after the full-screen submissions already batched, so HUD and menu
+	// drawing that follows stays at native resolution on top. Returns false and
+	// queues nothing when the scene is not below native, the mode is the plain
+	// bilinear upscale (0 or 1), or the backend has no such presenter; the
+	// caller then presents the scene with its own full-screen material.
+	virtual bool			PresentScaledScene( idRenderTexture *sceneColorTarget ) = 0;
 };
 
 extern idRenderSystem *		renderSystem;

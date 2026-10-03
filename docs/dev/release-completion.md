@@ -2,6 +2,26 @@
 
 ## 0.13.2 release candidate
 
+- [x] Make `r_resolutionScaleMode 2` and `3` reach single player. The SP game
+  renders its below-native scene into its own targets and presented them with
+  a full-screen material, a bilinear stretch, so the modes never applied. It
+  now hands that final upscale to the renderer through the appended
+  `idRenderSystem::PresentScaledScene` slot (render API 22, game API 51,
+  `RC_PRESENT_SCALED_SCENE`), on the fast no-post path and the MSAA/SMAA path;
+  blur and CAS run at the scene extent first. OpenGL presents with
+  `resolutionscale.fs` or a nearest filter it restores afterwards (desktop GL had
+  no mode 3 before, its own scene target included); Vulkan wraps
+  `scene_scale.frag` and falls back to the bilinear spatial present. Modes 0 and
+  1, native and supersampled scenes, ES, tiled captures and the temporal paths
+  never call it. Evidence: hidden Air Defense 1 probes at 50% on OpenGL and
+  Vulkan, fast and MSAA+SMAA paths, captured with `screenshot` (the back buffer
+  or swapchain image the frame presents): mode 3 duplicates every scene texel
+  into an exact 2x2 block, mode 2 raises edge contrast about 12% over mode 1,
+  mode 1 is pixel-identical before and after cycling the modes, and mode 2 at
+  sharpness 0 matches mode 1 within 1 LSB. `renderer_scaled_scene_presentation.py`
+  and `renderer_native_ui_output.py` pin the routing, refusals and filter
+  restore.
+
 - [x] Make the experimental Vulkan renderer survive what used to stop it:
   a GPU or driver reset during play now restarts the renderer automatically
   and carries on (three times per session, `r_vkPresentationRecoveries`)

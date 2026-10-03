@@ -1286,6 +1286,12 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 			c_renderTargetOps++;
 			break;
 		}
+		case RC_PRESENT_SCALED_SCENE:
+			R_RendererMetrics_BeginGpuTimer( RENDERER_GPU_TIMER_RENDER_TARGET );
+			(void)RB_PresentScaledScene( *reinterpret_cast<const presentScaledSceneCommand_t *>( cmds ) );
+			R_RendererMetrics_EndGpuTimer();
+			c_renderTargetOps++;
+			break;
 		case RC_CLEAR_RENDERTARGET:
 			R_RendererMetrics_BeginGpuTimer( RENDERER_GPU_TIMER_RENDER_TARGET );
 			RB_ClearRenderTarget(cmds);

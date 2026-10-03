@@ -8497,10 +8497,10 @@ static bool VK_TemporalPresentation_DrawResolve(
 }
 
 // Upscales a single-sample, sampled image over the whole swapchain target
-// with r_resolutionScaleMode 2 (sharpened) or 3 (nearest), scene_scale.frag.
-// Writes top-down rows. Callers own the admission decision.
+// with r_resolutionScaleMode 2 (sharpened by sharpness) or 3 (nearest),
+// scene_scale.frag. Writes top-down rows. Callers own the admission decision.
 static bool VK_TemporalPresentation_PresentScaledImage( idImage *sceneImage,
-		vkImageEntry_t *sceneEntry, int mode ) {
+		vkImageEntry_t *sceneEntry, int mode, float sharpness ) {
 	if ( sceneImage == NULL || sceneEntry == NULL || ( mode != 2 && mode != 3 )
 			|| sceneEntry->samples != VK_SAMPLE_COUNT_1_BIT
 			|| ( sceneEntry->usage & VK_IMAGE_USAGE_SAMPLED_BIT ) == 0 ) {
@@ -8515,7 +8515,7 @@ static bool VK_TemporalPresentation_PresentScaledImage( idImage *sceneImage,
 	memset( &block, 0, sizeof( block ) );
 	block.scale[ 0 ] = 1.0f / (float)Max( 1, sceneEntry->width );
 	block.scale[ 1 ] = 1.0f / (float)Max( 1, sceneEntry->height );
-	block.scale[ 2 ] = idMath::ClampFloat( 0.0f, 1.5f, r_resolutionScaleSharpness.GetFloat() );
+	block.scale[ 2 ] = idMath::ClampFloat( 0.0f, 1.5f, sharpness );
 	block.scale[ 3 ] = (float)mode;
 	block.flags[ 0 ] = sceneEntry->materialSampleFlipY ? 0.0f : 1.0f;
 	const int uniformOffset = VK_Exec_InteractionUniformAlloc( &block, sizeof( block ) );
@@ -8574,7 +8574,42 @@ static bool VK_TemporalPresentation_DrawScaledScene( const viewDef_t *viewDef,
 				&& sceneEntry->height == (int)vkCtx.swapchainExtent.height ) ) {
 		return false;
 	}
-	return VK_TemporalPresentation_PresentScaledImage( sceneImage, sceneEntry, mode );
+	return VK_TemporalPresentation_PresentScaledImage( sceneImage, sceneEntry,
+		mode, r_resolutionScaleSharpness.GetFloat() );
+}
+
+/*
+====================
+VK_GuiExecutor_PresentScaledScene
+
+RC_PRESENT_SCALED_SCENE: the game's finished below-native scene over the whole
+swapchain image with the queued r_resolutionScaleMode upscale. The front end
+queued it in place of the game's own full-screen copy, so an accepted command
+always fills the output: a scene the scale pipeline cannot draw takes the
+plain bilinear spatial present instead.
+====================
+*/
+bool VK_GuiExecutor_PresentScaledScene( const presentScaledSceneCommand_t &command ) {
+	idImage *sceneImage = NULL;
+	vkImageEntry_t *sceneEntry = NULL;
+	if ( !VK_TemporalPresentation_GetColorTarget( command.sceneColorTarget,
+			sceneImage, sceneEntry ) ) {
+		return false;
+	}
+	if ( sceneEntry->width == command.sceneWidth
+			&& sceneEntry->height == command.sceneHeight
+			&& VK_TemporalPresentation_PresentScaledImage( sceneImage, sceneEntry,
+				command.mode, command.sharpness ) ) {
+		return true;
+	}
+	resolveTemporalPresentationCommand_t spatial;
+	memset( &spatial, 0, sizeof( spatial ) );
+	spatial.reactiveScale = 1.0f;
+	vkTemporalResolveBlock_t block;
+	VK_TemporalPresentation_FillResolveBlock( spatial,
+		sceneEntry->width, sceneEntry->height, false, false, false, 0, block );
+	return VK_TemporalPresentation_DrawResolve( NULL, sceneImage, sceneEntry,
+		NULL, NULL, NULL, NULL, block );
 }
 
 static bool VK_TemporalPresentation_DrawPendingSceneSpatial(

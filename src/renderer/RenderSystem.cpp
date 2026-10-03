@@ -2639,6 +2639,69 @@ bool idRenderSystemLocal::ResolveTemporalPresentation(
 }
 
 /*
+====================
+idRenderSystemLocal::PresentScaledScene
+
+Queues the r_resolutionScaleMode upscale of the game's finished below-native
+scene (RC_PRESENT_SCALED_SCENE). Every refusal returns before anything is
+queued, so the caller's own full-screen material still presents the frame:
+the bilinear modes 0 and 1, a native or supersampled scene, an ES context
+(its modes crop and resolve inside the scene target instead), a tiled capture
+(each tile moves the viewport under the scene), and a target that is not the
+latched single-sample scene extent.
+====================
+*/
+bool idRenderSystemLocal::PresentScaledScene( idRenderTexture *sceneColorTarget ) {
+	const int mode = idMath::ClampInt( 0, 3, r_resolutionScaleMode.GetInteger() );
+	if ( sceneColorTarget == NULL || !glConfig.isInitialized
+			|| ( mode != 2 && mode != 3 )
+			|| glConfig.backendCaps.profile == RENDERER_CONTEXT_PROFILE_ES
+			|| tiledViewport[0] > glConfig.vidWidth || tiledViewport[1] > glConfig.vidHeight ) {
+		return false;
+	}
+
+	renderPresentationState_t presentation;
+	GetPresentationState( presentation );
+	const idImage *sceneColor = sceneColorTarget->GetNumColorImages() > 0
+		? sceneColorTarget->GetColorImage( 0 ) : NULL;
+	if ( presentation.frameNumber != tr.frameCount
+			|| presentation.outputWidth != glConfig.vidWidth
+			|| presentation.outputHeight != glConfig.vidHeight
+			|| presentation.sceneWidth <= 0 || presentation.sceneHeight <= 0
+			|| presentation.sceneWidth > presentation.outputWidth
+			|| presentation.sceneHeight > presentation.outputHeight
+			|| ( presentation.sceneWidth == presentation.outputWidth
+				&& presentation.sceneHeight == presentation.outputHeight )
+			|| sceneColorTarget->GetWidth() != presentation.sceneWidth
+			|| sceneColorTarget->GetHeight() != presentation.sceneHeight
+			|| sceneColor == NULL || sceneColor->GetOpts().numMSAASamples > 1 ) {
+		return false;
+	}
+
+	// Full-screen post submissions are batched in guiModel. Seal them so the
+	// upscale is the scene's last operation before the HUD and menus.
+	if ( guiModel != NULL ) {
+		guiModel->EmitFullScreen();
+		guiModel->Clear();
+	}
+
+	presentScaledSceneCommand_t *cmd = reinterpret_cast<presentScaledSceneCommand_t *>(
+		R_GetCommandBuffer( sizeof( *cmd ) ) );
+	cmd->commandId = RC_PRESENT_SCALED_SCENE;
+	cmd->sceneColorTarget = sceneColorTarget;
+	cmd->sceneWidth = presentation.sceneWidth;
+	cmd->sceneHeight = presentation.sceneHeight;
+	cmd->outputWidth = presentation.outputWidth;
+	cmd->outputHeight = presentation.outputHeight;
+	cmd->mode = mode;
+	cmd->sharpness = idMath::ClampFloat( 0.0f, 1.5f, r_resolutionScaleSharpness.GetFloat() );
+	if ( R_ScenePackets_FrontEndCaptureRequired() ) {
+		R_ScenePackets_AddRenderTargetOp();
+	}
+	return true;
+}
+
+/*
 ===============
 idRenderSystemLocal::SetUnderwaterView
 

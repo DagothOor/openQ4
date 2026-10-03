@@ -565,6 +565,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         root / "tools" / "tests" / "renderer_msaa_cvar_safety.py",
         root / "tools" / "tests" / "renderer_picmip_policy.py",
         root / "tools" / "tests" / "renderer_player_visibility.py",
+        root / "tools" / "tests" / "renderer_scaled_scene_presentation.py",
         root / "tools" / "tests" / "renderer_screenshot_readback.py",
         root / "tools" / "tests" / "renderer_supersampling_safety.py",
         root / "tools" / "tests" / "renderer_temporal_presentation.py",

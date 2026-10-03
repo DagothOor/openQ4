@@ -126,6 +126,8 @@ void VK_PostProcess_ApplyBackBuffer( void );
 bool VK_GuiExecutor_FrameIsOpen( void );
 bool VK_GuiExecutor_ResolveTemporalPresentation(
 		const resolveTemporalPresentationCommand_t &command );
+bool VK_GuiExecutor_PresentScaledScene(
+		const presentScaledSceneCommand_t &command );
 
 static void VK_DrawSharedDirectSubview( const classicSubviewDomainView_t &view ) {
 	// Direct SS_SUBVIEW mirrors compose into the parent target and therefore
@@ -727,6 +729,10 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 					executionCommand );
 				break;
 			}
+			case RC_PRESENT_SCALED_SCENE:
+				(void)VK_GuiExecutor_PresentScaledScene(
+					*reinterpret_cast<const presentScaledSceneCommand_t *>( cmds ) );
+				break;
 			case RC_SET_POSTPROCESS_SOURCE_SIZE:
 				backEnd.postProcessTexelSize =
 						((const setPostProcessSourceSizeCommand_t *)cmds)->texelSize;

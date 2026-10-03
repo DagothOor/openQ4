@@ -41,6 +41,7 @@ SUPPORT = r'''
 #include <vector>
 using int64 = long long;
 using GLfloat = float;
+using GLint = int;
 using GLhandleARB = unsigned;
 template<class T> T Min(T a,T b){return std::min(a,b);}
 template<class T> T Max(T a,T b){return std::max(a,b);}
@@ -115,17 +116,26 @@ static unsigned rbSceneDepthAwarePresentProgram=2;
 static int rbSceneDepthAwarePresentSceneLocation=4,rbSceneDepthAwarePresentDepthLocation=5,rbSceneDepthAwarePresentUVOffsetLocation=6;
 static void RB_CaptureCurrentRenderImage(int w,int h){copyImage.opts.width=w;copyImage.opts.height=h;copyImage.CopyFramebuffer(0,0,w,h);}
 static void RB_CaptureCurrentDepthImage(int,int){}
-constexpr int GL_BACK=0,GL_MODULATE=1,GL_TEXTURE_2D=2,GL_TEXTURE_COMPARE_MODE=3,GL_NONE=4,GL_DEPTH_TEXTURE_MODE=5,GL_LUMINANCE=6;
+constexpr int GL_BACK=0,GL_MODULATE=1,GL_TEXTURE_2D=2,GL_TEXTURE_COMPARE_MODE=3,GL_NONE=4,GL_DEPTH_TEXTURE_MODE=5,GL_LUMINANCE=6,
+ GL_TEXTURE_MIN_FILTER=7,GL_TEXTURE_MAG_FILTER=8,GL_NEAREST=9,GL_LINEAR=10;
+static constexpr int RB_RESOLUTION_SCALE_MODE_SHARPEN=2,RB_RESOLUTION_SCALE_MODE_NEAREST=3;
+// the bound scene texture's filters, and what the scene quad sampled with
+static int texMin=GL_LINEAR,texMag=GL_LINEAR,quadMin=0,quadMag=0,filterWrites=0;
 static void glDrawBuffer(int){} static void glReadBuffer(int){} static void glScissor(int,int,int,int){}
 // no VR frame: the window's back buffer is the default target (RenderTexture.h)
 static void R_SetDefaultDrawAndReadBuffers(){glDrawBuffer(GL_BACK);glReadBuffer(GL_BACK);}
 static bool RB_VR_PresentFrame(){return false;}
 static void glViewport(int x,int y,int w,int h){viewport={x,y,w,h};}
-static void GL_SelectTexture(int){} static void GL_TexEnv(int){} static void glTexParameteri(int,int,int){}
+static void GL_SelectTexture(int){} static void GL_TexEnv(int){}
+static void glTexParameteri(int,int pname,int value){
+ if(pname==GL_TEXTURE_MIN_FILTER){texMin=value;++filterWrites;}
+ if(pname==GL_TEXTURE_MAG_FILTER){texMag=value;++filterWrites;}
+}
+static void glGetTexParameteriv(int,int pname,GLint* value){*value=pname==GL_TEXTURE_MIN_FILTER?texMin:texMag;}
 static void RB_SetFramebufferSRGBEnabled(bool){}
 static void RB_BeginFullscreenPostProcessPass(int,int,int,int){}
 static void RB_EndFullscreenPostProcessPass(){}
-static void RB_DrawFullscreenPostProcessQuad(int w,int h,int tw,int th){++quads;quadExtent={w,h,tw,th};backbuffer.fill(2);calls.push_back("scene-quad");}
+static void RB_DrawFullscreenPostProcessQuad(int w,int h,int tw,int th){++quads;quadExtent={w,h,tw,th};quadMin=texMin;quadMag=texMag;backbuffer.fill(2);calls.push_back("scene-quad");}
 static void RB_DrawFullscreenPostProcessQuadOffsetScaled(int w,int h,int tw,int th,float,float){RB_DrawFullscreenPostProcessQuad(w,h,tw,th);}
 static void RB_DrawFullscreenPostProcessQuadUnitUV(){++quads;backbuffer.fill(0);calls.push_back("full-frame-filter");}
 enum {RB_RES_SCALE_UNIFORM_INV_TEX_SIZE,RB_RES_SCALE_UNIFORM_INV_LOW_RES_SIZE,RB_RES_SCALE_UNIFORM_SHARPEN_AMOUNT};
@@ -149,6 +159,7 @@ MAIN = r'''
 static void Reset(){
  calls.clear();backbuffer.fill(1);viewport={};quadExtent={};inverseSource={};
  frameCopies=quads=shaderBinds=0;sharpen=-1;validShader=true;preserveDepth=false;
+ texMin=texMag=GL_LINEAR;quadMin=quadMag=0;filterWrites=0;
  requested=85;presentation={};r_resolutionScaleMode.value=1;r_resolutionScaleSharpness.value=.7;
  r_frontBuffer.value=r_finish.value=r_showImages.value=0;tr.takingScreenshot=false;
  glConfig={};sceneImage={};copyImage={};images={};sceneTarget.color=&sceneImage;
@@ -188,6 +199,11 @@ static void SceneScaling(){
   CHECK((quadExtent==std::array<int,4>{width,height,width,height}));
   if(mode==2 && fraction<100){CHECK(shaderBinds==1);CHECK(std::abs(inverseSource[0]-1.f/width)<1e-7f);CHECK(std::abs(inverseSource[1]-1.f/height)<1e-7f);CHECK(std::abs(sharpen-.7f)<1e-6f);}
   if(mode==1 || fraction>100)CHECK(shaderBinds==0);
+  // Mode 3 samples the nearest scene texel for this one draw, then the
+  // texture gets its own filters back; every other case never touches them.
+  if(mode==3 && fraction<100){CHECK(quadMin==GL_NEAREST&&quadMag==GL_NEAREST);CHECK(shaderBinds==0);}
+  else{CHECK(quadMin==GL_LINEAR&&quadMag==GL_LINEAR);CHECK(filterWrites==0);}
+  CHECK(texMin==GL_LINEAR&&texMag==GL_LINEAR);
   DrawUi();const auto saved=backbuffer;const int savedQuads=quads;RB_SwapBuffers(nullptr);
   CHECK(backbuffer==saved);CHECK(quads==savedQuads);CHECK(frameCopies==0);
   CHECK(std::find(calls.begin(),calls.end(),"scene-quad")<std::find(calls.begin(),calls.end(),"ui"));
@@ -254,6 +270,9 @@ def assemble(draw: str, backend: str) -> str:
         "static int RB_ScaledDimension( int nativeDimension, int scalePercent )",
         "static bool RB_ScaledSceneTargetRequested( const viewDef_t *viewDef )",
         "static bool RB_ComputeScaledSceneSize( const viewDef_t *viewDef, int &targetWidth,",
+        "static void RB_BeginNearestUpscale( GLint restoreFilters[2] )",
+        "static void RB_EndNearestUpscale( const GLint restoreFilters[2] )",
+        "static bool RB_BindResolutionScaleProgram( int sourceWidth, int sourceHeight,",
         "static bool RB_BindSceneScaleSharpenProgram( int sourceWidth, int sourceHeight,",
         "static void RB_PresentSceneRenderTargetToBackBuffer( const rbSceneScaleState_t &scaleState )",
         "void RB_ApplyResolutionScaleToBackBuffer( void )",
@@ -301,6 +320,8 @@ def main() -> None:
     variants["mutant-disable-world-present"] = code.replace("static void RB_PresentSceneRenderTargetToBackBuffer( const rbSceneScaleState_t &scaleState ) {", "static void RB_PresentSceneRenderTargetToBackBuffer( const rbSceneScaleState_t &scaleState ) { return;", 1)
     variants["mutant-scaled-output-viewport"] = replace_once(code, "targetViewportWidth,\n\t\ttargetViewportHeight );", "sourceViewportWidth,\n\t\tsourceViewportHeight );")
     variants["mutant-disable-sharpen"] = code.replace("static bool RB_BindSceneScaleSharpenProgram( int sourceWidth, int sourceHeight,\n\t\tint textureWidth, int textureHeight ) {", "static bool RB_BindSceneScaleSharpenProgram( int sourceWidth, int sourceHeight,\n\t\tint textureWidth, int textureHeight ) { return false;", 1)
+    variants["mutant-disable-nearest"] = replace_once(code, "&& idMath::ClampInt( 0, 3, r_resolutionScaleMode.GetInteger() ) == RB_RESOLUTION_SCALE_MODE_NEAREST;", "&& false;")
+    variants["mutant-keep-nearest-filter"] = replace_once(code, "\tif ( scaleNearest ) {\n\t\tRB_EndNearestUpscale( nearestRestore );\n\t}\n", "")
     if len(set(variants.values())) != len(variants):
         raise AssertionError("ineffective production mutation")
     compiler = next((found for name in ("clang++", "g++", "c++") if (found := shutil.which(name))), None)

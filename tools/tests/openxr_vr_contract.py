@@ -68,7 +68,7 @@ def check_build() -> None:
 
 def check_abi() -> None:
     api = read("src/renderer/RenderModuleAPI.h")
-    require(api, "#define RENDER_API_VERSION\t\t\t21", "renderer module ABI v21")
+    require(api, "#define RENDER_API_VERSION\t\t\t22", "renderer module ABI v22")
     require(api, "void\t\t\t( *RendererDeviceEvent )( int event );\t// renderDeviceEvent_t\n} renderModuleServices_t;",
             "the device lifetime service is the last services slot")
 
@@ -76,8 +76,11 @@ def check_abi() -> None:
     anchor = "virtual void ResetRetainedFontCache() = 0;"
     tail = render_system[render_system.index(anchor) + len(anchor):]
     slots = re.findall(r"virtual \w+\s+(\w+)\(", tail)
-    if slots != ["GetVRGraphicsBinding", "SetVRFrame", "SetVRRenderTarget", "GetVRFrameResult"]:
-        raise AssertionError(f"the VR slots must close idRenderSystem's vtable, found {slots}")
+    # the VR slots follow the retained font slots in their original order;
+    # later ABI versions only append after them
+    if slots[:4] != ["GetVRGraphicsBinding", "SetVRFrame", "SetVRRenderTarget", "GetVRFrameResult"] \
+            or slots[4:] != ["PresentScaledScene"]:
+        raise AssertionError(f"the VR slots must follow the retained font slots, then PresentScaledScene, found {slots}")
 
     # game modules call through idVRSystem too: its slots only ever grow at the end
     vr_system = read("src/framework/VRSystem.h")
@@ -98,7 +101,7 @@ def check_abi() -> None:
         require(render_world, field, "renderView_t keeps existing views symmetric")
 
     game = read("src/game/Game.h")
-    require(game, "const int GAME_API_VERSION\t\t= 50;", "game module ABI v50")
+    require(game, "const int GAME_API_VERSION\t\t= 51;", "game module ABI v51")
     import_block = game[game.index("struct gameImport_t {"):game.index("struct gameExport_t {")]
     if not import_block.rstrip().rstrip("};").rstrip().endswith("idVRSystem *				vrSystem;				// tracked head/controller poses (never NULL)"):
         raise AssertionError("gameImport_t must end with vrSystem")

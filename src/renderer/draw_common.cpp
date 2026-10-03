@@ -4820,6 +4820,28 @@ static void RB_DrawFullscreenPostProcessQuadOffsetScaled( int viewportWidth,
 	int viewportHeight, int textureWidth, int textureHeight,
 	float offsetX, float offsetY );
 
+// r_resolutionScaleMode values with their own upscale; 0 crops and 1 is the
+// plain bilinear upscale every presenter falls back to.
+static const int RB_RESOLUTION_SCALE_MODE_SHARPEN = 2;
+static const int RB_RESOLUTION_SCALE_MODE_NEAREST = 3;
+
+// Mode 3 points the 2D texture bound to the active unit at its nearest texel
+// for one upscale draw, then puts its min/mag filters back. The image's own
+// filter never changes, so every later bind samples exactly as before.
+static void RB_BeginNearestUpscale( GLint restoreFilters[2] ) {
+	restoreFilters[0] = GL_LINEAR;
+	restoreFilters[1] = GL_LINEAR;
+	glGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &restoreFilters[0] );
+	glGetTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &restoreFilters[1] );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+}
+
+static void RB_EndNearestUpscale( const GLint restoreFilters[2] ) {
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, restoreFilters[0] );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, restoreFilters[1] );
+}
+
 static void RB_PresentSceneRenderTargetToBackBuffer( const rbSceneScaleState_t &scaleState ) {
 	if ( !RB_IsSceneRenderTexture( backEnd.renderTexture ) || backEnd.viewDef == NULL ) {
 		return;
@@ -4924,6 +4946,14 @@ static void RB_PresentSceneRenderTargetToBackBuffer( const rbSceneScaleState_t &
 		&& scaleState.effectivePercent < RB_SCREEN_FRACTION_NATIVE
 		&& RB_BindSceneScaleSharpenProgram( sourceViewportWidth,
 			sourceViewportHeight, textureWidth, textureHeight );
+	// a filter, not a program, so it also holds for the depth-aware present
+	const bool scaleNearest = scaleState.active
+		&& scaleState.effectivePercent < RB_SCREEN_FRACTION_NATIVE
+		&& idMath::ClampInt( 0, 3, r_resolutionScaleMode.GetInteger() ) == RB_RESOLUTION_SCALE_MODE_NEAREST;
+	GLint nearestRestore[2] = { GL_LINEAR, GL_LINEAR };
+	if ( scaleNearest ) {
+		RB_BeginNearestUpscale( nearestRestore );
+	}
 	if ( preserveFarDepth ) {
 		GL_SelectTexture( 1 );
 		presentDepthImage->Bind();
@@ -4949,6 +4979,9 @@ static void RB_PresentSceneRenderTargetToBackBuffer( const rbSceneScaleState_t &
 			backEnd.viewDef->temporalJitterPixels.y / static_cast<float>( Max( 1, targetViewportHeight ) ) );
 	} else {
 		RB_DrawFullscreenPostProcessQuad( sourceViewportWidth, sourceViewportHeight, textureWidth, textureHeight );
+	}
+	if ( scaleNearest ) {
+		RB_EndNearestUpscale( nearestRestore );
 	}
 	if ( preserveFarDepth || scaleSharpenBound ) {
 		glUseProgramObjectARB( 0 );
@@ -5001,10 +5034,11 @@ static void RB_InitResolutionScaleStage( void ) {
 	rbResolutionScaleStageInitialized = true;
 }
 
-static bool RB_BindSceneScaleSharpenProgram( int sourceWidth, int sourceHeight,
-		int textureWidth, int textureHeight ) {
-	if ( idMath::ClampInt( 0, 3, r_resolutionScaleMode.GetInteger() ) != 2
-			|| !glConfig.GLSLProgramAvailable || sourceWidth <= 0
+// Binds glprogs/resolutionscale.fs for a sourceWidth x sourceHeight scene held
+// in a textureWidth x textureHeight texture on unit 0.
+static bool RB_BindResolutionScaleProgram( int sourceWidth, int sourceHeight,
+		int textureWidth, int textureHeight, float sharpness ) {
+	if ( !glConfig.GLSLProgramAvailable || sourceWidth <= 0
 			|| sourceHeight <= 0 || textureWidth <= 0 || textureHeight <= 0 ) {
 		return false;
 	}
@@ -5027,8 +5061,7 @@ static bool RB_BindSceneScaleSharpenProgram( int sourceWidth, int sourceHeight,
 		1.0f / static_cast<GLfloat>( sourceWidth ),
 		1.0f / static_cast<GLfloat>( sourceHeight )
 	};
-	const GLfloat sharpenAmount = idMath::ClampFloat(
-		0.0f, 1.5f, r_resolutionScaleSharpness.GetFloat() );
+	const GLfloat sharpenAmount = idMath::ClampFloat( 0.0f, 1.5f, sharpness );
 	if ( rbResolutionScaleStage.shaderParmLocations[RB_RES_SCALE_UNIFORM_INV_TEX_SIZE] >= 0 ) {
 		glUniform2fvARB( rbResolutionScaleStage.shaderParmLocations[RB_RES_SCALE_UNIFORM_INV_TEX_SIZE], 1, invTexSize );
 	}
@@ -5039,6 +5072,15 @@ static bool RB_BindSceneScaleSharpenProgram( int sourceWidth, int sourceHeight,
 		glUniform1fARB( rbResolutionScaleStage.shaderParmLocations[RB_RES_SCALE_UNIFORM_SHARPEN_AMOUNT], sharpenAmount );
 	}
 	return true;
+}
+
+static bool RB_BindSceneScaleSharpenProgram( int sourceWidth, int sourceHeight,
+		int textureWidth, int textureHeight ) {
+	if ( idMath::ClampInt( 0, 3, r_resolutionScaleMode.GetInteger() ) != RB_RESOLUTION_SCALE_MODE_SHARPEN ) {
+		return false;
+	}
+	return RB_BindResolutionScaleProgram( sourceWidth, sourceHeight,
+		textureWidth, textureHeight, r_resolutionScaleSharpness.GetFloat() );
 }
 
 static idImage *RB_TemporalColorImage( const idRenderTexture *target ) {
@@ -5158,6 +5200,74 @@ static bool RB_PresentTemporalSpatialFallback( idImage *sceneImage,
 	globalImages->BindNull();
 	RB_EndFullscreenPostProcessPass();
 	backEnd.currentRenderCopied = false;
+	return true;
+}
+
+/*
+====================
+RB_PresentScaledScene
+
+RC_PRESENT_SCALED_SCENE: the game's finished below-native scene, drawn over the
+whole native back buffer before the HUD and menus. Mode 2 runs
+glprogs/resolutionscale.fs, the same bilinear reconstruction and 3x3 unsharp
+mask as the renderer's own scene target; mode 3 samples the nearest scene
+texel. A sharpen program that will not bind leaves the plain bilinear upscale.
+====================
+*/
+bool RB_PresentScaledScene( const presentScaledSceneCommand_t &command ) {
+	idImage *sceneImage = RB_TemporalColorImage( command.sceneColorTarget );
+	if ( sceneImage == NULL || command.sceneWidth <= 0 || command.sceneHeight <= 0
+			|| sceneImage->GetOpts().numMSAASamples > 1
+			|| sceneImage->GetOpts().width < command.sceneWidth
+			|| sceneImage->GetOpts().height < command.sceneHeight
+			|| !RB_BindTemporalDestination( NULL, command.outputWidth, command.outputHeight ) ) {
+		return false;
+	}
+
+	const int textureWidth = sceneImage->GetOpts().width;
+	const int textureHeight = sceneImage->GetOpts().height;
+	RB_BeginFullscreenPostProcessPass( 0, 0, command.outputWidth, command.outputHeight );
+	GL_SelectTexture( 0 );
+	sceneImage->Bind();
+	GL_TexEnv( GL_MODULATE );
+	RB_SetFramebufferSRGBEnabled( true );
+	const bool sharpenBound = command.mode == RB_RESOLUTION_SCALE_MODE_SHARPEN
+		&& RB_BindResolutionScaleProgram( command.sceneWidth, command.sceneHeight,
+			textureWidth, textureHeight, command.sharpness );
+	const bool nearest = command.mode == RB_RESOLUTION_SCALE_MODE_NEAREST;
+	GLint nearestRestore[2] = { GL_LINEAR, GL_LINEAR };
+	if ( nearest ) {
+		RB_BeginNearestUpscale( nearestRestore );
+	}
+	RB_DrawFullscreenPostProcessQuad( command.sceneWidth, command.sceneHeight,
+		textureWidth, textureHeight );
+	if ( nearest ) {
+		RB_EndNearestUpscale( nearestRestore );
+	}
+	if ( sharpenBound ) {
+		glUseProgramObjectARB( 0 );
+	}
+	RB_SetFramebufferSRGBEnabled( false );
+	globalImages->BindNull();
+	RB_EndFullscreenPostProcessPass();
+	backEnd.currentRenderCopied = false;
+
+	// One line per change of what actually reaches the screen.
+	static int reportedMode = -1;
+	static bool reportedSharpen = false;
+	static int reportedWidth = 0;
+	static int reportedHeight = 0;
+	if ( reportedMode != command.mode || reportedSharpen != sharpenBound
+			|| reportedWidth != command.sceneWidth || reportedHeight != command.sceneHeight ) {
+		reportedMode = command.mode;
+		reportedSharpen = sharpenBound;
+		reportedWidth = command.sceneWidth;
+		reportedHeight = command.sceneHeight;
+		common->Printf( "OpenGL: scaled scene %dx%d presented with r_resolutionScaleMode %d%s\n",
+			command.sceneWidth, command.sceneHeight, command.mode,
+			command.mode == RB_RESOLUTION_SCALE_MODE_SHARPEN && !sharpenBound
+				? " (sharpen program unavailable; bilinear)" : "" );
+	}
 	return true;
 }
 

@@ -751,6 +751,28 @@ static void openQ4_DrawFullScreenMaterial( const idMaterial *material ) {
 		material );
 }
 
+// Below native, r_resolutionScaleMode 2 (sharpened) and 3 (nearest-neighbour)
+// are upscales the renderer owns. A full-screen material can only stretch the
+// scene bilinearly, which is what mode 1 asks for.
+static bool openQ4_ScaledScenePresentationRequested( const renderPresentationState_t &presentation ) {
+	if ( presentation.sceneWidth >= presentation.outputWidth
+			&& presentation.sceneHeight >= presentation.outputHeight ) {
+		return false;
+	}
+	const int mode = idMath::ClampInt( 0, 3, cvarSystem->GetCVarInteger( "r_resolutionScaleMode" ) );
+	return mode == 2 || mode == 3;
+}
+
+// Presents a single-sample scene-extent target over the native output with the
+// renderer's upscale. False when the renderer declines; nothing was drawn and
+// the caller presents with its own material.
+static bool openQ4_PresentScaledScene( const renderPresentationState_t &presentation,
+		idRenderTexture *sceneColorTarget ) {
+	return sceneColorTarget != NULL
+		&& openQ4_ScaledScenePresentationRequested( presentation )
+		&& renderSystem->PresentScaledScene( sceneColorTarget );
+}
+
 static void openQ4_LabelGameRenderTargets( rvmGameRender_t& gameRender ) {
 	renderSystem->SetRenderTextureDebugName( gameRender.forwardRenderPassRT, "openQ4 forward scene MSAA" );
 	renderSystem->SetRenderTextureDebugName( gameRender.forwardRenderPassResolvedRT, "openQ4 forward scene resolved" );
@@ -1489,7 +1511,9 @@ void idGameLocal::RenderScene(const renderView_t *view, idRenderWorld *renderWor
 		// _postProcessAlbedo0 before presenting it. Presenting the resolved scene
 		// material directly removes two full-screen passes without changing pixels.
 		renderSystem->ClearRenderTarget( false, true, 1.0f, 0.0f, 0.0f, 0.0f );
-		openQ4_DrawFullScreenMaterial( gameRender.resolvePostProcessMaterial );
+		if ( !openQ4_PresentScaledScene( presentation, gameRender.forwardRenderPassResolvedRT ) ) {
+			openQ4_DrawFullScreenMaterial( gameRender.resolvePostProcessMaterial );
+		}
 
 		if ( g_renderCaptureCurrentRender.GetBool() ) {
 			renderSystem->CaptureRenderToImage( "_currentRender" );
@@ -1583,10 +1607,26 @@ void idGameLocal::RenderScene(const renderView_t *view, idRenderWorld *renderWor
 		}
 	}
 
+	// Both the SMAA and the no-AA schedules finish in _postProcessAlbedo0, and
+	// the no-post material is its plain copy, so a renderer upscale presents
+	// that target directly. Blur and CAS first run at the scene extent into
+	// _postProcessAlbedo1, exactly as before a temporal resolve.
+	idRenderTexture *scaledSceneSource = finalMaterial == gameRender.noPostProcessMaterial
+		? gameRender.postProcessRT[0] : gameRender.postProcessRT[1];
+	if ( scaledSceneSource != gameRender.postProcessRT[0] && scaledSceneSource != NULL
+			&& openQ4_ScaledScenePresentationRequested( presentation ) ) {
+		renderSystem->BindRenderTexture( scaledSceneSource, NULL );
+		renderSystem->ClearRenderTarget( true, true, 1.0f, 0.0f, 0.0f, 0.0f );
+		openQ4_DrawFullScreenMaterial( finalMaterial );
+		renderSystem->BindRenderTexture( NULL, NULL );
+	}
+
 	// SS_POST_PROCESS stages use depth testing; reset backbuffer depth each frame
 	// so final full-screen composition is deterministic across drivers/devices.
 	renderSystem->ClearRenderTarget( false, true, 1.0f, 0.0f, 0.0f, 0.0f );
-	openQ4_DrawFullScreenMaterial( finalMaterial );
+	if ( !openQ4_PresentScaledScene( presentation, scaledSceneSource ) ) {
+		openQ4_DrawFullScreenMaterial( finalMaterial );
+	}
 
 	if ( g_renderCaptureCurrentRender.GetBool() ) {
 		renderSystem->CaptureRenderToImage( "_currentRender" );

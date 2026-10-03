@@ -708,7 +708,9 @@ extern rvGameLog *				gameLog;
 //     public desktop window pointer; rebuild engine and both game modules.
 // 50: OpenXR: gameImport_t carries the engine's idVRSystem, renderView_t an
 //     off-axis frustum, and idRenderSystem appends the VR presentation slots.
-const int GAME_API_VERSION		= 50;
+// 51: idRenderSystem appends PresentScaledScene, the r_resolutionScaleMode
+//     upscale of the game's below-native scene.
+const int GAME_API_VERSION		= 51;
 
 struct gameImport_t {
 

@@ -76,7 +76,9 @@
 // 21 - OpenXR presentation: renderView_t carries an off-axis frustum and the
 //      idRenderSystem vtable appends GetVRGraphicsBinding, SetVRFrame,
 //      SetVRRenderTarget and GetVRFrameResult.
-#define RENDER_API_VERSION			21
+// 22 - Append-only idRenderSystem slot PresentScaledScene: the game hands its
+//      below-native scene to the renderer's r_resolutionScaleMode upscale.
+#define RENDER_API_VERSION			22
 #define RENDER_API_ENTRY_POINT		"GetRenderAPI"
 
 class idSys;
