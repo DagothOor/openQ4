@@ -944,6 +944,7 @@ def main() -> None:
         "vr_hapticStrength",
         "vr_twoHanded",
         "vr_comfortVignette",
+        "vr_physicalCrouch",
     ]
     for cvar in game_cvars:
         require(game_gui, cvar, "Game Options settings")
@@ -972,6 +973,7 @@ def main() -> None:
         "set_game_vr_hapticstrength",
         "set_game_vr_twohanded",
         "set_game_vr_vignette",
+        "set_game_vr_physicalcrouch",
     ]
     for row in game_rows:
         require(game_gui, f"windowDef {row}", "Game Options definitions")
@@ -1003,11 +1005,11 @@ def main() -> None:
     for token in (
         "rect\t204,104,377,16",
         "rect\t0,128,640,256",
-        "rect\t-24,-41,640,1754",
+        "rect\t-24,-41,640,1778",
         "rect\t613,128,16,256",
-        "high\t60",
+        "high\t61",
         "cvar\tgui_set_game_scroll",
-        "640,1754",
+        "640,1778",
     ):
         require(game_gui + mainmenu, token, "Game Options scroll coverage")
     for token in (
@@ -1035,7 +1037,7 @@ def main() -> None:
     reject(audio_gui + mainmenu, "set gui_set_audio_scroll", "Audio scroll cvar command")
     for token in (
         'gui_set_sys_scroll( "gui_set_sys_scroll", "0", CVAR_GUI | CVAR_INTEGER, "display menu scroll step", 0, 28 )',
-        'gui_set_game_scroll( "gui_set_game_scroll", "0", CVAR_GUI | CVAR_INTEGER, "game menu scroll step", 0, 60 )',
+        'gui_set_game_scroll( "gui_set_game_scroll", "0", CVAR_GUI | CVAR_INTEGER, "game menu scroll step", 0, 61 )',
         "HandleMainMenuSettingsScrollInput( guiActive, event->evValue )",
         'MainMenuWindowStateEqualsInt( gui, "desktop::curr", page.expectedPage )',
         "MainMenuSettingsPopupIsVisible( gui )",

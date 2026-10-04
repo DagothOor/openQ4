@@ -72,7 +72,7 @@
   vignette during stick movement and smooth turning, scope zoom that
   magnifies each eye, and a Virtual
   Reality section in
-  Settings > Game Options (eleven rows, twelve languages). Building that section
+  Settings > Game Options (twelve rows, twelve languages). Building that section
   fixed the Game Options and display section selectors, which ignored clicks.
   The VR math core passes natively and under ASan/UBSan on Linux; the source
   contract, `openxr_vr_smoke.py` and `openxr_vr_menu_smoke.py` pass against

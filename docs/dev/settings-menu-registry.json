@@ -3772,6 +3772,29 @@
       "default": "0.5",
       "restart_required": false,
       "accessibility": "Focusable choiceDef row. Darkens the edges of each eye while the stick moves or smoothly turns the player."
+    },
+    {
+      "id": "game.vr_physicalcrouch",
+      "pane": "Game Options",
+      "section": "Virtual Reality",
+      "path": "Settings > Game Options > Virtual Reality > Physical Crouch",
+      "source": "game",
+      "container": "set_game_vr_physicalcrouch",
+      "widgets": [
+        "set_game_vr_physicalcrouch_value"
+      ],
+      "widget_type": "choice",
+      "label_key": "#str_230139",
+      "choices_key": "#str_200246",
+      "values": [
+        "0",
+        "1"
+      ],
+      "target_type": "cvar",
+      "target": "vr_physicalCrouch",
+      "default": "1",
+      "restart_required": false,
+      "accessibility": "Focusable choiceDef row. Crouching in the room crouches the character."
     }
   ],
   "default_bind_sources": [

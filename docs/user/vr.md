@@ -36,7 +36,7 @@ multiplayer, and needs no extra content beyond your Quake 4 install.
    also launch with `+set vr_enable 1`.
 
 The same section sets aiming, turning, movement, the laser sight,
-vibration, the two-handed grip and the comfort vignette.
+vibration, the two-handed grip, the comfort vignette and physical crouching.
 
 When VR is on, the desktop window shows what your left eye sees. To turn VR
 off again, set VR Mode back to Disabled (you can point at it in the headset),
