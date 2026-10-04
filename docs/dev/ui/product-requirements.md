@@ -541,7 +541,9 @@ On engine `399beec21e893594a35ec9d8848bccc5c79d311b` the multiplayer cards gain 
 
 On engine `f7173a4fc81ab9b4a33575e2c9d0e148c8bb2507` the retained loading screen hands a join over to the Welcome card: it stays up, reading JOINING, until the card presents, then fades out over it in place of the load's wipe. The gate's compiled hold case, the native screens test, a mutation pass and live probes on a listen server and a remote client qualify it. `FLOW-047` gains partial evidence without a status change. Evidence: `.tmp/ui/retained-loading-handoff/validation-evidence.json`, SHA-256 `ed845b87064b11dea753eab7d7f27b70ad79d07e649d400d0c43325619e02c1e`.
 
-There are **92 partial, 247 pending and one verified requirement**, counting the
+On engine `09c9d97018b26933eaf5806947df02aa9c379f08` the multiplayer Escape card gains its Match page: Match Control's six sections in an inner strip the triggers page, and its Status section (the match's state, the action target, the readiness, pause, forfeit and abort actions with their reasons and the stock confirmations, the referee's sign-out and a spectator's camera) mirrored from the game's own projection. The gate, adapter and native screens tests, a mutation pass and live probes qualify it. `FLOW-012` and `FLOW-026` move from pending to partial and `FLOW-046` gains partial evidence. Evidence: `.tmp/ui/retained-mp-match/validation-evidence.json`, SHA-256 `861b55c1226ee7c57e37954faefacfa38824f5f33b7f2b85fc422f38e6bc89b7`.
+
+There are **94 partial, 245 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.
 `BEH-005` remains partial for committed action delivery and cancellation; stock

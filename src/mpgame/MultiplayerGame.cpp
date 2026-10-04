@@ -16737,11 +16737,11 @@ void idMultiplayerGame::PublishRetainedVote( idUserInterface *card, bool &change
 	publish( "mp.vote.kick", va( "%d", retainedVoteKick.FindIndex( retainedVoteDraft[ RVF_KICK ] ) ) );
 }
 
-// A stock menu list ("a;b;c") as its items.
-static void MPRetainedSplitList( const idStr &text, idStrList &items ) {
+// A stock menu list ("a;b;c") as its items, or lines by another separator.
+static void MPRetainedSplitList( const idStr &text, idStrList &items, char separator = ';' ) {
 	items.Clear();
 	for ( int start = 0, i = 0; text.Length() > 0 && i <= text.Length(); i++ ) {
-		if ( i == text.Length() || text[ i ] == ';' ) {
+		if ( i == text.Length() || text[ i ] == separator ) {
 			items.Append( text.Mid( start, i - start ) );
 			start = i + 1;
 		}
@@ -16862,6 +16862,91 @@ void idMultiplayerGame::PublishRetainedSettings( idUserInterface *card, bool &ch
 	publish( "mp.crosshair", va( "%d", crosshair ) );
 	publish( "mp.crosshair_count", va( "%d", crosshairs.Num() ) );
 	publish( "mp.crosshair_image", crosshair > 0 ? crosshairs[ crosshair - 1 ].c_str() : "" );
+}
+
+// The Match page's actions: the card's mp.match.op.<name>, the projection's
+// match_op_<prefix>_available and _reason, and the label, which for Set ready
+// the projection names (match_ready_action).
+struct retainedMatchOperation_t {
+	const char *	name;
+	const char *	prefix;
+	const char *	label;
+};
+static const retainedMatchOperation_t RETAINED_MATCH_OPERATIONS[] = {
+	{ "ready", "ready_set", NULL },
+	{ "team_ready", "team_ready_set", "#str_41715" },
+	{ "timeout", "timeout_request", "#str_41716" },
+	{ "tech_pause", "tech_pause_request", "#str_41717" },
+	{ "resume", "resume_request", "#str_41718" },
+	{ "force_ready", "force_ready", "#str_41719" },
+	{ "forfeit", "forfeit", "#str_41783" },
+	{ "abort", "abort", "#str_41784" },
+	{ "referee_login", "ref_authenticate", "#str_41781" },
+	{ "referee_logout", "ref_logout", "#str_41782" },
+};
+
+/*
+================
+idMultiplayerGame::PublishRetainedMatch
+
+The Escape card's Match page shows Match Control. The game keeps that surface
+on its own menu (MPMatchControlProjectMenu: localized, recipient-scoped, each
+action's availability and reason decided by the typed model), so the card
+mirrors the menu's states, and the menu projects again whenever the accepted
+view has moved since it last did.
+================
+*/
+void idMultiplayerGame::PublishRetainedMatch( idUserInterface *card, bool &changed ) {
+	if ( mainGui == NULL ) {
+		return;
+	}
+	const auto publish = [&]( const char *key, const char *value ) { changed |= PublishRetainedValue( card, key, value ); };
+	if ( gameLocal.isServer ) {
+		RefreshLocalClientMatchView();
+	}
+	if ( clientMatchViewValid && clientMatchControlModel.IsReady() &&
+		clientMatchMenuProjectedViewRevision != clientMatchView.publicState.viewRevision ) {
+		ProjectClientMatchControlMenu( false );
+	}
+	const idDict &state = mainGui->State();
+	const bool available = state.GetBool( "match_surface_available" );
+	publish( "mp.match.available", available ? "1" : "0" );
+	// The heading: the short phase, which the first state line spells out.
+	const char *phase = state.GetString( "match_phase_short" );
+	publish( "mp.match.phase", phase[ 0 ] != '\0' ? phase : state.GetString( "match_phase" ) );
+	idStrList lines;
+	MPRetainedSplitList( state.GetString( "match_status_lines" ), lines, '\n' );
+	for ( int i = 0; i < RETAINED_MATCH_STATUS_LINES; i++ ) {
+		publish( va( "mp.match.status%d", i ), i < lines.Num() ? lines[ i ].c_str() : "" );
+	}
+	publish( "mp.match.result", state.GetString( "match_result_message" ) );
+	// The side an action applies to, where the player may choose one.
+	publish( "mp.match.side.shown", state.GetBool( "match_action_side_visible" ) ? "1" : "0" );
+	publish( "mp.match.side.label", state.GetString( "match_action_side_label" ) );
+	for ( int side = 0; side < 2; side++ ) {
+		publish( va( "mp.match.side%d.label", side ), state.GetString( va( "match_action_side_%d_label", side ) ) );
+		publish( va( "mp.match.side%d.available", side ), state.GetBool( va( "match_action_side_%d_enabled", side ) ) ? "1" : "0" );
+		publish( va( "mp.match.side%d.selected", side ), state.GetBool( va( "match_action_side_%d_selected", side ) ) ? "1" : "0" );
+	}
+	// Sign in while the player is not a referee, Sign out while they are.
+	const bool referee = state.GetBool( "match_referee_authenticated" );
+	for ( const retainedMatchOperation_t &operation : RETAINED_MATCH_OPERATIONS ) {
+		bool shown = available;
+		if ( !idStr::Cmp( operation.name, "referee_login" ) ) {
+			shown = available && !referee;
+		} else if ( !idStr::Cmp( operation.name, "referee_logout" ) ) {
+			shown = available && referee;
+		}
+		const char *label = operation.label != NULL ? operation.label : state.GetString( "match_ready_action", "#str_41713" );
+		publish( va( "mp.match.op.%s.shown", operation.name ), shown ? "1" : "0" );
+		publish( va( "mp.match.op.%s.available", operation.name ),
+			state.GetInt( va( "match_op_%s_available", operation.prefix ) ) == 1 ? "1" : "0" );
+		publish( va( "mp.match.op.%s.label", operation.name ), common->GetLocalizedString( label ) );
+		publish( va( "mp.match.op.%s.reason", operation.name ), state.GetString( va( "match_op_%s_reason", operation.prefix ) ) );
+		publish( va( "mp.match.op.%s.detail", operation.name ), "" );
+	}
+	// A spectator's camera follows players from the page.
+	publish( "mp.match.follow", MatchControlFollowPlayer() != NULL ? "1" : "0" );
 }
 
 bool idMultiplayerGame::PublishRetainedValue( idUserInterface *card, const char *key, const char *value ) {
@@ -17015,6 +17100,10 @@ void idMultiplayerGame::PublishRetainedMenu( idUserInterface *card ) {
 	PublishRetainedWelcome( card, changed );
 	PublishRetainedVote( card, changed );
 	PublishRetainedSettings( card, changed );
+	// Only the Escape card has a Match page.
+	if ( !RetainedMenuWelcome() ) {
+		PublishRetainedMatch( card, changed );
+	}
 	if ( changed ) {
 		card->SetStateInt( "mp.revision", ++retainedMenuRevision );
 	}

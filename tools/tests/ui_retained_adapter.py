@@ -52,7 +52,7 @@ struct idCmdArgs {
 template<class T> T Min(T a,T b) { return (std::min)(a,b); }
 struct idVec2 { idVec2(float=0,float=0) {} } vec2_origin;
 enum { SE_KEY=1,SE_MOUSE,K_TAB=10,K_SHIFT,K_UPARROW,K_DOWNARROW,K_LEFTARROW,K_RIGHTARROW,
-       K_ENTER,K_KP_ENTER,K_SPACE,K_ESCAPE,K_MOUSE1,K_JOY1,K_JOY2,K_JOY3,K_JOY4,K_JOY7,K_JOY8,K_JOY9,K_JOY10,K_JOY11,K_JOY12,
+       K_ENTER,K_KP_ENTER,K_SPACE,K_ESCAPE,K_MOUSE1,K_JOY1,K_JOY2,K_JOY3,K_JOY4,K_JOY7,K_JOY8,K_JOY9,K_JOY10,K_JOY11,K_JOY12,K_JOY15,K_JOY16,
        K_HOME,K_END,K_PGUP,K_PGDN,K_MWHEELUP,K_MWHEELDOWN,K_CTRL,K_ALT,K_RIGHT_ALT,K_BACKSPACE,K_DEL,K_INS,K_LAST_KEY=512 };
 struct idKeyInput { static inline bool shift=false; static bool IsDown(int key) { return key==K_SHIFT && shift; } };
 class idFile {
@@ -2187,8 +2187,9 @@ static void CheckNumberDiagnosticBoundary() {
     assert(views.empty() && service.owners.empty());modelTemplate=original;eventPlans.clear();
 }
 // Q and E, and the shoulders, run the document's onTabPrevious and onTabNext
-// where it declares them: once per press, never on a repeat, never with Ctrl
-// or Alt, and never while a Number field is being edited.
+// where it declares them, and the triggers its onSectionPrevious and
+// onSectionNext: once per press, never on a repeat, never with Ctrl or Alt,
+// and never while a Number field is being edited.
 static void CheckTabKeys() {
     assert(views.empty());cvars=CVars{};consoleObject.open=false;windowFocused=true;
     eventPlans={};eventHistory.clear();
@@ -2215,6 +2216,16 @@ static void CheckTabKeys() {
     runtime.widgets.at("root").number->active=false;
     pulse(K_JOY2);
     assert(tabs().size()==6 && tabs().back()=="ontabnext");
+    const auto sections=[&]{std::vector<std::string> found;for(const auto& name:eventHistory)
+        if(name=="onsectionprevious" || name=="onsectionnext")found.push_back(name);return found;};
+    pulse(K_JOY16);pulse(K_JOY15);
+    assert(sections().empty() && tabs().size()==6);
+    eventPlans["onsectionprevious"]={};eventPlans["onsectionnext"]={};
+    pulse(K_JOY16);pulse(K_JOY15);
+    assert(sections()==std::vector<std::string>({"onsectionprevious","onsectionnext"}) && tabs().size()==6);
+    Key(gui,K_JOY15,true);Key(gui,K_JOY15,true);Key(gui,K_JOY15,false);
+    Key(gui,K_CTRL,true);pulse(K_JOY16);Key(gui,K_CTRL,false);
+    assert(sections().size()==3);
 }
 static void CheckNumberKeys() {
     assert(views.empty());const auto original=modelTemplate;

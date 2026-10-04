@@ -864,8 +864,12 @@
   rules and map rotation; its Settings page sets your model, rail color and
   handicap and how opponents and teammates look (forced models, outlines,
   rim light, brightskin and their colors), with Controls, Game Options and
-  System a step away; and its Voice page sets voice chat's switches and
-  volumes. Its Match and Admin pages still open the classic pages for now.
+  System a step away; its Voice page sets voice chat's switches and volumes;
+  and its Match page shows Match Control's state and its readiness, pause,
+  forfeit and abort actions, each saying why it is unavailable and asking
+  first where the classic page does, with the triggers paging Match Control's
+  sections. Its Admin page and Match Control's other sections still open the
+  classic pages for now.
   The prompt bars' Select now reads correctly in Spanish and Italian.
 
 - Joining a server without automatic joining now opens the new Welcome card

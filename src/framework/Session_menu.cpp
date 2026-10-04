@@ -132,6 +132,16 @@ static const int RETAINED_MP_RAIL_COLORS = 7;
 // The Players page names players by client number (card.client), which the
 // game checks against its lists again.
 static const int RETAINED_MP_CLIENTS = MAX_ASYNC_CLIENTS;
+// The Match page's actions, by the card's index (card.match_op): the fixed
+// Match Control tokens the game's own menu emits for them, so the card never
+// sends text of its own (idMultiplayerGame::HandleMatchControlCommand). The
+// first, a refresh, asks the game to project its view again.
+static const char *const RETAINED_MP_MATCH_TOKENS[] = {
+	"refresh", "ready_toggle", "team_ready_toggle", "arm_force_ready", "timeout", "tech_pause", "resume",
+	"arm_forfeit", "arm_abort", "referee_logout", "action_side_a", "action_side_b",
+	"follow_prev", "follow_next", "follow_free", "confirm", "cancel_confirm"
+};
+static const int RETAINED_MP_MATCH_ACTIONS = static_cast<int>( sizeof( RETAINED_MP_MATCH_TOKENS ) / sizeof( RETAINED_MP_MATCH_TOKENS[0] ) );
 // The stock menu buttons the card's hand-offs press, by the card's page
 // index (card.stock_page), in the generator's order.
 static const char *const RETAINED_MP_STOCK_PAGES[] = {
@@ -5921,6 +5931,17 @@ void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, con
 		}
 		// An action that is unavailable now keeps the menu open.
 		gameCommand = va( "play main_menu_selection ; retained welcome %d", slot );
+		command = gameCommand.c_str();
+	} else if ( !idStr::Icmp( request, "mpMatch" ) ) {
+		const int action = gui->State().GetInt( "card.match_op", "-1" );
+		if ( action < 0 || action >= RETAINED_MP_MATCH_ACTIONS ) {
+			common->Warning( "retained UI: the multiplayer card asked for match action %d", action );
+			return;
+		}
+		// Match Control's own fixed token; the game checks the action again
+		// against its accepted view and keeps the menu open. A refresh, which
+		// the page asks as it opens, makes no sound.
+		gameCommand = va( "%smatchControl %s", action == 0 ? "" : "play main_menu_selection ; ", RETAINED_MP_MATCH_TOKENS[ action ] );
 		command = gameCommand.c_str();
 	} else if ( !idStr::Icmp( request, "mpTeamAction" ) ) {
 		const int slot = gui->State().GetInt( "card.team_action", "-1" );

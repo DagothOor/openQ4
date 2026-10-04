@@ -1237,6 +1237,11 @@ private:
 	bool			RetainedModelChoice( int slot, idStr &cvar, idStrList &values, idStrList &names, int &current );
 	void			RetainedCrosshairs( idStrList &crosshairs );
 	void			PublishRetainedSettings( idUserInterface *card, bool &changed );
+	// The Escape card's Match page (section 14.18): Match Control, mirrored
+	// from the game's own projection of it on the menu (the match_* states),
+	// the status lines one key each.
+	static const int RETAINED_MATCH_STATUS_LINES = 6;
+	void			PublishRetainedMatch( idUserInterface *card, bool &changed );
 	bool			arenaEntranceCameraResolved;
 	// Which presentation the latched camera belongs to.  The entrance and the
 	// final tableau both latch a collision-safe anchor, but they resolve it

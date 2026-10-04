@@ -158,3 +158,7 @@ Operation tokens map exactly to the canonical descriptors and argument schema:
 | `abort` | `abort` | No target; required bounded printable `reason` uses an adapter-owned canonical value; confirmed |
 
 Every request is built from the current accepted view and carries its session ID, session revision, aggregate control revision, recipient participant ID, slot, and binding generation. Recheck selection and operation availability immediately before `SubmitMatchOperation`; the server remains authoritative and rejects stale compare-and-swap state.
+
+## The retained card
+
+The retained Escape card's Match page (`docs/dev/ui/multiplayer-menus.md`) presents this same surface; it adds no authority. The game mirrors the menu's projection into the card (`idMultiplayerGame::PublishRetainedMatch`), projecting again whenever the accepted view has moved since the menu last did, and the card asks for an action by its index in the session's `RETAINED_MP_MATCH_TOKENS`, which holds this contract's fixed tokens; the session sends `matchControl <token>` to the game exactly as the GUI does. The confirmed actions arm their confirmation with the `arm_` token, and the card's own modal answers `confirm` or `cancel_confirm`. The Status section is built; the sections that need row selections, and the referee credential, still open this page.

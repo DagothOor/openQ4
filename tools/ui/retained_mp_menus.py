@@ -1889,7 +1889,340 @@ def welcome_settings_page(doc: Document, index: int, ident: str, width: float, h
     return page_group(doc, index, ident, width, height, children, controls + plate_controls), "settings-name"
 
 
-PAGE_BUILDERS = {"team": team_page, "players": players_page, "vote": vote_page, "settings": settings_page,
+# ---------------------------------------------------------------- Match page
+
+# Match Control's six sections, the stock page's own names, form the page's
+# inner strip (decision D3): the triggers page through them, Left and Right
+# move along the strip and accept chooses.
+MATCH_SECTIONS = ("status", "teams", "proposals", "rules", "series", "evidence")
+MATCH_SECTION_KEYS = ("#str_41701", "#str_41702", "#str_41703", "#str_41704", "#str_41705", "#str_41706")
+MATCH_BUILT = ("status",)               # the others hand off to the stock page
+# The card's Match Control actions by index (card.match_op): the session's
+# RETAINED_MP_MATCH_TOKENS lists the same stock tokens in the same order.
+MATCH_TOKENS = ("refresh", "ready_toggle", "team_ready_toggle", "arm_force_ready", "timeout", "tech_pause", "resume",
+                "arm_forfeit", "arm_abort", "referee_logout", "action_side_a", "action_side_b",
+                "follow_prev", "follow_next", "follow_free", "confirm", "cancel_confirm")
+MATCH_STATUS_LINES = 6                  # RETAINED_MATCH_STATUS_LINES in the game
+# The Status section's actions by the game's operation name (mp.match.op.*),
+# with the token each sends, its accessible name and, for those Match Control
+# confirms first, the stock confirmation's text.
+MATCH_ACTIONS = (("ready", "ready_toggle", "#str_41713", None),
+                 ("team_ready", "team_ready_toggle", "#str_41715", None),
+                 ("timeout", "timeout", "#str_41716", None),
+                 ("tech_pause", "tech_pause", "#str_41717", None),
+                 ("resume", "resume", "#str_41718", None),
+                 ("force_ready", "arm_force_ready", "#str_41719", "#str_41900"),
+                 ("forfeit", "arm_forfeit", "#str_41783", "#str_41798"),
+                 ("abort", "arm_abort", "#str_41784", "#str_41799"))
+# Every label an action row can show: Set ready reads Set not ready once ready.
+MATCH_ACTION_LABELS = ("#str_41713", "#str_41714", "#str_41715", "#str_41716", "#str_41717", "#str_41718", "#str_41719",
+                       "#str_41783", "#str_41784")
+MATCH_CONFIRM_TITLE = "#str_41797"
+MATCH_WAITING, MATCH_REFEREE, MATCH_SIGN_IN, MATCH_SIGN_OUT = "#str_41774", "#str_41779", "#str_41781", "#str_41782"
+MATCH_FOLLOW = (("previous", "follow_prev", "#str_42885"), ("next", "follow_next", "#str_42886"), ("free", "follow_free", "#str_42887"))
+MATCH_STRIP_H, MATCH_STRIP_GAP = 26.0, 10.0
+MATCH_LEFT_W = 320.0                    # the status column; the actions take the rest
+MATCH_ROW_PITCH = 32.0
+
+
+def match_op(token: str) -> list:
+    """The steps that ask the game for a Match Control action by its token."""
+    return [{"op": "setState", "values": {"card.match_op": MATCH_TOKENS.index(token)}}, {"op": "action", "action": "mpMatch"}]
+
+
+def match_modal_id(name: str) -> str:
+    return "match" + "".join(part.title() for part in name.split("_")) + "Modal"
+
+
+def match_modals(doc: Document) -> list:
+    """The stock confirmation for each action Match Control confirms first.
+    The action arms it in the game and shows the modal; Yes confirms it and
+    No, or back, cancels it, each hiding the modal again."""
+    modals = []
+    for name, _token, _accessible, body in MATCH_ACTIONS:
+        if body is None:
+            continue
+        modal = match_modal_id(name)
+        doc.events[f"{modal}Yes"] = [*match_op("confirm"), {"op": "call", "event": f"{modal}Hide"}]
+        doc.events[f"{modal}No"] = [*match_op("cancel_confirm"), {"op": "call", "event": f"{modal}Hide"}]
+        modals.append(confirmation(doc, modal, MATCH_CONFIRM_TITLE, body, None, yes_event=f"{modal}Yes", no_event=f"{modal}No"))
+    return modals
+
+
+def check_match_labels(width: float) -> float:
+    """Where the action rows' reason column starts: after a label column that
+    holds every label in two lines at 14 dp, in every language, and its
+    padlock. The reason keeps at least 160 dp."""
+    need = max(wrapped_width(text) for key in MATCH_ACTION_LABELS for text in table_text(key).values())
+    value_x = math.ceil(21 + need + 20 + 8)
+    if width - value_x - 8 < 160:
+        raise SystemExit(f"the Match actions' labels need {need:.0f} dp, leaving their reasons {width - value_x - 8:.0f} dp")
+    return value_x
+
+
+def match_action_row(doc: Document, name: str, accessible: str, width: float, value_x: float, top: float, steps: list) -> tuple[dict, str]:
+    """A Match Control action as a row (section 7): the game publishes its
+    label, availability and reason (mp.match.op.<name>.*). The label and, on
+    an unavailable action, the padlock fill the label column and the reason
+    the rest in the error color; choosing an unavailable action shakes the row
+    and pulses its reason, and asks nothing. An available one runs `steps`,
+    and the game checks the action again."""
+    key = f"mp.match.op.{name}"
+    for field, kind in (("shown", "boolean"), ("available", "boolean"), ("label", "string"), ("reason", "string"), ("detail", "string")):
+        doc.state[f"{key}.{field}"] = {"type": kind, "initial": False if kind == "boolean" else ""}
+    ident, event = f"match-{name.replace('_', '-')}", f"match_{name}"
+    plate = vector(f"{ident}-plate", FULL, [
+        path("plate", [(6, 1), ({"fraction": 1}, 1), ({"fraction": 1}, {"fraction": 1, "dp": -1}), (0, {"fraction": 1, "dp": -1}), (0, 7)],
+             fill=solid(rgb(OLIVE, 0.12)), stroke=stroke(solid(rgb(OLIVE, 0.32)), 1)),
+    ])
+    wash = vector(f"{ident}-wash", {**FULL, "opacity": number(0)}, [
+        path("wash", [(6, 1), ({"fraction": 1}, 1), ({"fraction": 1}, {"fraction": 1, "dp": -1}), (0, {"fraction": 1, "dp": -1}), (0, 7)],
+             fill=linear((0, 0), ({"fraction": 1}, 0), [(0, rgb(OLIVE, 0.45)), (1, rgb(OLIVE, 0.1))])),
+    ])
+    rail = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=4, height=VOTE_ROW_H), "opacity": number(0)}, [
+        path("rail", [(0, 7), (6, 1), (6, VOTE_ROW_H - 1), (0, VOTE_ROW_H - 1)], fill=solid(rgb(ORANGE)))])
+    caption = label(f"{ident}-label", PLACEHOLDER, {"position": keyword("relative"), "display": keyword("block"), "flex-shrink": number(1),
+                    "min-width": length(0), **row_face(True), "overflow": keyword("hidden")})
+    doc.bind(f"{ident}-label.text", f"{ident}-label", "text", {"state": f"{key}.label"})
+    lock = padlock(f"{ident}-lock", rgb(ERROR))
+    unavailable = {"op": "!", "args": [{"state": f"{key}.available"}]}
+    doc.bind(f"{ident}-lock.display", f"{ident}-lock", "display", {"op": "select", "args": [unavailable, "block", "none"]})
+    head = group(f"{ident}-head", {**absolute(left=21, top=0, width=value_x - 29, height=VOTE_ROW_H), "display": keyword("flex"),
+                                   "flex-direction": keyword("row"), "align-items": keyword("center")}, [caption, lock])
+    reason = label(f"{ident}-reason", PLACEHOLDER, {**absolute(left=value_x, top=0, width=width - value_x - 8, height=VOTE_ROW_H),
+                   **typeface("lowpixel", 14, LABEL_LINE, rgb(ERROR)), "white-space": keyword("normal"), "overflow": keyword("hidden"),
+                   "display": keyword("none"), "opacity": number(1)})
+    doc.bind(f"{ident}-reason.text", f"{ident}-reason", "text", {"state": f"{key}.reason"})
+    doc.bind(f"{ident}-reason.display", f"{ident}-reason", "display", {"op": "select", "args": [unavailable, "block", "none"]})
+    spec = {"role": "button", "label": accessible, "event": event, "states": row_states(doc, ident)}
+    row = group(ident, {**absolute(left=0, top=top, width=width, height=VOTE_ROW_H), "display": keyword("none"), "opacity": number(1),
+                        "transform": transform()}, [plate, wash, rail, head, reason], control=spec)
+    doc.bind(f"{ident}.display", ident, "display", {"op": "select", "args": [{"state": f"{key}.shown"}, "block", "none"]})
+    doc.bind(f"{ident}.opacity", ident, "opacity", {"op": "select", "args": [{"state": f"{key}.available"}, 1, 0.6]})
+    shake = f"shake-{ident}"
+    doc.timelines.add(shake, 300, [
+        track(ident, "transform", [(0, transform()), (50, transform(tx=-6)), (110, transform(tx=6)), (170, transform(tx=-4)),
+                                   (230, transform(tx=3)), (300, transform())]),
+        track(f"{ident}-reason", "opacity", [(0, number(1)), (100, number(0.35)), (200, number(1)), (300, number(1))]),
+    ])
+    doc.events[event] = [
+        {"op": "if", "condition": {"state": f"{key}.available"}, "then": steps, "else": [{"op": "playTimeline", "timeline": shake}]},
+    ]
+    return row, ident
+
+
+def match_tab(doc: Document, position: int, section: str, key: str) -> tuple[dict, str]:
+    """One of the inner strip's sections: its name, orange with focus, over a
+    bar while it is the section shown."""
+    ident = f"match-tab-{section}"
+    selected = {"op": "==", "args": [{"state": "card.match_section"}, position]}
+    caption = label(f"{ident}-label", key, {"position": keyword("relative"), "display": keyword("block"),
+                    **typeface("lowpixel", 16, MATCH_STRIP_H, [1, 1, 1, 0.7]), "white-space": keyword("nowrap")})
+    bar = vector(f"{ident}-bar", {**absolute(left=0, top=MATCH_STRIP_H - 3, width=0, height=3), "width": length(100, "%"),
+                                  "display": keyword("none")},
+                 [path("bar", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, 3), (0, 3)], fill=solid(rgb(ORANGE)))])
+    doc.bind(f"{ident}-bar.display", f"{ident}-bar", "display", {"op": "select", "args": [selected, "block", "none"]})
+    states = doc.states(ident, {
+        "default": [(f"{ident}-label", "color", colour([1, 1, 1, 0.7]))],
+        "hover": [(f"{ident}-label", "color", colour([1, 1, 1, 1]))],
+        "focus": [(f"{ident}-label", "color", colour(rgb(ORANGE)))],
+        "pressed": [(f"{ident}-label", "color", colour(rgb(ORANGE)))],
+        "disabled": [(f"{ident}-label", "color", colour([1, 1, 1, 0.7]))],
+    })
+    event = f"match_section_{section}"
+    doc.events[event] = [{"op": "setState", "values": {"card.match_section": position}}, {"op": "focus", "control": ident}]
+    tab_node = group(ident, {"position": keyword("relative"), "display": keyword("block"), "height": length(MATCH_STRIP_H),
+                             "padding-left": length(10), "padding-right": length(10), "margin-right": length(4), "flex-shrink": number(0)},
+                     [caption, bar], control={"role": "button", "label": key, "event": event, "states": states})
+    return tab_node, ident
+
+
+def match_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, list]:
+    """The Match page (section 14.18): Match Control's six sections as a second,
+    smaller strip. Status shows the match's phase and state lines, the side an
+    action applies to where the player chooses one, the referee's sign-in, a
+    spectator's camera, the last result, and the readiness, pause and match
+    actions, each saying why it is unavailable; Force ready, Forfeit and Abort
+    ask first, as the stock page does. The other sections, and signing in,
+    which needs the credential, still open the stock page. The page asks the
+    game to project its view again as it opens; the game mirrors Match
+    Control's own states into mp.match.*."""
+    doc.session("mpMatch", "mpMatch")
+    doc.state.update({
+        "card.match_section": {"type": "number", "initial": 0},
+        "card.match_op": {"type": "number", "initial": -1},
+        "mp.match.available": {"type": "boolean", "initial": False},
+        "mp.match.phase": {"type": "string", "initial": ""},
+        "mp.match.result": {"type": "string", "initial": ""},
+        "mp.match.follow": {"type": "boolean", "initial": False},
+        "mp.match.side.shown": {"type": "boolean", "initial": False},
+        "mp.match.side.label": {"type": "string", "initial": ""},
+        **{f"mp.match.status{line}": {"type": "string", "initial": ""} for line in range(MATCH_STATUS_LINES)},
+        **{f"mp.match.side{side}.{field}": {"type": kind, "initial": False if kind == "boolean" else ""}
+           for side in range(2) for field, kind in (("label", "string"), ("available", "boolean"), ("selected", "boolean"))},
+    })
+    doc.events["stock_match"] = [{"op": "setState", "values": {"card.stock_page": index}}, {"op": "action", "action": "mpStockPage"}]
+    page_width = width - 2 * INSET
+    page_height = height - PAGE_TOP - PROMPT_BOTTOM - PROMPT_H - 16
+    controls: list = []
+    # The inner strip.
+    tabs = []
+    for position, (section, key) in enumerate(zip(MATCH_SECTIONS, MATCH_SECTION_KEYS)):
+        tab_node, tab_id = match_tab(doc, position, section, key)
+        tabs.append(tab_node)
+        controls.append(tab_id)
+    strip = group("match-strip", {**absolute(left=0, top=0, width=page_width, height=MATCH_STRIP_H), "display": keyword("flex"),
+                                  "flex-direction": keyword("row"), "align-items": keyword("center")}, tabs)
+    rule = vector("match-strip-rule", absolute(left=0, top=MATCH_STRIP_H, width=page_width, height=1), [
+        path("rule", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, 1), (0, 1)], fill=solid(rgb(OLIVE, 0.5)))])
+    section_top = MATCH_STRIP_H + MATCH_STRIP_GAP
+    section_height = page_height - section_top
+    for name, step in (("onSectionPrevious", -1), ("onSectionNext", 1)):
+        steps: list = []
+        for position in reversed(range(len(MATCH_SECTIONS))):
+            target = MATCH_SECTIONS[(position + step) % len(MATCH_SECTIONS)]
+            steps = [{"op": "if", "condition": {"op": "==", "args": [{"state": "card.match_section"}, position]},
+                      "then": [{"op": "call", "event": f"match_section_{target}"}], **({"else": steps} if steps else {})}]
+        doc.events[name] = [{"op": "if", "condition": {"op": "==", "args": [{"state": "card.tab"}, index]}, "then": steps}]
+
+    def section_group(section: str, position: int, children: list) -> dict:
+        node = group(f"match-section-{section}", {**absolute(left=0, top=section_top, width=page_width, height=section_height),
+                                                  "display": keyword("none")}, children)
+        doc.bind(f"match-section-{section}.display", f"match-section-{section}", "display",
+                 {"op": "select", "args": [{"op": "==", "args": [{"state": "card.match_section"}, position]}, "block", "none"]})
+        return node
+
+    # Status: the match's state in the leading column, its actions beside it.
+    left_w = MATCH_LEFT_W
+    right_x = left_w + 16
+    right_w = page_width - right_x
+    value_x = check_match_labels(right_w)
+    # The leading column flows: the phase, the state lines that are set (each
+    # wraps), then the action target, the referee and a spectator's camera.
+    flow = {"position": keyword("relative"), "display": keyword("block")}
+    column = [label("match-phase", PLACEHOLDER, {**flow, "height": length(22), "margin-bottom": length(6),
+                                                  **typeface("marine", 17, 22, [1, 1, 1, 0.9]), "white-space": keyword("nowrap"),
+                                                  "overflow": keyword("hidden")})]
+    doc.bind("match-phase.text", "match-phase", "text", {"state": "mp.match.phase"})
+    for line in range(MATCH_STATUS_LINES):
+        node_id = f"match-status-{line}"
+        column.append(label(node_id, PLACEHOLDER, {**flow, **typeface("lowpixel", 15, 17, [1, 1, 1, 0.8]), "white-space": keyword("normal")}))
+        doc.bind(f"{node_id}.text", node_id, "text", {"state": f"mp.match.status{line}"})
+        doc.bind(f"{node_id}.display", node_id, "display",
+                 {"op": "select", "args": [{"op": "!=", "args": [{"state": f"mp.match.status{line}"}, ""]}, "block", "none"]})
+    # The side an action applies to, where the player chooses one.
+    side_children = [label("match-side-label", PLACEHOLDER, {**absolute(left=0, top=0, width=left_w, height=18),
+                                                             **typeface("lowpixel", 14, 18, rgb(OLIVE)), "white-space": keyword("nowrap")})]
+    doc.bind("match-side-label.text", "match-side-label", "text", {"state": "mp.match.side.label"})
+    for side, token in ((0, "action_side_a"), (1, "action_side_b")):
+        chip = f"match-side-{side}"
+        caption = label(f"{chip}-label", PLACEHOLDER, {**absolute(left=10, top=0, width=left_w / 2 - 28, height=24),
+                        **typeface("lowpixel", 15, 24, [1, 1, 1, 0.8]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+        doc.bind(f"{chip}-label.text", f"{chip}-label", "text", {"state": f"mp.match.side{side}.label"})
+        mark = vector(f"{chip}-mark", {**absolute(left=0, top=21, width=left_w / 2 - 12, height=3), "display": keyword("none")},
+                      [path("mark", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, 3), (0, 3)], fill=solid(rgb(VALUE)))])
+        doc.bind(f"{chip}-mark.display", f"{chip}-mark", "display",
+                 {"op": "select", "args": [{"state": f"mp.match.side{side}.selected"}, "block", "none"]})
+        states = doc.states(chip, {
+            "default": [(f"{chip}-label", "color", colour([1, 1, 1, 0.8]))], "hover": [(f"{chip}-label", "color", colour([1, 1, 1, 1]))],
+            "focus": [(f"{chip}-label", "color", colour(rgb(ORANGE)))], "pressed": [(f"{chip}-label", "color", colour(rgb(ORANGE)))],
+            "disabled": [(f"{chip}-label", "color", colour([1, 1, 1, 0.8]))],
+        })
+        event = f"match_side_{side}"
+        doc.events[event] = [{"op": "if", "condition": {"state": f"mp.match.side{side}.available"}, "then": match_op(token)}]
+        node = group(chip, {**absolute(left=side * left_w / 2, top=20, width=left_w / 2 - 12, height=24), "opacity": number(1)},
+                     [caption, mark], control={"role": "button", "label": "#str_41720" if side == 0 else "#str_41721", "event": event,
+                                               "states": states})
+        doc.bind(f"{chip}.opacity", chip, "opacity", {"op": "select", "args": [{"state": f"mp.match.side{side}.available"}, 1, 0.4]})
+        side_children.append(node)
+        controls.append(chip)
+    side_row = group("match-side", {**flow, "height": length(46), "margin-top": length(10), "display": keyword("none")}, side_children)
+    doc.bind("match-side.display", "match-side", "display", {"op": "select", "args": [{"state": "mp.match.side.shown"}, "block", "none"]})
+    column.append(side_row)
+    # The referee: Sign in opens the stock page, which has the credential's
+    # field; Sign out asks the game. Either says why it is unavailable.
+    login, logout = "mp.match.op.referee_login", "mp.match.op.referee_logout"
+    for op_key in (login, logout):
+        for field, kind in (("shown", "boolean"), ("available", "boolean"), ("label", "string"), ("reason", "string"), ("detail", "string")):
+            doc.state[f"{op_key}.{field}"] = {"type": kind, "initial": False if kind == "boolean" else ""}
+    doc.events["match_referee_login"] = [{"op": "if", "condition": {"state": f"{login}.available"}, "then": [{"op": "call", "event": "stock_match"}]}]
+    doc.events["match_referee_logout"] = [{"op": "if", "condition": {"state": f"{logout}.available"}, "then": match_op("referee_logout")}]
+    sign_in = link(doc, "match-referee-login", MATCH_SIGN_IN, event="match_referee_login")
+    sign_out = link(doc, "match-referee-logout", MATCH_SIGN_OUT, event="match_referee_logout")
+    for node, op_key in ((sign_in, login), (sign_out, logout)):
+        node["properties"]["display"] = keyword("none")
+        doc.bind(f"{node['id']}.display", node["id"], "display", {"op": "select", "args": [{"state": f"{op_key}.shown"}, "block", "none"]})
+        controls.append(node["id"])
+    referee_reason = label("match-referee-reason", PLACEHOLDER, {**flow, **typeface("lowpixel", 14, 16, rgb(ERROR)),
+                                                                 "white-space": keyword("normal")})
+    shown_reason = {"op": "select", "args": [{"state": f"{login}.shown"},
+                                             {"op": "select", "args": [{"state": f"{login}.available"}, "", {"state": f"{login}.reason"}]},
+                                             {"op": "select", "args": [{"state": f"{logout}.available"}, "", {"state": f"{logout}.reason"}]}]}
+    doc.bind("match-referee-reason.text", "match-referee-reason", "text", shown_reason)
+    referee = group("match-referee", {**flow, "margin-top": length(8)}, [
+        group("match-referee-head", {**flow, "height": length(22), "display": keyword("flex"), "flex-direction": keyword("row"),
+                                     "align-items": keyword("center")}, [
+            label("match-referee-label", MATCH_REFEREE, {"position": keyword("relative"), "display": keyword("block"),
+                  "width": length(110), "flex-shrink": number(0), **typeface("lowpixel", 15, 22, rgb(OLIVE)), "white-space": keyword("nowrap")}),
+            sign_in, sign_out]),
+        referee_reason,
+    ])
+    column.append(referee)
+    # A spectator steps the camera through the players it may follow.
+    follow_links = []
+    for name, token, key in MATCH_FOLLOW:
+        event = f"match_follow_{name}"
+        doc.events[event] = match_op(token)
+        node = link(doc, f"match-follow-{name}", key, event=event)
+        follow_links.append(node)
+        controls.append(node["id"])
+    follow = group("match-follow", {**flow, "height": length(22), "margin-top": length(8), "display": keyword("none"),
+                                    "flex-direction": keyword("row"), "align-items": keyword("center")}, follow_links)
+    doc.bind("match-follow.display", "match-follow", "display", {"op": "select", "args": [{"state": "mp.match.follow"}, "flex", "none"]})
+    column.append(follow)
+    # The actions, each a row.
+    rows = []
+    for row_index, (name, token, accessible, body) in enumerate(MATCH_ACTIONS):
+        steps = match_op(token) + ([{"op": "call", "event": f"{match_modal_id(name)}Show"}] if body else [])
+        row, row_id = match_action_row(doc, name, accessible, right_w, value_x, row_index * MATCH_ROW_PITCH, steps)
+        rows.append(row)
+        controls.append(row_id)
+    actions = group("match-actions", absolute(left=right_x, top=0, width=right_w, height=len(MATCH_ACTIONS) * MATCH_ROW_PITCH), rows)
+    result = label("match-result", PLACEHOLDER, {**absolute(left=right_x, top=len(MATCH_ACTIONS) * MATCH_ROW_PITCH + 4, width=right_w,
+                                                            height=section_height - len(MATCH_ACTIONS) * MATCH_ROW_PITCH - 4),
+                   **typeface("lowpixel", 15, 17, [1, 1, 1, 0.85]), "white-space": keyword("normal"), "overflow": keyword("hidden")})
+    doc.bind("match-result.text", "match-result", "text", {"state": "mp.match.result"})
+    live = group("match-status-live", {**absolute(left=0, top=0, width=page_width, height=section_height), "display": keyword("none")},
+                 [group("match-status-column", {**absolute(left=0, top=0, width=left_w, height=section_height), "overflow": keyword("hidden")},
+                        column), actions, result])
+    doc.bind("match-status-live.display", "match-status-live", "display",
+             {"op": "select", "args": [{"state": "mp.match.available"}, "block", "none"]})
+    waiting = label("match-waiting", MATCH_WAITING, {**absolute(left=0, top=0, width=page_width, height=24),
+                    **typeface("lowpixel", 17, 24, [1, 1, 1, 0.8]), "white-space": keyword("nowrap"), "display": keyword("none")})
+    doc.bind("match-waiting.display", "match-waiting", "display", {"op": "select", "args": [{"state": "mp.match.available"}, "none", "block"]})
+    sections = [section_group("status", 0, [waiting, live])]
+    # The sections not built yet open the stock page.
+    plate_width = max(300.0, max(b.text_width("marine", text, 20) for text in table_text(HANDOFF_ACTION).values()) + 46)
+    for position, section in enumerate(MATCH_SECTIONS):
+        if section in MATCH_BUILT:
+            continue
+        note = label(f"match-{section}-note", HANDOFF_NOTE, {**absolute(left=0, top=0, width=page_width, height=24),
+                     **typeface("lowpixel", 17, 24, [1, 1, 1, 0.8]), "white-space": keyword("nowrap")})
+        plate = in_game_plate(doc, f"match-{section}-open", HANDOFF_ACTION, 0, 36, width=round(plate_width, 3), primary=True,
+                              event="stock_match")
+        sections.append(section_group(section, position, [note, plate]))
+        controls.append(f"match-{section}-open")
+    # Opening the page asks the game to project its view again, then focuses
+    # the section shown.
+    focus_steps: list = []
+    for position in reversed(range(len(MATCH_SECTIONS))):
+        focus_steps = [{"op": "if", "condition": {"op": "==", "args": [{"state": "card.match_section"}, position]},
+                        "then": [{"op": "focus", "control": f"match-tab-{MATCH_SECTIONS[position]}"}],
+                        **({"else": focus_steps} if focus_steps else {})}]
+    return page_group(doc, index, ident, width, height, [strip, rule, *sections], controls), [*match_op("refresh"), *focus_steps]
+
+
+PAGE_BUILDERS = {"team": team_page, "players": players_page, "vote": vote_page, "match": match_page, "settings": settings_page,
                  "voice": voice_page, "server": server_page}
 
 
@@ -2108,9 +2441,9 @@ def escape_document() -> dict:
                  [card_frame(width, height), *card_header(doc, width, "mp.title", trailing), *tab_strip(doc, width, ESCAPE_TABS),
                   *pages, prompt_row(width, height, VERB_RESUME, actions)])
     disconnect = confirmation(doc, "disconnectModal", DISCONNECT, DISCONNECT_BODY, "mpDisconnect")
-    # Every way out hides the card and its modal at once; the backdrop
+    # Every way out hides the card and its modals at once; the backdrop
     # releases behind them.
-    chrome = group("chrome", {**FULL, "display": keyword("block")}, [card, disconnect])
+    chrome = group("chrome", {**FULL, "display": keyword("block")}, [card, disconnect, *match_modals(doc)])
     doc.bind("chrome.display", "chrome", "display", {"op": "select", "args": [{"state": "card.released"}, "none", "block"]})
     root = group("screen", {**FULL, "font-family": b.font("marine"), "font-size": length(16), "color": colour([1, 1, 1, 0.8])},
                  [*backdrop(doc), chrome])

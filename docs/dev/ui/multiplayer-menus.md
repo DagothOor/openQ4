@@ -6,13 +6,14 @@ with one card over the live, softened match (section 14.18 of the
 Escape card's shell came first: the card, its header, the eight-tab strip, the
 prompt bar, the Disconnect confirmation, the softening and its release, and the
 session and game plumbing that let the card cover the game's own menu. The
-Team, Players, Vote, Settings, Voice and Server pages are built on it; Match
-and Admin still hand off to their stock pages, so the Escape card stays
-opt-in. The Welcome card covers the connect-time join offer with its Join,
-Server, Players and Settings pages, all built, so it presents by default.
-The loading screen hands a join over to the Welcome card (B8). Match follows
-in a later increment (the plan's B9); Admin waits for text fields, and its
-stock page's password check now works (B7).
+Team, Players, Vote, Settings, Voice and Server pages are built on it, and the
+Match page's Status section; Match's other sections and Admin still hand off
+to their stock pages, so the Escape card stays opt-in. The Welcome card covers
+the connect-time join offer with its Join, Server, Players and Settings pages,
+all built, so it presents by default. The loading screen hands a join over to
+the Welcome card (B8). The Match page's other sections follow (the plan's
+B9b to B9f); Admin waits for text fields, and its stock page's password check
+now works (B7).
 
 ## The gate
 
@@ -201,6 +202,41 @@ differ from the server's, since the server refuses a whole vote for one
 unchanged field. The page opens on Vote Yes while the player can vote, and on
 its first row otherwise.
 
+### The Match page
+
+Match Control's six sections, the stock page's Status, Teams, Proposals,
+Rules, Series and Evidence, form a second, smaller strip under the card's
+(decision D3): the triggers page through them, Left and Right move along the
+strip and accept chooses; the bumpers, Q and E keep the main strip. The page
+asks the game to project its view again as it opens (`refresh`) and opens on
+the section it showed last.
+
+Status is built:
+
+- **The match.** The short phase as the heading, then the state lines
+  Match Control writes (lifecycle and round, the last result, readiness,
+  pause, the player's role and side, the timeout budgets), each wrapping, and
+  the latest result under the actions.
+- **The action target.** Where the player chooses the side an action
+  applies to (a referee, the operator), the two sides, the chosen one
+  underlined; a side the player may not choose dims.
+- **The actions.** Set ready (or Set not ready), Team ready, Request
+  timeout, Technical pause, Resume, Force ready, Forfeit and Abort match,
+  each a row with its label and, where Match Control refuses it, the padlock
+  and the model's reason beside it; choosing a refused action shakes its row
+  and asks nothing. Force ready, Forfeit and Abort arm Match Control's
+  confirmation and ask in the stock confirmation, with the stock page's text;
+  Yes confirms it and No, or back, cancels it.
+- **The referee.** Sign in needs the credential, a text field, so it opens
+  the stock page; Sign out asks the game. Either says why it is unavailable.
+- **A spectator's camera.** Previous, Next and Free camera, for a human
+  spectator.
+
+The page asks for each action by its index in the session's
+`RETAINED_MP_MATCH_TOKENS`, which holds the stock page's own fixed tokens:
+the card never sends text of its own, and the game checks every action again
+against its accepted view. The other sections still open the stock page.
+
 ### The Settings page
 
 The player's appearance, the other players' and the way to the rest of the
@@ -338,6 +374,15 @@ only when it changes and moving `mp.revision` when anything did:
   `mp.model<slot>` and `mp.model<slot>.row_shown` (slot 2, the teammates', in
   team modes only), and the crosshair as `mp.crosshair`,
   `mp.crosshair_count` and `mp.crosshair_image`.
+- the Match page (Escape only): Match Control's own projection of its view
+  on the game's menu (`MPMatchControlProjectMenu`: localized, recipient-
+  scoped, each action's availability and reason decided by the typed model)
+  mirrored as `mp.match.{available,phase,result,follow}`,
+  `mp.match.status<0-5>`, `mp.match.side.{shown,label}` with
+  `mp.match.side<0-1>.{label,available,selected}`, and for each action
+  `mp.match.op.<name>.{shown,available,label,reason,detail}`
+  (`RETAINED_MATCH_OPERATIONS`). The game projects its menu again whenever
+  the accepted view has moved since it last did.
 
 The session writes the names of the keys bound to the ballots and to push to
 talk, `mp.keys.vote_yes`, `mp.keys.vote_no` and `mp.keys.voice_chat` with
@@ -395,6 +440,7 @@ The card's verbs are the stock menu's own commands with its selection sound:
 | `mpCallVote` | `play main_menu_selection ; retained callVote` |
 | `mpRail` | `play main_menu_selection ; retained rail <row>`, by `card.rail` |
 | `mpSettingsControls`, `mpSettingsGame`, `mpSettingsSystem` | `play main_menu_selection ; mainMenu fromMp_toControls\|fromMp_toGameoptions\|fromMp_toSystem` |
+| `mpMatch` | `play main_menu_selection ; matchControl <token>`, by `card.match_op` (the refresh without the sound) |
 
 The Vote page's rows are value controls. Their actions use the adapter's
 `session.menuValue` operation, which carries the control's new value with a
@@ -448,6 +494,13 @@ The plan left these to the owner. The card is opt-in, so each can still change
 without affecting players:
 
 - **Width (D8).** As above: the card grows past 648 dp to fit the strip.
+- **Match sections (D3).** The triggers page Match Control's sections, as
+  Left and Right do along the inner strip; section 14.18's bumpers keep the
+  main strip.
+- **Match actions.** Rows with their reasons beside them rather than the
+  stock page's buttons and shared Action line: the labels run too long for
+  plates in French and German, and a reason beside its action needs no
+  pointing.
 - **Tab labels (D7).** Marine 14 dp, short labels written for the strip; the
   active label is white.
 - **Softening (D1).** `modal.softfocus` values, with a centred scrim and
@@ -667,13 +720,42 @@ The Settings and Voice pages add:
 Evidence: `.tmp/ui/retained-mp-settings/validation-evidence.json`, SHA-256
 `ef740505998f2b64c757928e2c62e08fd34dda5a735a1645c369e9d817e83f8a`.
 
+The Match page adds:
+
+- gate cases: a Match Control action by index reaching the game as
+  `matchControl <token>` with the selection sound, the refresh without it,
+  and an index past the table refused; pins that the session's tokens equal
+  the card's and are each one of the game's own Match Control commands, that
+  the game's mirrored operations, labels and state lines equal the page's,
+  that only the Escape card mirrors Match Control, that the page asks first
+  exactly where Match Control's descriptors confirm, with the stock modal's
+  text, and that the triggers page sections;
+- adapter checks that the triggers run a document's `onSectionPrevious` and
+  `onSectionNext` once per press, and nothing where it declares none;
+- native checks of the page: the refresh as it opens, waiting for a view,
+  the phase, state lines and result, the actions stacking beside the state,
+  a refused action's padlock and reason and its choice asking nothing, each
+  action's token, Force ready and Forfeit asking first with Yes confirming
+  and No cancelling, an unavailable Abort opening nothing, the action target,
+  Sign in opening the stock page or saying why, Sign out, a spectator's
+  camera, and the triggers paging the sections around the strip on the Match
+  page only;
+- live probes on listen servers with bots and the opt-in, in English on
+  OpenGL and German on Vulkan: the Status section, a technical pause and the
+  resume taking effect with Match Control's result, Forfeit's confirmation
+  answered No, and a trigger paging to Teams.
+
+Evidence: `.tmp/ui/retained-mp-match/validation-evidence.json`, SHA-256
+`861b55c1226ee7c57e37954faefacfa38824f5f33b7f2b85fc422f38e6bc89b7`.
+
 The card's acceptance continues under `FLOW-046`.
 
 ## Known limitations
 
-- Match and Admin hand off to their stock pages, and the stock menu then
-  keeps the menu until it closes; the card does not come back over it. So do
-  the Settings pages' name and clan.
+- Admin, the Match page's sections other than Status and its referee sign-in
+  hand off to their stock pages, and the stock menu then keeps the menu until
+  it closes; the card does not come back over it. So do the Settings pages'
+  name and clan.
 - Choosing an unavailable action does not announce its reason to the
   accessibility text backing yet, and a controller gives no rumble.
 - The Team page has no Tourney queue or arena controls; Tourney offers what

@@ -836,6 +836,26 @@ int main() {
             CHECK(gameObject.guiCommands.size() == asked && s.guiRetainedMultiplayer == card &&
                   commonObject.warnings.back().find("team action") != std::string::npos);
         }
+        // The Match page names a Match Control action by index; the session sends
+        // the game's own fixed token and the menu stays open. The refresh the
+        // page asks as it opens makes no sound; an index past the table is refused.
+        gameObject.answer = [](const char*) -> const char* { return "continue"; };
+        card->state["card.match_op"] = "1"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl ready_toggle" && s.guiRetainedMultiplayer == card);
+        card->state["card.match_op"] = "0"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "matchControl refresh");
+        card->state["card.match_op"] = "7"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl arm_forfeit");
+        card->state["card.match_op"] = "15"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl confirm");
+        card->state["card.match_op"] = "16"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl cancel_confirm" && s.guiRetainedMultiplayer == card);
+        const size_t matched = gameObject.guiCommands.size();
+        for (const char* action : {"-1", "17", "99"}) {
+            card->state["card.match_op"] = action; s.HandleRetainedSessionRequest(card, "mpMatch");
+            CHECK(gameObject.guiCommands.size() == matched && s.guiRetainedMultiplayer == card &&
+                  commonObject.warnings.back().find("match action") != std::string::npos);
+        }
         // The Players page: the client a row or the statistics name reaches the
         // game as "retained select|mute|friend <client>", none of which closes
         // the menu; a client outside the server's slots is refused.
@@ -1879,6 +1899,56 @@ def check_loading_hold(compiler: str, directory: Path) -> None:
     assert document['root']['properties']['opacity']['value'] == 1
 
 
+
+def check_retained_match(menu: str) -> None:
+    """The Match page's contracts that the compiled cases cannot see: the card's
+    action indices, the session's tokens and the game's own Match Control
+    commands agree; the game mirrors the operations the page shows, with the
+    page's status lines; the page asks first exactly where Match Control
+    confirms, with the stock modal's text; the triggers page its sections."""
+    sys.path.insert(0, str(ROOT / 'tools/ui'))
+    import retained_mp_menus as cards
+    tokens = tuple(re.findall(r'"([a-z_]+)"', re.search(r'RETAINED_MP_MATCH_TOKENS\[\] = \{([^}]*)\};', menu).group(1)))
+    assert tokens == cards.MATCH_TOKENS, 'the session and the Match page name its actions alike'
+    mp_game = (ROOT / 'src/mpgame/MultiplayerGame.cpp').read_text(encoding='utf-8')
+    model = (ROOT / 'src/mpgame/mp/match/MatchControlModel.cpp').read_text(encoding='utf-8')
+    handler = function_body(mp_game, 'bool idMultiplayerGame::HandleMatchControlCommand(')
+    for token in tokens:
+        assert f'"{token}"' in mp_game or f'"{token}"' in model, f'Match Control has no "{token}" command'
+    assert '"refresh"' in handler and '"confirm"' in handler and '"cancel_confirm"' in handler
+    # The game's mirrored operations, by name, prefix and label.
+    operations = re.findall(r'\{ "(\w+)", "(\w+)", (NULL|"#str_\d+") \},',
+                            mp_game[mp_game.index('static const retainedMatchOperation_t RETAINED_MATCH_OPERATIONS[] = {'):])
+    operations = operations[:len(cards.MATCH_ACTIONS) + 2]
+    names = [name for name, _prefix, _label in operations]
+    assert names == [name for name, *_ in cards.MATCH_ACTIONS] + ['referee_login', 'referee_logout'], names
+    prefixes = {name: prefix for name, prefix, _label in operations}
+    for name, _token, accessible, _body in cards.MATCH_ACTIONS:
+        label = dict((n, l) for n, _p, l in operations)[name]
+        assert label == 'NULL' if name == 'ready' else label == f'"{accessible}"', (name, label)
+    header = (ROOT / 'src/mpgame/MultiplayerGame.h').read_text(encoding='utf-8')
+    assert int(re.search(r'RETAINED_MATCH_STATUS_LINES = (\d+);', header).group(1)) == cards.MATCH_STATUS_LINES
+    publisher = function_body(mp_game, 'void idMultiplayerGame::PublishRetainedMenu(').replace('\r\n', '\n')
+    assert '\tif ( !RetainedMenuWelcome() ) {\n\t\tPublishRetainedMatch( card, changed );' in publisher, 'only the Escape card has a Match page'
+    # Each prefix is a protocol operation the projection decides; the page asks
+    # first exactly where its descriptor carries a confirmation.
+    protocol = (ROOT / 'src/mpgame/mp/match/MatchProtocol.cpp').read_text(encoding='utf-8')
+    descriptors = dict(re.findall(r'\{ MP_MATCH_OP_\w+, "(\w+)", MP_MATCH_LOCALIZATION_OPERATION_\w+, (MP_MATCH_LOCALIZATION_\w+),', protocol))
+    stock = (ROOT / 'content/baseoq4/pak0/guis/matchcontrol.gui').read_text(encoding='utf-8')
+    for name, token, _accessible, body in cards.MATCH_ACTIONS:
+        confirmed = descriptors[prefixes[name]] != 'MP_MATCH_LOCALIZATION_NONE'
+        assert (body is not None) == confirmed == token.startswith('arm_'), (name, token, confirmed)
+        if body is not None:
+            # The stock button arms the token, then shows its modal with the body.
+            after = stock[stock.index(f'"matchControl {token}"'):]
+            assert re.search(r'"match_confirm_body::text" "(#str_\d+)"', after).group(1) == body, (token, body)
+    for name in ('referee_login', 'referee_logout'):
+        assert descriptors[prefixes[name]] == 'MP_MATCH_LOCALIZATION_NONE'
+    adapter = (ROOT / 'src/ui/UserInterfaceRetained.cpp').read_text(encoding='utf-8')
+    assert 'key == K_JOY16 ? "onSectionPrevious" : key == K_JOY15 ? "onSectionNext"' in adapter, 'the triggers page sections'
+    assert 'mpMatch' in cpp_allowlist(adapter)
+
+
 def prompt_bar_fits(document: dict, name: str) -> None:
     """The card's prompt bar, measured from the document itself in every
     language's shipped faces (its texts, sizes, paddings and margins), fits
@@ -2195,6 +2265,7 @@ def main() -> int:
     assert menu.count('RETAINED_TITLE_GUI') == 3 and menu.count('RETAINED_PAUSE_GUI') == 4 and menu.count('RETAINED_LOADING_GUI') == 2
     assert menu.count('RETAINED_PAUSE_STROGG_GUI') == 3
     check_retained_multiplayer(menu, session)
+    check_retained_match(menu)
     for signature in ('void idSessionLocal::PreloadRetainedScreens(', 'void idSessionLocal::PrepareRetainedLevel('):
         assert 'if ( !Session_RetainedScreensEnabled()' in function_body(menu, signature), f'{signature} must be gated'
     assert 'PreloadRetainedScreens();' in function_body(session, 'void idSessionLocal::Init(')

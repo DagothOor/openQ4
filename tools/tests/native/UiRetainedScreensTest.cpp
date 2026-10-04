@@ -150,7 +150,7 @@ static void CheckSchema() {
 static const std::set<std::string> SessionCommands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
 	"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
 	"mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction","mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction",
-	"mpVoteYes","mpVoteNo","mpCallVote","mpRail","mpSettingsControls","mpSettingsGame","mpSettingsSystem"};
+	"mpVoteYes","mpVoteNo","mpCallVote","mpRail","mpSettingsControls","mpSettingsGame","mpSettingsSystem","mpMatch"};
 // The value controls' verbs, which carry the control's new value.
 static const std::set<std::string> SessionValueCommands = {"mpVoteMap","mpVoteGameType","mpVoteTimeLimit","mpVoteFragLimit",
 	"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart","mpVoteBuying","mpVoteKick",
@@ -626,6 +626,153 @@ static void CheckVote(ScreenHost& host, const char* path) {
 	Check(runtime.RunEvent("tab_team",3.8,effects,error),"to the Team tab");
 	runtime.Frame(viewport,4.1);
 	Check(!runtime.CanActivateControl("vote-row-map",4.1) && !runtime.CanActivateControl("vote-call",4.1),"the Vote page takes no input");
+}
+
+// The Escape card's Match page (section 14.18): Match Control's six sections
+// as an inner strip the triggers page; Status with the game's states and its
+// actions, each asking the game by its token's index and saying why it is
+// unavailable; the confirmations; and the sections still handing off.
+static void CheckMatch(ScreenHost& host, const char* path) {
+	const auto source = Read(path);
+	Runtime runtime(host);
+	std::vector<Diagnostic> diagnostics;
+	Check(runtime.Initialize() && runtime.LoadDocument(source,"guis/menu/mp_escape.q4ui",diagnostics),"the Escape card loads for its Match page");
+	Viewport viewport; viewport.canvasHeight = 720; viewport.width = 1280; viewport.height = 720;
+	std::string error;
+	Runtime::EventEffects effects;
+	const auto text = [&](const std::string& node, const char* property) {
+		const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented keyword"); return value->text;
+	};
+	const auto number = [&](const std::string& node, const char* property) {
+		const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented value"); return static_cast<float>(value->data[0]);
+	};
+	const auto bounds = [&](const std::string& id) { Bounds b; Check(runtime.GetBounds(id,b),"a Match node is laid out"); return b; };
+	const auto section = [&]() { return std::get<double>(runtime.GetState().at("card.match_section")); };
+	// The session's RETAINED_MP_MATCH_TOKENS, by index.
+	enum { REFRESH, READY, TEAM_READY, ARM_FORCE_READY, TIMEOUT, TECH_PAUSE, RESUME, ARM_FORFEIT, ARM_ABORT, REFEREE_LOGOUT,
+		SIDE_A, SIDE_B, FOLLOW_PREV, FOLLOW_NEXT, FOLLOW_FREE, CONFIRM, CANCEL_CONFIRM };
+	const auto asked = [&](int token) {
+		return effects.actions.size() == 1 && std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpMatch" &&
+			std::get<double>(runtime.GetState().at("card.match_op")) == token;
+	};
+	// Before the game has an accepted view the page waits for one; opening it
+	// asks the game to project its view again.
+	Check(runtime.RunEvent("open",1,effects,error),"open the card");
+	Check(runtime.RunEvent("tab_match",1.01,effects,error) && asked(REFRESH),"opening the Match page asks for a refresh");
+	runtime.Frame(viewport,1.4);
+	Check(text("match-waiting","display") == "block" && text("match-status-live","display") == "none","with no view the page waits");
+	Check(runtime.FocusedControl() == "match-tab-status" && text("match-section-status","display") == "block" &&
+		text("match-section-teams","display") == "none","the page opens on its Status section");
+	// A warm-up a referee steers: Set ready and Abort unavailable, the rest not.
+	StateValues page = {{"mp.match.available",true},{"mp.match.phase",std::string("Warm-up | Round 1")},
+		{"mp.match.status0",std::string("Live | Round inactive")},{"mp.match.status1",std::string("Running | No pause")},
+		{"mp.match.status2",std::string("You: Player | Marine")},{"mp.match.result",std::string("Ready accepted.")},
+		{"mp.match.side.shown",true},{"mp.match.side.label",std::string("Action target")},
+		{"mp.match.side0.label",std::string("Marine")},{"mp.match.side0.available",true},{"mp.match.side0.selected",true},
+		{"mp.match.side1.label",std::string("Strogg")},{"mp.match.side1.available",true},{"mp.match.side1.selected",false},
+		{"mp.match.follow",false}};
+	const char* const operations[] = {"ready","team_ready","timeout","tech_pause","resume","force_ready","forfeit","abort",
+		"referee_login","referee_logout"};
+	for (const char* name : operations) {
+		const std::string key = std::string("mp.match.op.")+name, id = name;
+		page[key+".shown"] = id != "referee_logout";
+		page[key+".available"] = id != "ready" && id != "abort";
+		page[key+".label"] = id == "ready" ? std::string("Set ready") : id;
+		page[key+".reason"] = id == "ready" ? std::string("Readiness opens in the warm-up.") : id == "abort" ? std::string("Referees only.") :
+			std::string("");
+	}
+	Check(runtime.SetState(page,error,2),"publish the Match page");
+	runtime.Frame(viewport,2.3);
+	Check(text("match-waiting","display") == "none" && text("match-status-live","display") == "block","the page shows the match");
+	Check(text("match-phase","text") == "Warm-up | Round 1" && text("match-status-0","text") == "Live | Round inactive" &&
+		text("match-status-2","text") == "You: Player | Marine" && text("match-result","text") == "Ready accepted.",
+		"its phase, state lines and last result");
+	// The actions stack in a column beside the state, each in its row.
+	const char* const rows[] = {"match-ready","match-team-ready","match-timeout","match-tech-pause","match-resume","match-force-ready",
+		"match-forfeit","match-abort"};
+	const auto column = bounds("match-status-column"), page_box = bounds("page-match");
+	float previous = -1;
+	for (const char* row : rows) {
+		const auto box = bounds(row);
+		Check(box.y > previous && box.x >= column.x+column.width && box.x+box.width <= page_box.x+page_box.width+0.5f &&
+			box.y+box.height <= page_box.y+page_box.height+0.5f,"the actions stack beside the state, inside the page");
+		previous = box.y;
+	}
+	Check(bounds("match-result").y >= bounds("match-abort").y+bounds("match-abort").height,"the result follows the actions");
+	Check(Near(number("match-ready","opacity"),.6f,.001f) && text("match-ready-lock","display") == "block" &&
+		text("match-ready-reason","display") == "block" && text("match-ready-reason","text") == "Readiness opens in the warm-up.",
+		"an unavailable action dims with its lock and says why");
+	Check(Near(number("match-timeout","opacity"),1,.001f) && text("match-timeout-lock","display") == "none" &&
+		text("match-timeout-reason","display") == "none","an available one does not");
+	const auto label = bounds("match-team-ready-label"), reason = bounds("match-ready-reason");
+	Check(label.x+label.width <= reason.x,"the labels keep to their column");
+	Check(runtime.RunEvent("match_ready",2.4,effects,error) && effects.actions.empty(),"an unavailable action asks nothing");
+	Check(runtime.RunEvent("match_timeout",2.5,effects,error) && asked(TIMEOUT),"Request timeout asks the game");
+	Check(runtime.RunEvent("match_team_ready",2.55,effects,error) && asked(TEAM_READY) &&
+		runtime.RunEvent("match_tech_pause",2.56,effects,error) && asked(TECH_PAUSE) &&
+		runtime.RunEvent("match_resume",2.57,effects,error) && asked(RESUME),"as do Team ready, Technical pause and Resume");
+	// Forfeit arms the game's confirmation and asks first; Yes confirms it.
+	Check(runtime.RunEvent("match_forfeit",2.6,effects,error) && asked(ARM_FORFEIT),"Forfeit arms the game's confirmation");
+	runtime.Frame(viewport,2.9);
+	Check(text("matchForfeitModal","display") == "block" && text("matchForfeitModal-body","text") == "#str_41798","and asks first");
+	Check(runtime.RunEvent("matchForfeitModalYes",3,effects,error) && asked(CONFIRM),"Yes confirms it");
+	runtime.Frame(viewport,3.4);
+	Check(text("matchForfeitModal","display") == "none","and closes the modal");
+	// Force ready asks too; No, as back does, cancels the game's confirmation.
+	Check(runtime.RunEvent("match_force_ready",3.5,effects,error) && asked(ARM_FORCE_READY),"Force ready arms its confirmation");
+	runtime.Frame(viewport,3.8);
+	Check(text("matchForceReadyModal","display") == "block" && text("matchForceReadyModal-body","text") == "#str_41900","and asks first");
+	Check(runtime.RunEvent("matchForceReadyModalNo",3.9,effects,error) && asked(CANCEL_CONFIRM),"No cancels it");
+	runtime.Frame(viewport,4.3);
+	Check(text("matchForceReadyModal","display") == "none","and closes the modal");
+	Check(runtime.RunEvent("match_abort",4.4,effects,error) && effects.actions.empty(),"an unavailable Abort neither arms nor asks");
+	runtime.Frame(viewport,4.7);
+	Check(text("matchAbortModal","display") == "none","and no modal opens");
+	// The side an action applies to.
+	Check(text("match-side","display") == "block" && text("match-side-0-mark","display") == "block" &&
+		text("match-side-1-mark","display") == "none" && text("match-side-1-label","text") == "Strogg","the action target, Marine chosen");
+	Check(runtime.RunEvent("match_side_1",4.8,effects,error) && asked(SIDE_B),"choosing Strogg asks the game");
+	Check(runtime.SetState({{"mp.match.side0.available",false}},error,4.9) && runtime.RunEvent("match_side_0",4.95,effects,error) &&
+		effects.actions.empty(),"a side the player may not choose asks nothing");
+	// Signing in needs the credential, so it opens the stock page; signing out asks the game.
+	runtime.Frame(viewport,5);
+	Check(text("match-referee-login","display") == "block" && text("match-referee-logout","display") == "none","Sign in, not Sign out");
+	Check(runtime.RunEvent("match_referee_login",5.05,effects,error) && effects.actions.size() == 1 &&
+		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpStockPage" &&
+		std::get<double>(runtime.GetState().at("card.stock_page")) == 3,"Sign in opens the stock Match Control page");
+	Check(runtime.SetState({{"mp.match.op.referee_login.available",false},{"mp.match.op.referee_login.reason",std::string("No referee password.")}},
+		error,5.1),"no referee password on the server");
+	runtime.Frame(viewport,5.15);
+	Check(text("match-referee-reason","text") == "No referee password." && runtime.RunEvent("match_referee_login",5.2,effects,error) &&
+		effects.actions.empty(),"Sign in then says why and asks nothing");
+	Check(runtime.SetState({{"mp.match.op.referee_login.shown",false},{"mp.match.op.referee_logout.shown",true},
+		{"mp.match.op.referee_logout.available",true}},error,5.3),"signed in");
+	runtime.Frame(viewport,5.35);
+	Check(text("match-referee-login","display") == "none" && text("match-referee-logout","display") == "block" &&
+		text("match-referee-reason","text").empty(),"Sign out, nothing to explain");
+	Check(runtime.RunEvent("match_referee_logout",5.4,effects,error) && asked(REFEREE_LOGOUT),"Sign out asks the game");
+	// A spectator's camera.
+	Check(text("match-follow","display") == "none","no camera controls for a player");
+	Check(runtime.SetState({{"mp.match.follow",true}},error,5.5),"spectating");
+	runtime.Frame(viewport,5.55);
+	Check(text("match-follow","display") == "flex","a spectator steps the camera");
+	Check(runtime.RunEvent("match_follow_previous",5.6,effects,error) && asked(FOLLOW_PREV) &&
+		runtime.RunEvent("match_follow_next",5.61,effects,error) && asked(FOLLOW_NEXT) &&
+		runtime.RunEvent("match_follow_free",5.62,effects,error) && asked(FOLLOW_FREE),"through the players or free");
+	// The triggers page the sections, around the strip; the others still open the stock page.
+	Check(runtime.RunEvent("onSectionNext",6,effects,error) && section() == 1 && runtime.FocusedControl() == "match-tab-teams","a trigger pages on");
+	runtime.Frame(viewport,6.1);
+	Check(text("match-section-teams","display") == "block" && text("match-section-status","display") == "none","to the Teams section");
+	Check(runtime.RunEvent("stock_match",6.2,effects,error) && effects.actions.size() == 1 &&
+		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpStockPage","which opens the stock page");
+	Check(runtime.RunEvent("match_section_status",6.3,effects,error) && section() == 0 &&
+		runtime.RunEvent("onSectionPrevious",6.4,effects,error) && section() == 5 && runtime.FocusedControl() == "match-tab-evidence",
+		"back around the strip from Status to Evidence");
+	Check(runtime.RunEvent("tab_vote",6.5,effects,error) && runtime.RunEvent("onSectionNext",6.6,effects,error) && section() == 5,
+		"the triggers page sections only on the Match page");
+	runtime.Frame(viewport,6.9);
+	Check(!runtime.CanActivateControl("match-tab-status",6.9) && !runtime.CanActivateControl("match-evidence-open",6.9),
+		"the Match page takes no input from another tab");
 }
 
 // The multiplayer cards' Settings pages and the Escape card's Voice page
@@ -1945,6 +2092,7 @@ int main(int argc, char** argv) {
 	}
 	CheckEscape(host,argv[7]);
 	CheckVote(host,argv[7]);
+	CheckMatch(host,argv[7]);
 	CheckSettings(host,argv[7],argv[8]);
 	CheckWelcome(host,argv[8]);
 	Check(host.errors == 0,"no retained diagnostics");

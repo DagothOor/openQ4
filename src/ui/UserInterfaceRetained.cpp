@@ -75,7 +75,7 @@ bool SessionMenuCommand(const std::string& command) {
         "campaigns","campaignQuake4","campaignAwakening","campaignArena","campaignBack","campaignHome",
         "mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction",
         "mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction","mpVoteYes","mpVoteNo","mpCallVote",
-        "mpRail","mpSettingsControls","mpSettingsGame","mpSettingsSystem"};
+        "mpRail","mpSettingsControls","mpSettingsGame","mpSettingsSystem","mpMatch"};
 	return commands.contains(command);
 }
 
@@ -570,10 +570,12 @@ struct idUserInterfaceRetained::Impl {
 		return !pause;
 	}
 	// Q and E, and the shoulder buttons, page a document's tabs where it
-	// declares onTabPrevious and onTabNext. A field being edited keeps its keys,
-	// and Ctrl or Alt leave them to shortcuts.
+	// declares onTabPrevious and onTabNext; the triggers page the lists within
+	// a page where it declares onSectionPrevious and onSectionNext. A field
+	// being edited keeps its keys, and Ctrl or Alt leave them to shortcuts.
 	bool TabKey(int key, const openq4::KeyEventMetadata* metadata) {
-		const char* name = key == 'q' || key == K_JOY1 ? "onTabPrevious" : key == 'e' || key == K_JOY2 ? "onTabNext" : nullptr;
+		const char* name = key == 'q' || key == K_JOY1 ? "onTabPrevious" : key == 'e' || key == K_JOY2 ? "onTabNext" :
+			key == K_JOY16 ? "onSectionPrevious" : key == K_JOY15 ? "onSectionNext" : nullptr;
 		if (!name || !RuntimeView()->HasEvent(name)) return false;
 		const bool control = metadata ? metadata->control : held.contains(K_CTRL) || idKeyInput::IsDown(K_CTRL);
 		const bool alt = metadata ? metadata->alt : held.contains(K_ALT) || held.contains(K_RIGHT_ALT) || idKeyInput::IsDown(K_ALT) || idKeyInput::IsDown(K_RIGHT_ALT);
