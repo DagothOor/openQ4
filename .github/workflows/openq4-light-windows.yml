@@ -5,7 +5,7 @@ name: openQ4 Light Windows build
 
 on:
   push:
-    branches: [ openq4-light ]
+    branches: [ openq4-light, openq4-light-0.13.2 ]
   workflow_dispatch:
 
 permissions:

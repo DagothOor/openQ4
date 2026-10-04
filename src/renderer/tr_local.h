@@ -1058,7 +1058,8 @@ extern idCVar r_ssaoIntensity;			// SSAO darkening strength
 extern idCVar r_ssaoPower;				// SSAO response curve
 extern idCVar r_ssaoMaxDistance;		// SSAO far-distance fade
 extern idCVar r_ssaoSamples;			// SSAO spiral sample count
-extern idCVar r_ssaoDebug;				// visualize SSAO only
+extern idCVar r_ssaoDebug;
+extern idCVar r_ssaoGTAO;				// GTAO (1) or original SSAO (0)				// visualize SSAO only
 extern idCVar r_motionBlur;				// enable camera motion blur post-process
 extern idCVar r_motionBlurStrength;		// motion blur strength multiplier
 extern idCVar r_motionBlurMaxPixels;	// maximum motion blur radius in pixels
@@ -1351,6 +1352,8 @@ extern idCVar r_useLightGrid;			// enable indirect diffuse from precomputed irra
 extern idCVar r_lightGridIntensity;		// scales baked light-grid indirect diffuse contribution
 extern idCVar r_lightGridVisibilityFloor;	// minimum light-grid probe visibility after falloff
 extern idCVar r_lightGridIrradianceGamma;	// gamma decode for baked LDR light-grid irradiance
+extern idCVar r_lightGridAO;			// AO on baked indirect light only
+extern idCVar r_lightGridShadowFloor;	// minimum baked indirect irradiance
 extern idCVar r_lightGridMaxContribution;	// maximum light-grid contribution before bloom/HDR
 extern idCVar r_lightGridReport;		// print light-grid receiver statistics every N frames while enabled
 extern idCVar r_lightGridDebug;			// debug baked light-grid indirect pass output

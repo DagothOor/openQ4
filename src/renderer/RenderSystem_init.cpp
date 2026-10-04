@@ -246,11 +246,12 @@ idCVar r_bloomMipCount( "r_bloomMipCount", "5", CVAR_RENDERER | CVAR_ARCHIVE | C
 idCVar r_ssao( "r_ssao", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "enable screen-space ambient occlusion" );
 idCVar r_ssaoRadius( "r_ssaoRadius", "36.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "SSAO sampling radius in view-space units", 4.0f, 256.0f );
 idCVar r_ssaoBias( "r_ssaoBias", "2.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "SSAO horizon bias in view-space units", 0.0f, 32.0f );
-idCVar r_ssaoIntensity( "r_ssaoIntensity", "1.35", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "SSAO darkening strength", 0.0f, 4.0f );
-idCVar r_ssaoPower( "r_ssaoPower", "1.6", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "SSAO response curve", 0.1f, 4.0f );
-idCVar r_ssaoMaxDistance( "r_ssaoMaxDistance", "220.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "fade SSAO out past this view-space distance", 16.0f, 4096.0f );
+idCVar r_ssaoIntensity( "r_ssaoIntensity", "1.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "SSAO darkening strength", 0.0f, 4.0f );
+idCVar r_ssaoPower( "r_ssaoPower", "1.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "SSAO response curve", 0.1f, 4.0f );
+idCVar r_ssaoMaxDistance( "r_ssaoMaxDistance", "4096.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "fade SSAO out past this view-space distance", 16.0f, 4096.0f );
 idCVar r_ssaoSamples( "r_ssaoSamples", "20", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "number of SSAO spiral samples", 4, 32, idCmdSystem::ArgCompletion_Integer<4,32> );
 idCVar r_ssaoDebug( "r_ssaoDebug", "0", CVAR_RENDERER | CVAR_BOOL, "visualize SSAO only" );
+idCVar r_ssaoGTAO( "r_ssaoGTAO", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "1 = GTAO (glprogs/ssao.fs, falls back automatically when it cannot compile), 0 = original SSAO (glprogs/ssao_legacy.fs)" );
 idCVar r_motionBlur( "r_motionBlur", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "enable subtle camera motion blur post-process" );
 idCVar r_motionBlurStrength( "r_motionBlurStrength", "0.45", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "motion blur strength multiplier", 0.0f, 2.0f );
 idCVar r_motionBlurMaxPixels( "r_motionBlurMaxPixels", "10", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "maximum motion blur radius in pixels", 0.0f, 64.0f );
@@ -550,6 +551,8 @@ idCVar r_lightGridIntensity( "r_lightGridIntensity", "1.0", CVAR_RENDERER | CVAR
 idCVar r_lightGridVisibilityFloor( "r_lightGridVisibilityFloor", "0.10", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "minimum baked light-grid probe visibility after visibility falloff", 0.0f, 1.0f );
 idCVar r_lightGridIrradianceGamma( "r_lightGridIrradianceGamma", "1.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "decodes baked LDR light-grid atlas samples before scene-referred blending", 0.25f, 4.0f );
 idCVar r_lightGridMaxContribution( "r_lightGridMaxContribution", "1.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "maximum per-channel baked light-grid contribution before bloom/HDR processing; 0 disables the cap", 0.0f, 16.0f );
+idCVar r_lightGridAO( "r_lightGridAO", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "apply GTAO with multi-bounce to the baked indirect light only (physically based); disables the r_ssao full-frame pass where a light grid exists" );
+idCVar r_lightGridShadowFloor( "r_lightGridShadowFloor", "0.04", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "minimum baked indirect irradiance, so surfaces are never pure black (0 = stock)", 0.0f, 1.0f );
 idCVar r_lightGridReport( "r_lightGridReport", "0", CVAR_RENDERER | CVAR_INTEGER, "print light-grid receiver statistics every N frames while enabled", 0, 600 );
 idCVar r_lightGridDebug( "r_lightGridDebug", "0", CVAR_RENDERER | CVAR_INTEGER, "debug baked light-grid indirect pass output: 0 normal, 1 receiver coverage, 2 irradiance, 3 coverage without depth, 4 albedo diagnostic, 5 final contribution, 6 manual depth accept, 7 sampled scene depth", 0, 7 );
 idCVar r_lightGridDepthBiasFactor( "r_lightGridDepthBiasFactor", "0", CVAR_RENDERER | CVAR_FLOAT, "fallback polygon offset factor for depth-tested baked light-grid overlay receivers", -64.0f, 64.0f );
