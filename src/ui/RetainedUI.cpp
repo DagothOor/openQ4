@@ -321,17 +321,22 @@ public:
 			glyph->width*scale, glyph->height*scale, glyph->s,glyph->t,glyph->s2,glyph->t2,
 			material ? material->GetName() : ""};
 	}
+	// A fatal error in startup tears everything down before the renderer module
+	// loads, so there may be no renderer: its font cache and targets are then
+	// gone with it, and only the handles are dropped.
 	void Reset() {
 		meshes.clear();
-		renderSystem->ResetRetainedFontCache();
+		if (renderSystem) renderSystem->ResetRetainedFontCache();
 		scalableFaces.clear(); fontFallbackReported = false;
 		fonts.clear();
 		ClearLayers();
 	}
 	void ClearLayers() {
-		for (auto& layer : layers) renderSystem->DestroyRenderTexture(layer.target);
-		layers.clear();
-		renderSystem->DestroyRenderTexture(blurScratch); blurScratch = nullptr;
+		if (renderSystem) {
+			for (auto& layer : layers) renderSystem->DestroyRenderTexture(layer.target);
+			renderSystem->DestroyRenderTexture(blurScratch);
+		}
+		layers.clear(); blurScratch = nullptr;
 		blurBackdropMaterial = blurScratchMaterial = nullptr;
 		backdropCreated = false; blurWidth = blurHeight = 0;
 	}
