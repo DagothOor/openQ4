@@ -429,6 +429,14 @@ static void LightGrid_RenderCaptureScene( int width, int height, renderView_t *r
 	r_useScissor.SetBool( false );
 
 	tr.BeginFrame( glConfig.vidWidth, glConfig.vidHeight );
+	// Same as R_ReadTiledPixels (the synchronous capture path): draw the portal
+	// sky first, otherwise sky pixels stay black and the bake gets no sky light.
+	if ( tr.portalSkyCaptureViewCallback != NULL && tr.primaryWorld != NULL ) {
+		renderView_t portalSkyView = *ref;
+		if ( tr.portalSkyCaptureViewCallback( ref, &portalSkyView ) ) {
+			tr.primaryWorld->RenderScene( &portalSkyView, RF_DEFER_COMMAND_SUBMIT | RF_PORTAL_SKY );
+		}
+	}
 	tr.primaryWorld->RenderScene( ref );
 
 	tr.guiModel->EmitFullScreen();
