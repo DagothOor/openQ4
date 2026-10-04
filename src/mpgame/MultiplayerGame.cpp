@@ -16868,7 +16868,7 @@ void idMultiplayerGame::PublishRetainedSettings( idUserInterface *card, bool &ch
 // match_op_<prefix>_available and _reason, and the label, which for Set ready,
 // the team lock and the broadcaster the projection names (`labelState`, the
 // stock label until it does). Joining either team and spectating share one
-// operation, as do the three ballots.
+// operation, as do the three ballots and the five veto choices.
 struct retainedMatchOperation_t {
 	const char *	name;
 	const char *	prefix;
@@ -16911,6 +16911,15 @@ static const retainedMatchOperation_t RETAINED_MATCH_OPERATIONS[] = {
 	{ "rules_stage", "rules_stage_field", "#str_41748", NULL },
 	{ "rules_commit", "rules_commit", "#str_41749", NULL },
 	{ "rules_discard", "rules_discard", "#str_41750", NULL },
+	{ "series_stage", "series_stage_profile", "#str_41754", NULL },
+	{ "series_start", "series_start", "#str_41755", NULL },
+	{ "series_cancel", "series_cancel", "#str_41756", NULL },
+	{ "series_advance", "series_advance", "#str_41757", NULL },
+	{ "veto_ban", "veto_select", "#str_41758", NULL },
+	{ "veto_pick", "veto_select", "#str_41759", NULL },
+	{ "veto_decider", "veto_select", "#str_41760", NULL },
+	{ "veto_side_marine", "veto_select", "#str_41761", NULL },
+	{ "veto_side_strogg", "veto_select", "#str_41762", NULL },
 };
 
 /*
@@ -17012,6 +17021,20 @@ void idMultiplayerGame::PublishRetainedMatch( idUserInterface *card, bool &chang
 		available ? clientMatchControlModel.ProfileRowCount() : 0, RETAINED_MATCH_PROFILE_ROWS, 1 );
 	PublishRetainedMatchList( card, changed, "match_rule_rows", "rule",
 		available ? clientMatchControlModel.RuleRowCount() : 0, RETAINED_MATCH_RULE_ROWS, 3 );
+	// Series: the series, the format a staged series takes, the map pool and
+	// the veto and map history, each list's first three columns (the card
+	// leaves out the stock page's fourth, the starting and winning sides).
+	// Evidence: the evidence's state and the most recent evidence.
+	publish( "mp.match.series.summary", MPRetainedPlainText( state.GetString( "match_series_summary" ), 512, 2 ).c_str() );
+	const char *format = state.GetString( "match_series_profile_choice" );
+	publish( "mp.match.series_profile", !idStr::Icmp( format, "best_of_five" ) ? "2" : !idStr::Icmp( format, "best_of_three" ) ? "1" : "0" );
+	PublishRetainedMatchList( card, changed, "match_series_map_rows", "series_map",
+		available ? clientMatchControlModel.SeriesMapRowCount() : 0, RETAINED_MATCH_SERIES_MAP_ROWS, 3 );
+	PublishRetainedMatchList( card, changed, "match_series_history_rows", "series_history",
+		available ? clientMatchControlModel.SeriesHistoryRowCount() : 0, RETAINED_MATCH_HISTORY_ROWS, 3 );
+	publish( "mp.match.evidence.summary", MPRetainedPlainText( state.GetString( "match_evidence_summary" ), 512, 3 ).c_str() );
+	PublishRetainedMatchList( card, changed, "match_evidence_rows", "evidence",
+		available ? clientMatchControlModel.EvidenceRowCount() : 0, RETAINED_MATCH_EVIDENCE_ROWS, 1 );
 }
 
 /*

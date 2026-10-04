@@ -1222,6 +1222,8 @@ windowDef p_matchcontrol
 			backgroundHover	"gfx/guis/mainmenu/bg_hover2"
 			backgroundFocus	"gfx/guis/mainmenu/bg_focus2"
 			backgroundLine	"gfx/guis/mainmenu/bg_line2"
+			tabstops	"0,270,356"
+			tabaligns	"0,0"
 			onAction { set "cmd" "matchControl select_proposal_row" ; }
 		}
 		windowDef match_proposal_create_button

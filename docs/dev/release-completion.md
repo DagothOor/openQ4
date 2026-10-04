@@ -868,10 +868,11 @@
   and its Match page shows Match Control's state and its readiness, pause,
   forfeit and abort actions, its teams and rosters with the team, queue and
   roster actions and the role an invitation gives, its proposals with their
-  ballots, and its rules with their profiles and a value to stage, each action
+  ballots, its rules with their profiles and a value to stage, its series
+  with the map pool, the veto and the history, and its evidence, each action
   saying why it is unavailable and asking first where the classic page does,
-  with the triggers paging Match Control's sections. Its Admin page and Match
-  Control's other sections still open the classic pages for now.
+  with the triggers paging Match Control's sections. Its Admin page and the
+  referee sign-in still open the classic pages for now.
   The prompt bars' Select now reads correctly in Spanish and Italian.
 
 - Joining a server without automatic joining now opens the new Welcome card

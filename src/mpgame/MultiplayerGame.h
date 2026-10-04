@@ -1247,6 +1247,9 @@ private:
 	static const int RETAINED_MATCH_PROPOSAL_ROWS = 6;
 	static const int RETAINED_MATCH_PROFILE_ROWS = 16;
 	static const int RETAINED_MATCH_RULE_ROWS = 34;
+	static const int RETAINED_MATCH_SERIES_MAP_ROWS = 16;
+	static const int RETAINED_MATCH_HISTORY_ROWS = 24;
+	static const int RETAINED_MATCH_EVIDENCE_ROWS = 5;
 	void			PublishRetainedMatch( idUserInterface *card, bool &changed );
 	void			PublishRetainedMatchList( idUserInterface *card, bool &changed, const char *list, const char *key, int count, int rows,
 						int columns );

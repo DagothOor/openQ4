@@ -81,13 +81,15 @@ bool SessionMenuCommand(const std::string& command) {
 
 // Session verbs a value control may request with its new value: the
 // multiplayer card's Vote page fields, its Settings pages' model lists and
-// crosshair, and its Match page's role, ballot target and rule value. The
+// crosshair, and its Match page's role, ballot target, rule value and series
+// format. The
 // session maps each verb to its field and the game checks the value against
 // the field's rules.
 bool SessionMenuValueCommand(const std::string& command) {
 	static const std::set<std::string> commands = {"mpVoteMap","mpVoteGameType","mpVoteTimeLimit","mpVoteFragLimit",
 		"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart",
-		"mpVoteBuying","mpVoteKick","mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair","mpMatchRole","mpMatchScope","mpMatchRuleValue"};
+		"mpVoteBuying","mpVoteKick","mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair","mpMatchRole","mpMatchScope","mpMatchRuleValue",
+		"mpMatchSeriesProfile"};
 	return commands.contains(command);
 }
 

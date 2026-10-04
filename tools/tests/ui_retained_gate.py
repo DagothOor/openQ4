@@ -862,8 +862,14 @@ int main() {
         CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl arm_rules_commit");
         card->state["card.match_op"] = "41"; s.HandleRetainedSessionRequest(card, "mpMatch");
         CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl rules_discard" && s.guiRetainedMultiplayer == card);
+        card->state["card.match_op"] = "42"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl series_stage");
+        card->state["card.match_op"] = "46"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl arm_veto_ban");
+        card->state["card.match_op"] = "50"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl arm_veto_side_strogg" && s.guiRetainedMultiplayer == card);
         const size_t matched = gameObject.guiCommands.size();
-        for (const char* action : {"-1", "42", "99"}) {
+        for (const char* action : {"-1", "51", "99"}) {
             card->state["card.match_op"] = action; s.HandleRetainedSessionRequest(card, "mpMatch");
             CHECK(gameObject.guiCommands.size() == matched && s.guiRetainedMultiplayer == card &&
                   commonObject.warnings.back().find("match action") != std::string::npos);
@@ -909,6 +915,17 @@ int main() {
             s.HandleRetainedSessionRequest(card, bad);
             CHECK(mpMenu.state["match_proposal_scope_choice"] == "global" && gameObject.guiCommands.size() == selected &&
                   commonObject.warnings.back().find("ballot target") != std::string::npos);
+        }
+        // The format a staged series takes, in the stock choice's own words; a
+        // format outside the three is refused.
+        s.HandleRetainedSessionRequest(card, "mpMatchSeriesProfile 2");
+        CHECK(mpMenu.state["match_series_profile_choice"] == "best_of_five" && gameObject.guiCommands.size() == selected);
+        s.HandleRetainedSessionRequest(card, "mpMatchSeriesProfile 0");
+        CHECK(mpMenu.state["match_series_profile_choice"] == "best_of_one" && gameObject.guiCommands.size() == selected);
+        for (const char* bad : {"mpMatchSeriesProfile 3", "mpMatchSeriesProfile -1"}) {
+            s.HandleRetainedSessionRequest(card, bad);
+            CHECK(mpMenu.state["match_series_profile_choice"] == "best_of_one" && gameObject.guiCommands.size() == selected &&
+                  commonObject.warnings.back().find("series format") != std::string::npos);
         }
         // The value to stage for a rule waits on the game's menu, a whole number
         // up to the largest a rule takes; anything else is refused.
@@ -1991,7 +2008,8 @@ def check_retained_match(menu: str) -> None:
     operations = re.findall(r'\{ "(\w+)", "(\w+)", "(#str_\d+)", (NULL|"\w+") \},', table[:table.index('};')])
     names = [name for name, _prefix, _label, _state in operations]
     assert names == [name for name, *_ in cards.MATCH_STATUS_ACTIONS] + ['referee_login', 'referee_logout'] + \
-        [name for name, *_ in cards.MATCH_TEAM_ACTIONS + cards.MATCH_PROPOSAL_ACTIONS + cards.MATCH_RULE_ACTIONS], names
+        [name for name, *_ in cards.MATCH_TEAM_ACTIONS + cards.MATCH_PROPOSAL_ACTIONS + cards.MATCH_RULE_ACTIONS +
+         cards.MATCH_SERIES_ACTIONS], names
     prefixes = {name: prefix for name, prefix, _label, _state in operations}
     projection = (ROOT / 'src/mpgame/mp/match/MatchControlProjection.cpp').read_text(encoding='utf-8')
     named = {'ready': ('match_ready_action', '#str_41714'), 'team_lock': ('match_team_lock_action', '#str_41735'),
@@ -2043,6 +2061,47 @@ def check_retained_match(menu: str) -> None:
     assert 'number > (rule ? 10000 : 999)' in (ROOT / 'src/ui/UserInterfaceRetained.cpp').read_text(encoding='utf-8')
     assert 'guiActive->SetStateInt( "match_rule_value", voteValue );' in menu and 'parseStateInteger( "match_rule_value",' in handler
     assert 'mainGui->GetStateString(\n\t\t\t"match_proposal_scope_choice", "" );' in handler.replace('\r\n', '\n')
+    # The reasons the generator fits into each section's reason column are
+    # every reason a row can show: the protocol's, by its own key or its
+    # localization id, the wait for a view and the unknown value.
+    localization_source = (ROOT / 'src/mpgame/mp/match/MatchControlLocalization.cpp').read_text(encoding='utf-8')
+    reason_keys = re.findall(r'"(#str_\d+)"', function_body(localization_source, 'const char *MPMatchControlProtocolReasonKey('))
+    localized_reasons = re.findall(r'case MP_MATCH_LOCALIZATION_REASON_\w+: return "(#str_\d+)";', localization_source)
+    assert reason_keys == localized_reasons and set(reason_keys) | {'#str_41774', '#str_42301'} == set(cards.MATCH_REASON_KEYS), reason_keys
+    assert 'static const char UNKNOWN_KEY[] = "#str_42301";' in localization_source
+    # The generator refuses a reason column that cannot hold every reason in
+    # its lines, in every language, and accepts the sections' own.
+    for lines, width in ((2, 300), (3, 330)):
+        try:
+            cards.check_match_labels(width, cards.MATCH_TEAM_LABELS, lines)
+        except SystemExit:
+            continue
+        raise AssertionError(f'a {width} dp action column passed with reasons in {lines} lines')
+    cards.check_match_labels(859 - 336, cards.MATCH_STATUS_LABELS)
+    assert 'return Localized( "#str_41774" );' in function_body(projection, 'static const char *AvailabilityReason(')
+    # Series and Evidence: the map pool, history and recent evidence, as many
+    # rows as the card holds (past them the stock page); the history and the
+    # evidence only to read, with no selection of their own on either side.
+    view_header = (ROOT / 'src/mpgame/mp/match/MatchView.h').read_text(encoding='utf-8')
+    assert 'MP_MATCH_CONTROL_MAX_SERIES_MAP_ROWS = MP_MATCH_VIEW_MAX_SERIES_MAP_POOL;' in model_header
+    assert int(re.search(r'RETAINED_MATCH_SERIES_MAP_ROWS = (\d+);', header).group(1)) == cards.MATCH_SERIES_MAP_ROWS <= \
+        int(re.search(r'MP_MATCH_VIEW_MAX_SERIES_MAP_POOL = (\d+);', view_header).group(1))
+    assert int(re.search(r'RETAINED_MATCH_HISTORY_ROWS = (\d+);', header).group(1)) == cards.MATCH_HISTORY_ROWS
+    assert int(re.search(r'RETAINED_MATCH_EVIDENCE_ROWS = (\d+);', header).group(1)) == cards.MATCH_EVIDENCE_ROWS == \
+        1 + int(re.search(r'MP_MATCH_VIEW_MAX_RECENT_EVIDENCE_EVENTS = (\d+);', view_header).group(1))
+    assert 'MP_MATCH_CONTROL_MAX_EVIDENCE_ROWS =\n\t1 + MP_MATCH_VIEW_MAX_RECENT_EVIDENCE_EVENTS;' in model_header.replace('\r\n', '\n')
+    assert 'series_history' not in cards.MATCH_LISTS and 'evidence' not in cards.MATCH_LISTS
+    assert '"match_series_history_rows"' not in menu and '"match_evidence_rows"' not in menu
+    # The series formats in the stock choice's own words, which the game reads,
+    # under the projection's own names for them.
+    assert re.search(r'RETAINED_MP_MATCH_SERIES_PROFILES\[\] = \{ "best_of_one", "best_of_three", "best_of_five" \};', menu)
+    assert 'values\t"best_of_one;best_of_three;best_of_five"' in stock_page
+    for word in ('best_of_one', 'best_of_three', 'best_of_five'):
+        assert f'strcmp( profile, "{word}" ) == 0' in handler, word
+    profile_keys = function_body((ROOT / 'src/mpgame/mp/match/MatchControlLocalization.cpp').read_text(encoding='utf-8'),
+                                 'const char *MPMatchControlSeriesProfileKey(')
+    for (key, _value), profile in zip(cards.MATCH_SERIES_PROFILES, ('BEST_OF_ONE', 'BEST_OF_THREE', 'BEST_OF_FIVE')):
+        assert f'case MP_SERIES_PROFILE_{profile}: return "{key}";' in profile_keys, (key, profile)
     # The role choice: the protocol's roster roles, 1 to 4, by the projection's
     # own names for them; the game reads the stock choice's value.
     assert int(re.search(r'RETAINED_MP_MATCH_ROLES = (\d+);', menu).group(1)) == len(cards.MATCH_ROLES)
@@ -2186,6 +2245,12 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
     escape_settings = [index for index, (ident, _key, _window) in enumerate(retained_mp_menus.ESCAPE_TABS) if ident == 'settings'][0]
     assert document['events']['classic_settings'] == [{'op': 'setState', 'values': {'card.stock_page': escape_settings}},
                                                       {'op': 'action', 'action': 'mpStockPage'}]
+    # The Match page is built; its referee credential and the rows past the
+    # card's open the stock page.
+    escape_match = [index for index, (ident, _key, _window) in enumerate(retained_mp_menus.ESCAPE_TABS) if ident == 'match'][0]
+    assert document['events']['classic_match'] == [{'op': 'setState', 'values': {'card.stock_page': escape_match}},
+                                                   {'op': 'action', 'action': 'mpStockPage'}]
+    assert 'match' not in handoffs
     assert welcome_document['events']['onBack'] == [{'op': 'action', 'action': 'mpClose'}]
     prompt_bar_fits(document, 'mp_escape')
     prompt_bar_fits(welcome_document, 'mp_welcome')
@@ -2273,7 +2338,7 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
     choices = re.findall(r'"(mp[A-Za-z]+)"', re.search(r'RETAINED_MP_MATCH_CHOICES\[\] = \{([^}]*)\};', menu).group(1))
     assert set(fields) | set(appearance) | set(choices) | {'mpMatchRuleValue'} == value_verbs and \
         len(fields) + len(appearance) + len(choices) + 1 == len(value_verbs), (fields, appearance, choices, value_verbs)
-    assert appearance == [*retained_mp_menus.MODEL_VERBS, 'mpCrosshair'] and choices == ['mpMatchRole', 'mpMatchScope']
+    assert appearance == [*retained_mp_menus.MODEL_VERBS, 'mpCrosshair'] and choices == ['mpMatchRole', 'mpMatchScope', 'mpMatchSeriesProfile']
     enum = [name.strip() for name in re.search(r'enum retainedVoteField_t \{([^}]*)\};', header).group(1).split(',') if name.strip()]
     assert enum[-1] == 'RVF_COUNT'
     keys = [name[len('RVF_'):].lower() for name in enum[:-1]]

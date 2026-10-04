@@ -1196,8 +1196,9 @@ def row_face(wrap: bool) -> dict:
     return {**typeface("lowpixel", 15, VOTE_ROW_H, [1, 1, 1, 0.85]), "white-space": keyword("nowrap")}
 
 
-def wrapped_width(text: str, size: float = 14) -> float:
-    """The narrowest width that holds `text` in two lines at `size` dp."""
+def wrapped_width(text: str, size: float = 14, lines_allowed: int = 2) -> float:
+    """The narrowest width that holds `text` in `lines_allowed` lines (two by
+    default) at `size` dp."""
     words = text.split()
     width = max(b.text_width("lowpixel", word, size) for word in words)
     while True:
@@ -1208,7 +1209,7 @@ def wrapped_width(text: str, size: float = 14) -> float:
                 lines, line = lines + 1, word
             else:
                 line = trial
-        if lines <= 2:
+        if lines <= lines_allowed:
             return width
         width += 2
 
@@ -1896,7 +1897,7 @@ def welcome_settings_page(doc: Document, index: int, ident: str, width: float, h
 # move along the strip and accept chooses.
 MATCH_SECTIONS = ("status", "teams", "proposals", "rules", "series", "evidence")
 MATCH_SECTION_KEYS = ("#str_41701", "#str_41702", "#str_41703", "#str_41704", "#str_41705", "#str_41706")
-MATCH_BUILT = ("status", "teams", "proposals", "rules")   # the others hand off to the stock page
+MATCH_BUILT = MATCH_SECTIONS            # every section is built
 # The card's Match Control actions by index (card.match_op): the session's
 # RETAINED_MP_MATCH_TOKENS lists the same stock tokens in the same order.
 MATCH_TOKENS = ("refresh", "ready_toggle", "team_ready_toggle", "arm_force_ready", "timeout", "tech_pause", "resume",
@@ -1906,7 +1907,9 @@ MATCH_TOKENS = ("refresh", "ready_toggle", "team_ready_toggle", "arm_force_ready
                 "roster_accept", "roster_leave", "roster_invite", "arm_roster_remove", "arm_roster_substitute", "role_assign",
                 "team_lock_toggle", "broadcaster_set", "arm_participant_remove", "series_contestant_bind",
                 "proposal_create", "proposal_yes", "proposal_no", "proposal_abstain", "proposal_cancel",
-                "rules_select_profile", "rules_stage_field", "arm_rules_commit", "rules_discard")
+                "rules_select_profile", "rules_stage_field", "arm_rules_commit", "rules_discard",
+                "series_stage", "arm_series_start", "arm_series_cancel", "arm_series_advance",
+                "arm_veto_ban", "arm_veto_pick", "arm_veto_decider", "arm_veto_side_marine", "arm_veto_side_strogg")
 MATCH_STATUS_LINES = 6                  # RETAINED_MATCH_STATUS_LINES in the game
 # The Status section's actions by the game's operation name (mp.match.op.*),
 # with the token each sends, its accessible name and, for those Match Control
@@ -1948,7 +1951,18 @@ MATCH_RULE_ACTIONS = (("rules_select_profile", "rules_select_profile", "#str_417
                       ("rules_stage", "rules_stage_field", "#str_41748", None),
                       ("rules_commit", "arm_rules_commit", "#str_41749", "#str_41901"),
                       ("rules_discard", "rules_discard", "#str_41750", None))
-MATCH_ACTIONS = MATCH_STATUS_ACTIONS + MATCH_TEAM_ACTIONS + MATCH_PROPOSAL_ACTIONS + MATCH_RULE_ACTIONS
+# The Series section's: staging, starting, cancelling and advancing the
+# series, then the veto choices; all but staging ask first.
+MATCH_SERIES_ACTIONS = (("series_stage", "series_stage", "#str_41754", None),
+                        ("series_start", "arm_series_start", "#str_41755", "#str_41905"),
+                        ("series_cancel", "arm_series_cancel", "#str_41756", "#str_41904"),
+                        ("series_advance", "arm_series_advance", "#str_41757", "#str_41906"),
+                        ("veto_ban", "arm_veto_ban", "#str_41758", "#str_41907"),
+                        ("veto_pick", "arm_veto_pick", "#str_41759", "#str_41907"),
+                        ("veto_decider", "arm_veto_decider", "#str_41760", "#str_41907"),
+                        ("veto_side_marine", "arm_veto_side_marine", "#str_41761", "#str_41907"),
+                        ("veto_side_strogg", "arm_veto_side_strogg", "#str_41762", "#str_41907"))
+MATCH_ACTIONS = MATCH_STATUS_ACTIONS + MATCH_TEAM_ACTIONS + MATCH_PROPOSAL_ACTIONS + MATCH_RULE_ACTIONS + MATCH_SERIES_ACTIONS
 # Every label a section's action row can show: Set ready reads Set not ready
 # once ready, Lock team Unlock team once locked, and Grant broadcaster Revoke
 # broadcaster for a broadcaster.
@@ -1957,6 +1971,7 @@ MATCH_STATUS_LABELS = ("#str_41713", "#str_41714", "#str_41715", "#str_41716", "
 MATCH_TEAM_LABELS = tuple(key for _name, _token, key, _body in MATCH_TEAM_ACTIONS) + ("#str_41735", "#str_41796")
 MATCH_PROPOSAL_LABELS = tuple(key for _name, _token, key, _body in MATCH_PROPOSAL_ACTIONS)
 MATCH_RULE_LABELS = tuple(key for _name, _token, key, _body in MATCH_RULE_ACTIONS)
+MATCH_SERIES_LABELS = tuple(key for _name, _token, key, _body in MATCH_SERIES_ACTIONS)
 # The Match Control lists the card can select a row of, by the card's index
 # (card.match_list): the session's RETAINED_MP_MATCH_LISTS in the same order.
 MATCH_LISTS = ("team", "replacement", "proposal", "profile", "rule", "series_map")
@@ -1980,14 +1995,32 @@ MATCH_PROPOSAL_SCOPE_KEYS = ("#str_42490", "#str_42491")
 # number up to the largest a rule takes (the session's
 # RETAINED_MP_MATCH_RULE_VALUE_MAX).
 MATCH_PROFILE_ROWS, MATCH_RULE_ROWS = 16, 34
+MATCH_RULES_W = 430.0                   # the rules' lists; the value, the staged changes and the actions take the rest
 MATCH_PROFILE_HEAD, MATCH_RULES_HEAD, MATCH_VALUE, MATCH_STAGED_HEAD = "#str_41788", "#str_41745", "#str_41789", "#str_41746"
 MATCH_RULE_VALUE_MAX, MATCH_RULE_VALUE_MESSAGE = 10000, "#str_231059"
+# Series and Evidence: the map pool, the veto and map history and the recent
+# evidence (RETAINED_MATCH_SERIES_MAP_ROWS, _HISTORY_ROWS and _EVIDENCE_ROWS
+# in the game; the last two only to read), the format a staged series takes
+# (the session's RETAINED_MP_MATCH_SERIES_PROFILES by index, under the
+# projection's own names), and the texts the rows' columns hold.
+MATCH_SERIES_MAP_ROWS, MATCH_HISTORY_ROWS, MATCH_EVIDENCE_ROWS = 16, 24, 5
+MATCH_SERIES_W = 450.0                  # the Series and Evidence lists; the format and the actions take the rest
+MATCH_MAP_POOL_HEAD, MATCH_HISTORY_HEAD, MATCH_EVIDENCE_HEAD, MATCH_RECENT_HEAD = "#str_41752", "#str_41753", "#str_41763", "#str_41766"
+MATCH_SERIES_FORMAT, MATCH_REFRESH = "#str_41788", "#str_41771"
+MATCH_SERIES_PROFILES = (("#str_42710", 0), ("#str_42711", 1), ("#str_42712", 2))
+MATCH_SIDE_KEYS = ("#str_42630", "#str_42631", "#str_42632", "#str_42633")
+MATCH_DISPOSITION_KEYS = ("#str_42530", "#str_42531", "#str_42532")
+MATCH_HISTORY_KEYS = ("#str_42520", "#str_42521", "#str_42522", "#str_42523", "#str_42540", "#str_42541", "#str_42542", "#str_42543")
 MATCH_CONFIRM_TITLE = "#str_41797"
 MATCH_WAITING, MATCH_REFEREE, MATCH_SIGN_IN, MATCH_SIGN_OUT = "#str_41774", "#str_41779", "#str_41781", "#str_41782"
 MATCH_FOLLOW = (("previous", "follow_prev", "#str_42885"), ("next", "follow_next", "#str_42886"), ("free", "follow_free", "#str_42887"))
 MATCH_STRIP_H, MATCH_STRIP_GAP = 26.0, 10.0
 MATCH_LEFT_W = 320.0                    # the status column; the actions take the rest
 MATCH_ROW_PITCH = 32.0
+# Every reason an action row can show: the protocol's reasons (the projection
+# names each by its own key or by the same key through the server's
+# localization id), the wait for a view and the unknown value.
+MATCH_REASON_KEYS = ("#str_41774", "#str_42301") + tuple(f"#str_{key}" for key in range(42360, 42391))
 
 
 def match_op(token: str) -> list:
@@ -2014,14 +2047,17 @@ def match_modals(doc: Document) -> list:
     return modals
 
 
-def check_match_labels(width: float, keys: tuple) -> float:
+def check_match_labels(width: float, keys: tuple, lines: int = 2) -> float:
     """Where the action rows' reason column starts: after a label column that
     holds every label in `keys` in two lines at 14 dp, in every language, and
-    its padlock. The reason keeps at least 160 dp."""
+    its padlock. The reason column must hold every reason a row can show in
+    `lines` lines, in every language."""
     need = max(wrapped_width(text) for key in keys for text in table_text(key).values())
     value_x = math.ceil(21 + need + 20 + 8)
-    if width - value_x - 8 < 160:
-        raise SystemExit(f"the Match actions' labels need {need:.0f} dp, leaving their reasons {width - value_x - 8:.0f} dp")
+    reason = max(wrapped_width(text, 14, lines) for key in MATCH_REASON_KEYS for text in table_text(key).values())
+    if width - value_x - 8 < reason:
+        raise SystemExit(f"the Match actions' labels need {need:.0f} dp, leaving their reasons {width - value_x - 8:.0f} dp of the "
+                         f"{reason:.0f} dp the longest needs in {lines} lines")
     return value_x
 
 
@@ -2032,15 +2068,17 @@ def match_action_steps(name: str, token: str, body: str | None) -> list:
 
 
 def match_action_row(doc: Document, name: str, accessible: str, width: float, value_x: float, top: float | None,
-                     steps: list) -> tuple[dict, str]:
+                     steps: list, lines: int = 2) -> tuple[dict, str]:
     """A Match Control action as a row (section 7): the game publishes its
     label, availability and reason (mp.match.op.<name>.*). The label and, on
     an unavailable action, the padlock fill the label column and the reason
     the rest in the error color; choosing an unavailable action shakes the row
     and pulses its reason, and asks nothing. An available one runs `steps`,
     and the game checks the action again. Without `top` the row flows in its
-    column at the rows' pitch, and a hidden row takes no room."""
+    column at the rows' pitch, and a hidden row takes no room. A row whose
+    reason column is narrow takes `lines` lines of reason."""
     key = f"mp.match.op.{name}"
+    height = VOTE_ROW_H if lines <= 2 else lines * LABEL_LINE + 4
     for field, kind in (("shown", "boolean"), ("available", "boolean"), ("label", "string"), ("reason", "string"), ("detail", "string")):
         doc.state[f"{key}.{field}"] = {"type": kind, "initial": False if kind == "boolean" else ""}
     ident, event = f"match-{name.replace('_', '-')}", f"match_{name}"
@@ -2052,24 +2090,25 @@ def match_action_row(doc: Document, name: str, accessible: str, width: float, va
         path("wash", [(6, 1), ({"fraction": 1}, 1), ({"fraction": 1}, {"fraction": 1, "dp": -1}), (0, {"fraction": 1, "dp": -1}), (0, 7)],
              fill=linear((0, 0), ({"fraction": 1}, 0), [(0, rgb(OLIVE, 0.45)), (1, rgb(OLIVE, 0.1))])),
     ])
-    rail = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=4, height=VOTE_ROW_H), "opacity": number(0)}, [
-        path("rail", [(0, 7), (6, 1), (6, VOTE_ROW_H - 1), (0, VOTE_ROW_H - 1)], fill=solid(rgb(ORANGE)))])
+    rail = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=4, height=height), "opacity": number(0)}, [
+        path("rail", [(0, 7), (6, 1), (6, height - 1), (0, height - 1)], fill=solid(rgb(ORANGE)))])
     caption = label(f"{ident}-label", PLACEHOLDER, {"position": keyword("relative"), "display": keyword("block"), "flex-shrink": number(1),
                     "min-width": length(0), **row_face(True), "overflow": keyword("hidden")})
     doc.bind(f"{ident}-label.text", f"{ident}-label", "text", {"state": f"{key}.label"})
     lock = padlock(f"{ident}-lock", rgb(ERROR))
     unavailable = {"op": "!", "args": [{"state": f"{key}.available"}]}
     doc.bind(f"{ident}-lock.display", f"{ident}-lock", "display", {"op": "select", "args": [unavailable, "block", "none"]})
-    head = group(f"{ident}-head", {**absolute(left=21, top=0, width=value_x - 29, height=VOTE_ROW_H), "display": keyword("flex"),
+    head = group(f"{ident}-head", {**absolute(left=21, top=0, width=value_x - 29, height=height), "display": keyword("flex"),
                                    "flex-direction": keyword("row"), "align-items": keyword("center")}, [caption, lock])
-    reason = label(f"{ident}-reason", PLACEHOLDER, {**absolute(left=value_x, top=0, width=width - value_x - 8, height=VOTE_ROW_H),
+    reason = label(f"{ident}-reason", PLACEHOLDER, {**absolute(left=value_x, top=(height - lines * LABEL_LINE) / 2 if lines > 2 else 0,
+                                                              width=width - value_x - 8, height=height if lines <= 2 else lines * LABEL_LINE),
                    **typeface("lowpixel", 14, LABEL_LINE, rgb(ERROR)), "white-space": keyword("normal"), "overflow": keyword("hidden"),
                    "display": keyword("none"), "opacity": number(1)})
     doc.bind(f"{ident}-reason.text", f"{ident}-reason", "text", {"state": f"{key}.reason"})
     doc.bind(f"{ident}-reason.display", f"{ident}-reason", "display", {"op": "select", "args": [unavailable, "block", "none"]})
     spec = {"role": "button", "label": accessible, "event": event, "states": row_states(doc, ident)}
-    place = absolute(left=0, top=top, width=width, height=VOTE_ROW_H) if top is not None else {
-        "position": keyword("relative"), "width": length(width), "height": length(VOTE_ROW_H),
+    place = absolute(left=0, top=top, width=width, height=height) if top is not None else {
+        "position": keyword("relative"), "width": length(width), "height": length(height),
         "margin-bottom": length(MATCH_ROW_PITCH - VOTE_ROW_H), "flex-shrink": number(0)}
     row = group(ident, {**place, "display": keyword("none"), "opacity": number(1), "transform": transform()},
                 [plate, wash, rail, head, reason], control=spec)
@@ -2143,11 +2182,13 @@ def match_list_row(doc: Document, key: str, row: int, width: float, columns: tup
     14.14) at 22 dp: its columns as the game publishes them
     (mp.match.<key><row>.c<n>; `fields` the ones it shows, all by default,
     and `columns` each fixed column's width after the first, which takes the
-    rest), the row chosen lit in olive and
-    the focus rail at its leading edge. The team list tints a side's own row
-    in its team's color. Choosing a row names it by its list's and its own
-    index (card.match_list, card.match_row) and runs mpMatchSelect; the game
-    checks the row against its model again."""
+    rest), the row chosen lit in olive and the focus rail at its leading
+    edge. The team list tints a side's own row in its team's color. Choosing
+    a row names it by its list's and its own index (card.match_list,
+    card.match_row) and runs mpMatchSelect; the game checks the row against
+    its model again. A list the stock page only shows (not in MATCH_LISTS)
+    takes focus, so it scrolls, and chooses nothing."""
+    selectable = key in MATCH_LISTS
     ident, state = f"match-{key.replace('_', '-')}-{row}", f"mp.match.{key}{row}"
     fields = fields or tuple(range(1 + len(columns)))
     # Every column the game publishes is declared, shown or not.
@@ -2166,8 +2207,9 @@ def match_list_row(doc: Document, key: str, row: int, width: float, columns: tup
         doc.bind(f"{ident}-band.background-color", f"{ident}-band", "background-color",
                  [tint(0), tint(1), tint(2), {"op": "select", "args": [side_row, 0.35, 0.06]}])
     chosen = group(f"{ident}-chosen", {**FULL, "display": keyword("none"), "background-color": colour(rgb(OLIVE, 0.45))})
-    doc.bind(f"{ident}-chosen.display", f"{ident}-chosen", "display",
-             {"op": "select", "args": [{"op": "==", "args": [{"state": f"mp.match.{key}.selected"}, row]}, "block", "none"]})
+    if selectable:
+        doc.bind(f"{ident}-chosen.display", f"{ident}-chosen", "display",
+                 {"op": "select", "args": [{"op": "==", "args": [{"state": f"mp.match.{key}.selected"}, row]}, "block", "none"]})
     rail = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=4, height=MATCH_LIST_ROW_H), "opacity": number(0)},
                   [path("rail", [(0, 0), (3, 0), (3, MATCH_LIST_ROW_H), (0, MATCH_LIST_ROW_H)], fill=solid(rgb(ORANGE)))])
     cell = {"position": keyword("relative"), "display": keyword("block"), "white-space": keyword("nowrap"), "overflow": keyword("hidden"),
@@ -2191,10 +2233,11 @@ def match_list_row(doc: Document, key: str, row: int, width: float, columns: tup
     })
     event = f"match_{key}_{row}"
     doc.events[event] = [{"op": "setState", "values": {"card.match_list": MATCH_LISTS.index(key), "card.match_row": row}},
-                         {"op": "action", "action": "mpMatchSelect"}]
+                         {"op": "action", "action": "mpMatchSelect"}] if selectable else []
     node = group(ident, {"position": keyword("relative"), "display": keyword("none"), "width": length(width),
                          "height": length(MATCH_LIST_ROW_H), "margin-bottom": length(1), "flex-shrink": number(0)},
-                 [band, chosen, rail, content], control={"role": "button", "label": PLACEHOLDER, "event": event, "states": states})
+                 [band, chosen, rail, content] if selectable else [band, rail, content],
+                 control={"role": "button", "label": PLACEHOLDER, "event": event, "states": states})
     doc.bind(f"{ident}.display", ident, "display",
              {"op": "select", "args": [{"op": "<", "args": [row, {"state": f"mp.match.{key}.count"}]}, "block", "none"]})
     return node, ident
@@ -2213,7 +2256,7 @@ def match_list(doc: Document, key: str, rows: int, left: float, top: float, widt
         node, control = match_list_row(doc, key, row, width, columns, fields)
         children.append(node)
         controls.append(control)
-    more = link(doc, f"match-{key.replace('_', '-')}-more", HANDOFF_ACTION, event="stock_match")
+    more = link(doc, f"match-{key.replace('_', '-')}-more", HANDOFF_ACTION, event="classic_match")
     more["properties"]["display"] = keyword("none")
     more["properties"]["margin-top"] = length(4)
     doc.bind(f"{more['id']}.display", more["id"], "display", {"op": "select", "args": [{"state": f"mp.match.{key}.more"}, "block", "none"]})
@@ -2261,7 +2304,8 @@ def match_teams_section(doc: Document, width: float, height: float) -> tuple[lis
     # The role, or where a Duel side can be bound, the side.
     right_x = list_w + 16
     right_w = width - right_x
-    value_x = check_match_labels(right_w, MATCH_TEAM_LABELS)
+    # The column is narrow: each reason takes up to three lines.
+    value_x = check_match_labels(right_w, MATCH_TEAM_LABELS, 3)
     binding = {"state": "mp.match.op.contestant_bind.shown"}
     role = value_row(doc, "match-role", MATCH_ROLE, "choice", right_w, value_x, value={"state": "mp.match.role"}, action="mpMatchRole",
                      entries=list(MATCH_ROLES), shown={"op": "!", "args": [binding]})
@@ -2275,7 +2319,7 @@ def match_teams_section(doc: Document, width: float, height: float) -> tuple[lis
     # The actions, in a column that scrolls as focus moves down it.
     rows = []
     for name, token, accessible, body in MATCH_TEAM_ACTIONS:
-        row, row_id = match_action_row(doc, name, accessible, right_w, value_x, None, match_action_steps(name, token, body))
+        row, row_id = match_action_row(doc, name, accessible, right_w, value_x, None, match_action_steps(name, token, body), 3)
         rows.append(row)
         controls.append(row_id)
     actions_top = VOTE_ROW_H + 8
@@ -2416,7 +2460,7 @@ def match_rules_section(doc: Document, width: float, height: float) -> tuple[lis
     doc.actions["mpMatchRuleValue"] = {"operation": "session.menuValue", "input": "number",
                                        "arguments": {"command": "mpMatchRuleValue", "value": {"input": "value"}}}
     head = {**typeface("lowpixel", 14, 18, rgb(OLIVE)), "white-space": keyword("nowrap")}
-    list_w = MATCH_TEAMS_W
+    list_w = MATCH_RULES_W
     right_x = list_w + 16
     right_w = width - right_x
     children = match_text(doc, "match-rules-summary", None, "mp.match.rules.summary", 0, 0, list_w, 2)
@@ -2442,17 +2486,84 @@ def match_rules_section(doc: Document, width: float, height: float) -> tuple[lis
     return children, controls
 
 
+def match_series_section(doc: Document, width: float, height: float) -> tuple[list, list]:
+    """The Series section (the stock page's Series): the series and its state,
+    the map pool and the veto and map history, beside the format a staged
+    series takes and the series and veto actions, each saying why it is
+    unavailable, in a column that scrolls; Start series, Cancel series,
+    Advance map and every veto choice ask first, as the stock page does. A
+    map is chosen as a row is on Teams."""
+    doc.state.update({"mp.match.series.summary": {"type": "string", "initial": ""},
+                      "mp.match.series_profile": {"type": "number", "initial": 0}})
+    doc.actions["mpMatchSeriesProfile"] = {"operation": "session.menuValue", "input": "number",
+                                           "arguments": {"command": "mpMatchSeriesProfile", "value": {"input": "value"}}}
+    head = {**typeface("lowpixel", 14, 18, rgb(OLIVE)), "white-space": keyword("nowrap")}
+    list_w = MATCH_SERIES_W
+    right_x = list_w + 16
+    right_w = width - right_x
+    widest = lambda keys: math.ceil(max(b.text_width("lowpixel", text, 14) for key in keys for text in table_text(key).values())) + 2
+    side_w = widest(MATCH_SIDE_KEYS)
+    # Each map's name, disposition and the side that chose it; each veto's or
+    # map's name, action or outcome, and side or score (the stock page's
+    # fourth columns, the starting and winning sides, are left out for the
+    # names' room; the series' summary names the current map's side).
+    children = match_text(doc, "match-series-summary", None, "mp.match.series.summary", 0, 0, list_w, 2)
+    maps, map_controls = match_list(doc, "series_map", MATCH_SERIES_MAP_ROWS, 0, 60, list_w, 4 * (MATCH_LIST_ROW_H + 1),
+                                    (float(widest(MATCH_DISPOSITION_KEYS)), float(side_w)), (0, 1, 2))
+    history_top = 60 + 4 * (MATCH_LIST_ROW_H + 1) + 26
+    history, history_controls = match_list(doc, "series_history", MATCH_HISTORY_ROWS, 0, history_top, list_w,
+                                           height - history_top - 42, (float(widest(MATCH_HISTORY_KEYS)), float(side_w)), (0, 1, 2))
+    children += [label("match-map-pool-head", MATCH_MAP_POOL_HEAD, {**absolute(left=0, top=40, width=list_w, height=18), **head}), maps,
+                 label("match-history-head", MATCH_HISTORY_HEAD, {**absolute(left=0, top=history_top - 20, width=list_w, height=18), **head}),
+                 history, match_section_result(doc, "series", 0, height - 36, list_w)]
+    controls = map_controls + history_controls
+    # The column is narrow: each reason takes up to three lines.
+    value_x = check_match_labels(right_w, MATCH_SERIES_LABELS + (MATCH_SERIES_FORMAT,), 3)
+    format_row = value_row(doc, "match-series-format", MATCH_SERIES_FORMAT, "choice", right_w, value_x,
+                           value={"state": "mp.match.series_profile"}, action="mpMatchSeriesProfile", entries=list(MATCH_SERIES_PROFILES),
+                           wrap=True)
+    children.append(group("match-series-format-slot", absolute(left=right_x, top=0, width=right_w, height=VOTE_ROW_H), [format_row]))
+    controls.append(format_row["id"])
+    rows = []
+    for name, token, accessible, body in MATCH_SERIES_ACTIONS:
+        row, row_id = match_action_row(doc, name, accessible, right_w, value_x, None, match_action_steps(name, token, body), 3)
+        rows.append(row)
+        controls.append(row_id)
+    actions_top = VOTE_ROW_H + 8
+    children.append(group("match-series-actions", {**absolute(left=right_x, top=actions_top, width=right_w, height=height - actions_top),
+                                                   "overflow": keyword("auto")}, rows))
+    return children, controls
+
+
+def match_evidence_section(doc: Document, width: float, height: float) -> tuple[list, list]:
+    """The Evidence section (the stock page's Evidence, read-only): the
+    evidence's state (recording, the match report, the multi-view demo and
+    the events recorded) and the most recent evidence, with Refresh, which
+    asks the game to project its view again."""
+    doc.state["mp.match.evidence.summary"] = {"type": "string", "initial": ""}
+    head = {**typeface("lowpixel", 14, 18, rgb(OLIVE)), "white-space": keyword("nowrap")}
+    list_w = MATCH_SERIES_W
+    children = match_text(doc, "match-evidence-summary", MATCH_EVIDENCE_HEAD, "mp.match.evidence.summary", 0, 0, list_w, 3)
+    recent, recent_controls = match_list(doc, "evidence", MATCH_EVIDENCE_ROWS, 0, 99, list_w, MATCH_EVIDENCE_ROWS * (MATCH_LIST_ROW_H + 1), ())
+    children += [label("match-recent-head", MATCH_RECENT_HEAD, {**absolute(left=0, top=79, width=list_w, height=18), **head}), recent]
+    doc.events["match_evidence_refresh"] = match_op("refresh")
+    refresh = link(doc, "match-evidence-refresh", MATCH_REFRESH, event="match_evidence_refresh")
+    children.append(group("match-evidence-refresh-slot", absolute(left=list_w + 16, top=0, width=width - list_w - 16, height=24), [refresh]))
+    return children, recent_controls + [refresh["id"]]
+
+
 def match_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, list]:
     """The Match page (section 14.18): Match Control's six sections as a second,
     smaller strip. Status shows the match's phase and state lines, the side an
     action applies to where the player chooses one, the referee's sign-in, a
     spectator's camera, the last result, and the readiness, pause and match
     actions, each saying why it is unavailable; Force ready, Forfeit and Abort
-    ask first, as the stock page does. Teams shows the team and roster rows
-    beside the role and the team actions (match_teams_section). The other
-    sections, and signing in, which needs the credential, still open the
-    stock page. The page asks the game to project its view again as it
-    opens; the game mirrors Match Control's own states into mp.match.*."""
+    ask first, as the stock page does. Teams, Proposals, Rules, Series and
+    Evidence follow it (match_teams_section and the builders after it).
+    Signing in, which needs the credential, and the rows past the card's
+    still open the stock page (classic_match). The page asks the game to
+    project its view again as it opens; the game mirrors Match Control's own
+    states into mp.match.*."""
     doc.session("mpMatch", "mpMatch")
     doc.state.update({
         "card.match_section": {"type": "number", "initial": 0},
@@ -2467,7 +2578,9 @@ def match_page(doc: Document, index: int, ident: str, width: float, height: floa
         **{f"mp.match.side{side}.{field}": {"type": kind, "initial": False if kind == "boolean" else ""}
            for side in range(2) for field, kind in (("label", "string"), ("available", "boolean"), ("selected", "boolean"))},
     })
-    doc.events["stock_match"] = [{"op": "setState", "values": {"card.stock_page": index}}, {"op": "action", "action": "mpStockPage"}]
+    # What the page cannot edit yet (the referee credential, a text field) and
+    # the rows past the card's open the stock page.
+    doc.events["classic_match"] = [{"op": "setState", "values": {"card.stock_page": index}}, {"op": "action", "action": "mpStockPage"}]
     page_width = width - 2 * INSET
     page_height = height - PAGE_TOP - PROMPT_BOTTOM - PROMPT_H - 16
     controls: list = []
@@ -2532,7 +2645,7 @@ def match_page(doc: Document, index: int, ident: str, width: float, height: floa
     for op_key in (login, logout):
         for field, kind in (("shown", "boolean"), ("available", "boolean"), ("label", "string"), ("reason", "string"), ("detail", "string")):
             doc.state[f"{op_key}.{field}"] = {"type": kind, "initial": False if kind == "boolean" else ""}
-    doc.events["match_referee_login"] = [{"op": "if", "condition": {"state": f"{login}.available"}, "then": [{"op": "call", "event": "stock_match"}]}]
+    doc.events["match_referee_login"] = [{"op": "if", "condition": {"state": f"{login}.available"}, "then": [{"op": "call", "event": "classic_match"}]}]
     doc.events["match_referee_logout"] = [{"op": "if", "condition": {"state": f"{logout}.available"}, "then": match_op("referee_logout")}]
     sign_in = link(doc, "match-referee-login", MATCH_SIGN_IN, event="match_referee_login")
     sign_out = link(doc, "match-referee-logout", MATCH_SIGN_OUT, event="match_referee_logout")
@@ -2589,7 +2702,8 @@ def match_page(doc: Document, index: int, ident: str, width: float, height: floa
     doc.bind("match-waiting.display", "match-waiting", "display", {"op": "select", "args": [{"state": "mp.match.available"}, "none", "block"]})
     sections = [section_group("status", 0, [waiting, live])]
     # Teams, Proposals and Rules, each waiting for a view as Status does.
-    for section, builder in (("teams", match_teams_section), ("proposals", match_proposals_section), ("rules", match_rules_section)):
+    for section, builder in (("teams", match_teams_section), ("proposals", match_proposals_section), ("rules", match_rules_section),
+                             ("series", match_series_section), ("evidence", match_evidence_section)):
         section_children, section_controls = builder(doc, page_width, section_height)
         live = group(f"match-{section}-live", {**absolute(left=0, top=0, width=page_width, height=section_height),
                                                "display": keyword("none")}, section_children)
@@ -2601,17 +2715,6 @@ def match_page(doc: Document, index: int, ident: str, width: float, height: floa
                  {"op": "select", "args": [{"state": "mp.match.available"}, "none", "block"]})
         sections.append(section_group(section, MATCH_SECTIONS.index(section), [waiting, live]))
         controls += section_controls
-    # The sections not built yet open the stock page.
-    plate_width = max(300.0, max(b.text_width("marine", text, 20) for text in table_text(HANDOFF_ACTION).values()) + 46)
-    for position, section in enumerate(MATCH_SECTIONS):
-        if section in MATCH_BUILT:
-            continue
-        note = label(f"match-{section}-note", HANDOFF_NOTE, {**absolute(left=0, top=0, width=page_width, height=24),
-                     **typeface("lowpixel", 17, 24, [1, 1, 1, 0.8]), "white-space": keyword("nowrap")})
-        plate = in_game_plate(doc, f"match-{section}-open", HANDOFF_ACTION, 0, 36, width=round(plate_width, 3), primary=True,
-                              event="stock_match")
-        sections.append(section_group(section, position, [note, plate]))
-        controls.append(f"match-{section}-open")
     # Opening the page asks the game to project its view again, then focuses
     # the section shown.
     focus_steps: list = []

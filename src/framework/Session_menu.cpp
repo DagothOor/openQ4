@@ -105,9 +105,11 @@ static const int RETAINED_MP_PROTOCOL = 1;
 // Each card's pages that still hand off to their stock pages. While any
 // remain, the gate leaves that card's stock menu in place and only
 // ui_retainedMultiplayer opts into it. ui_retained_gate.py keeps each list
-// equal to its card's hand-off pages.
+// equal to its card's hand-off pages. (A built page may still open its stock
+// page for what it cannot edit yet: the Settings pages' name and clan, the
+// Match page's referee credential.)
 static const char *const RETAINED_MP_ESCAPE_MISSING_PAGES[] = {
-	"match", "admin", NULL
+	"admin", NULL
 };
 static const char *const RETAINED_MP_WELCOME_MISSING_PAGES[] = {
 	NULL
@@ -144,7 +146,9 @@ static const char *const RETAINED_MP_MATCH_TOKENS[] = {
 	"roster_accept", "roster_leave", "roster_invite", "arm_roster_remove", "arm_roster_substitute", "role_assign",
 	"team_lock_toggle", "broadcaster_set", "arm_participant_remove", "series_contestant_bind",
 	"proposal_create", "proposal_yes", "proposal_no", "proposal_abstain", "proposal_cancel",
-	"rules_select_profile", "rules_stage_field", "arm_rules_commit", "rules_discard"
+	"rules_select_profile", "rules_stage_field", "arm_rules_commit", "rules_discard",
+	"series_stage", "arm_series_start", "arm_series_cancel", "arm_series_advance",
+	"arm_veto_ban", "arm_veto_pick", "arm_veto_decider", "arm_veto_side_marine", "arm_veto_side_strogg"
 };
 static const int RETAINED_MP_MATCH_ACTIONS = static_cast<int>( sizeof( RETAINED_MP_MATCH_TOKENS ) / sizeof( RETAINED_MP_MATCH_TOKENS[0] ) );
 // The Match page's lists, by the card's index (card.match_list): the stock
@@ -162,11 +166,13 @@ static const int RETAINED_MP_MATCH_LIST_COUNT = static_cast<int>( sizeof( RETAIN
 static const int RETAINED_MP_MATCH_ROWS = 128;
 // The Match page's choices, "<verb> <value>", which the stock choices keep on
 // the game's menu and the game reads as it acts: the role an invitation or an
-// assignment gives, 1 to 4 (the protocol's roster roles), and the proposal a
-// ballot or a cancellation goes to, 0 the global one and 1 the team's.
-static const char *const RETAINED_MP_MATCH_CHOICES[] = { "mpMatchRole", "mpMatchScope" };
+// assignment gives, 1 to 4 (the protocol's roster roles), the proposal a
+// ballot or a cancellation goes to, 0 the global one and 1 the team's, and
+// the format a staged series takes, best of one, three or five.
+static const char *const RETAINED_MP_MATCH_CHOICES[] = { "mpMatchRole", "mpMatchScope", "mpMatchSeriesProfile" };
 static const int RETAINED_MP_MATCH_ROLES = 4;
 static const char *const RETAINED_MP_MATCH_SCOPES[] = { "global", "side" };
+static const char *const RETAINED_MP_MATCH_SERIES_PROFILES[] = { "best_of_one", "best_of_three", "best_of_five" };
 // The value to stage for a Match Control rule, "mpMatchRuleValue <value>",
 // which the stock field keeps on the game's menu: at most the largest value a
 // rule takes (the readiness threshold's basis points). The game checks the
@@ -6006,17 +6012,25 @@ void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, con
 		command = gameCommand.c_str();
 	} else if ( Session_RetainedValueRequest( request, RETAINED_MP_MATCH_CHOICES,
 		static_cast<int>( sizeof( RETAINED_MP_MATCH_CHOICES ) / sizeof( RETAINED_MP_MATCH_CHOICES[0] ) ), voteField, voteValue ) ) {
-		const bool role = voteField == 0;
-		if ( role ? ( voteValue < 1 || voteValue > RETAINED_MP_MATCH_ROLES ) : ( voteValue < 0 || voteValue > 1 ) ) {
-			common->Warning( "retained UI: the multiplayer card chose %s %d", role ? "match role" : "ballot target", voteValue );
+		// Each choice's values: the roles 1 to 4, the ballot targets 0 and 1,
+		// the series formats 0 to 2.
+		static const int lowest[] = { 1, 0, 0 };
+		static const int highest[] = { RETAINED_MP_MATCH_ROLES, 1, 2 };
+		static const char *const choices[] = { "match role", "ballot target", "series format" };
+		static_assert( sizeof( lowest ) / sizeof( lowest[0] ) == sizeof( RETAINED_MP_MATCH_CHOICES ) / sizeof( RETAINED_MP_MATCH_CHOICES[0] ),
+			"one range for each Match page choice" );
+		if ( voteValue < lowest[ voteField ] || voteValue > highest[ voteField ] ) {
+			common->Warning( "retained UI: the multiplayer card chose %s %d", choices[ voteField ], voteValue );
 			return;
 		}
 		// The stock choice's own value on the game's menu, quietly; the game
 		// reads it as it acts.
-		if ( role ) {
+		if ( voteField == 0 ) {
 			guiActive->SetStateInt( "match_role_choice", voteValue );
-		} else {
+		} else if ( voteField == 1 ) {
 			guiActive->SetStateString( "match_proposal_scope_choice", RETAINED_MP_MATCH_SCOPES[ voteValue ] );
+		} else {
+			guiActive->SetStateString( "match_series_profile_choice", RETAINED_MP_MATCH_SERIES_PROFILES[ voteValue ] );
 		}
 		return;
 	} else if ( Session_RetainedRuleValueRequest( request, voteValue ) ) {

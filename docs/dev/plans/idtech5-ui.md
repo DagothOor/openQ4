@@ -152,10 +152,10 @@ a fresh connection (an optional roster block after the connect response's
 server info). The [multiplayer Escape card](../ui/multiplayer-menus.md) now
 covers the game's in-match menu behind `ui_retainedMultiplayer`: the card,
 its header, the eight-tab strip, the prompt bar, the Disconnect confirmation
-and the softening, with the Team, Players, Vote, Settings, Voice and Server
-pages built and the Match page's Status, Teams, Proposals and Rules
-sections, Match's Series and Evidence sections and Admin still handing off to
-their stock pages; the
+and the softening, with the Team, Players, Vote, Settings, Voice, Server and
+Match pages built (Match with all six of Match Control's sections, its
+referee sign-in opening the stock page for the credential) and Admin still
+handing off to its stock page; the
 Welcome card covers the connect-time join offer, by default now that all its
 pages are built, and a join's loading screen hands over to it.
 Event programs can move focus, and Q, E and the shoulders page a document's

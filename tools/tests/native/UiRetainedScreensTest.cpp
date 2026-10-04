@@ -154,7 +154,8 @@ static const std::set<std::string> SessionCommands = {"continue","singlePlayer",
 // The value controls' verbs, which carry the control's new value.
 static const std::set<std::string> SessionValueCommands = {"mpVoteMap","mpVoteGameType","mpVoteTimeLimit","mpVoteFragLimit",
 	"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart","mpVoteBuying","mpVoteKick",
-	"mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair","mpMatchRole","mpMatchScope","mpMatchRuleValue"};
+	"mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair","mpMatchRole","mpMatchScope","mpMatchRuleValue",
+	"mpMatchSeriesProfile"};
 // The player settings the multiplayer card's Settings and Voice pages change.
 static const std::set<std::string> PlayerSettings = {"ui_handicap","cl_player_outline_enemy","cl_player_outline_team",
 	"cl_player_rimlight_enemy","cl_player_rimlight_team","cl_player_visibility_enemy_color","cl_player_visibility_team_color",
@@ -654,7 +655,9 @@ static void CheckMatch(ScreenHost& host, const char* path) {
 		SIDE_A, SIDE_B, FOLLOW_PREV, FOLLOW_NEXT, FOLLOW_FREE, CONFIRM, CANCEL_CONFIRM, JOIN_MARINE, JOIN_STROGG, SPECTATE,
 		QUEUE_JOIN, QUEUE_DEFER, QUEUE_LEAVE, ROSTER_ACCEPT, ROSTER_LEAVE, ROSTER_INVITE, ARM_ROSTER_REMOVE, ARM_ROSTER_SUBSTITUTE,
 		ROLE_ASSIGN, TEAM_LOCK, BROADCASTER, ARM_PARTICIPANT_REMOVE, CONTESTANT_BIND, PROPOSAL_CREATE, PROPOSAL_YES, PROPOSAL_NO,
-		PROPOSAL_ABSTAIN, PROPOSAL_CANCEL, RULES_SELECT_PROFILE, RULES_STAGE, ARM_RULES_COMMIT, RULES_DISCARD };
+		PROPOSAL_ABSTAIN, PROPOSAL_CANCEL, RULES_SELECT_PROFILE, RULES_STAGE, ARM_RULES_COMMIT, RULES_DISCARD, SERIES_STAGE,
+		ARM_SERIES_START, ARM_SERIES_CANCEL, ARM_SERIES_ADVANCE, ARM_VETO_BAN, ARM_VETO_PICK, ARM_VETO_DECIDER, ARM_VETO_SIDE_MARINE,
+		ARM_VETO_SIDE_STROGG };
 	const auto press = [&](MenuInput input, double at) { runtime.MenuAction(input,true,at); runtime.MenuAction(input,false,at+.01); };
 	const auto asked = [&](int token) {
 		return effects.actions.size() == 1 && std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpMatch" &&
@@ -821,8 +824,9 @@ static void CheckMatch(ScreenHost& host, const char* path) {
 	Check(list.x+list.width <= actions.x && actions.x+actions.width <= section_box.x+section_box.width+.5f &&
 		bounds("match-replacement-list").y >= list.y+list.height,"the lists lead, the actions beside them");
 	// The actions flow in their column; a hidden one takes no room.
-	Check(Near(bounds("match-join-strogg").y,bounds("match-join-marine").y+32,.5f) &&
-		Near(bounds("match-participant-remove").y,bounds("match-team-lock").y+32,.5f) &&
+	const auto pitch = bounds("match-join-marine").height+6;
+	Check(pitch >= 42 && Near(bounds("match-join-strogg").y,bounds("match-join-marine").y+pitch,.5f) &&
+		Near(bounds("match-participant-remove").y,bounds("match-team-lock").y+pitch,.5f) &&
 		text("match-broadcaster","display") == "none" && text("match-contestant-bind","display") == "none",
 		"the team actions stack, the broadcaster's and the Duel binding only where they apply");
 	Check(text("match-join-marine-lock","display") == "block" && text("match-join-marine-reason","text") == "You are on that team.",
@@ -961,21 +965,83 @@ static void CheckMatch(ScreenHost& host, const char* path) {
 	const auto settled = runtime.GetWidgetState("match-rule-value");
 	Check(settled && (!settled->number || !settled->number->conflict) && std::holds_alternative<double>(settled->accepted) &&
 		std::get<double>(settled->accepted) == 25,"without a conflict");
-	// The sections not built yet still open the stock page.
+	// Series: the series, the map pool and the history; the format and the
+	// series and veto actions, each confirmed one asking first.
 	Check(runtime.RunEvent("onSectionNext",9.5,effects,error) && section() == 4,"on to Series");
+	StateValues series = {{"mp.match.series.summary",std::string("Map selection | Best of three | Score: 0-0")},{"mp.match.series_profile",1.0},
+		{"mp.match.series_map.count",3.0},{"mp.match.series_map.more",false},{"mp.match.series_map.selected",0.0},
+		{"mp.match.series_history.count",2.0},{"mp.match.series_history.more",false},{"mp.match.series_history.selected",-1.0}};
+	for (int row = 0; row < 3; ++row) {
+		const std::string key = "mp.match.series_map"+std::to_string(row);
+		series[key+".c0"] = std::string("Map ")+std::to_string(row); series[key+".c1"] = std::string(row == 0 ? "Banned" : "Available");
+		series[key+".c2"] = std::string(row == 0 ? "Marine" : "");
+	}
+	for (int row = 0; row < 2; ++row) {
+		const std::string key = "mp.match.series_history"+std::to_string(row);
+		series[key+".c0"] = std::string("Map ")+std::to_string(row); series[key+".c1"] = std::string("Ban");
+		series[key+".c2"] = std::string("Marine");
+	}
+	for (const char* name : {"series_stage","series_start","series_cancel","series_advance","veto_ban","veto_pick","veto_decider",
+			"veto_side_marine","veto_side_strogg"}) {
+		const std::string key = std::string("mp.match.op.")+name, id = name;
+		series[key+".shown"] = true;
+		series[key+".available"] = id == "series_stage" || id == "series_start" || id == "veto_ban";
+		series[key+".label"] = id;
+		series[key+".reason"] = std::string("Not your turn.");
+	}
+	Check(runtime.SetState(series,error,9.55),"publish the Series section");
 	runtime.Frame(viewport,9.6);
-	Check(text("match-section-series","display") == "block" && runtime.CanActivateControl("match-series-open",9.6),"which hands off");
-	Check(runtime.RunEvent("stock_match",9.7,effects,error) && effects.actions.size() == 1 &&
-		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpStockPage","to the stock page");
-	Check(runtime.RunEvent("match_section_status",10,effects,error) && section() == 0 &&
-		runtime.RunEvent("onSectionPrevious",10.1,effects,error) && section() == 5 && runtime.FocusedControl() == "match-tab-evidence",
+	Check(text("match-series-live","display") == "block" && text("match-series-summary","text") == "Map selection | Best of three | Score: 0-0",
+		"the series");
+	Check(text("match-series-map-2","display") == "block" && text("match-series-map-3","display") == "none" &&
+		text("match-series-map-0-c1","text") == "Banned" && text("match-series-map-0-chosen","display") == "block" &&
+		text("match-series-history-1","display") == "block" && text("match-series-history-2","display") == "none" &&
+		text("match-series-history-0-c1","text") == "Ban","the map pool and the history");
+	Check(runtime.RunEvent("match_series_map_2",9.65,effects,error) && selected(5,2),"choosing a map names it to the game");
+	Check(runtime.RunEvent("match_series_history_0",9.66,effects,error) && effects.actions.empty(),"the history is only to read");
+	Check(runtime.RunEvent("match_series_stage",9.67,effects,error) && asked(SERIES_STAGE),"Stage series asks the game");
+	Check(runtime.RunEvent("match_series_start",9.7,effects,error) && asked(ARM_SERIES_START),"Start series arms its confirmation");
+	runtime.Frame(viewport,10);
+	Check(text("matchSeriesStartModal","display") == "block" && text("matchSeriesStartModal-body","text") == "#str_41905","and asks first");
+	Check(runtime.RunEvent("matchSeriesStartModalNo",10.05,effects,error) && asked(CANCEL_CONFIRM),"No cancels it");
+	runtime.Frame(viewport,10.4);
+	Check(runtime.RunEvent("match_veto_ban",10.45,effects,error) && asked(ARM_VETO_BAN),"Ban map arms its confirmation");
+	runtime.Frame(viewport,10.75);
+	Check(text("matchVetoBanModal","display") == "block" && text("matchVetoBanModal-body","text") == "#str_41907","and asks first");
+	Check(runtime.RunEvent("matchVetoBanModalYes",10.8,effects,error) && asked(CONFIRM),"Yes confirms it");
+	runtime.Frame(viewport,11.15);
+	Check(runtime.RunEvent("match_series_cancel",11.2,effects,error) && effects.actions.empty() &&
+		text("match-series-cancel-reason","text") == "Not your turn.","a refused action says why and asks nothing");
+	Check(runtime.FocusControl("match-series-format",11.25) && runtime.OpenChoicePopup("match-series-format",11.25),"the format unfolds");
+	runtime.Frame(viewport,11.3);
+	press(MenuInput::Down,11.35);
+	press(MenuInput::Accept,11.4);
+	const auto formatActions = runtime.TakeActions();
+	Check(formatActions.size() == 1 && formatActions[0].action == "mpMatchSeriesProfile" && formatActions[0].proposal &&
+		std::get<double>(*formatActions[0].proposal) == 2,"choosing best of five asks for format 2");
+	if (formatActions.size() == 1 && formatActions[0].proposalToken) runtime.AcknowledgeControlProposal(formatActions[0].node,formatActions[0].proposalToken,true);
+	// Evidence: the evidence's state and the recent evidence, with Refresh.
+	Check(runtime.RunEvent("onSectionNext",11.5,effects,error) && section() == 5,"on to Evidence");
+	Check(runtime.SetState({{"mp.match.evidence.summary",std::string("Recording | Report ready | No demo | 42")},
+		{"mp.match.evidence.count",2.0},{"mp.match.evidence.more",false},{"mp.match.evidence.selected",-1.0},
+		{"mp.match.evidence0.c0",std::string("Recording | Report ready | No demo | 42")},{"mp.match.evidence1.c0",std::string("Kill")}},error,11.55),
+		"publish the Evidence section");
+	runtime.Frame(viewport,11.6);
+	Check(text("match-evidence-live","display") == "block" && text("match-evidence-summary","text") == "Recording | Report ready | No demo | 42" &&
+		text("match-evidence-1","display") == "block" && text("match-evidence-1-c0","text") == "Kill" &&
+		text("match-evidence-2","display") == "none","the evidence and the recent evidence");
+	Check(runtime.RunEvent("match_evidence_1",11.65,effects,error) && effects.actions.empty(),"the evidence is only to read");
+	Check(runtime.RunEvent("match_evidence_refresh",11.7,effects,error) && asked(REFRESH),"Refresh asks the game for its view again");
+	Check(runtime.RunEvent("match_section_status",12,effects,error) && section() == 0 &&
+		runtime.RunEvent("onSectionPrevious",12.1,effects,error) && section() == 5 && runtime.FocusedControl() == "match-tab-evidence",
 		"back around the strip from Status to Evidence");
-	Check(runtime.RunEvent("tab_vote",10.2,effects,error) && runtime.RunEvent("onSectionNext",10.3,effects,error) && section() == 5,
+	Check(runtime.RunEvent("tab_vote",12.2,effects,error) && runtime.RunEvent("onSectionNext",12.3,effects,error) && section() == 5,
 		"the triggers page sections only on the Match page");
-	runtime.Frame(viewport,10.6);
-	Check(!runtime.CanActivateControl("match-tab-status",10.6) && !runtime.CanActivateControl("match-evidence-open",10.6) &&
-		!runtime.CanActivateControl("match-team-0",10.6) && !runtime.CanActivateControl("match-role",10.6) &&
-		!runtime.CanActivateControl("match-rule-value",10.6),"the Match page takes no input from another tab");
+	runtime.Frame(viewport,12.6);
+	Check(!runtime.CanActivateControl("match-tab-status",12.6) && !runtime.CanActivateControl("match-evidence-refresh",12.6) &&
+		!runtime.CanActivateControl("match-team-0",12.6) && !runtime.CanActivateControl("match-role",12.6) &&
+		!runtime.CanActivateControl("match-rule-value",12.6) && !runtime.CanActivateControl("match-series-format",12.6),
+		"the Match page takes no input from another tab");
 }
 
 // The multiplayer cards' Settings pages and the Escape card's Voice page

@@ -6,27 +6,27 @@ with one card over the live, softened match (section 14.18 of the
 Escape card's shell came first: the card, its header, the eight-tab strip, the
 prompt bar, the Disconnect confirmation, the softening and its release, and the
 session and game plumbing that let the card cover the game's own menu. The
-Team, Players, Vote, Settings, Voice and Server pages are built on it, and the
-Match page's Status, Teams, Proposals and Rules sections; Match's Series and
-Evidence sections and Admin still hand off to their stock pages, so the Escape
-card stays opt-in. The Welcome card covers the connect-time join offer with
-its Join, Server, Players and Settings pages, all built, so it presents by
-default. The loading screen hands a join over to the Welcome card (B8). The
-Match page's Series and Evidence sections follow (the plan's B9e and B9f);
-Admin waits for text fields, and its stock page's password check now works
-(B7).
+Team, Players, Vote, Settings, Voice, Server and Match pages are built on it,
+the Match page with all six of Match Control's sections; Admin still hands off
+to its stock page, so the Escape card stays opt-in. The Welcome card covers
+the connect-time join offer with its Join, Server, Players and Settings pages,
+all built, so it presents by default. The loading screen hands a join over to
+the Welcome card (B8). Admin waits for text fields, as does the Match page's
+referee sign-in, which opens the stock page for its credential; the Admin
+page's password check now works (B7).
 
 ## The gate
 
 `ui_retainedMultiplayer` (default 0) opts into both cards. `ui_retained` alone
 includes a card only once none of its pages hands off any more: the session
 lists the pages that still do in `RETAINED_MP_ESCAPE_MISSING_PAGES`, today
-Match and Admin, and `RETAINED_MP_WELCOME_MISSING_PAGES`, now empty, and
+Admin, and `RETAINED_MP_WELCOME_MISSING_PAGES`, now empty, and
 `tools/tests/ui_retained_gate.py` keeps each list equal to its document's
 hand-off pages (its `stock_<page>` programs). The Welcome card therefore
 presents with `ui_retained` alone, which is on by default; `ui_retained 0`
 keeps the classic join panel. A page that is built may still hand off what it
-cannot edit yet (`classic_<page>`, the Settings page's name and clan) without
+cannot edit yet (`classic_<page>`: the Settings page's name and clan, the
+Match page's referee credential and its lists' rows past the card's) without
 counting as missing. Players never see a mix of card and stock pages unless
 they opt in.
 
@@ -282,13 +282,35 @@ Rules is built:
   confirmation, and Discard changes; and the latest result. The game checks
   the value against the field's own bounds as it stages it.
 
+Series is built:
+
+- **The series.** Its state, format, score and the map in play or next, the
+  map pool with each map's disposition and the side that chose it, and the
+  veto and map history, each veto or map with its action or outcome and its
+  side or score (the stock page's fourth columns, the starting and winning
+  sides, are left out for the names' room). A map is chosen as a row is on
+  Teams; the history is only to read, though its rows take focus so it
+  scrolls.
+- **The actions.** The format a staged series takes (best of one, three or
+  five), a list that keeps its value on the game's menu as the stock choice
+  does, then Stage series, Start series, Cancel series, Advance map and the
+  veto's Ban map, Pick map, Decider, Start as Marines and Start as Strogg,
+  each saying why it is unavailable, in a column that scrolls. All but
+  Stage series ask first in the stock confirmation, with the stock page's
+  text. The latest result shows under the lists.
+
+Evidence is built: the evidence's state (recording, the match report, the
+multi-view demo and the events recorded) and the most recent evidence, only
+to read, with Refresh, which asks the game to project its view again.
+
 The page asks for each action by its index in the session's
 `RETAINED_MP_MATCH_TOKENS`, which holds the stock page's own fixed tokens,
 and for a list's row by the list's index in `RETAINED_MP_MATCH_LISTS` and
 the row's: the session sets the stock list's own selection on the game's
 menu and sends its token, as the stock list does. The card never sends text
 of its own, and the game checks every action again against its accepted
-view. The other sections still open the stock page.
+view. The referee's sign-in, which needs the credential, and a list's rows
+past the card's open the stock page (`classic_match`).
 
 ### The Settings page
 
@@ -449,7 +471,16 @@ only when it changes and moving `mp.revision` when anything did:
   `mp.match.rules.{summary,staged}`, the value to stage as
   `mp.match.rule_value`, the profiles as `mp.match.profile.{count,more,selected}`
   with `mp.match.profile<row>.c0` and the rule fields as
-  `mp.match.rule.{count,more,selected}` with `mp.match.rule<row>.{c0,c1,c2}`.
+  `mp.match.rule.{count,more,selected}` with `mp.match.rule<row>.{c0,c1,c2}`;
+  the series as `mp.match.series.summary`, its format as
+  `mp.match.series_profile` (0 to 2), the map pool as
+  `mp.match.series_map.{count,more,selected}` with
+  `mp.match.series_map<row>.{c0,c1,c2}` and the history as
+  `mp.match.series_history.{count,more,selected}` with
+  `mp.match.series_history<row>.{c0,c1,c2}` (the first three of the stock
+  page's four columns); the evidence's state as
+  `mp.match.evidence.summary` and the recent evidence as
+  `mp.match.evidence.{count,more,selected}` with `mp.match.evidence<row>.c0`.
   Players' names reach the card as plain text, which never translates. The
   game projects its menu again whenever the accepted view has moved since it
   last did.
@@ -515,6 +546,7 @@ The card's verbs are the stock menu's own commands with its selection sound:
 | `mpMatchRole <role>` | the game's menu's `match_role_choice` set to the role, 1 to 4, quietly; nothing reaches the game |
 | `mpMatchScope <target>` | the game's menu's `match_proposal_scope_choice` set to `global` (0) or `side` (1), quietly |
 | `mpMatchRuleValue <value>` | the game's menu's `match_rule_value` set to the value, 0 to 10000, quietly |
+| `mpMatchSeriesProfile <format>` | the game's menu's `match_series_profile_choice` set to `best_of_one` (0), `best_of_three` (1) or `best_of_five` (2), quietly |
 
 The Vote page's rows are value controls. Their actions use the adapter's
 `session.menuValue` operation, which carries the control's new value with a
@@ -530,8 +562,9 @@ open. A list sends its row (the kick list's "No one" is -1), a check box 1 or
 same operation with `mpModelSelf`, `mpModelEnemy`, `mpModelTeam` and
 `mpCrosshair` (`RETAINED_MP_APPEARANCE_VALUES`): the session sends `retained
 appearance <slot> <row>` or `retained crosshair <index>` for a value of 0 or
-more. The Match page's role and ballot target use it with `mpMatchRole` and
-`mpMatchScope`, and its rule value with `mpMatchRuleValue`, whose value runs
+more. The Match page's role, ballot target and series format use it with
+`mpMatchRole`, `mpMatchScope` and `mpMatchSeriesProfile`, and its rule value
+with `mpMatchRuleValue`, whose value runs
 from 0 to 10000; the session keeps each on the game's menu, as the stock
 controls do. A number field's value comes back through the card's state a
 frame or two after the session takes it, and the runtime accepts a number only
@@ -581,11 +614,17 @@ without affecting players:
 - **Match actions.** Rows with their reasons beside them rather than the
   stock page's buttons and shared Action line: the labels run too long for
   plates in French and German, and a reason beside its action needs no
-  pointing. Teams' sixteen actions share one column that scrolls.
+  pointing. Teams' sixteen actions share one column that scrolls, as do
+  Series' nine. Every section's reason column holds every reason a row can
+  show, in every language: in two lines where the column is wide, in three
+  on the scrolling columns' taller rows (the generator refuses a layout
+  where one would be cut off).
 - **Match lists.** Match Control's lists as the scoreboard's rows in a
   scrolling column, up to a set number of rows each (32 team and roster rows,
-  16 participants, every proposal, profile and rule field), after which the
-  stock page shows the rest.
+  16 participants, every proposal, profile and rule field, 16 maps, 24
+  history entries and all the recent evidence), after which the stock page
+  shows the rest. The Series lists leave out the stock page's fourth columns
+  and the rule list its type column, for the names' room.
 - **Rule value.** A whole-number field from 0 to 10000, the largest value a
   rule takes; the stock field takes any text and the game checks it.
 - **Tab labels (D7).** Marine 14 dp, short labels written for the strip; the
@@ -902,14 +941,44 @@ The Match page's Proposals and Rules sections add:
 Evidence: `.tmp/ui/retained-mp-match-proposals-rules/validation-evidence.json`, SHA-256
 `830d701016bab145731404a0e018a3619ff5a24694f3737b140f13406e0d619c`.
 
+The Match page's Series and Evidence sections add:
+
+- gate cases: the Series actions by index and an index past the table
+  refused; the series format on the game's menu in the stock choice's own
+  words and a format outside the three refused; pins that the mirrored
+  operations follow each section's actions, that the map pool, history and
+  evidence rows match Match Control's own bounds, that the history and the
+  evidence have no selection on either side, that the formats match the
+  stock choice, the game's parse and the projection's names, that every
+  reason a row can show is one the generator fits, that the generator
+  refuses a reason column too narrow for them, and that the Match page,
+  built, leaves the missing-pages list while its referee credential and
+  rows past the card's open the stock page;
+- native checks of the sections: the series, the map pool and its
+  selection, the history only to read, Stage series, Start series asking
+  first with No cancelling, Ban map asking first with Yes confirming, a
+  refused action's reason, the format's new value, the evidence and the
+  recent evidence only to read, and Refresh;
+- live probes on a listen server and a remote client, each side with a
+  human, in English on OpenGL and German on Vulkan: the competitive profile
+  chosen from Rules, then the format through its list, staging a best of
+  one and starting it through the stock confirmation, choosing a map and
+  banning it through the confirmation (the map marked banned, the history
+  filled, the turn passing to the other side), the action column scrolling
+  to its last row, and the Evidence section with Refresh; and the stock
+  page's proposal list, now in its two columns.
+
+Evidence: `.tmp/ui/retained-mp-match-series-evidence/validation-evidence.json`, SHA-256
+`6ee747ef06a2c9d6d90984021912bb53e22b4c354be2c6380d5bb9aedbeddf23`.
+
 The card's acceptance continues under `FLOW-046`.
 
 ## Known limitations
 
-- Admin, the Match page's Series and Evidence sections and its referee
-  sign-in hand off to their stock pages, and the stock menu then keeps the
-  menu until it closes; the card does not come back over it. So do the
-  Settings pages' name and clan.
+- Admin and the Match page's referee sign-in hand off to their stock pages,
+  and the stock menu then keeps the menu until it closes; the card does not
+  come back over it. So do the Settings pages' name and clan, and a Match
+  Control list's rows past the card's.
 - Joining a team through Match Control commits but leaves a listen server's
   player on their team, on the stock page as on the card (seen in B9b's
   probes; a separate game fix).
