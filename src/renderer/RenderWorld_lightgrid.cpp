@@ -399,6 +399,18 @@ static void LightGrid_CopyBottomUpRGB( int width, int height, const byte *srcBot
 	}
 }
 
+/*
+Bake captures render whole scenes outside the normal BeginFrame/EndFrame pair.
+EndFrame is what returns the frame-temporary memory (R_ToggleSmpFrame); without
+it every capture appended new 1 MB R_FrameAlloc blocks that were only released
+at shutdown, so a full-quality bake grew by roughly 2 MB per probe per bounce
+until Out of memory. The capture's commands have already executed and the
+command chain is cleared, so nothing still points into that memory.
+*/
+static void LightGrid_ReleaseCaptureFrameMemory( void ) {
+	R_ToggleSmpFrame();
+}
+
 static void LightGrid_RenderCaptureScene( int width, int height, renderView_t *ref ) {
 	const bool oldUseScissor = r_useScissor.GetBool();
 
@@ -409,6 +421,14 @@ static void LightGrid_RenderCaptureScene( int width, int height, renderView_t *r
 	r_useScissor.SetBool( false );
 
 	tr.BeginFrame( glConfig.vidWidth, glConfig.vidHeight );
+	// Same as R_ReadTiledPixels (the synchronous capture path): draw the portal
+	// sky first, otherwise sky pixels stay black and the bake gets no sky light.
+	if ( tr.portalSkyCaptureViewCallback != NULL && tr.primaryWorld != NULL ) {
+		renderView_t portalSkyView = *ref;
+		if ( tr.portalSkyCaptureViewCallback( ref, &portalSkyView ) ) {
+			tr.primaryWorld->RenderScene( &portalSkyView, RF_DEFER_COMMAND_SUBMIT | RF_PORTAL_SKY );
+		}
+	}
 	tr.primaryWorld->RenderScene( ref );
 
 	tr.guiModel->EmitFullScreen();
@@ -420,6 +440,7 @@ static void LightGrid_RenderCaptureScene( int width, int height, renderView_t *r
 		}
 		R_ClearCommandChain();
 	}
+	LightGrid_ReleaseCaptureFrameMemory();
 
 	glReadBuffer( GL_BACK );
 
@@ -893,6 +914,7 @@ static void LightGrid_CaptureViewRGB( int width, int height, int blends, renderV
 
 	if ( blends <= 1 ) {
 		R_ReadTiledPixels( width, height, rgbBuffer.Ptr(), ref );
+		LightGrid_ReleaseCaptureFrameMemory();
 	} else {
 		idTempArray<unsigned short> accumBuffer( pixelCount * 3 );
 		memset( accumBuffer.Ptr(), 0, pixelCount * 3 * sizeof( unsigned short ) );
@@ -900,6 +922,7 @@ static void LightGrid_CaptureViewRGB( int width, int height, int blends, renderV
 		r_jitter.SetBool( true );
 		for ( int i = 0; i < blends; i++ ) {
 			R_ReadTiledPixels( width, height, rgbBuffer.Ptr(), ref );
+			LightGrid_ReleaseCaptureFrameMemory();
 			for ( int j = 0; j < pixelCount * 3; j++ ) {
 				accumBuffer[ j ] += rgbBuffer[ j ];
 			}
