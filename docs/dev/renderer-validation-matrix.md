@@ -223,6 +223,12 @@ The comparison keeps `r_rendererModernLightingParity 0`, exercising OpenGL's
 default admission of the exact authored fog/blend phase. Vulkan must report
 complete preview ownership for every enabled
 case and disabled ownership for the HDR/PBR-off controls. Restoration is exact.
+The run pins `com_fixedTic 1`, one simulation tic per presentation frame: its
+spawns and removals complete on simulation tics while console `wait` counts
+presentation frames, and without the pin a contended machine can pass a whole
+setup window without a tic. Each capture's render world must also hold exactly
+one specimen and the intended fog/blend light, so a sequencing fault fails as
+such rather than as an image difference.
 `--compare-gl-report <report.json>` requires matching fixture/profile/harness
 provenance and retains the two-byte full-image gate in a separate
 `comparison.json`. The GPU HDR self-test additionally requires all 24 preview

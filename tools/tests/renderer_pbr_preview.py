@@ -19,14 +19,36 @@ import renderer_vulkan_hdr_scene as scene
 lab = scene.lab
 
 
+def scene_commands(name):
+    # Printed with the world frozen, after the case's own commands. Nothing
+    # changes before the capture that follows.
+    return [f'echo "PBRSCENE_{name}_BEGIN"', 'listRenderLightDefs', 'listRenderEntityDefs',
+            f'echo "PBRSCENE_{name}_END"']
+
+
+def captured_scene(log, name):
+    marker = re.search(rf'(?m)^PBRSCENE_{re.escape(name)}_BEGIN\s*$([\s\S]*?)^PBRSCENE_{re.escape(name)}_END\s*$', log)
+    if not marker:
+        return None
+    defs = re.findall(r'(?m)^\s*\d+:\s+\d+ intr\s+\d+ refs (\S+)\s*$', marker[1])
+    return dict(specimens=sum(d.lower() == lab.lab.MODEL.lower() for d in defs),
+                lights=sorted(d.rsplit('/', 1)[-1] for d in defs
+                              if re.fullmatch(r'lights/openq4/pbr_lab/(?:fog|blend)', d, re.I)))
+
+
 def configure(manifest, samples):
-    lab.BASE.update(r_screenFraction='100', r_resolutionScaleMode='1', r_temporalAA='0')
+    # Console waits count presentation frames, but removals and a spawned
+    # entity's first render definition are serviced on simulation tics, and
+    # presentation is decoupled from simulation. A loaded machine passed whole
+    # g_stopTime 0 windows without a tic, capturing a stale light or no
+    # specimen. Run exactly one simulation tic per presentation frame.
+    lab.BASE.update(r_screenFraction='100', r_resolutionScaleMode='1', r_temporalAA='0', com_fixedTic='1')
     profile = {}
     for name, spec in scene.configure_composition(manifest, samples).items():
         profile[name.replace('linear-', 'preview-', 1)] = dict(spec,
             settings={**spec['settings'], 'r_hdrToneMap': '0', 'g_renderFastNoPostDirect': '0',
                       'r_rendererModernLightingParity': '0'},
-            reference=None)
+            reference=None, light=None if spec['effect'] == 'clear' else spec['effect'].split('-')[0])
     base = next(iter(profile.values()))
     settings = {**base['settings'], 'r_pbrDebug': '0'}
     commands = ['g_stopTime 0',
@@ -35,9 +57,9 @@ def configure(manifest, samples):
         f'shader "{lab.lab.PREFIX}/emissive" origin "0 -700 380" angle 0 solid 0',
         'wait 30', 'g_stopTime 1']
 
-    def add(suffix, changes=None, commands=None, reference=None):
+    def add(suffix, changes=None, commands=None, reference=None, light=None):
         profile['preview-' + suffix] = dict(settings={**settings, **(changes or {})},
-            commands=commands or [], reference=reference)
+            commands=commands or [], reference=reference, light=light)
 
     add('lit-emission', commands=commands, reference='preview-composition-emissive-6-clear')
     for effect in ('fog', 'blend'):
@@ -45,7 +67,7 @@ def configure(manifest, samples):
         add('lit-' + effect, commands=['g_stopTime 0',
             f'spawn light name {light} origin "0 0 400" angle 0 '
             f'light_radius "1400 1400 1000" texture "lights/openq4/pbr_lab/{effect}" noshadows 1',
-            'wait 30', 'g_stopTime 1'])
+            'wait 30', 'g_stopTime 1'], light=effect)
         add('lit-' + effect + '-restored', commands=['g_stopTime 0',
             f'script "${light}.remove()"', 'wait 30', 'g_stopTime 1'], reference='preview-lit-emission')
     for scale in (50, 75, 125, 150, 200):
@@ -84,6 +106,13 @@ def qualify(report, profile, backend, samples, code):
         state = dict(re.findall(r'(\w+)=([^\s]+)', next((line for line in section.splitlines()
             if line.startswith('Vulkan PBR preview:')), '')))
         checks[name] = dict(expectedOwnership=expected, ownership=state)
+        # The image must show the sequence's scene: one specimen and exactly
+        # the intended fog/blend light, not a predecessor's leftovers.
+        intended = dict(specimens=1, lights=[spec['light']] if spec.get('light') else [])
+        captured = captured_scene(log, name)
+        checks[name]['scene'] = dict(expected=intended, captured=captured)
+        if captured != intended:
+            failures.append(f'{name}: captured scene {captured} differs from its sequence {intended}')
         if backend == 'vk':
             owner = dict(requested=str(expected), committed=str(expected),
                          reason='complete' if expected else 'disabled')
@@ -144,7 +173,7 @@ def main():
     for name, spec in profile.items():
         lab.CASES[name] = spec['settings']
         lab.CASE_CAMERAS[name] = 'sampling'
-        lab.CASE_COMMANDS[name] = [*spec['commands'], 'wait 30']
+        lab.CASE_COMMANDS[name] = [*spec['commands'], 'wait 30', *scene_commands(name)]
         if spec['settings'].get('r_pbrMaterials') == '0':
             lab.LEGACY_CASES.add(name)
     sys.argv = [__file__, '--runtime-root', str(args.runtime_root), '--output-dir', str(args.output_dir),
