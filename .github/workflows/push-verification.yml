@@ -112,6 +112,7 @@ jobs:
             tools/tests/in_game_difficulty_restart.py \
             tools/tests/async_drop_client_contract.py \
             tools/tests/async_client_frame_contract.py \
+            tools/tests/async_rcon_verify_contract.py \
             tools/tests/async_session_command_contract.py \
             tools/tests/async_usercmd_window_contract.py \
             tools/tests/base64_input_safety.py \
@@ -472,6 +473,7 @@ jobs:
           python tools/tests/in_game_difficulty_restart.py
           python tools/tests/async_drop_client_contract.py
           python tools/tests/async_client_frame_contract.py
+          python tools/tests/async_rcon_verify_contract.py --mutations
           python tools/tests/async_session_command_contract.py
           python tools/tests/async_usercmd_window_contract.py
           python tools/tests/base64_input_safety.py

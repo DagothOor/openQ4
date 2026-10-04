@@ -45,6 +45,15 @@ network flag; unrelated and private settings are ignored. Dictionary decoding
 is all-or-nothing, so a truncated update does not leave a partially changed
 settings set behind.
 
+## The in-match Admin page
+
+The multiplayer menu's Admin page asks for the same password, checks it with
+the server and then opens its player, server and console controls; a wrong
+password returns to Join Team. Type the password into the page's field, or set
+`net_clientRemoteConsolePassword` at the console first. The field takes 16
+characters, so for a longer password set the CVar at the console, then open
+Admin and choose Accept without typing in the field.
+
 ## Server-provided package links
 
 Pure-server redirects and PK4 download entries are accepted only as bounded

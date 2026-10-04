@@ -10,7 +10,8 @@ Team, Players, Vote, Settings, Voice and Server pages are built on it; Match
 and Admin still hand off to their stock pages, so the Escape card stays
 opt-in. The Welcome card covers the connect-time join offer with its Join,
 Server, Players and Settings pages, all built, so it presents by default.
-The other pages follow in later increments (the plan's B7 to B9).
+Match follows in a later increment (the plan's B9); Admin waits for text
+fields, and its stock page's password check now works (B7).
 
 ## The gate
 
@@ -275,6 +276,33 @@ The server's name and address, its message (`si_motd`, three lines) in
 team balance and the next map in `si_mapCycle`) and the map rotation, the
 current map in orange. Each column's labels take the width of the longest in
 any language. The page has no actions; its tab keeps the focus.
+
+### The Admin page
+
+The Admin page hands off to the stock page until the card has text fields for
+the password and the console. The stock page asks for the server's
+remote-console password and sends `rcon verifyRconPass` when the player
+chooses Accept, then waits for the game to hear the answer
+(`idGame::ProcessRconReturn`), which opens the admin controls or returns to
+Join Team. Quake 4's engine answered that check; openQ4's ran it as an unknown
+command and never passed an answer on, so the page waited for good. Now:
+
+- the server answers the check with the stock "rcon verified" string
+  (`#str_107250`) without running anything, once the password is accepted
+  (`idAsyncServer::ExecuteRemoteConsoleCommand`, rcon2 and legacy alike);
+- the client hands that answer, or the bad-password reply (`#str_04847`, or
+  Quake 4's `#str_104847`), to the game when it comes from the server the
+  check went to, and answers false itself on the next frame when it refuses
+  the check before sending (no password, one shorter than rcon2's 12 bytes,
+  no port or address) or after rcon2's 10-second request timeout
+  (`idAsyncClient::AnswerRconVerify`);
+- the client hands the server's remote-console output to the game, as Quake 4
+  did, so the stock page's console shows it.
+
+The stock field takes 16 characters; a longer password set at the console
+works when the player chooses Accept without typing in the field.
+`tools/tests/async_rcon_verify_contract.py` compiles the client and server
+code with stand-ins and drives both ends; `--mutations` reverts each rule.
 
 ### The game's data
 

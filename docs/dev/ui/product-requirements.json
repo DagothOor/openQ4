@@ -844,37 +844,37 @@
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/multiplayer-menus.md",
       "scope": "Behind ui_retainedMultiplayer, the multiplayer Escape card covers the game's in-match menu over the softened match: header, eight-tab strip, prompt bar, Disconnect confirmation and hand-off pages, with the game's revisioned header keys and its own menu commands. Qualified by the gate and native screens tests, a mutation pass and a live probe on OpenGL and Vulkan in four languages.",
-      "sha256": "800da26b2fa7122bf1976772fa6c67e6a82c4f73582a41f8f1c77f3dd8d6d685"
+      "sha256": "8b01103e842c42102a689f438fd6bfad89378f522e7145f26eda68633772bef9"
     },
     "retained-mp-team-server": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/multiplayer-menus.md",
       "scope": "The Escape card's Team page offers the game's own join, spectate and ready actions with their availability and reasons, the team band and recent chat; its Server page shows the server's name, address, message, rules and rotation. Qualified by the gate and native screens tests, a mutation pass and a live probe in two languages.",
-      "sha256": "800da26b2fa7122bf1976772fa6c67e6a82c4f73582a41f8f1c77f3dd8d6d685"
+      "sha256": "8b01103e842c42102a689f438fd6bfad89378f522e7145f26eda68633772bef9"
     },
     "retained-mp-players": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/multiplayer-menus.md",
       "scope": "The Escape card's Players page lists the teams and spectators beside the selected player's statistics, with Mute and Friend. Qualified by the gate and native screens tests, a mutation pass and live probes in three languages, on both renderers, and from a remote client.",
-      "sha256": "800da26b2fa7122bf1976772fa6c67e6a82c4f73582a41f8f1c77f3dd8d6d685"
+      "sha256": "8b01103e842c42102a689f438fd6bfad89378f522e7145f26eda68633772bef9"
     },
     "retained-mp-welcome": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/multiplayer-menus.md",
       "scope": "The Welcome card covers the connect-time join offer with the game's join choices per mode, the server and the players, and hands its settings to the stock pages. Qualified by the gate and native screens tests, a mutation pass and live probes in three languages on both renderers.",
-      "sha256": "800da26b2fa7122bf1976772fa6c67e6a82c4f73582a41f8f1c77f3dd8d6d685"
+      "sha256": "8b01103e842c42102a689f438fd6bfad89378f522e7145f26eda68633772bef9"
     },
     "retained-mp-vote": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/multiplayer-menus.md",
       "scope": "The Escape card's Vote page shows the running vote with its ballots and drafts a call from rows for the fields the drafted game type uses, sending only the fields that differ. Qualified by the gate, adapter and native screens tests, a mutation pass and live probes with a remote client in two languages on both renderers.",
-      "sha256": "800da26b2fa7122bf1976772fa6c67e6a82c4f73582a41f8f1c77f3dd8d6d685"
+      "sha256": "8b01103e842c42102a689f438fd6bfad89378f522e7145f26eda68633772bef9"
     },
     "retained-mp-settings": {
       "kind": "implementation_checkpoint",
       "path": "docs/dev/ui/multiplayer-menus.md",
       "scope": "The multiplayer cards' Settings pages and the Escape card's Voice page, with a player-settings operation in the adapter; the Welcome card presents by default. Qualified by the gate, adapter and native screens tests, a mutation pass and live probes in two languages on both renderers.",
-      "sha256": "800da26b2fa7122bf1976772fa6c67e6a82c4f73582a41f8f1c77f3dd8d6d685"
+      "sha256": "8b01103e842c42102a689f438fd6bfad89378f522e7145f26eda68633772bef9"
     }
   },
   "groups": {

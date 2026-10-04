@@ -2,6 +2,23 @@
 
 ## 0.13.2 release candidate
 
+- [x] Make the multiplayer Admin page's password check work. The page sends
+  `rcon verifyRconPass` and waits for the game to hear the answer; the server
+  ran it as an unknown command and the client never passed an answer on, so
+  the page never opened. The server now answers the check with Quake 4's
+  "rcon verified" string without running anything, and the client hands that
+  answer, or the bad-password reply, to the game when it comes from the
+  server asked, and answers false itself when it refuses the check before
+  sending (no password, or one shorter than rcon2's 12 bytes) or after 10
+  seconds without a reply. The client also hands the server's remote-console
+  output to the game, as Quake 4 did, so the Admin page's console shows it.
+  Evidence: `async_rcon_verify_contract.py` compiles the client and server
+  code and catches nine reverted rules; two-process probes, on OpenGL with the
+  classic menu in English and on Vulkan through the multiplayer card's
+  hand-off in German, show a wrong password returning to Join Team, a short
+  one refused, the right one (18 and 27 characters) opening the admin
+  controls, and `rcon si_name` reaching the Admin console.
+
 - [x] Make `r_resolutionScaleMode 2` and `3` reach single player. The SP game
   renders its below-native scene into its own targets and presented them with
   a full-screen material, a bilinear stretch, so the modes never applied. It

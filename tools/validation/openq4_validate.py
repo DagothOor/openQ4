@@ -608,6 +608,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         root / "tools" / "tests" / "windows_dedicated_server_smoke_contract.py",
     ]
     argument_checks = [
+        (root / "tools" / "tests" / "async_rcon_verify_contract.py", ['--mutations']),
         (root / "tools" / "tests" / "sp_turbo_weapon_wheel.py", []),
         (root / "tools" / "tests" / 'renderer_native_ui_output.py', []),
         (root / "tools" / "tests" / 'sys_event_queue_ownership.py', []),

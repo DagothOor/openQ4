@@ -20570,6 +20570,9 @@ idMultiplayerGame::ProcessRconReturn
 ================
 */
 void idMultiplayerGame::ProcessRconReturn( bool success )	{
+	if ( mainGui == NULL ) {
+		return;
+	}
 
 	if( success )	{
 		mainGui->HandleNamedEvent("adminPasswordSuccess");
