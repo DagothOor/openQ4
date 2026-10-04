@@ -47,6 +47,15 @@ temporary; full CPU copies of pages are not retained. Allocation/upload
 refusal cannot publish incomplete glyph metadata. A refused upload may leave
 unused page space, which is reclaimed at the resource barrier.
 
+Pages are generated images. `reloadImages` and the texture-reduction reload
+reallocate an image's storage without any resource barrier, so the page
+generator rasterizes every glyph already placed on that page into the same
+rectangle again. Published UVs stay valid and no view rebuilds its text. Until
+4 October 2026 the pages were scratch images, which that reload reallocated
+empty while their glyphs stayed published: on Vulkan the retained menus lost
+all their text and the validation layer reported sampling an image in
+`VK_IMAGE_LAYOUT_UNDEFINED`; OpenGL happened to keep the old texels.
+
 There is no live eviction. The existing coordinator first retires queued
 submissions and closes every retained context, then clears the cache and
 purges its images before restoring view snapshots. Renderer shutdown also

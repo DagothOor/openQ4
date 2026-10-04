@@ -14,6 +14,20 @@ void PageName(unsigned page, char (&name)[64]) {
 	std::memcpy(name,prefix,sizeof(prefix)-1);
 	*std::to_chars(name+sizeof(prefix)-1,name+sizeof(name)-1,page).ptr = '\0';
 }
+bool ValidRaster(const Raster& raster) {
+	return std::isfinite(raster.advance) && raster.advance >= 0 && raster.width >= 0 && raster.height >= 0 &&
+		raster.width <= Cache::PageSize-2 && raster.height <= Cache::PageSize-2 &&
+		raster.coverage.size() == static_cast<size_t>(raster.width)*raster.height;
+}
+// One transparent gutter outside the rasterizer's own edge coverage.
+std::vector<unsigned char> GlyphTexels(const Raster& raster) {
+	const int width = raster.width+2, height = raster.height+2;
+	std::vector<unsigned char> rgba(static_cast<size_t>(width)*height*4,255);
+	for (size_t i = 3; i < rgba.size(); i += 4) rgba[i] = 0;
+	for (int row = 0; row < raster.height; ++row) for (int col = 0; col < raster.width; ++col)
+		rgba[(static_cast<size_t>(row+1)*width+col+1)*4+3] = raster.coverage[static_cast<size_t>(row)*raster.width+col];
+	return rgba;
+}
 }
 bool Cache::Metrics(const std::string& face, int pixels, renderFontMetrics_t& out) {
 	if (!ValidFace(face,pixels)) return false;
@@ -56,32 +70,40 @@ bool Cache::Glyph(const std::string& face, int pixels, std::uint32_t scalar, ren
 	if (!source.Resolve(face,scalar,index) || index < 0) return false;
 	const auto key = std::make_tuple(face,pixels,index);
 	const auto found = glyphs.find(key);
-	if (found != glyphs.end()) { out = found->second; return true; }
+	if (found != glyphs.end()) { out = found->second.glyph; return true; }
 	if (glyphs.size() >= MaxGlyphs) return false;
 	Raster raster;
-	if (!source.Rasterize(face,pixels,index,raster) || !std::isfinite(raster.advance) || raster.advance < 0 ||
-		raster.width < 0 || raster.height < 0 || raster.width > PageSize-2 || raster.height > PageSize-2 ||
-		raster.coverage.size() != static_cast<size_t>(raster.width)*raster.height) return false;
-	renderFontGlyph_t result;
+	if (!source.Rasterize(face,pixels,index,raster) || !ValidRaster(raster)) return false;
+	Placed placed;
+	renderFontGlyph_t& result = placed.glyph;
 	result.advance = raster.advance;
 	if (raster.width && raster.height) {
-		// One transparent gutter outside the rasterizer's own edge coverage.
 		const int width = raster.width+2, height = raster.height+2;
-		std::vector<unsigned char> rgba(static_cast<size_t>(width)*height*4,255);
-		for (size_t i = 3; i < rgba.size(); i += 4) rgba[i] = 0;
-		for (int row = 0; row < raster.height; ++row) for (int col = 0; col < raster.width; ++col)
-			rgba[(static_cast<size_t>(row+1)*width+col+1)*4+3] = raster.coverage[static_cast<size_t>(row)*raster.width+col];
-		unsigned page; int x, y;
-		if (!Place(width,height,page,x,y) || !device.Upload(page,x,y,width,height,rgba.data())) return false;
+		if (!Place(width,height,placed.page,placed.x,placed.y) ||
+			!device.Upload(placed.page,placed.x,placed.y,width,height,GlyphTexels(raster).data())) return false;
 		result.left = static_cast<float>(raster.left); result.top = static_cast<float>(raster.top);
 		result.width = static_cast<float>(raster.width); result.height = static_cast<float>(raster.height);
-		result.u0 = float(x+1)/PageSize; result.v0 = float(y+1)/PageSize;
-		result.u1 = float(x+1+raster.width)/PageSize; result.v1 = float(y+1+raster.height)/PageSize;
-		PageName(page,result.image);
+		result.u0 = float(placed.x+1)/PageSize; result.v0 = float(placed.y+1)/PageSize;
+		result.u1 = float(placed.x+1+raster.width)/PageSize; result.v1 = float(placed.y+1+raster.height)/PageSize;
+		PageName(placed.page,result.image);
 	}
-	glyphs.emplace(key,result);
+	glyphs.emplace(key,placed);
 	out = result;
 	return true;
+}
+bool Cache::RestorePage(unsigned page) {
+	if (page >= pages.size()) return false;
+	bool restored = true;
+	for (const auto& [key,placed] : glyphs) {
+		if (!placed.glyph.image[0] || placed.page != page) continue;
+		// The source is deterministic: the same face, size and glyph rasterize
+		// to the bounds the published UVs were cut for.
+		Raster raster;
+		if (!source.Rasterize(std::get<0>(key),std::get<1>(key),std::get<2>(key),raster) || !ValidRaster(raster) ||
+			raster.width != static_cast<int>(placed.glyph.width) || raster.height != static_cast<int>(placed.glyph.height) ||
+			!device.Upload(page,placed.x,placed.y,raster.width+2,raster.height+2,GlyphTexels(raster).data())) restored = false;
+	}
+	return restored;
 }
 void Cache::Reset() {
 	glyphs.clear(); faces.clear(); pages.clear(); device.Reset();
