@@ -130,12 +130,17 @@ static int R_CountPackedTurboShadowingFaces( const rvMD5RMesh &mesh, const rvMD5
 
 static int R_CreatePackedTurboShadowSideWalls( const rvMD5RPrimBatch &primBatch, const silEdge_t *batchSilEdges, glIndex_t *shadowIndices, const byte *batchFacing ) {
 	int emittedIndexCount = 0;
+	const int batchTriangleCount = primBatch.silTraceGeoSpec.primitiveCount;
 
 	for ( int silEdgeIndex = 0; silEdgeIndex < primBatch.silEdgeCount; ++silEdgeIndex ) {
 		const silEdge_t &sil = batchSilEdges[ silEdgeIndex ];
+		// p2 == the batch triangle count is the classic dangling-edge sentinel:
+		// an open edge of the mesh, or one whose other face landed in another
+		// prim batch. Its missing face counts as lit, as the padded facing entry
+		// does for whole surfaces, so each batch's volume stays closed.
 		if ( sil.p1 < 0 || sil.p2 < 0
-			|| sil.p1 >= primBatch.silTraceGeoSpec.primitiveCount
-			|| sil.p2 >= primBatch.silTraceGeoSpec.primitiveCount
+			|| sil.p1 >= batchTriangleCount
+			|| sil.p2 > batchTriangleCount
 			|| sil.v1 < 0 || sil.v2 < 0
 			|| sil.v1 >= primBatch.silTraceGeoSpec.vertexCount
 			|| sil.v2 >= primBatch.silTraceGeoSpec.vertexCount ) {
@@ -143,7 +148,7 @@ static int R_CreatePackedTurboShadowSideWalls( const rvMD5RPrimBatch &primBatch,
 		}
 
 		const int f1 = batchFacing[ sil.p1 ];
-		const int f2 = batchFacing[ sil.p2 ];
+		const int f2 = ( sil.p2 == batchTriangleCount ) ? 1 : batchFacing[ sil.p2 ];
 		if ( !( f1 ^ f2 ) ) {
 			continue;
 		}

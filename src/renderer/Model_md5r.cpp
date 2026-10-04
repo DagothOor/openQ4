@@ -327,27 +327,6 @@ static void R_MD5R_InitStaticVertexFormat( rvMD5RVertexFormatDesc &vertexFormat 
 
 /*
 ========================
-R_MD5R_InitSkinnedVertexFormat
-========================
-*/
-static void R_MD5R_InitSkinnedVertexFormat( rvMD5RVertexFormatDesc &vertexFormat ) {
-	vertexFormat = rvMD5RVertexFormatDesc();
-	vertexFormat.hasPosition = true;
-	vertexFormat.positionDim = 3;
-	vertexFormat.positionTokenType = TT_FLOAT;
-	vertexFormat.hasBlendIndex = true;
-	vertexFormat.blendIndexTokenType = 0;
-	vertexFormat.hasBlendWeight = true;
-	vertexFormat.blendWeightDim = 4;
-	vertexFormat.blendWeightTransformCount = 4;
-	vertexFormat.blendWeightTokenType = TT_FLOAT;
-	vertexFormat.hasTexCoord[ 0 ] = true;
-	vertexFormat.texCoordDim[ 0 ] = 2;
-	vertexFormat.texCoordTokenType[ 0 ] = TT_FLOAT;
-}
-
-/*
-========================
 R_MD5R_InitVertexBufferDesc
 ========================
 */
@@ -1658,6 +1637,18 @@ bool rvRenderModelMD5R::CopyPrimBatchTriangles( const rvMD5RMesh &mesh, idDrawVe
 		return false;
 	}
 
+	// A jointed model's sil-trace buffer holds bind-pose (skin space) positions;
+	// the posed ones are the sil-trace verts the caller skinned this frame. Copying
+	// the buffer here left every CPU consumer -- bounds, culling, light tris,
+	// shadow volumes and the classic draw paths -- on the bind pose while the
+	// md5r vertex programs drew the animated pose (black, shadowless characters
+	// under r_convertMD5toMD5R). Static models keep their final positions in the
+	// buffer, so it stays authoritative for them.
+	const bool useSkinnedSilTraceVerts = ( silTraceVerts != NULL && joints.Num() > 0 );
+	if ( useSkinnedSilTraceVerts ) {
+		silTraceVertexBuffer = NULL;
+	}
+
 	int destVertexBase = 0;
 	int destIndexBase = 0;
 	const rvSilTraceVertT *currentSilTraceVerts = silTraceVerts;
@@ -2054,7 +2045,9 @@ namespace {
 	static const unsigned int MD5R_MODEL_CACHE_MAGIC = 0x5234514fU; // "OQ4R"
 	static const int MD5R_MODEL_CACHE_VERSION = 2;
 #ifndef ID_DEDICATED
-	static const unsigned int MD5R_MODEL_GENERATED_CACHE_PARSER_VERSION = 0x00030002U;
+	// 0x00030003: MD5 conversions carry the full packed layout (prim batches,
+	// basis, colours and the turbo shadow stream)
+	static const unsigned int MD5R_MODEL_GENERATED_CACHE_PARSER_VERSION = 0x00030003U;
 #endif
 	static const int MD5R_CACHE_MAX_NAME = 4096;
 	static const int MD5R_CACHE_MAX_JOINTS = 65536;
@@ -2443,6 +2436,21 @@ namespace {
 			|| ( vertexBuffer >= 0 && vertexBuffer < numVertexBuffers && indexBuffer >= 0 && indexBuffer < numIndexBuffers );
 	}
 
+	// A turbo shadow stream has no index buffer: its indices are built per light
+	// from the sil-trace view, so no batch may then claim shadow primitives.
+	static bool R_MD5RCacheValidShadowBufferPair( const rvMD5RMesh &mesh, int numVertexBuffers, int numIndexBuffers ) {
+		if ( mesh.shadowVolVertexBuffer >= 0 && mesh.shadowVolVertexBuffer < numVertexBuffers
+			&& mesh.shadowVolIndexBuffer == -1 ) {
+			for ( int batchIndex = 0; batchIndex < mesh.primBatches.Num(); ++batchIndex ) {
+				if ( mesh.primBatches[batchIndex].shadowVolGeoSpec.primitiveCount != 0 ) {
+					return false;
+				}
+			}
+			return true;
+		}
+		return R_MD5RCacheValidBufferPair( mesh.shadowVolVertexBuffer, mesh.shadowVolIndexBuffer, numVertexBuffers, numIndexBuffers );
+	}
+
 	static bool R_MD5RCacheValidateGeometrySpec(
 		const rvMD5RGeometrySpec &spec,
 		const rvMD5RVertexBufferDesc &vertexBuffer,
@@ -2541,7 +2549,7 @@ namespace {
 			|| mesh.meshIdentifier < 0 || mesh.meshIdentifier > 0x3fffffff
 			|| !R_MD5RCacheValidBufferPair( mesh.silTraceVertexBuffer, mesh.silTraceIndexBuffer, vertexBuffers.Num(), indexBuffers.Num() )
 			|| !R_MD5RCacheValidBufferPair( mesh.drawVertexBuffer, mesh.drawIndexBuffer, vertexBuffers.Num(), indexBuffers.Num() )
-			|| !R_MD5RCacheValidBufferPair( mesh.shadowVolVertexBuffer, mesh.shadowVolIndexBuffer, vertexBuffers.Num(), indexBuffers.Num() )
+			|| !R_MD5RCacheValidShadowBufferPair( mesh, vertexBuffers.Num(), indexBuffers.Num() )
 			|| mesh.primBatches.Num() < 0 || mesh.primBatches.Num() > MD5R_CACHE_MAX_PRIM_BATCHES ) {
 			return false;
 		}
@@ -3229,6 +3237,427 @@ void rvRenderModelMD5R::InitFromFile( const char *fileName ) {
 
 /*
 ========================
+R_MD5R_InitConvertedDrawVertexFormat
+
+Converted MD5 meshes use the retail packed families. A rigid mesh (one
+influence per vertex) selects the one-bone md5r programs, which read the
+binormal; a blended mesh selects the four-bone programs, which store three
+weights, rebuild the fourth, and rebuild the binormal from the normal, the
+tangent and the sign of the dominant weight. Both carry the bind-pose basis the
+programs pose, plus everything the packed stage programs bind.
+========================
+*/
+static void R_MD5R_InitConvertedDrawVertexFormat( rvMD5RVertexFormatDesc &vertexFormat, bool blended ) {
+	vertexFormat = rvMD5RVertexFormatDesc();
+	vertexFormat.hasPosition = true;
+	vertexFormat.positionDim = 3;
+	vertexFormat.positionTokenType = TT_FLOAT;
+	vertexFormat.hasBlendIndex = true;
+	vertexFormat.blendIndexTokenType = 0;
+	if ( blended ) {
+		vertexFormat.hasBlendWeight = true;
+		vertexFormat.blendWeightDim = 3;
+		vertexFormat.blendWeightTransformCount = 4;
+		vertexFormat.blendWeightTokenType = TT_FLOAT;
+	}
+	vertexFormat.hasNormal = true;
+	vertexFormat.normalTokenType = TT_FLOAT;
+	vertexFormat.hasTangent = true;
+	vertexFormat.tangentTokenType = TT_FLOAT;
+	vertexFormat.hasBinormal = true;
+	vertexFormat.binormalTokenType = TT_FLOAT;
+	vertexFormat.hasDiffuseColor = true;
+	vertexFormat.diffuseColorTokenType = 0;
+	vertexFormat.hasTexCoord[ 0 ] = true;
+	vertexFormat.texCoordDim[ 0 ] = 2;
+	vertexFormat.texCoordTokenType[ 0 ] = TT_FLOAT;
+}
+
+/*
+========================
+R_MD5R_InitConvertedShadowVertexFormat
+
+Two shadow vertices per sil-trace vertex, near then extruded, for the turbo
+volume. md5rshadow4.vp skins xyz with w = 1 and takes the extrusion selector
+from position.w; md5rshadow1.vp takes it from the normalized fourth
+blend-index byte and needs a w of one for its skinning dot products.
+========================
+*/
+static void R_MD5R_InitConvertedShadowVertexFormat( rvMD5RVertexFormatDesc &vertexFormat, bool blended ) {
+	vertexFormat = rvMD5RVertexFormatDesc();
+	vertexFormat.hasPosition = true;
+	vertexFormat.positionDim = blended ? 4 : 3;
+	vertexFormat.positionTokenType = TT_FLOAT;
+	vertexFormat.hasBlendIndex = true;
+	vertexFormat.blendIndexTokenType = 0;
+	if ( blended ) {
+		vertexFormat.hasBlendWeight = true;
+		vertexFormat.blendWeightDim = 3;
+		vertexFormat.blendWeightTransformCount = 4;
+		vertexFormat.blendWeightTokenType = TT_FLOAT;
+	}
+}
+
+/*
+========================
+rvRenderModelMD5R::AppendConvertedMD5Mesh
+
+Packs one MD5 mesh the way the retail converter does, so every packed consumer
+finds the data it reads. Triangles are split, in order, into prim batches that
+reference at most MD5R_MAX_PRIM_BATCH_TRANSFORMS joints, each batch with its own
+palette and batch-local blend indices. The draw stream holds the bind-pose
+position and basis the md5r programs pose on the GPU; the sil-trace view shares
+it with batch-local indices; the shadow stream holds a near and an extruded
+vertex per sil-trace vertex. Silhouette edges are renumbered per batch, and an
+edge whose faces land in different batches becomes a dangling edge in both, so
+every batch's turbo volume stays closed.
+========================
+*/
+bool rvRenderModelMD5R::AppendConvertedMD5Mesh( const idMD5Mesh &sourceMesh, int meshIdentifier ) {
+	const deformInfo_t *deform = sourceMesh.deformInfo;
+	if ( sourceMesh.shader == NULL || deform == NULL || sourceMesh.baseVectors == NULL
+		|| sourceMesh.weightIndex == NULL || sourceMesh.scaledWeights == NULL || sourceMesh.numWeights <= 0
+		|| deform->numSourceVerts <= 0 || deform->numSourceVerts != sourceMesh.texCoords.Num()
+		|| deform->numOutputVerts != deform->numSourceVerts + deform->numMirroredVerts
+		|| deform->numIndexes <= 0 || ( deform->numIndexes % 3 ) != 0
+		|| deform->indexes == NULL || deform->silIndexes == NULL
+		|| ( deform->numSilEdges > 0 && deform->silEdges == NULL ) ) {
+		return false;
+	}
+
+	const int numSourceVerts = deform->numSourceVerts;
+	const int numOutputVerts = deform->numOutputVerts;
+	const int numIndexes = deform->numIndexes;
+	const int numTris = numIndexes / 3;
+	const int numJoints = joints.Num();
+
+	// authored influences per source vertex, dominant first: ParseMesh sorts
+	// each vertex's weights by influence
+	idList<int> influenceJoints;
+	idList<float> influenceWeights;
+	idList<int> influenceCounts;
+	influenceJoints.SetNum( numSourceVerts * 4 );
+	influenceWeights.SetNum( numSourceVerts * 4 );
+	influenceCounts.SetNum( numSourceVerts );
+	int maxInfluences = 0;
+	int weightCursor = 0;
+	for ( int vertexIndex = 0; vertexIndex < numSourceVerts; ++vertexIndex ) {
+		int count = 0;
+		bool lastWeight = false;
+		while ( !lastWeight ) {
+			// the packed programs blend four joints; dropping a fifth would move the vertex
+			if ( weightCursor >= sourceMesh.numWeights || count >= 4 ) {
+				return false;
+			}
+			const int jointIndex = sourceMesh.weightIndex[ weightCursor * 2 + 0 ] / static_cast<int>( sizeof( idJointMat ) );
+			if ( jointIndex < 0 || jointIndex >= numJoints ) {
+				return false;
+			}
+			influenceJoints[ vertexIndex * 4 + count ] = jointIndex;
+			influenceWeights[ vertexIndex * 4 + count ] = sourceMesh.scaledWeights[ weightCursor ].w;
+			lastWeight = ( sourceMesh.weightIndex[ weightCursor * 2 + 1 ] != 0 );
+			++weightCursor;
+			++count;
+		}
+		// Unused slots name the dominant joint, so the rounding remainder the
+		// four-bone programs give the implicit fourth weight stays on that joint.
+		for ( int slot = count; slot < 4; ++slot ) {
+			influenceJoints[ vertexIndex * 4 + slot ] = influenceJoints[ vertexIndex * 4 ];
+			influenceWeights[ vertexIndex * 4 + slot ] = 0.0f;
+		}
+		influenceCounts[ vertexIndex ] = count;
+		maxInfluences = Max( maxInfluences, count );
+	}
+	if ( weightCursor != sourceMesh.numWeights ) {
+		return false;
+	}
+	const bool blended = ( maxInfluences > 1 );
+
+	// output vertex -> source vertex; mirrored seam copies share their source's weights
+	idList<int> outputSource;
+	outputSource.SetNum( numOutputVerts );
+	for ( int vertexIndex = 0; vertexIndex < numOutputVerts; ++vertexIndex ) {
+		int sourceIndex = vertexIndex;
+		if ( vertexIndex >= numSourceVerts ) {
+			sourceIndex = deform->mirroredVerts[ vertexIndex - numSourceVerts ];
+			if ( sourceIndex < 0 || sourceIndex >= numSourceVerts ) {
+				return false;
+			}
+		}
+		outputSource[ vertexIndex ] = sourceIndex;
+	}
+	for ( int index = 0; index < numIndexes; ++index ) {
+		if ( deform->indexes[ index ] < 0 || deform->indexes[ index ] >= numOutputVerts
+			|| deform->silIndexes[ index ] < 0 || deform->silIndexes[ index ] >= numOutputVerts ) {
+			return false;
+		}
+	}
+
+	// Split the triangles, in order, wherever the next one would take the
+	// batch past the palette size. A triangle names at most twelve joints, so
+	// a fresh batch always takes it.
+	idList<int> batchFirstTri;
+	idList<int> jointStamp;
+	jointStamp.AssureSize( numJoints, -1 );
+	batchFirstTri.Append( 0 );
+	int batchTransformCount = 0;
+	for ( int triIndex = 0; triIndex < numTris; ) {
+		int triangleJoints[ 12 ];
+		int numTriangleJoints = 0;
+		const int batchNumber = batchFirstTri.Num() - 1;
+		for ( int corner = 0; corner < 3; ++corner ) {
+			const int sourceIndex = outputSource[ deform->indexes[ triIndex * 3 + corner ] ];
+			for ( int slot = 0; slot < influenceCounts[ sourceIndex ]; ++slot ) {
+				const int jointIndex = influenceJoints[ sourceIndex * 4 + slot ];
+				if ( jointStamp[ jointIndex ] == batchNumber ) {
+					continue;
+				}
+				bool listed = false;
+				for ( int listedIndex = 0; listedIndex < numTriangleJoints; ++listedIndex ) {
+					listed = listed || ( triangleJoints[ listedIndex ] == jointIndex );
+				}
+				if ( !listed ) {
+					triangleJoints[ numTriangleJoints++ ] = jointIndex;
+				}
+			}
+		}
+		if ( batchTransformCount + numTriangleJoints <= MD5R_MAX_PRIM_BATCH_TRANSFORMS ) {
+			for ( int listedIndex = 0; listedIndex < numTriangleJoints; ++listedIndex ) {
+				jointStamp[ triangleJoints[ listedIndex ] ] = batchNumber;
+			}
+			batchTransformCount += numTriangleJoints;
+			++triIndex;
+		} else {
+			batchFirstTri.Append( triIndex );
+			batchTransformCount = 0;
+		}
+	}
+	const int numBatches = batchFirstTri.Num();
+	batchFirstTri.Append( numTris );
+
+	// batch-local vertices (in first-use order) and joint palettes
+	idList<int> cornerLocal;
+	idList<int> batchVertexStart;
+	idList<int> batchVertices;
+	idList<int> batchPaletteStart;
+	idList<int> batchPalettes;
+	idList<int> vertexStamp;
+	idList<int> vertexLocal;
+	idList<int> paletteStamp;
+	cornerLocal.SetNum( numIndexes );
+	batchVertexStart.SetNum( numBatches + 1 );
+	batchPaletteStart.SetNum( numBatches + 1 );
+	vertexStamp.AssureSize( numOutputVerts, -1 );
+	vertexLocal.SetNum( numOutputVerts );
+	paletteStamp.AssureSize( numJoints, -1 );
+	for ( int batchIndex = 0; batchIndex < numBatches; ++batchIndex ) {
+		batchVertexStart[ batchIndex ] = batchVertices.Num();
+		batchPaletteStart[ batchIndex ] = batchPalettes.Num();
+		for ( int index = batchFirstTri[ batchIndex ] * 3; index < batchFirstTri[ batchIndex + 1 ] * 3; ++index ) {
+			const int vertexIndex = deform->indexes[ index ];
+			if ( vertexStamp[ vertexIndex ] != batchIndex ) {
+				vertexStamp[ vertexIndex ] = batchIndex;
+				vertexLocal[ vertexIndex ] = batchVertices.Num() - batchVertexStart[ batchIndex ];
+				batchVertices.Append( vertexIndex );
+				const int sourceIndex = outputSource[ vertexIndex ];
+				for ( int slot = 0; slot < influenceCounts[ sourceIndex ]; ++slot ) {
+					const int jointIndex = influenceJoints[ sourceIndex * 4 + slot ];
+					if ( paletteStamp[ jointIndex ] != batchIndex ) {
+						paletteStamp[ jointIndex ] = batchIndex;
+						batchPalettes.Append( jointIndex );
+					}
+				}
+			}
+			cornerLocal[ index ] = vertexLocal[ vertexIndex ];
+		}
+		if ( batchPalettes.Num() - batchPaletteStart[ batchIndex ] > MD5R_MAX_PRIM_BATCH_TRANSFORMS ) {
+			return false;
+		}
+	}
+	batchVertexStart[ numBatches ] = batchVertices.Num();
+	batchPaletteStart[ numBatches ] = batchPalettes.Num();
+	const int numDrawVerts = batchVertices.Num();
+
+	rvMD5RVertexFormatDesc drawFormat;
+	rvMD5RVertexFormatDesc shadowFormat;
+	R_MD5R_InitConvertedDrawVertexFormat( drawFormat, blended );
+	R_MD5R_InitConvertedShadowVertexFormat( shadowFormat, blended );
+
+	const int drawVertexBufferIndex = vertexBuffers.Num();
+	const int shadowVertexBufferIndex = drawVertexBufferIndex + 1;
+	vertexBuffers.SetNum( drawVertexBufferIndex + 2 );
+	rvMD5RVertexBufferDesc &drawBuffer = vertexBuffers[ drawVertexBufferIndex ];
+	rvMD5RVertexBufferDesc &shadowBuffer = vertexBuffers[ shadowVertexBufferIndex ];
+	R_MD5R_InitVertexBufferDesc( drawBuffer, drawFormat, numDrawVerts );
+	R_MD5R_InitVertexBufferDesc( shadowBuffer, shadowFormat, numDrawVerts * 2 );
+
+	const int silTraceIndexBufferIndex = indexBuffers.Num();
+	const int drawIndexBufferIndex = silTraceIndexBufferIndex + 1;
+	indexBuffers.SetNum( silTraceIndexBufferIndex + 2 );
+	rvMD5RIndexBufferDesc &silTraceIndexBuffer = indexBuffers[ silTraceIndexBufferIndex ];
+	rvMD5RIndexBufferDesc &drawIndexBuffer = indexBuffers[ drawIndexBufferIndex ];
+	R_MD5R_InitIndexBufferDesc( silTraceIndexBuffer, numIndexes );
+	R_MD5R_InitIndexBufferDesc( drawIndexBuffer, numIndexes );
+
+	rvMD5RMesh &mesh = meshes.Alloc();
+	mesh = rvMD5RMesh();
+	mesh.renderModel = this;
+	mesh.material = sourceMesh.shader;
+	mesh.materialName = sourceMesh.shader->GetName();
+	mesh.meshIdentifier = meshIdentifier;
+	mesh.silTraceVertexBuffer = drawVertexBufferIndex;
+	mesh.silTraceIndexBuffer = silTraceIndexBufferIndex;
+	mesh.drawVertexBuffer = drawVertexBufferIndex;
+	mesh.drawIndexBuffer = drawIndexBufferIndex;
+	mesh.shadowVolVertexBuffer = shadowVertexBufferIndex;
+	// turbo shadow indices are built per light from the sil-trace view
+	mesh.shadowVolIndexBuffer = -1;
+	mesh.primBatches.SetNum( numBatches );
+
+	idList<int> jointLocal;
+	idList<int> canonicalStamp;
+	idList<int> canonicalLocal;
+	jointLocal.SetNum( numJoints );
+	canonicalStamp.AssureSize( numOutputVerts, -1 );
+	canonicalLocal.SetNum( numOutputVerts );
+
+	for ( int batchIndex = 0; batchIndex < numBatches; ++batchIndex ) {
+		const int firstTri = batchFirstTri[ batchIndex ];
+		const int batchTriangles = batchFirstTri[ batchIndex + 1 ] - firstTri;
+		const int vertexStart = batchVertexStart[ batchIndex ];
+		const int vertexCount = batchVertexStart[ batchIndex + 1 ] - vertexStart;
+		const int paletteStart = batchPaletteStart[ batchIndex ];
+		const int paletteCount = batchPaletteStart[ batchIndex + 1 ] - paletteStart;
+		rvMD5RPrimBatch &primBatch = mesh.primBatches[ batchIndex ];
+
+		primBatch.numTransforms = paletteCount;
+		primBatch.transformPalette.SetNum( paletteCount );
+		for ( int paletteIndex = 0; paletteIndex < paletteCount; ++paletteIndex ) {
+			primBatch.transformPalette[ paletteIndex ] = batchPalettes[ paletteStart + paletteIndex ];
+			jointLocal[ batchPalettes[ paletteStart + paletteIndex ] ] = paletteIndex;
+		}
+
+		for ( int localIndex = 0; localIndex < vertexCount; ++localIndex ) {
+			const int drawIndex = vertexStart + localIndex;
+			const int vertexIndex = batchVertices[ drawIndex ];
+			const int sourceIndex = outputSource[ vertexIndex ];
+			const idVec3 position = sourceMesh.baseVectors[ vertexIndex * 4 + 0 ].ToVec3();
+			const idVec3 normal = sourceMesh.baseVectors[ vertexIndex * 4 + 1 ].ToVec3();
+			const idVec3 tangent = sourceMesh.baseVectors[ vertexIndex * 4 + 2 ].ToVec3();
+			const idVec3 binormal = sourceMesh.baseVectors[ vertexIndex * 4 + 3 ].ToVec3();
+			const idVec2 &st = sourceMesh.texCoords[ sourceIndex ];
+
+			int localJoints[ 4 ];
+			float weights[ 4 ];
+			for ( int slot = 0; slot < 4; ++slot ) {
+				localJoints[ slot ] = jointLocal[ influenceJoints[ sourceIndex * 4 + slot ] ];
+				weights[ slot ] = influenceWeights[ sourceIndex * 4 + slot ];
+			}
+			const dword packedJoints = R_MD5R_PackBlendIndices( localJoints );
+
+			drawBuffer.positions[ drawIndex ].Set( position.x, position.y, position.z, 1.0f );
+			drawBuffer.blendIndices[ drawIndex ] = packedJoints;
+			drawBuffer.normals[ drawIndex ] = normal;
+			drawBuffer.tangents[ drawIndex ] = tangent;
+			drawBuffer.binormals[ drawIndex ] = binormal;
+			// idMD5Mesh::UpdateSurface leaves the vertex colour cleared
+			drawBuffer.diffuseColors[ drawIndex ] = 0;
+			drawBuffer.texCoords[ 0 ][ drawIndex ].Set( st.x, st.y, 0.0f, 0.0f );
+
+			// the four-bone programs rebuild the fourth weight as one minus the
+			// first three; store exactly that so the CPU and GPU poses agree
+			const float implicitWeight = 1.0f - ( weights[ 0 ] + weights[ 1 ] + weights[ 2 ] );
+			if ( blended ) {
+				// md5rinteraction4.vp rebuilds the binormal as (tangent x normal)
+				// times the sign of the first weight; negate it where the authored
+				// basis has the other handedness, as on mirrored texture regions
+				const float polarity = binormal * tangent.Cross( normal );
+				drawBuffer.blendWeights[ drawIndex ].Set( ( polarity < 0.0f ) ? -weights[ 0 ] : weights[ 0 ],
+					weights[ 1 ], weights[ 2 ], implicitWeight );
+			}
+
+			for ( int pair = 0; pair < 2; ++pair ) {
+				const int shadowIndex = drawIndex * 2 + pair;
+				if ( blended ) {
+					// md5rshadow4.vp extrudes the w = 0 copy and reads its weights unsigned
+					shadowBuffer.positions[ shadowIndex ].Set( position.x, position.y, position.z, ( pair == 0 ) ? 1.0f : 0.0f );
+					shadowBuffer.blendIndices[ shadowIndex ] = packedJoints;
+					shadowBuffer.blendWeights[ shadowIndex ].Set( weights[ 0 ], weights[ 1 ], weights[ 2 ], implicitWeight );
+				} else {
+					// md5rshadow1.vp takes the extrusion selector from the fourth index byte
+					shadowBuffer.positions[ shadowIndex ].Set( position.x, position.y, position.z, 1.0f );
+					shadowBuffer.blendIndices[ shadowIndex ] = ( packedJoints & 0x00FFFFFFu ) | ( ( pair == 0 ) ? 0xFF000000u : 0u );
+				}
+			}
+		}
+
+		for ( int index = firstTri * 3; index < ( firstTri + batchTriangles ) * 3; ++index ) {
+			silTraceIndexBuffer.indices[ index ] = cornerLocal[ index ];
+			drawIndexBuffer.indices[ index ] = vertexStart + cornerLocal[ index ];
+			const int canonicalIndex = deform->silIndexes[ index ];
+			if ( canonicalStamp[ canonicalIndex ] != batchIndex ) {
+				canonicalStamp[ canonicalIndex ] = batchIndex;
+				canonicalLocal[ canonicalIndex ] = cornerLocal[ index ];
+			}
+		}
+
+		primBatch.drawGeoSpec.vertexStart = vertexStart;
+		primBatch.drawGeoSpec.vertexCount = vertexCount;
+		primBatch.drawGeoSpec.indexStart = firstTri * 3;
+		primBatch.drawGeoSpec.primitiveCount = batchTriangles;
+		primBatch.hasDrawGeoSpec = true;
+		primBatch.silTraceGeoSpec = primBatch.drawGeoSpec;
+		primBatch.hasSilTraceGeoSpec = true;
+		primBatch.shadowVolGeoSpec.vertexStart = vertexStart * 2;
+		primBatch.shadowVolGeoSpec.vertexCount = vertexCount * 2;
+		primBatch.shadowVolGeoSpec.indexStart = 0;
+		primBatch.shadowVolGeoSpec.primitiveCount = 0;
+		primBatch.hasShadowGeoSpec = true;
+
+		// Edges arrive welded across texture seams (v1 and v2 are sil-remapped
+		// vertices, oriented along p1's winding) and numbered over the whole mesh.
+		primBatch.silEdgeStart = silEdges.Num();
+		for ( int edgeIndex = 0; edgeIndex < deform->numSilEdges; ++edgeIndex ) {
+			const silEdge_t &sourceEdge = deform->silEdges[ edgeIndex ];
+			const bool firstFaceInBatch = sourceEdge.p1 >= firstTri && sourceEdge.p1 < firstTri + batchTriangles;
+			const bool secondFaceInBatch = sourceEdge.p2 >= firstTri && sourceEdge.p2 < firstTri + batchTriangles;
+			if ( !firstFaceInBatch && !secondFaceInBatch ) {
+				continue;
+			}
+			silEdge_t edge;
+			if ( firstFaceInBatch ) {
+				edge.p1 = sourceEdge.p1 - firstTri;
+				edge.p2 = secondFaceInBatch ? sourceEdge.p2 - firstTri : batchTriangles;
+				edge.v1 = sourceEdge.v1;
+				edge.v2 = sourceEdge.v2;
+			} else {
+				// only the second face is here: seen from it the edge runs v2 to v1
+				edge.p1 = sourceEdge.p2 - firstTri;
+				edge.p2 = batchTriangles;
+				edge.v1 = sourceEdge.v2;
+				edge.v2 = sourceEdge.v1;
+			}
+			if ( edge.v1 < 0 || edge.v1 >= numOutputVerts || edge.v2 < 0 || edge.v2 >= numOutputVerts
+				|| canonicalStamp[ edge.v1 ] != batchIndex || canonicalStamp[ edge.v2 ] != batchIndex ) {
+				return false;
+			}
+			edge.v1 = canonicalLocal[ edge.v1 ];
+			edge.v2 = canonicalLocal[ edge.v2 ];
+			silEdges.Append( edge );
+		}
+		primBatch.silEdgeCount = silEdges.Num() - primBatch.silEdgeStart;
+	}
+
+	mesh.bounds.Clear();
+	for ( int drawIndex = 0; drawIndex < numDrawVerts; ++drawIndex ) {
+		mesh.bounds.AddPoint( drawBuffer.positions[ drawIndex ].ToVec3() );
+	}
+	R_MD5R_CalcMeshGeometryProfile( mesh );
+	return true;
+}
+
+/*
+========================
 rvRenderModelMD5R::InitFromMD5Model
 ========================
 */
@@ -3287,167 +3716,10 @@ bool rvRenderModelMD5R::InitFromMD5Model( const idRenderModelMD5 &sourceModel ) 
 		joints[ jointIndex ].parent = &joints[ parentIndex ];
 	}
 
-	idList<idJointMat> bindPoseJoints;
-	bindPoseJoints.SetNum( skinSpaceToLocalMats.Num() );
-	for ( int jointIndex = 0; jointIndex < skinSpaceToLocalMats.Num(); ++jointIndex ) {
-		bindPoseJoints[ jointIndex ] = skinSpaceToLocalMats[ jointIndex ];
-		bindPoseJoints[ jointIndex ].Invert();
-	}
-
-	rvMD5RVertexFormatDesc vertexFormat;
-	R_MD5R_InitSkinnedVertexFormat( vertexFormat );
-
 	for ( int meshIndex = 0; meshIndex < sourceModel.meshes.Num(); ++meshIndex ) {
-		const idMD5Mesh &sourceMesh = sourceModel.meshes[ meshIndex ];
-		if ( sourceMesh.shader == NULL
-			|| sourceMesh.deformInfo == NULL
-			|| sourceMesh.baseVectors == NULL
-			|| sourceMesh.weightIndex == NULL
-			|| sourceMesh.scaledWeights == NULL
-			|| sourceMesh.deformInfo->numOutputVerts <= 0
-			|| sourceMesh.deformInfo->numIndexes <= 0 ) {
+		if ( !AppendConvertedMD5Mesh( sourceModel.meshes[ meshIndex ], meshIndex ) ) {
 			return false;
 		}
-
-		idList<dword> sourceBlendIndices;
-		idList<idVec4> sourceBlendWeights;
-		const int numSourceVerts = sourceMesh.deformInfo->numSourceVerts;
-		if ( numSourceVerts <= 0 || sourceMesh.weightIndex == NULL || sourceMesh.scaledWeights == NULL || sourceMesh.numWeights <= 0 ) {
-			return false;
-		}
-		sourceBlendIndices.SetNum( numSourceVerts );
-		sourceBlendWeights.SetNum( numSourceVerts );
-
-		idList<int> jointPaletteLookup;
-		jointPaletteLookup.SetNum( joints.Num() );
-		for ( int jointIndex = 0; jointIndex < jointPaletteLookup.Num(); ++jointIndex ) {
-			jointPaletteLookup[ jointIndex ] = -1;
-		}
-
-		rvMD5RPrimBatch primBatch;
-
-		int weightCursor = 0;
-		for ( int sourceVertexIndex = 0; sourceVertexIndex < numSourceVerts; ++sourceVertexIndex ) {
-			idVec4 vertexBlendWeights;
-			vertexBlendWeights.Zero();
-			int vertexBlendIndices[ 4 ] = { 0, 0, 0, 0 };
-			int influenceCount = 0;
-
-			while ( weightCursor < sourceMesh.numWeights ) {
-				const int jointOffset = sourceMesh.weightIndex[ weightCursor * 2 + 0 ];
-				const int jointIndex = jointOffset / static_cast<int>( sizeof( idJointMat ) );
-				if ( influenceCount >= 4 || jointIndex < 0 || jointIndex >= joints.Num() ) {
-					return false;
-				}
-
-				int localJointIndex = jointPaletteLookup[ jointIndex ];
-				if ( localJointIndex < 0 ) {
-					if ( primBatch.transformPalette.Num() >= 256 ) {
-						return false;
-					}
-
-					localJointIndex = primBatch.transformPalette.Num();
-					primBatch.transformPalette.Append( jointIndex );
-					jointPaletteLookup[ jointIndex ] = localJointIndex;
-				}
-
-				vertexBlendIndices[ influenceCount ] = localJointIndex;
-				vertexBlendWeights[ influenceCount ] = sourceMesh.scaledWeights[ weightCursor ].w;
-
-				const bool lastWeightForVertex = ( sourceMesh.weightIndex[ weightCursor * 2 + 1 ] != 0 );
-				++weightCursor;
-				++influenceCount;
-
-				if ( lastWeightForVertex ) {
-					break;
-				}
-			}
-
-			if ( influenceCount <= 0 ) {
-				return false;
-			}
-
-			sourceBlendIndices[ sourceVertexIndex ] = R_MD5R_PackBlendIndices( vertexBlendIndices );
-			sourceBlendWeights[ sourceVertexIndex ] = vertexBlendWeights;
-		}
-
-		if ( weightCursor != sourceMesh.numWeights ) {
-			return false;
-		}
-
-		modelSurface_t tempSurface;
-		memset( &tempSurface, 0, sizeof( tempSurface ) );
-		const_cast<idMD5Mesh &>( sourceMesh ).UpdateSurface( NULL, bindPoseJoints.Ptr(), &tempSurface, false );
-
-		const srfTriangles_t *tri = tempSurface.geometry;
-		if ( tri == NULL || tri->verts == NULL || tri->numVerts != sourceMesh.deformInfo->numOutputVerts ) {
-			if ( tempSurface.geometry != NULL ) {
-				R_FreeStaticTriSurf( tempSurface.geometry );
-			}
-			return false;
-		}
-
-		const int vertexBufferIndex = vertexBuffers.Num();
-		const int indexBufferIndex = indexBuffers.Num();
-
-		rvMD5RVertexBufferDesc vertexBuffer;
-		R_MD5R_InitVertexBufferDesc( vertexBuffer, vertexFormat, tri->numVerts );
-		for ( int vertexIndex = 0; vertexIndex < tri->numVerts; ++vertexIndex ) {
-			int sourceVertexIndex = vertexIndex;
-			if ( vertexIndex >= sourceMesh.deformInfo->numSourceVerts ) {
-				const int mirrorIndex = vertexIndex - sourceMesh.deformInfo->numSourceVerts;
-				if ( mirrorIndex < 0 || mirrorIndex >= sourceMesh.deformInfo->numMirroredVerts ) {
-					R_FreeStaticTriSurf( tempSurface.geometry );
-					return false;
-				}
-				sourceVertexIndex = sourceMesh.deformInfo->mirroredVerts[ mirrorIndex ];
-			}
-
-			if ( sourceVertexIndex < 0 || sourceVertexIndex >= sourceBlendIndices.Num() ) {
-				R_FreeStaticTriSurf( tempSurface.geometry );
-				return false;
-			}
-
-			vertexBuffer.positions[ vertexIndex ] = sourceMesh.baseVectors[ vertexIndex * 4 + 0 ];
-			vertexBuffer.blendIndices[ vertexIndex ] = sourceBlendIndices[ sourceVertexIndex ];
-			vertexBuffer.blendWeights[ vertexIndex ] = sourceBlendWeights[ sourceVertexIndex ];
-			vertexBuffer.texCoords[ 0 ][ vertexIndex ].Set( tri->verts[ vertexIndex ].st.x, tri->verts[ vertexIndex ].st.y, 0.0f, 0.0f );
-		}
-		vertexBuffers.Append( vertexBuffer );
-
-		rvMD5RIndexBufferDesc indexBuffer;
-		R_MD5R_InitIndexBufferDesc( indexBuffer, sourceMesh.deformInfo->numIndexes );
-		R_MD5R_CopyIndexes( indexBuffer, sourceMesh.deformInfo->indexes, sourceMesh.deformInfo->numIndexes );
-		indexBuffers.Append( indexBuffer );
-
-		primBatch.numTransforms = primBatch.transformPalette.Num();
-		if ( primBatch.numTransforms <= 0 ) {
-			R_FreeStaticTriSurf( tempSurface.geometry );
-			return false;
-		}
-		primBatch.silTraceGeoSpec.vertexStart = 0;
-		primBatch.silTraceGeoSpec.vertexCount = tri->numVerts;
-		primBatch.silTraceGeoSpec.indexStart = 0;
-		primBatch.silTraceGeoSpec.primitiveCount = sourceMesh.deformInfo->numIndexes / 3;
-		primBatch.hasSilTraceGeoSpec = true;
-		primBatch.drawGeoSpec = primBatch.silTraceGeoSpec;
-		primBatch.hasDrawGeoSpec = true;
-
-		rvMD5RMesh mesh;
-		mesh.renderModel = this;
-		mesh.material = sourceMesh.shader;
-		mesh.materialName = sourceMesh.shader->GetName();
-		mesh.bounds = tri->bounds;
-		mesh.meshIdentifier = meshIndex;
-		mesh.silTraceVertexBuffer = vertexBufferIndex;
-		mesh.silTraceIndexBuffer = indexBufferIndex;
-		mesh.drawVertexBuffer = vertexBufferIndex;
-		mesh.drawIndexBuffer = indexBufferIndex;
-		mesh.primBatches.Append( primBatch );
-		R_MD5R_CalcMeshGeometryProfile( mesh );
-		meshes.Append( mesh );
-
-		R_FreeStaticTriSurf( tempSurface.geometry );
 	}
 
 	if ( meshes.Num() <= 0 ) {
@@ -4276,8 +4548,9 @@ void rvRenderModelMD5R::ParseMesh( Lexer &parser, int meshIndex ) {
 	if ( token.Icmp( "ShadowVolumeBuffers" ) == 0 ) {
 		mesh.shadowVolVertexBuffer = parser.ParseInt();
 		mesh.shadowVolIndexBuffer = parser.ParseInt();
+		// -1 names a turbo shadow stream (ShadowVerts batches build their indices per light)
 		if ( mesh.shadowVolVertexBuffer < 0 || mesh.shadowVolVertexBuffer >= vertexBuffers.Num()
-			|| mesh.shadowVolIndexBuffer < 0 || mesh.shadowVolIndexBuffer >= indexBuffers.Num() ) {
+			|| mesh.shadowVolIndexBuffer < -1 || mesh.shadowVolIndexBuffer >= indexBuffers.Num() ) {
 			parser.Error( "Invalid buffer reference by ShadowVolumeBuffers statement" );
 		}
 		if ( !parser.ReadToken( &token ) ) {
@@ -4664,6 +4937,86 @@ static bool R_MD5R_SkinVertexPosition(
 
 /*
 ========================
+R_MD5R_HasSkinnableBasis
+
+A converted MD5 stream carries the bind-pose basis next to its blend data.
+========================
+*/
+static bool R_MD5R_HasSkinnableBasis( const rvMD5RVertexBufferDesc &vertexBuffer ) {
+	return vertexBuffer.numVertices > 0
+		&& vertexBuffer.positions.Num() == vertexBuffer.numVertices
+		&& vertexBuffer.blendIndices.Num() == vertexBuffer.numVertices
+		&& vertexBuffer.normals.Num() == vertexBuffer.numVertices
+		&& vertexBuffer.tangents.Num() == vertexBuffer.numVertices
+		&& vertexBuffer.binormals.Num() == vertexBuffer.numVertices;
+}
+
+/*
+========================
+R_MD5R_SkinVertexBasis
+
+Blends the vertex's joint transforms once and moves its position and bind-pose
+basis by the result: the matrix blend idMD5Mesh's TransformVertsAndTangents
+applies to its source surface, so a CPU-skinned MD5R surface lights like its
+MD5 source instead of re-deriving a basis from the posed triangles.
+========================
+*/
+static bool R_MD5R_SkinVertexBasis(
+	const rvMD5RVertexBufferDesc &vertexBuffer,
+	int sourceVertexIndex,
+	const rvMD5RPrimBatch &primBatch,
+	const idJointMat *entJoints,
+	int numJoints,
+	idDrawVert &vert ) {
+	if ( entJoints == NULL || sourceVertexIndex < 0 || sourceVertexIndex >= vertexBuffer.numVertices
+		|| !R_MD5R_HasSkinnableBasis( vertexBuffer ) ) {
+		return false;
+	}
+
+	const bool hasBlendWeights = ( vertexBuffer.blendWeights.Num() == vertexBuffer.numVertices );
+	const dword packedBlendIndices = vertexBuffer.blendIndices[ sourceVertexIndex ];
+	idVec4 blendWeights( 1.0f, 0.0f, 0.0f, 0.0f );
+	if ( hasBlendWeights ) {
+		blendWeights = vertexBuffer.blendWeights[ sourceVertexIndex ];
+	}
+	const int implicitWeightIndex = R_MD5R_GetImplicitBlendWeightIndex( vertexBuffer );
+
+	idJointMat blended;
+	bool blendedAny = false;
+	for ( int influenceIndex = 0; influenceIndex < 4; ++influenceIndex ) {
+		const float weight = R_MD5R_GetSkinningBlendWeight( blendWeights, influenceIndex, implicitWeightIndex );
+		if ( weight == 0.0f ) {
+			continue;
+		}
+
+		int jointIndex = 0;
+		if ( !R_MD5R_ResolveBlendJoint( primBatch, R_MD5R_GetBlendIndex( packedBlendIndices, influenceIndex ), numJoints, jointIndex ) ) {
+			return false;
+		}
+		if ( blendedAny ) {
+			idJointMat::Mad( blended, entJoints[ jointIndex ], weight );
+		} else {
+			idJointMat::Mul( blended, entJoints[ jointIndex ], weight );
+			blendedAny = true;
+		}
+	}
+	if ( !blendedAny ) {
+		int jointIndex = 0;
+		if ( !R_MD5R_ResolveBlendJoint( primBatch, R_MD5R_GetBlendIndex( packedBlendIndices, 0 ), numJoints, jointIndex ) ) {
+			return false;
+		}
+		blended = entJoints[ jointIndex ];
+	}
+
+	vert.xyz = blended * vertexBuffer.positions[ sourceVertexIndex ].ToVec3() + blended.ToVec3();
+	vert.normal = blended * vertexBuffer.normals[ sourceVertexIndex ];
+	vert.tangents[ 0 ] = blended * vertexBuffer.tangents[ sourceVertexIndex ];
+	vert.tangents[ 1 ] = blended * vertexBuffer.binormals[ sourceVertexIndex ];
+	return true;
+}
+
+/*
+========================
 R_MD5R_MapMeshVertexToSourceVertex
 ========================
 */
@@ -4885,10 +5238,23 @@ static bool R_MD5R_UpdatePackedDynamicSurface(
 	const bool hasNormals = ( drawVertexBuffer.normals.Num() == drawVertexBuffer.numVertices );
 	const bool hasTangents = ( drawVertexBuffer.tangents.Num() == drawVertexBuffer.numVertices );
 	const bool hasBinormals = ( drawVertexBuffer.binormals.Num() == drawVertexBuffer.numVertices );
+	// A skinned draw stream carries the bind-pose basis for the md5r programs to
+	// pose, so the CPU copy's basis is only this frame's when the sil-trace pass
+	// below skins it too: that needs the sil-trace view to be the draw stream, as
+	// in converted MD5 meshes. Otherwise leave it for R_DeriveTangents when a
+	// classic consumer needs one.
+	const bool skinnedDrawStream = ( drawVertexBuffer.blendIndices.Num() == drawVertexBuffer.numVertices );
+	bool skinBasis = skinnedDrawStream && mesh.silTraceVertexBuffer == mesh.drawVertexBuffer
+		&& R_MD5R_HasSkinnableBasis( drawVertexBuffer );
+	for ( int primBatchIndex = 0; skinBasis && primBatchIndex < mesh.primBatches.Num(); ++primBatchIndex ) {
+		const rvMD5RPrimBatch &primBatch = mesh.primBatches[ primBatchIndex ];
+		skinBasis = primBatch.silTraceGeoSpec.vertexStart == primBatch.drawGeoSpec.vertexStart
+			&& primBatch.silTraceGeoSpec.vertexCount == primBatch.drawGeoSpec.vertexCount;
+	}
 
 	tri->deformedSurface = true;
-	tri->generateNormals = !hasNormals;
-	tri->tangentsCalculated = hasNormals && hasTangents && hasBinormals;
+	tri->generateNormals = !hasNormals || ( skinnedDrawStream && !skinBasis );
+	tri->tangentsCalculated = hasNormals && hasTangents && hasBinormals && ( !skinnedDrawStream || skinBasis );
 	tri->facePlanesCalculated = false;
 	tri->numVerts = mesh.numDrawVertices;
 	tri->numIndexes = mesh.numDrawIndices;
@@ -4916,12 +5282,25 @@ static bool R_MD5R_UpdatePackedDynamicSurface(
 	tri->primBatchMesh = const_cast<void *>( reinterpret_cast<const void *>( &mesh ) );
 #endif
 
-	if ( mesh.numSilEdges > 0 && mesh.primBatches.Num() > 0 ) {
-		const int silEdgeStart = mesh.primBatches[ 0 ].silEdgeStart;
-		if ( silEdgeStart >= 0 && silEdgeStart + mesh.numSilEdges <= silEdges.Num() ) {
-			tri->numSilEdges = mesh.numSilEdges;
-			tri->silEdges = const_cast<silEdge_t *>( silEdges.Ptr() + silEdgeStart );
+	if ( mesh.primBatches.Num() == 1 ) {
+		// one batch: its local edge numbering is the surface's numbering
+		if ( mesh.numSilEdges > 0 ) {
+			const int silEdgeStart = mesh.primBatches[ 0 ].silEdgeStart;
+			if ( silEdgeStart >= 0 && silEdgeStart + mesh.numSilEdges <= silEdges.Num() ) {
+				tri->numSilEdges = mesh.numSilEdges;
+				tri->silEdges = const_cast<silEdge_t *>( silEdges.Ptr() + silEdgeStart );
+			}
 		}
+	} else if ( mesh.deformInfo != NULL && mesh.deformInfo->numSilEdges > 0
+		&& mesh.deformInfo->numSourceVerts == mesh.numDrawVertices
+		&& mesh.deformInfo->numIndexes == mesh.numDrawIndices ) {
+		// Batch-local edges are numbered per batch and only the packed turbo
+		// builder reads them. The classic shadow builders, the fallback when the
+		// packed one declines, need surface numbering: the deform template's edges,
+		// welded across the batch seams, are numbered over these same draw verts
+		// (R_BuildDeformInfo identifies them before it appends any mirrored copy).
+		tri->numSilEdges = mesh.deformInfo->numSilEdges;
+		tri->silEdges = mesh.deformInfo->silEdges;
 	}
 
 	// Keep a raw per-prim-batch sil-trace working set so CopyPrimBatchTriangles can
@@ -4929,6 +5308,10 @@ static bool R_MD5R_UpdatePackedDynamicSurface(
 	idList<rvSilTraceVertT> skinnedSilTraceVerts;
 	skinnedSilTraceVerts.SetNum( mesh.numSilTraceVertices );
 	rvSilTraceVertT *rawSilTraceVerts = skinnedSilTraceVerts.Ptr();
+	idList<idDrawVert> skinnedBasisVerts;
+	if ( skinBasis ) {
+		skinnedBasisVerts.SetNum( mesh.numSilTraceVertices );
+	}
 
 	int silTraceVertexBase = 0;
 	int transformBase = 0;
@@ -4954,6 +5337,15 @@ static bool R_MD5R_UpdatePackedDynamicSurface(
 				return false;
 			}
 
+			if ( skinBasis ) {
+				idDrawVert &posed = skinnedBasisVerts[ destVertexIndex ];
+				if ( !R_MD5R_SkinVertexBasis( silTraceVertexBuffer, sourceVertexIndex, primBatch, entJoints, numJoints, posed ) ) {
+					return false;
+				}
+				rawSilTraceVerts[ destVertexIndex ].xyzw.Set( posed.xyz.x, posed.xyz.y, posed.xyz.z, 1.0f );
+				continue;
+			}
+
 			idVec3 skinnedPosition;
 			if ( !R_MD5R_SkinVertexPosition( silTraceVertexBuffer, sourceVertexIndex, primBatch, entJoints, numJoints, 0.0f, skinnedPosition ) ) {
 				return false;
@@ -4976,6 +5368,15 @@ static bool R_MD5R_UpdatePackedDynamicSurface(
 		reinterpret_cast<const rvMesh *>( tri->primBatchMesh ),
 		rawSilTraceVerts ) ) {
 		return false;
+	}
+
+	if ( skinBasis ) {
+		// the sil-trace view is the draw stream, so its vertices line up one to one
+		for ( int vertIndex = 0; vertIndex < tri->numVerts; ++vertIndex ) {
+			tri->verts[ vertIndex ].normal = skinnedBasisVerts[ vertIndex ].normal;
+			tri->verts[ vertIndex ].tangents[ 0 ] = skinnedBasisVerts[ vertIndex ].tangents[ 0 ];
+			tri->verts[ vertIndex ].tangents[ 1 ] = skinnedBasisVerts[ vertIndex ].tangents[ 1 ];
+		}
 	}
 
 	rvSilTraceVertT *dynamicSilTraceVerts = reinterpret_cast<rvSilTraceVertT *>( tri->silTraceVerts );
@@ -5314,6 +5715,12 @@ bool rvRenderModelMD5R::UpdateDynamicSurface( const rvMD5RMesh &mesh, const idJo
 	R_GpuSkinning_ClearSurfaceContract( tri, GPU_SKINNING_FALLBACK_BACKEND_UNAVAILABLE );
 #endif
 
+	// Skin the authored basis with the position, as the MD5 source does, unless
+	// the skin-scale effect is on or the template split mirrored copies that need
+	// a basis of their own.
+	const bool skinBasis = skinScale == 0.0f && tri->numMirroredVerts == 0
+		&& R_MD5R_HasSkinnableBasis( drawVertexBuffer );
+
 	int destVertexBase = 0;
 	for ( int primBatchIndex = 0; primBatchIndex < mesh.primBatches.Num(); ++primBatchIndex ) {
 		const rvMD5RPrimBatch &primBatch = mesh.primBatches[ primBatchIndex ];
@@ -5328,17 +5735,25 @@ bool rvRenderModelMD5R::UpdateDynamicSurface( const rvMD5RMesh &mesh, const idJo
 				return false;
 			}
 
+			tri->verts[ destVertexIndex ] = mesh.baseDrawVerts[ destVertexIndex ];
+			if ( skinBasis ) {
+				if ( !R_MD5R_SkinVertexBasis( drawVertexBuffer, sourceVertexIndex, primBatch, entJoints, joints.Num(), tri->verts[ destVertexIndex ] ) ) {
+					return false;
+				}
+				continue;
+			}
+
 			idVec3 skinnedPosition;
 			if ( !R_MD5R_SkinVertexPosition( drawVertexBuffer, sourceVertexIndex, primBatch, entJoints, joints.Num(), skinScale, skinnedPosition ) ) {
 				return false;
 			}
 
-			tri->verts[ destVertexIndex ] = mesh.baseDrawVerts[ destVertexIndex ];
 			tri->verts[ destVertexIndex ].xyz = skinnedPosition;
 		}
 
 		destVertexBase += primBatch.drawGeoSpec.vertexCount;
 	}
+	tri->tangentsCalculated = skinBasis;
 
 	if ( destVertexBase != mesh.baseDrawVerts.Num() ) {
 		return false;
@@ -5357,7 +5772,7 @@ bool rvRenderModelMD5R::UpdateDynamicSurface( const rvMD5RMesh &mesh, const idJo
 	R_BoundTriSurf( tri );
 
 	if ( calculateTangents && !R_MD5R_DeferDynamicTangents() ) {
-		if ( !gpuContractAttached ) {
+		if ( !gpuContractAttached && !skinBasis ) {
 			R_DeriveTangents( tri );
 		}
 	}
@@ -6900,7 +7315,8 @@ void rvRenderModelMD5R::WriteMesh( idFile &outFile, const rvMD5RMesh &mesh, cons
 			mesh.drawIndexBuffer );
 	}
 
-	if ( mesh.shadowVolVertexBuffer >= 0 && mesh.shadowVolIndexBuffer >= 0 ) {
+	// a turbo shadow stream writes -1: its indices are rebuilt per light
+	if ( mesh.shadowVolVertexBuffer >= 0 ) {
 		outFile.WriteFloatString(
 			"%sShadowVolumeBuffers %d %d\n",
 			innerIndent.c_str(),

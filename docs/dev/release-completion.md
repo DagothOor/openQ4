@@ -214,6 +214,25 @@
   the opt-in MD5R conversions did not put any in view, so that path has no
   runtime capture.
 
+- [x] Make skinned models converted by the opt-in `r_convertMD5toMD5R` draw
+  like their MD5 sources. On OpenGL, converted characters and the first-person
+  weapon drew as black shapes and cast no shadows. The md5r vertex programs
+  posed them correctly, but the CPU copy every other consumer reads (bounds,
+  culling, light triangles, shadow volumes, the classic draw paths) stayed in
+  the bind pose. The converter also left out the normals, colours, shadow
+  stream and 25-joint batch split the packed paths need, and the packed shadow
+  draw extruded skinned streams with the unskinned `md5rshadow.vp`. The
+  converter now packs meshes the way retail Quake 4 did, so OpenGL lights,
+  shadows and depth-tests converted models through `md5rinteraction1/4.vp`,
+  `md5rshadow1/4.vp` and `md5rsimple1/4.vp`. Vulkan's CPU-skinned path now
+  skins the authored basis like the MD5 path does instead of re-deriving it.
+  Old conversions in the generated cache are rebuilt on first load. On Air
+  Defense 1 at a fixed game tick, converted and unconverted frames match on
+  OpenGL and Vulkan, including the walker's and the weapon's `r_showShadows`
+  volumes: the weapon is pixel-identical and the walker's only differences are
+  sky particles. `renderer_md5r_conversion_contract.py` pins the converter,
+  the skinned sil-trace copy and the packed shadow program choice.
+
 - [x] Turn shadow maps on in the `quality` and `ultra` performance presets and
   default projected-light filtering to PCSS-lite (`r_shadowMapFilterMode 2`)
   with a 2-texel minimum radius (`r_shadowMapFilterRadius 2.0`). Lower presets
