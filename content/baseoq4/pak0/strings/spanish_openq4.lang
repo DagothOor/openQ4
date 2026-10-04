@@ -794,6 +794,7 @@
 	"#str_42388"	"La operación está en tiempo de espera."
 	"#str_42389"	"Error interno de la partida."
 	"#str_42390"	"La alineación del mensaje de partida no es válida."
+	"#str_42391"	"El equilibrado automático de equipos está activo: ese equipo tiene demasiados jugadores."
 
 	"#str_42400"	"Inactivo"
 	"#str_42401"	"Calentamiento"

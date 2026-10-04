@@ -100,6 +100,12 @@ An unavailable button remains visible, uses reduced opacity, does not emit an op
 
 Every operation with descriptor-advertised confirmation passes through the modal `match_confirm` presentation state before its fixed token is emitted: `FORCE_READY`, `RULES_COMMIT`, `ROSTER_REMOVE`, `ROSTER_SUBSTITUTE`, `SERIES_CANCEL`, `FORFEIT`, and `ABORT`. Escape, menu activation, panel exit, and Cancel clear that state. The adapter must still apply the same current-view, availability, selection, and compare-and-swap checks when the confirmed token arrives; the modal grants no authority.
 
+## Team joins and auto-balance
+
+`team_join_marine`, `team_join_strogg` and `team_spectate` share the one `team_join` decision, so a side the server would refuse still shows as available. The server decides when the request arrives. A voluntary join obeys `si_autobalance` exactly as the stock team menu and `ui_team` do: `idMultiplayerGame::VerifyTeamSwitch` refuses a side that, without the player, already has more players than the other. The team-change continuation applies that rule after the team core admits the join and before anything commits (`MatchTeamJoinUnbalances`), and rejects with `MP_MATCH_PROTOCOL_REASON_TEAM_BALANCE`. A participant who holds a roster seat is exempt, because the seat already fixes their side. The result line reads "Change team | Rejected | Auto Balance Teams is on: that team has too many players." (`#str_42391`, worded after the stock team menu's own refusal), and the session and the player both keep their side.
+
+A side the match layer has committed reaches the player through `ApplyMatchTeamsPlanToLegacy`. `idPlayer::UserInfoChanged` latches it without balancing it again: `VerifyTeamSwitch` leaves the slot being published alone. The same holds for roster acceptance, substitution and the session's own mirrors, whose sides the session owns. Before this, the join committed and the legacy rule kept the player on their team. A casual session then copied that team back, so the result read Committed while nothing moved. `tools/tests/mp_match_control_team_join_smoke.py` checks both outcomes on a listen server with bots, and `competitive_match_layer.py` pins the order.
+
 ## Lists and selection safety
 
 Populate each list with the normal `name_item_N` state convention, delete the first unused item after refresh, clamp or clear `name_sel_0`, and retain a parallel bounded C++ row model built from the current accepted view. A selection index addresses that model only; do not parse tab-separated display text.

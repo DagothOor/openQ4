@@ -794,6 +794,7 @@
 	"#str_42388"	"Operaci zatím nelze zopakovat."
 	"#str_42389"	"Interní chyba zápasu."
 	"#str_42390"	"Zarovnání zprávy zápasu je neplatné."
+	"#str_42391"	"Automatické vyvažování týmů je zapnuté: tento tým má příliš mnoho hráčů."
 
 	"#str_42400"	"Neaktivní"
 	"#str_42401"	"Rozcvička"

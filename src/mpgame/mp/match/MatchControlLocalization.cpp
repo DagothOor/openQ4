@@ -18,11 +18,11 @@ static const char NO_DETAIL_KEY[] = "#str_42302";
 
 // These assertions deliberately turn an appended wire/view value into a build
 // failure until this closed mapping and its four translations are reviewed.
-static_assert( MP_MATCH_LOCALIZATION_COUNT == 2032,
+static_assert( MP_MATCH_LOCALIZATION_COUNT == 2033,
 	"Match protocol localization ids require an explicit localization review" );
 static_assert( MP_MATCH_OP_COUNT == 37,
 	"Match operations require an explicit localization review" );
-static_assert( MP_MATCH_PROTOCOL_REASON_COUNT == 32,
+static_assert( MP_MATCH_PROTOCOL_REASON_COUNT == 33,
 	"Match protocol reasons require an explicit localization review" );
 static_assert( STATE_COUNT == 7,
 	"Match phases require an explicit localization review" );
@@ -165,6 +165,7 @@ const char *MPMatchControlLocalizationKey( mpMatchLocalizationId_t localizationI
 		case MP_MATCH_LOCALIZATION_REASON_COOLDOWN: return "#str_42388";
 		case MP_MATCH_LOCALIZATION_REASON_INTERNAL: return "#str_42389";
 		case MP_MATCH_LOCALIZATION_REASON_ALIGNMENT: return "#str_42390";
+		case MP_MATCH_LOCALIZATION_REASON_TEAM_BALANCE: return "#str_42391";
 		case MP_MATCH_LOCALIZATION_COUNT: return UNKNOWN_KEY;
 		default: return UNKNOWN_KEY;
 	}
@@ -204,6 +205,7 @@ const char *MPMatchControlProtocolReasonKey( mpMatchProtocolReason_t reason ) {
 		case MP_MATCH_PROTOCOL_REASON_COOLDOWN: return "#str_42388";
 		case MP_MATCH_PROTOCOL_REASON_INTERNAL: return "#str_42389";
 		case MP_MATCH_PROTOCOL_REASON_ALIGNMENT: return "#str_42390";
+		case MP_MATCH_PROTOCOL_REASON_TEAM_BALANCE: return "#str_42391";
 		case MP_MATCH_PROTOCOL_REASON_COUNT: return UNKNOWN_KEY;
 		default: return UNKNOWN_KEY;
 	}

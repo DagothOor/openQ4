@@ -97,6 +97,7 @@ jobs:
             tools/tests/list_window_selection_contract.py \
             tools/tests/mp_browser_smoke.py \
             tools/tests/mp_duel_queue_smoke.py \
+            tools/tests/mp_match_control_team_join_smoke.py \
             tools/tests/mp_match_flow_smoke.py \
             tools/tests/mp_bot_gameplay_smoke.py \
             tools/tests/mp_roster_smoke.py \
