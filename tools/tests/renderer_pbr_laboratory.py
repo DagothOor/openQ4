@@ -828,6 +828,32 @@ def compare_transparency_captures(results: list[dict]) -> None:
             owned['failures'].append(f'native PBR source-alpha ownership missing {delta}')
 
 
+def stock_display_transfer(value: float, settings: dict[str,str]) -> float:
+    """Display value of a stock (perceptual, not linear) scene value in 0..1.
+
+    Mirrors ToneMapHDR in glprogs/bloom.fs and post_bloom_composite.frag for a
+    scene that is not linear: the fixed exposure, then a rational shoulder from
+    0.5 that reaches display white at the exposed reference white. The shoulder
+    started at 0.98 until the 2026-09-25 checkpoint, so a lit classic highlight
+    no longer reaches the display unchanged. The colour adjustments after it
+    are identity under BASE; any other setting is refused, not modelled.
+    """
+    if settings['r_hdrToneMap']!='1':
+        return min(max(value,0.0),1.0)
+    identity={'r_bloom':0,'r_hdrAutoExposure':0,'r_hdrHighlightDesaturation':0,'r_hdrGamutCompression':0,
+              'r_hdrLift':0,'r_hdrPostGamma':1,'r_hdrGain':1,'r_hdrVibrance':0,'r_hdrSaturation':1,'r_hdrContrast':1}
+    if any(float(settings[name])!=expected for name,expected in identity.items()):
+        raise ValueError('the stock display transfer models only exposure and the highlight shoulder')
+    exposure=max(float(settings['r_hdrExposure']),0.001)
+    shoulder=0.5
+    white=max(max(float(settings['r_hdrWhitePoint']),1.0)*exposure,1.0)
+    x=max(value,0.0)*exposure
+    if x>=shoulder:
+        t=x-shoulder
+        x=shoulder+t/(1+(1/(1-shoulder)-1/(white-shoulder))*t)
+    return min(max(x,0.0),1.0)
+
+
 def compare_material_captures(results: list[dict]) -> None:
     """Use changed controls as an oracle, including controls that must do nothing."""
     by_case = {r['case']: r for r in results if
@@ -1026,10 +1052,15 @@ def compare_material_captures(results: list[dict]) -> None:
                 v=values[((799-y)*1280+x)*3+c]
                 encoded.append(255*(12.92*v if v<=0.0031308 else 1.055*v**(1/2.4)-0.055))
                 reference.append(native[(y*1280+x)*3+c])
-        errors=[abs(a-b) for a,b in zip(encoded,reference)]
+        # The native capture is a display image. Its highlight passes the stock
+        # shoulder, so show the classic radiance through the same transfer.
+        settings={**BASE,**CASES[case+'-native']}
+        displayed=[255*stock_display_transfer(value/255,settings) for value in encoded]
+        errors=[abs(a-b) for a,b in zip(displayed,reference)]
         proof={'samples':len(errors),'radius':44,'meanAbsoluteByteError':sum(errors)/len(errors),
                'maximumByteError':max(errors),'nativeRange':[min(reference),max(reference)],
-               'encodedRange':[min(encoded),max(encoded)],'comparison':'linear PFM encoded to sRGB versus unclipped native display'}
+               'encodedRange':[min(encoded),max(encoded)],'displayedRange':[min(displayed),max(displayed)],
+               'comparison':'linear PFM encoded to sRGB through the stock display transfer versus native display'}
         modern['classicComparison']=proof
         if max(reference)>=240 or max(encoded)>=240 or max(reference)-min(reference)<40:
             modern['failures'].append('classic reference is clipped or lacks a useful lighting range')

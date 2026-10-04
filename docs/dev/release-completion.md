@@ -2,6 +2,45 @@
 
 ## 0.13.2 release candidate
 
+- [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
+  bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
+  builds:
+  - `shadows` ("shadow acne on an unoccluded planar receiver", a dark wedge
+    over the left wall and ceiling) started with a48624df. Its PCSS-lite
+    default (`r_shadowMapFilterMode 2`) reached the modern GL clustered-forward
+    receivers, which have no blocker search and filter with one fixed kernel:
+    `ModernShadowPlanner` gave them `ceil( effectiveFilterRadius )`, the PCSS
+    search and penumbra bound of 8 texels, since July. Grazing walls inside the
+    lab projector's frustum self-shadowed. Not the player body
+    (`static-shadows` had the same error) and no station: the projector alone
+    reproduces it, and modes 0 and 1 at radius 2.0 are clean. Modern receivers
+    now use the base contact radius; modes 0 and 1 are unchanged and the classic
+    GLSL receiver keeps its own PCSS.
+  - `production-fixed-shadow-fallback/-native` differed by one byte in two
+    channels, and the first capture always took the extra byte whichever case
+    it was. A projected light whose cache signature changed was re-rendered
+    into the next free atlas cell, and the 2.0-texel default radius reaches
+    receivers that flip between cells. A miss now re-renders into that light's
+    own idle entry (`RB_ShadowMapRecycleProjectedCacheEntry`), in the legacy and
+    sealed schedulers alike.
+  - `production-fixed`, `-bump`, `-colored` and `-grid` ("classic interaction
+    differs from the native lighting reference") were the laboratory's oracle,
+    not the renderer. c850233d moved the stock display shoulder in `bloom.fs`
+    from 0.98 to 0.5, so the native reference's highlight (0.782) displays as
+    0.686, byte 175. With `r_hdrToneMap 0` the native image still matches the
+    modern radiance at 0.251 mean and 0.56 maximum byte error, the 09-21
+    figures. The comparison now passes the modern radiance through the same
+    stock transfer (`stock_display_transfer`).
+  Evidence (`+g8a4a7aa9` plus these changes, GL 4.5, `--gl-debug`): shadows
+  8/8 with all four unoccluded patches exactly 0, classic 19/19 (specular cases
+  0.251-0.252 mean, at most 0.62), classic grid 5/5, admission 12/12, multi 4/4,
+  local/global 2/2, skinning 12/12, post 12/12 and isolated 6/6, and the four
+  Air Defense 2 door scenarios (`renderer_shadow_mapping_maps.py --scenario
+  door-*`) pass with the cache change. `pbr_laboratory_fixture.py` covers the
+  shoulder with a negative control, and
+  `renderer_vulkan_shadow_compatibility.py` pins the contact radius and the
+  cache-cell reuse.
+
 - [x] Make `r_resolutionScaleMode 2` and `3` reach single player. The SP game
   renders its below-native scene into its own targets and presented them with
   a full-screen material, a bilinear stretch, so the modes never applied. It

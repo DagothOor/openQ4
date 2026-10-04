@@ -926,6 +926,30 @@ residual mean of 1.0 is what scene/display composition alone contributes.
 Reports: `.tmp/pbr-audit/v70-backend-color-delta.json` and
 `v70-backend-color-direct.json`.
 
+### 2026-10-04: two OpenGL controls after the shoulder and PCSS changes
+
+Two GL groups that passed on 09-21 failed on the 10-04 build, with and without
+`com_fixedTic 1`. Lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and
+10-04 builds placed both.
+
+The classic oracle above ("unclipped float-versus-native") stopped holding on
+09-24/25, when c850233d moved the stock display shoulder from 0.98 to 0.5: the
+change the v70 note left to the owner. The ARB2 interaction did not change. The
+native capture is a display image, and its 0.782 highlight now displays as
+0.686, byte 175, while the modern PFM still encodes to 199.4. With
+`r_hdrToneMap 0` the two agree at 0.251 mean, 0.56 maximum, as before. The
+comparison now maps the modern radiance through the same stock transfer, which
+`stock_display_transfer` models and refuses to extrapolate.
+
+`shadows` broke on 10-02 with the PCSS-lite default. The modern GL receivers
+took `ceil( effectiveFilterRadius )` as their fixed PCF radius: 8 texels, the
+classic shader's blocker-search bound. The lab projector's grazing left wall
+and the ceiling self-shadowed, with patch errors of 22.7 and 4.8 mean. They now
+use the contact radius. The radius change also exposed a one-byte,
+capture-order-dependent difference in the shadow fallback/native pair: each
+rebuild of a projected map went to a new atlas cell. A rebuild now reuses the
+light's own cell.
+
 ## Unrelated issues observed
 
 The earlier engine/game renderer-interface mismatch is reconciled, and its

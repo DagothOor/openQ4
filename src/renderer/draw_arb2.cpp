@@ -3983,6 +3983,36 @@ static projectedShadowMapCacheEntry_t *RB_ShadowMapAllocProjectedCacheEntry(
 	return NULL;
 }
 
+// A cache miss for a light that still has a resident map means the scene
+// under it changed. Render the new map into that entry's atlas cell rather
+// than the next free one: a map that moves cell on every rebuild rasterizes
+// and samples at another atlas offset, so receivers on the comparison
+// threshold flip between rebuilds, and the obsolete map keeps a cell busy that
+// another light could cache into. A light that returns to an earlier
+// signature, such as a door closing again, renders once more instead. An entry
+// any view used this frame is left alone; the caller completes the returned
+// entry as it would a newly allocated one.
+static projectedShadowMapCacheEntry_t *RB_ShadowMapRecycleProjectedCacheEntry(
+		const int lightIndex, const shadowMapPassKind_t passKind, const int cellSpan ) {
+	const int slotLimit = RB_ShadowMapProjectedCacheSlotLimit();
+	projectedShadowMapCacheEntry_t *newest = NULL;
+	for ( int i = 0; i < slotLimit; i++ ) {
+		projectedShadowMapCacheEntry_t *entry = &g_projectedShadowMapCache[i];
+		if ( RB_ShadowMapProjectedCacheEntryStorageValid( entry )
+				&& entry->lightIndex == lightIndex
+				&& entry->passKind == static_cast<int>( passKind )
+				&& entry->atlasCellSpan == cellSpan
+				&& entry->lastUsedFrame != tr.frameCount
+				&& ( newest == NULL || entry->lastUpdatedFrame > newest->lastUpdatedFrame ) ) {
+			newest = entry;
+		}
+	}
+	if ( newest != NULL ) {
+		newest->valid = false;
+	}
+	return newest;
+}
+
 static pointShadowMapCacheEntry_t *RB_ShadowMapAllocPointCacheEntry(
 		const bool allowEviction = true ) {
 	const int slotLimit = RB_ShadowMapPointCacheSlotLimit();
@@ -4156,7 +4186,10 @@ static shadowMapSchedule_t RB_ShadowMapSchedulePass( const viewLight_t *vLight, 
 			schedule.pointEntry = RB_ShadowMapAllocPointCacheEntry();
 			RB_ShadowMapSelectPointCacheEntry( schedule.pointEntry );
 		} else {
-			schedule.projectedEntry = RB_ShadowMapAllocProjectedCacheEntry( RB_ShadowMapAtlasDivForLight( vLight ) );
+			schedule.projectedEntry = RB_ShadowMapRecycleProjectedCacheEntry( lightIndex, passKind, RB_ShadowMapAtlasDivForLight( vLight ) );
+			if ( schedule.projectedEntry == NULL ) {
+				schedule.projectedEntry = RB_ShadowMapAllocProjectedCacheEntry( RB_ShadowMapAtlasDivForLight( vLight ) );
+			}
 			RB_ShadowMapSelectProjectedCacheEntry( schedule.projectedEntry );
 		}
 		if ( ( pointLight && schedule.pointEntry == NULL ) || ( !pointLight && schedule.projectedEntry == NULL ) ) {
@@ -13635,8 +13668,12 @@ static bool RB_SharedWorldInteractionGLScheduleSealedMapPass(
 			schedule.pointEntry = NULL;
 		}
 	} else {
-		schedule.projectedEntry = RB_ShadowMapAllocProjectedCacheEntry(
-			pass.projected.state.atlasDiv, false );
+		schedule.projectedEntry = RB_ShadowMapRecycleProjectedCacheEntry(
+			cacheLightIndex, passKind, pass.projected.state.atlasDiv );
+		if ( schedule.projectedEntry == NULL ) {
+			schedule.projectedEntry = RB_ShadowMapAllocProjectedCacheEntry(
+				pass.projected.state.atlasDiv, false );
+		}
 	}
 	if ( pass.point.valid ? schedule.pointEntry == NULL
 			: schedule.projectedEntry == NULL ) {

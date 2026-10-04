@@ -1919,6 +1919,19 @@ def validate_shadow_filtering_contract() -> None:
         ),
         "shared projected shadow filter policy",
     )
+    # Modern GL receivers have no blocker search and filter with one fixed
+    # kernel. PCSS-lite's effective radius bounds the classic search, not the
+    # blur: as an 8-texel kernel it shadowed unoccluded grazing walls.
+    planner = read("src/renderer/ModernShadowPlanner.cpp")
+    require_compact(
+        planner,
+        """descriptor.pcfKernel = static_cast<int>( idMath::Ceil( descriptor.pointLight
+            ? r_shadowMapPointFilterRadius.GetFloat()
+            : projectedFilterSettings.filterRadius ) );""",
+        "modern GL projected kernel uses the contact radius",
+    )
+    if "projectedFilterSettings.effectiveFilterRadius" in planner:
+        raise AssertionError("Modern GL receivers must not filter with the PCSS search bound")
 
     interactions = read("src/renderer/Vulkan/vk_Interactions.cpp")
     shadow_slice = braced_body(
@@ -5275,6 +5288,34 @@ def validate_fail_closed_target_and_stencil_behavior() -> None:
             pass.projected.state.atlasDiv, false );""",
         "GL sealed projected shadow transaction cache preservation",
     )
+    # A projected cache miss re-renders into the light's own idle entry and
+    # atlas cell. A map that changes cell on each rebuild flips receivers on
+    # the comparison threshold, and an entry used this frame must stay put.
+    recycle = braced_body(
+        gl_backend,
+        "static projectedShadowMapCacheEntry_t *RB_ShadowMapRecycleProjectedCacheEntry(",
+        "GL projected shadow cache cell reuse",
+    )
+    require_order(
+        recycle,
+        (
+            "RB_ShadowMapProjectedCacheEntryStorageValid( entry )",
+            "entry->lightIndex == lightIndex",
+            "entry->passKind == static_cast<int>( passKind )",
+            "entry->atlasCellSpan == cellSpan",
+            "entry->lastUsedFrame != tr.frameCount",
+            "newest->valid = false;",
+        ),
+        "GL projected shadow cache reuses only the light's own idle entry",
+    )
+    for recycle_call in (
+        """schedule.projectedEntry = RB_ShadowMapRecycleProjectedCacheEntry(
+            cacheLightIndex, passKind, pass.projected.state.atlasDiv );
+        if ( schedule.projectedEntry == NULL ) {""",
+        """schedule.projectedEntry = RB_ShadowMapRecycleProjectedCacheEntry( lightIndex, passKind, RB_ShadowMapAtlasDivForLight( vLight ) );
+            if ( schedule.projectedEntry == NULL ) {""",
+    ):
+        require_compact(gl_backend, recycle_call, "GL projected shadow miss keeps the light's atlas cell")
     if "r_actualRenderApi" in per_surface_volume_gate:
         raise AssertionError(
             "Mapped per-surface prelight retention must not be Vulkan-only"
