@@ -32,6 +32,10 @@ public:
 protected:
 	
 	void					SetClipModel	( void );
+	// openQ4: applies the def's friction_* keys, at spawn and again on restore
+	void					SetFriction		( void );
+	// openQ4: the highest friction_* value the physics may take
+	virtual float			GetMaxFriction	( void ) const;
 	
 	// twhitaker:
 	virtual void			RunPrePhysics			( void );

@@ -183,6 +183,26 @@ Recorded because each one changed what "support" means here.
   (the bike's HUD says so), not a new button.
 - The bike's script events drive a spline tether its def leaves out, so they do nothing
   in the expansion or here.
+- The expansion's rigid bodies take friction values up to 10; Quake 4 drops the whole
+  friction set when one passes 1. The bike's `friction_angular` of 5 is what stops it
+  turning: on the 0.6 fallback a held turn spun it up past 500 degrees a second, and
+  it turned two more full circles after the stick was let go. openQ4 raises the
+  ceiling for the bike alone (`riVehicleSpeederBike::GetMaxFriction`), because a
+  global change would also apply convoy1's landmine friction of 5, which retail drops.
+  Rigid vehicles apply the def's friction again on restore, so older saves pick it up.
+- Its hoverpads take `traceRelativeDirection`: the pad probes along that direction in
+  the vehicle's frame and pushes straight back. The bike's antisuspensor probes up,
+  holding it off ceilings, and its six bumpers probe out, holding it off walls. Probing
+  down instead, as stock pads do, the antisuspensor pressed the bike towards the ground.
+- openQ4's first rebuild of the bike's grip turned its velocity by twice the bike's
+  heading every tic (it multiplied by the axis instead of projecting onto it), so
+  thrust could not build speed on most headings. On open track three seconds of full
+  forward thrust moved the bike about 25 units; it now covers about 1100 and reaches
+  about 580 units a second.
+- Vehicle turrets follow only the change in the player's own aim, so a script that
+  seats the player and then turns the vehicle (m07's race start turns the bike 165
+  degrees) leaves the guns pointing ahead, here and in the expansion. A gun camera
+  facing backwards at the race start came from VR's seat tracking, not the bike.
 - The Valkaryne's `requestDocking` function is parsed and never called; the m09 script
   docks her itself. She spawns with her ranged and melee attacks switched off.
 - `ai_valkaryneShots` is registered and never read, and so are the weapon-group and

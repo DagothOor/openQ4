@@ -16,6 +16,12 @@
 		  level, so it cannot flip, and
 		- shakes its rider's view in proportion to its speed.
 
+	Its def's "friction_angular" of 5 is what stops a turn: the expansion's
+	rigid bodies took friction up to 10. Under Quake 4's ceiling of 1 the
+	physics dropped the bike's whole friction set for the 0.6 fallback, and
+	a held turn spun the bike up past 500 degrees a second, still turning
+	two full circles after the stick was let go.
+
 	Its four script events drive a spline tether that the shipped bike does
 	not carry ("def_part_splinetether" is commented out of its driver def),
 	so, as in the expansion, they are accepted and do nothing.
@@ -29,6 +35,7 @@ public:
 
 protected:
 	virtual void			RunPostPhysics			( void );
+	virtual float			GetMaxFriction			( void ) const;
 
 private:
 	void					Event_SetSpline			( idEntity *spline );
@@ -48,6 +55,16 @@ static const float SPEEDERBIKE_SIDE_GRIP		= 0.95f;
 static const float SPEEDERBIKE_MAX_TILT			= 45.0f;
 static const float SPEEDERBIKE_TILT_DAMPING		= 0.99f;
 static const float SPEEDERBIKE_SHAKE_PER_SPEED	= 0.02f;
+static const float SPEEDERBIKE_MAX_FRICTION		= 10.0f;
+
+/*
+================
+riVehicleSpeederBike::GetMaxFriction
+================
+*/
+float riVehicleSpeederBike::GetMaxFriction( void ) const {
+	return SPEEDERBIKE_MAX_FRICTION;
+}
 
 /*
 ================
@@ -57,8 +74,10 @@ riVehicleSpeederBike::RunPostPhysics
 void riVehicleSpeederBike::RunPostPhysics( void ) {
 	const idMat3 &axis = physicsObj.GetAxis();
 
-	// grip: bleed off the sideways part of the velocity
-	idVec3 local = axis * physicsObj.GetLinearVelocity();
+	// grip: bleed off the sideways part of the velocity, measured along the
+	// bike's own axes (axis * v would turn v by the bike's heading instead)
+	const idVec3 worldVelocity = physicsObj.GetLinearVelocity();
+	idVec3 local( worldVelocity * axis[0], worldVelocity * axis[1], worldVelocity * axis[2] );
 	local[1] *= SPEEDERBIKE_SIDE_GRIP;
 	const idVec3 velocity = local * axis;
 	physicsObj.SetLinearVelocity( velocity );

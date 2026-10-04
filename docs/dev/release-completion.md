@@ -818,6 +818,19 @@
   `q4xdm15` and `q4xtourney1` were lit with lighting made for the retail
   geometry. They now load with the game's standard lighting, and the stock maps
   keep theirs, under the expansion too.
+- [x] The speeder bike drives the way the expansion built it. A held turn
+  settles at about 85 degrees a second and stops within a second of letting go;
+  it spun up past 500 degrees a second and kept turning two full circles,
+  because Quake 4's friction ceiling of 1 dropped the bike's angular friction
+  of 5 (the expansion's ceiling is 10; openQ4 raises it for the bike alone, and
+  older saves pick it up on load). The bike also reaches race speed (about 580
+  units a second after three seconds of thrust on open track, where it crawled
+  about 25 units): its grip turned the velocity by twice the bike's heading
+  every tic.
+  Its pads honour `traceRelativeDirection`, so the antisuspensor holds it off
+  ceilings and the bumpers off walls instead of all probing the ground. Stock
+  vehicles are unchanged: convoy1's GEV moves identically under a scripted
+  drive and turn. `awakening_speeder_physics_contract.py` pins the three fixes.
 
 ## Unreleased — `idtech5-ui` development
 

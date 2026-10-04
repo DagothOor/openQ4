@@ -44,7 +44,11 @@ public:
 	void					Restore( idRestoreGame *savefile );
 
 							// initialisation
-	void					SetFriction( const float linear, const float angular, const float contact );
+// openQ4 BEGIN
+							// keeps all three only if each lies in 0..maxFriction: Quake 4's
+							// ceiling is 1, The Awakening's rigid bodies took up to 10
+	void					SetFriction( const float linear, const float angular, const float contact, const float maxFriction = 1.0f );
+// openQ4 END
 	void					SetBouncyness( const float b );
 							// same as above but drop to the floor first
 	void					DropToFloor( void );

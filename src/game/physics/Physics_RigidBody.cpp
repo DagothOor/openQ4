@@ -748,12 +748,16 @@ idVec3 idPhysics_RigidBody::GetCenterMass( int id ) const
 /*
 ================
 idPhysics_RigidBody::SetFriction
+
+openQ4: a value outside 0..maxFriction drops all three, as Quake 4 does
+against its ceiling of 1. The Awakening's game code raised the ceiling to 10
+for every rigid body, and its speeder bike's def relies on that.
 ================
 */
-void idPhysics_RigidBody::SetFriction( const float linear, const float angular, const float contact ) {
-	if (	linear < 0.0f || linear > 1.0f ||
-			angular < 0.0f || angular > 1.0f ||
-			contact < 0.0f || contact > 1.0f ) {
+void idPhysics_RigidBody::SetFriction( const float linear, const float angular, const float contact, const float maxFriction ) {
+	if (	linear < 0.0f || linear > maxFriction ||
+			angular < 0.0f || angular > maxFriction ||
+			contact < 0.0f || contact > maxFriction ) {
 		return;
 	}
 	linearFriction = linear;

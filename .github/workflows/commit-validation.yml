@@ -157,6 +157,7 @@ jobs:
             tools/tests/gamelibs_staging.py \
             tools/tests/gamelibs_layer_staging.py \
             tools/tests/awakening_ci_contract.py \
+            tools/tests/awakening_speeder_physics_contract.py \
             tools/tests/generated_animation_cache.py \
             tools/tests/level_load_cache.py \
             tools/tests/lightgrid_map_identity.py \
@@ -508,6 +509,7 @@ jobs:
           python tools/tests/gamelibs_staging.py
           python tools/tests/gamelibs_layer_staging.py
           python tools/tests/awakening_ci_contract.py
+          python tools/tests/awakening_speeder_physics_contract.py
           python tools/tests/generated_animation_cache.py
           python tools/tests/level_load_cache.py
           python tools/tests/lightgrid_map_identity.py

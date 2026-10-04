@@ -34,7 +34,7 @@ void rvVehicleRigid::Spawn( void ) {
 	physicsObj.SetAxis ( GetPhysics()->GetAxis ( ) );
 	physicsObj.SetContents( CONTENTS_BODY );
 	physicsObj.SetClipMask( MASK_PLAYERSOLID|CONTENTS_VEHICLECLIP );
-	physicsObj.SetFriction ( spawnArgs.GetFloat ( "friction_linear", "1" ), spawnArgs.GetFloat ( "friction_angular", "1" ), spawnArgs.GetFloat ( "friction_contact", "1" ) );
+	SetFriction ( );
 	physicsObj.SetBouncyness ( spawnArgs.GetFloat ( "bouncyness", "0.6" ) );
 	physicsObj.SetGravity( gameLocal.GetGravity() );
 	SetPhysics( &physicsObj );
@@ -72,6 +72,29 @@ void rvVehicleRigid::SetClipModel ( void ) {
 	if ( spawnArgs.GetFloat ( "mass", "0", mass ) && mass > 0 )	{
 		physicsObj.SetMass ( mass );
 	}
+}
+
+/*
+================
+rvVehicleRigid::SetFriction
+
+openQ4: Restore applies the keys again after the saved physics, so a game
+saved before a subclass raised its ceiling keeps the def's friction too.
+Nothing changes a rigid vehicle's friction after spawn, so for every other
+vehicle this sets what the save already held.
+================
+*/
+void rvVehicleRigid::SetFriction ( void ) {
+	physicsObj.SetFriction ( spawnArgs.GetFloat ( "friction_linear", "1" ), spawnArgs.GetFloat ( "friction_angular", "1" ), spawnArgs.GetFloat ( "friction_contact", "1" ), GetMaxFriction ( ) );
+}
+
+/*
+================
+rvVehicleRigid::GetMaxFriction
+================
+*/
+float rvVehicleRigid::GetMaxFriction ( void ) const {
+	return 1.0f;
 }
 
 
@@ -150,6 +173,7 @@ void rvVehicleRigid::Restore ( idRestoreGame *savefile ) {
 	SetClipModel ( );
 
 	savefile->ReadStaticObject ( physicsObj );
+	SetFriction ( );
 	RestorePhysics( &physicsObj );
 }
 

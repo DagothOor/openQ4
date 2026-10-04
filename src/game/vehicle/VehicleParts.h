@@ -158,6 +158,7 @@ public:
 protected:
 
 	void			UpdateDustEffect	( const idVec3& origin, const idMat3& axis, float attenuation, const rvDeclMatType* mtype );
+	void			SetTraceDirection	( void );
 
 	float					height;
 	float					dampen;
@@ -182,6 +183,10 @@ protected:
 	
 	int						forceUpTime;
 	int						forceDownTime;
+
+	// openQ4: "traceRelativeDirection", in the vehicle's frame; from the def, never saved
+	idVec3					traceDirection;
+	bool					traceRelative;
 
 	// Dust effects
 	rvClientEntityPtr<rvClientEffect>	effectDust;

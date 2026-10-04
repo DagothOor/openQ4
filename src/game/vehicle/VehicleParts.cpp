@@ -1842,6 +1842,8 @@ rvVehicleHoverpad::rvVehicleHoverpad ( void ) {
 	effectDust = NULL;
 	soundPart  = -1;
 	effectDustMaterialType = NULL;
+	traceDirection.Zero ( );
+	traceRelative = false;
 }
 
 rvVehicleHoverpad::~rvVehicleHoverpad ( void ) {
@@ -1882,6 +1884,7 @@ void rvVehicleHoverpad::Spawn ( void ) {
 	forceUpTime   = SEC2MS ( spawnArgs.GetFloat ( "forceUpTime", "1" ) );
 	forceDownTime = SEC2MS ( spawnArgs.GetFloat ( "forceDownTime", "1" ) );
 	forceTable = declManager->FindTable( spawnArgs.GetString ( "forceTable", "linear" ), false );
+	SetTraceDirection ( );
 
 	currentForce.Init ( 0, 0, 0, 0 );				
 	
@@ -1912,6 +1915,23 @@ void rvVehicleHoverpad::Activate ( bool active ) {
 
 /*
 ================
+rvVehicleHoverpad::SetTraceDirection
+
+openQ4: The Awakening points some of its speeder bike's pads along the bike
+instead of down. "traceRelativeDirection" is the probe's direction in the
+vehicle's frame, and such a pad pushes straight back from what it finds: an
+antisuspensor probing up holds the bike off a ceiling, and bumpers probing
+out hold it off walls. A pad without the key probes along gravity as before.
+The direction comes from the def, so saves carry nothing new.
+================
+*/
+void rvVehicleHoverpad::SetTraceDirection ( void ) {
+	traceDirection = spawnArgs.GetVector ( "traceRelativeDirection", "0 0 0" );
+	traceRelative = ( traceDirection.Normalize ( ) > 0.0f );
+}
+
+/*
+================
 rvVehicleHoverpad::RunPrePhysics
 
 Called before RunPhysics.  Since impact velocities are altered by calls to ApplyImpulse
@@ -1935,6 +1955,7 @@ rvVehicleHoverpad::RunPhysics
 ================
 */
 void rvVehicleHoverpad::RunPhysics ( void ) {
+	idVec3	probe;
 	idVec3	end;
 	idMat3	axis;
 	trace_t	tr;
@@ -1972,7 +1993,9 @@ void rvVehicleHoverpad::RunPhysics ( void ) {
 	axis[2] = parent->GetPhysics()->GetAxis()[1];
 
 	// Always point the hover jets towards gravity
-	end  = worldOrigin + (parent->GetPhysics()->GetGravityNormal ( ) * height);	
+	// openQ4: unless the pad probes along the vehicle (SetTraceDirection)
+	probe = traceRelative ? traceDirection * parent->GetPhysics()->GetAxis() : parent->GetPhysics()->GetGravityNormal ( );
+	end  = worldOrigin + (probe * height);
 
 	// Determine how far away the hoverpad is from the ground
 	gameLocal.Translation ( parent.GetEntity(), tr, worldOrigin, end, clipModel, axis, MASK_SOLID|CONTENTS_VEHICLECLIP, parent );
@@ -2008,7 +2031,10 @@ void rvVehicleHoverpad::RunPhysics ( void ) {
 	// If the slope under the hoverpad is < 30 degress then use the gravity vector to allow the hovertank to
 	// stop on slopes, otherwise use the vehicles axis which will cause it to slide down steep slopes 
 	float f = (-parent->GetPhysics()->GetGravityNormal ( ) * tr.c.normal);
-	if ( f < maxRestAngle || (thrustForward && position->mInputCmd.forwardmove != 0 ) ) {
+	if ( traceRelative ) {
+		// openQ4: straight back from whatever the probe met
+		impulseForce = (forceTable->TableLookup ( curlength / height ) * hoverForce) * -probe - dampingForce;
+	} else if ( f < maxRestAngle || (thrustForward && position->mInputCmd.forwardmove != 0 ) ) {
 		impulseForce = (forceTable->TableLookup ( curlength / height ) * hoverForce) * -axis[0] - dampingForce;	
 	} else {
 		impulseForce = (forceTable->TableLookup ( curlength / height ) * hoverForce) * -parent->GetPhysics()->GetGravityNormal ( ) - dampingForce;	
@@ -2180,6 +2206,8 @@ void rvVehicleHoverpad::Restore ( idRestoreGame* savefile ) {
 
 	effectDust.Restore ( savefile );
 	savefile->ReadMaterialType ( effectDustMaterialType );
+
+	SetTraceDirection ( );
 }
 
 /***********************************************************************
