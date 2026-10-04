@@ -48,6 +48,23 @@
   Vulkan/Intel and OpenGL. See the
   [gap-closure ledger](plans/2026-09-20-vulkan-gap-closure.md).
 
+- [x] Clear four Vulkan PBR-laboratory failures found on 2026-10-04. Composed
+  shadow-cache hits now bind the solid alpha image for their moving casters;
+  a view of composed hits alone used to draw them with the scene's last set-0
+  image, a multisampled one under 4x MSAA (`VUID-RuntimeSpirv-samples-08725`).
+  Views that request a shared classic adapter (`r_rendererShared*`) and need
+  nothing the native scene target provides stay on the swapchain again, so
+  those adapters can own them; since the 2026-09-25 checkpoint none could. Two
+  laboratory oracles that predated the linear HDR scene and the PBR preview now
+  follow the reported display domain: extreme emission expects the filmic,
+  once-encoded red channel (178.1, not 77.4) when the linear scene owns the
+  view, and the capacity proof expects 65 float-composed alpha layers to reach
+  255 rather than RGBA8's 254. On Vulkan the `vulkan-direct` suite passes
+  68/68 at 0x and 4x, classic colors 90/90 and pixel-identical to OpenGL, and
+  the capacity proof at 0x and 4x. See
+  [shadow movers](shadowmapping-movers-2026-09-05.md#composed-vulkan-hits-drew-moving-casters-without-their-alpha-image)
+  and the [world ambient domain](classic-world-ambient-domain-modernization.md#backend-execution).
+
 - [x] Make the experimental Vulkan renderer survive what used to stop it:
   a GPU or driver reset during play now restarts the renderer automatically
   and carries on (three times per session, `r_vkPresentationRecoveries`)

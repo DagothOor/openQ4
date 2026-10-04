@@ -4742,6 +4742,15 @@ static bool VK_TemporalPresentation_RootCoversNativeOutput(
 		&& height == (int)vkCtx.swapchainExtent.height;
 }
 
+// Every opt-in shared adapter that the 3D walk gates on a native scene.
+static bool VK_TemporalPresentation_SharedAdapterRequested( void ) {
+	return r_rendererSharedWorldAmbient.GetBool()
+		|| r_rendererSharedWorldInteraction.GetBool()
+		|| r_rendererSharedInWorldGui.GetBool()
+		|| r_rendererSharedCinematicPost.GetBool()
+		|| r_rendererSharedWorldFogBlend.GetBool();
+}
+
 static bool VK_TemporalPresentation_BackendSceneRequested(
 		const viewDef_t *rootView, int &targetWidth, int &targetHeight ) {
 	targetWidth = 0;
@@ -4766,11 +4775,27 @@ static bool VK_TemporalPresentation_BackendSceneRequested(
 			&& !R_TemporalPresentation_ScreenSpaceEffectsRequested() ) {
 		return false;
 	}
-	// Keep native-size scenes in the same lower-origin attachment convention
-	// as scaled/HDR scenes and OpenGL. Reversing the viewport on the swapchain
-	// changes interpolation rounding even when the projected coverage agrees;
-	// radial shadow references can cross a depth threshold as a result. The
-	// existing spatial presenter normalizes the completed scene's orientation.
+	// The shared classic adapters own only the swapchain: each preflight
+	// rejects an offscreen target, and the 3D walk skips them outright while
+	// a scene target is active. Leave their views native when nothing else
+	// needs the target (scaling, temporal AA, screen-space effects, an HDR
+	// scene, MSAA or a PBR preview), or no shared adapter could ever draw.
+	const bool knownCapture = presentation.captureFrozen
+		|| presentation.captureForcedNative
+		|| ( rootView != NULL && rootView->temporalCaptureFrame );
+	if ( VK_TemporalPresentation_SharedAdapterRequested() && !sceneScaled
+			&& !( presentation.temporalAARequested && !knownCapture )
+			&& !AdvancedScreenSpaceCore_Requested( presentation.advancedScreenSpace )
+			&& !VK_PostProcess_HDRSceneRequested() && r_multiSamples.GetInteger() <= 1
+			&& !VK_HDRScene_PreviewRequested( rootView ) ) {
+		return false;
+	}
+	// Keep other native-size scenes in the same lower-origin attachment
+	// convention as scaled/HDR scenes and OpenGL. Reversing the viewport on
+	// the swapchain changes interpolation rounding even when the projected
+	// coverage agrees; radial shadow references can cross a depth threshold
+	// as a result. The existing spatial presenter normalizes the completed
+	// scene's orientation.
 	// The spatial presentation shader is also the projection-jitter safety
 	// gate for a backend-owned scene target. If its swapchain pipeline cannot
 	// be created, leave the view native so a later fixed-function scale cannot

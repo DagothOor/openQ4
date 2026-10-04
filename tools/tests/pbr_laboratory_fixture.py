@@ -348,8 +348,8 @@ def test_vulkan_direct_evidence(root: Path) -> None:
                        ('green',(0,255,0)),('black',(0,0,0)),('white',(255,255,255))):
         paths[name]=root/f'vk-direct-{name}.tga'
         paths[name].write_bytes(header+bytes(color)*(1280*800))
-    def check(assignments):
-        rows=[{'case':'vk-direct-'+case,'screenshot':str(paths[image]),'failures':[]}
+    def check(assignments,telemetry=()):
+        rows=[{'case':'vk-direct-'+case,'screenshot':str(paths[image]),'failures':[],'telemetry':list(telemetry)}
               for case,image in assignments]
         runner.compare_vulkan_direct_captures(rows)
         return rows
@@ -371,6 +371,14 @@ def test_vulkan_direct_evidence(root: Path) -> None:
     assert rows[1]['failures'], 'partial PBR emission promotion must fail exact classic fallback'
     assert check([('emission-half','grey')])[0]['failures'], 'emission needs an independent linear color reference'
     assert check([('emission-extreme','grey')])[0]['failures'], 'extreme emission must preserve the faint channel'
+    # A committed linear HDR scene maps the unclipped red channel through the
+    # filmic curve and one sRGB encode, 178 instead of the stock 77.
+    paths['filmic']=root/'vk-direct-filmic.tga'
+    paths['filmic'].write_bytes(header+bytes((255,255,178))*(1280*800))
+    linear=['Vulkan HDR: sceneRequested=1 sceneFormat=RGBA16F linearScene=1']
+    assert not check([('emission-extreme','filmic')],linear)[0]['failures'], 'linear extreme emission must match its filmic reference'
+    assert check([('emission-extreme','filmic')],[linear[0].replace('linearScene=1','linearScene=0')])[0]['failures'], \
+        'the stock-domain reference must reject a filmic display value'
     assert check([('emission-dark','grey')])[0]['failures'], 'disabled emission must not retain radiance'
     for shape in ('geometric','normal'):
         rows=check([('aa-'+shape,'grey'),('aa-'+shape+'-off','grey'),('aa-'+shape+'-owned','green')])

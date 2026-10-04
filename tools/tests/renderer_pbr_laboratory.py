@@ -523,6 +523,36 @@ def compare_ibl_captures(results: list[dict], patches: dict[str,bytes] | None = 
             rows['cutout-coverage']['failures'].append('single-sample coverage differs from the hard cutout')
 
 
+def extreme_emission_reference(linear_scene: bool) -> tuple[float,float,float]:
+    """Display BGR of the faint (1,30,200) texture at a million-strength emission.
+
+    Exposure is r_hdrExposure 0.1 times the fixed 0.01 automatic exposure, so
+    red (byte 1, decoded 1/255/12.92) lands at 0.3035 while green and blue
+    saturate; FP16 storage bounds blue at 65504. The stock tone map leaves
+    values below its 0.5 shoulder unchanged: red 77.4. A committed linear HDR
+    scene, which owns this view since the Vulkan HDR scene ownership work,
+    applies the filmic curve normalised by the reference white and encodes
+    sRGB once: red 178.1. BASE disables highlight desaturation and gamut
+    compression, which this reference does not model.
+    """
+    settings={**BASE,**CASES['vk-direct-emission-extreme']}
+    if float(settings['r_hdrHighlightDesaturation']) or float(settings['r_hdrGamutCompression']):
+        raise ValueError('the extreme emission reference assumes no highlight compression')
+    exposure=float(settings['r_hdrExposure'])*float(settings['r_hdrMaxExposure'])
+    def decode(byte: int) -> float:
+        value=byte/255
+        return value/12.92 if value<=0.04045 else ((value+0.055)/1.055)**2.4
+    radiance=[min(decode(byte)*1000000,65504)*exposure for byte in (200,30,1)]
+    if not linear_scene:
+        return tuple(255*min(value,1) for value in radiance)
+    def filmic(x: float) -> float:
+        return x*(2.51*x+0.03)/(x*(2.43*x+0.59)+0.14)
+    def encode(value: float) -> float:
+        return value*12.92 if value<0.0031308 else 1.055*value**(1/2.4)-0.055
+    white=filmic(float(settings['r_hdrWhitePoint']))
+    return tuple(255*encode(min(max(filmic(value)/white,0),1)) for value in radiance)
+
+
 def compare_vulkan_direct_captures(results: list[dict]) -> None:
     by_case={r['case'].removeprefix('vk-direct-'):r for r in results if r['case'].startswith('vk-direct-')}
     patches={}
@@ -619,14 +649,18 @@ def compare_vulkan_direct_captures(results: list[dict]) -> None:
     if 'emission-dark' in patches and max(patches['emission-dark'])!=0:
         by_case['emission-dark']['failures'].append('emission leaked through the disabled ambient owner')
     if 'emission-extreme' in patches:
-        # Red remains below the shoulder after exposure. The two other
-        # channels intentionally saturate; a per-intensity clamp would reduce
-        # red to about 5 instead of 77. Verify every central-patch pixel.
-        expected=(255,255,(1/255/12.92)*1000000*0.001*255)
+        # Red stays unclipped while the two other channels intentionally
+        # saturate; a per-intensity clamp would reduce red to almost nothing.
+        # The reference follows the display transfer the capture reported.
+        # Verify every central-patch pixel.
+        row=by_case['emission-extreme']
+        hdr=next((line for line in row.get('telemetry',[]) if line.startswith('Vulkan HDR:')),'')
+        linear=re.search(r'\blinearScene=1\b',hdr) is not None
+        expected=extreme_emission_reference(linear)
         error=max(abs(value-expected[i%3]) for i,value in enumerate(patches['emission-extreme']))
-        by_case['emission-extreme']['nativeEmissionReference']={'expectedBGR':expected,'maximumByteError':error,'limit':1}
+        row['nativeEmissionReference']={'expectedBGR':expected,'maximumByteError':error,'limit':1,'linearScene':linear}
         if error>1:
-            by_case['emission-extreme']['failures'].append('extreme emission lost its unclipped channel after texture modulation')
+            row['failures'].append('extreme emission lost its unclipped channel after texture modulation')
     for shape in ('geometric','normal'):
         names=['aa-'+shape+suffix for suffix in ('','-off','-owned')]
         if not all(name in by_case for name in names): continue
@@ -1427,6 +1461,8 @@ def inspect_capture(args: argparse.Namespace, case: str, text: str, shot: Path) 
         except ValueError:
             valid=False
         if not valid: failures.append('extreme emission requires completed float-HDR exposure evidence')
+        if state.get('linearScene')!='1':
+            failures.append('extreme emission was not composed in the committed linear HDR scene')
     if case in ('production-fixed','production-fixed-bump','production-fixed-colored','production-fixed-restored','production-fixed-image-reload','production-fixed-shader-reload','production-fixed-partial-restart','production-fixed-full-restart','production-fixed-resize','production-fixed-minimal','production-fixed-bright') and not re.search(r'Modern classic lighting: ready=1 executed=1 primitives=[1-9]\d*',text):
         failures.append('classic compatibility lighting was not submitted')
     if case.startswith('production-fixed-msaa') and not re.search(r'Renderer AA: MSAA requested=4 effective=4\b',text):

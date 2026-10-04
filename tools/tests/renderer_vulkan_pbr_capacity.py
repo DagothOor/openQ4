@@ -81,7 +81,7 @@ def compare_pair(a: bytes, b: bytes) -> dict:
             'status': 'fail' if maximum else 'pass'}
 
 
-def image_relations(images: dict[str, bytes]) -> tuple[dict, list[str]]:
+def image_relations(images: dict[str, bytes], float_targets: dict[str, bool]) -> tuple[dict, list[str]]:
     checks, failures = {}, []
     # A rejected view must match the actual classic renderer over the whole
     # frame, including lighting and alpha, with debug and environment toggles.
@@ -96,10 +96,12 @@ def image_relations(images: dict[str, bytes]) -> tuple[dict, list[str]]:
         if check['status'] != 'pass':
             failures.append(f'{left}/{right}: whole-frame error {check["maximumError"]}')
     # Non-vacuity: one alpha layer and many admitted layers must actually draw.
-    # Repeated 8-bit source-alpha composition converges to 254, not 255.
+    # Repeated 8-bit source-alpha composition converges to 254, not 255. A
+    # committed PBR preview composes ordered transparency on its RGBA16F
+    # target and quantizes only the finished scene, so many layers reach 255.
     for suffix in ('one', 'below', 'limit', 'over-three', 'over-none'):
         pixels = images['capacity-' + suffix]
-        green = 112 if suffix == 'one' else 254
+        green = 112 if suffix == 'one' else 255 if float_targets.get('capacity-' + suffix) else 254
         count = sum(pixels[i:i+3] == bytes((0, green, 0)) for i in range(0, len(pixels), 3))
         checks[suffix + 'CoveragePixels'] = count
         if count < 10000:
@@ -114,7 +116,7 @@ def image_relations(images: dict[str, bytes]) -> tuple[dict, list[str]]:
 
 
 def qualify(report: dict, samples: int) -> dict:
-    failures, images, telemetry_checks = [], {}, {}
+    failures, images, telemetry_checks, float_targets = [], {}, {}, {}
     rows = {row['case']: row for row in report['results']}
     if not report.get('complete') or not report.get('runtimeUnchanged'):
         failures.append('runtime changed or capture sequence incomplete')
@@ -138,6 +140,7 @@ def qualify(report: dict, samples: int) -> dict:
         text = '\n'.join(row['telemetry'])
         if not re.search(rf'Renderer AA: MSAA requested={samples} effective={samples}\b', text):
             failures.append(f'{name}: requested MSAA not active')
+        float_targets[name] = re.search(r'^Vulkan PBR preview: requested=1 committed=1\b', text, re.M) is not None
         line = next((line for line in row['telemetry']
                      if line.startswith('Vulkan: native PBR transparency:')), '')
         state = dict(re.findall(r'(\w+)=([^\s]+)', line))
@@ -156,7 +159,7 @@ def qualify(report: dict, samples: int) -> dict:
             failures.append(f'{name}: admission/draw telemetry does not prove the boundary')
     checks = {}
     if len(images) == len(CASES):
-        checks, image_failures = image_relations(images)
+        checks, image_failures = image_relations(images, float_targets)
         failures += image_failures
     return {'status': 'fail' if failures else 'pass', 'telemetry': telemetry_checks,
             'imageChecks': checks, 'failures': failures}

@@ -79,6 +79,19 @@ address matches. This guards transient view data without discarding resident
 shadow maps. The point-light fixture now enables the overlay in the away view
 and captures it before returning, covering the previously crashing path.
 
+### Composed Vulkan hits drew moving casters without their alpha image
+
+A cached projected tile that composes the view's moving casters
+(`reuse+compose`) draws them with the caster pipeline, but only a view with a
+fresh map created the solid `_white` alpha descriptor. A view of composed hits
+alone therefore drew its moving casters with whatever set 0 the scene last
+bound. Under 4x MSAA that was a multisampled scene image, which the validation
+layer reported as `VUID-RuntimeSpirv-samples-08725` (2026-10-04, the PBR
+laboratory's `vk-direct-shadow-projected` controls at `--samples 4`). Fresh or
+composed passes now both create the descriptor, and the compose scope rebinds
+it explicitly. The `door-projected` fixture still runs 34 composed passes, and
+its cached and fresh captures match exactly.
+
 ## Test method
 
 `renderer_shadow_mapping_maps.py` uses the repository's SP launch configuration,

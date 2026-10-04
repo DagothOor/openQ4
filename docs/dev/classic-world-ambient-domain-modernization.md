@@ -128,6 +128,16 @@ Vulkan adapter completes geometry offsets, descriptors, exact pipeline keys,
 render-scope, state, scissor, capacity, and coverage preflight before the view's
 depth clear or first framebuffer-affecting command.
 
+Vulkan otherwise draws a native-size root view into its lower-origin scene
+target, which this adapter and the other shared view adapters (interaction,
+in-world GUI, cinematic/post, fog/blend) cannot own. While any of them is
+requested, a root view that needs nothing the target provides (scaling,
+temporal AA, screen-space effects, an HDR scene, MSAA or a PBR preview) stays
+on the swapchain. From the 2026-09-25 checkpoint until 2026-10-04 every such
+view went to the target and the shared adapters never ran: the Vulkan outcome
+read neither owned nor fallback (`VK=0/0`), and the classic-colors suite failed
+its 18 shared cases.
+
 The actual shared consumers do not reread `shaderStage_t`, `GetStage`, or raw
 `shaderRegisters`; those inputs are sealed by the front-end transaction. The
 legacy draw-surface pointer remains only as a bounded geometry submission

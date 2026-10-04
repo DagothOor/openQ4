@@ -5535,16 +5535,22 @@ bool VK_ShadowMap_RenderAtlas( const viewDef_t *viewDef ) {
 
 	VkCommandBuffer cmd = classicCommit
 		? vkClassicShadowTransaction.cmd : VK_Exec_ActiveCmd();
+	// A composed hit draws this view's dynamic casters over its restored
+	// tile, so it needs the solid alpha descriptor as much as a fresh map.
+	// Without one the caster pipeline samples whatever set 0 the scene last
+	// bound: a multisampled scene image under MSAA (VUID-RuntimeSpirv-
+	// samples-08725 during vk-direct-shadow-projected at 4x).
+	const int casterPassCount = projectedFreshCount + pointFreshCount
+			+ projectedComposeCount;
 	VkDescriptorSet whiteSet = classicCommit
 		? vkClassicShadowTransaction.whiteSet : VK_NULL_HANDLE;
-	if ( !classicCommit && projectedFreshCount + pointFreshCount > 0
+	if ( !classicCommit && casterPassCount > 0
 			&& globalImages->whiteImage != NULL ) {
 		whiteSet = VK_Exec_ImageDescriptor(
 				globalImages->whiteImage->GetDeviceHandle(), true );
 	}
 	if ( cmd == VK_NULL_HANDLE
-			|| ( projectedFreshCount + pointFreshCount > 0
-				&& whiteSet == VK_NULL_HANDLE ) ) {
+			|| ( casterPassCount > 0 && whiteSet == VK_NULL_HANDLE ) ) {
 		VK_ShadowMap_AbandonPreparedLights();
 		return false;
 	}
@@ -5997,9 +6003,11 @@ bool VK_ShadowMap_RenderAtlas( const viewDef_t *viewDef ) {
 			vkCmdBeginRendering( cmd, &ri );
 
 			// The fresh scope may not have run at all (a view of pure cache
-			// hits), so re-establish the whole caster state here.
+			// hits), so re-establish the whole caster state here, including
+			// the set-0 image the first caster draw binds.
 			vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					casterPipeline );
+			ctx.boundImageSet = VK_NULL_HANDLE;
 			vkCmdSetDepthTestEnable( cmd, VK_TRUE );
 			vkCmdSetDepthWriteEnable( cmd, VK_TRUE );
 			vkCmdSetDepthCompareOp( cmd, VK_COMPARE_OP_LESS_OR_EQUAL );
