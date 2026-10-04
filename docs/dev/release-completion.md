@@ -211,9 +211,9 @@
   the renderer, and ordinary stencil shadows are untouched. On Air Defense 1
   all three modes match the Vulkan view and the `r_useShadowVertexProgram 0`
   path, including after `vid_restart`, and normal frames before and after the
-  debug view are pixel-identical. Packed MD5R volumes take the same program;
-  the opt-in MD5R conversions did not put any in view, so that path has no
-  runtime capture.
+  debug view are pixel-identical. Packed MD5R volumes take the same program:
+  since the MD5R conversion fix, Air Defense 1 with `r_convertMD5toMD5R 1`
+  colours the walker's and the weapon's volumes as the unconverted frame does.
 
 - [x] Make skinned models converted by the opt-in `r_convertMD5toMD5R` draw
   like their MD5 sources. On OpenGL, converted characters and the first-person
