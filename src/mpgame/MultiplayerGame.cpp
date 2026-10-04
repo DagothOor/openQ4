@@ -15629,10 +15629,10 @@ void idMultiplayerGame::SetJoinScreenSoftFocus( bool enabled ) {
 idMultiplayerGame::SetRetainedMenuCover
 
 openQ4: the session's retained menu card (section 14.18) covers mainGui. The
-card learns the protocol it can rely on and whether it may cover now: it does
-not carry the connect-time join offer yet, and an Arena Campaign match keeps
-its own menu. Uncovering gives the join panel its soft focus back while the
-offer stands.
+card learns the protocol it can rely on and whether it may cover now: an Arena
+Campaign match keeps its own menu. The card's softening replaces the join
+panel's blur while it covers the connect-time join offer, and uncovering gives
+the panel its soft focus back while the offer stands.
 ================
 */
 static const int RETAINED_MENU_PROTOCOL = 1;
@@ -15648,7 +15648,7 @@ void idMultiplayerGame::SetRetainedMenuCover( bool covered, idUserInterface *car
 		}
 		return;
 	}
-	const bool allowed = currentMenu == 1 && mainGui != NULL && !joinScreenPending && !IsArenaCampaignMatch();
+	const bool allowed = currentMenu == 1 && mainGui != NULL && !IsArenaCampaignMatch();
 	card->SetStateInt( "mp.protocol", RETAINED_MENU_PROTOCOL );
 	card->SetStateBool( "mp.cover_allowed", allowed );
 	if ( !allowed ) {
@@ -15656,6 +15656,7 @@ void idMultiplayerGame::SetRetainedMenuCover( bool covered, idUserInterface *car
 	}
 	retainedMenuCovered = true;
 	retainedMenuPublished.Clear();
+	SetJoinScreenSoftFocus( false );
 	// The Players page opens on the player's own statistics, its lists sorted
 	// by score again.
 	idPlayer *local = gameLocal.GetLocalPlayer();
@@ -16103,6 +16104,193 @@ void idMultiplayerGame::PublishRetainedPlayers( idUserInterface *card, bool &cha
 	publish( "mp.friend.detail", "" );
 }
 
+/*
+================
+idMultiplayerGame::RetainedMenuWelcome
+
+Welcome while the player has not answered the join offer: the offer stands,
+or ui_joined is still 0 while the player spectates (closing the offer with
+Esc leaves it so, and the menu key opens Welcome again). An explicit join or
+Spectate answers it, and the menu key opens Escape from then on.
+================
+*/
+bool idMultiplayerGame::RetainedMenuWelcome( void ) {
+	const idPlayer *player = gameLocal.GetLocalPlayer();
+	return joinScreenPending || ( player != NULL && player->spectating && !cvarSystem->GetCVarBool( "ui_joined" ) );
+}
+
+/*
+================
+idMultiplayerGame::RetainedWelcomeSlots
+
+The Welcome card's Join page for the local player now: in team modes join
+the Marines, join the Strogg (each refused by the stock balance rule with its
+reason), Auto join, naming the team it picks, and Spectate; in Tourney join
+or leave the tournament; elsewhere Join game and Spectate.
+================
+*/
+void idMultiplayerGame::RetainedWelcomeSlots( retainedTeamSlot_t slots[ RETAINED_WELCOME_SLOTS ] ) {
+	for ( int i = 0; i < RETAINED_WELCOME_SLOTS; i++ ) {
+		slots[ i ].action = RTA_NONE;
+		slots[ i ].label.Clear();
+		slots[ i ].reason.Clear();
+		slots[ i ].detail.Clear();
+		slots[ i ].available = false;
+	}
+	idPlayer *player = gameLocal.GetLocalPlayer();
+	if ( player == NULL ) {
+		return;
+	}
+	static const char *const teamTitles[ TEAM_MAX ] = { "#str_200197", "#str_200199" };
+	const auto spectate = [&]( retainedTeamSlot_t &slot ) {
+		slot.action = RTA_SPECTATE;
+		slot.label = common->GetLocalizedString( "#str_200195" );
+		slot.available = gameLocal.serverInfo.GetBool( "si_spectators" );
+		if ( !slot.available ) {
+			slot.reason = common->GetLocalizedString( "#str_231020" );
+		}
+	};
+	if ( gameLocal.IsTeamGame() ) {
+		for ( int team = 0; team < TEAM_MAX; team++ ) {
+			retainedTeamSlot_t &card = slots[ team ];
+			card.action = team == TEAM_MARINE ? RTA_JOIN_MARINE : RTA_JOIN_STROGG;
+			card.label = common->GetLocalizedString( teamTitles[ team ] );
+			const char *refusal = TeamJoinRefusal( team );
+			card.available = refusal == NULL;
+			if ( refusal != NULL ) {
+				card.reason = common->GetLocalizedString( refusal );
+			}
+		}
+		retainedTeamSlot_t &automatic = slots[ 2 ];
+		automatic.action = RTA_JOIN_AUTO;
+		automatic.label = common->GetLocalizedString( "#str_200192" );
+		automatic.available = true;
+		automatic.detail = va( common->GetLocalizedString( "#str_231038" ), common->GetLocalizedString( teamTitles[ AutoJoinTeam() ] ) );
+		spectate( slots[ 3 ] );
+	} else if ( gameLocal.gameType == GAME_TOURNEY ) {
+		retainedTeamSlot_t &tourney = slots[ 0 ];
+		tourney.action = RTA_TOURNEY;
+		const bool queued = idStr::Icmp( cvarSystem->GetCVarString( "ui_spectate" ), "Spectate" ) != 0;
+		tourney.label = common->GetLocalizedString( queued ? "#str_107700" : "#str_107699" );
+		// Leaving the tournament spectates, which the server may forbid.
+		tourney.available = !queued || gameLocal.serverInfo.GetBool( "si_spectators" );
+		if ( !tourney.available ) {
+			tourney.reason = common->GetLocalizedString( "#str_231020" );
+		}
+	} else {
+		retainedTeamSlot_t &enter = slots[ 0 ];
+		enter.action = RTA_JOIN_AUTO;
+		enter.label = common->GetLocalizedString( "#str_200187" );
+		enter.available = true;
+		spectate( slots[ 1 ] );
+	}
+}
+
+bool idMultiplayerGame::RunRetainedAction( retainedTeamAction_t action ) {
+	switch ( action ) {
+		case RTA_JOIN_MARINE: JoinTeam( "marine" ); break;
+		case RTA_JOIN_STROGG: JoinTeam( "strogg" ); break;
+		case RTA_JOIN_AUTO: JoinTeam( "auto" ); break;
+		case RTA_SPECTATE: JoinTeam( "spectator" ); break;
+		case RTA_READY: ToggleReady(); break;
+		case RTA_TOURNEY:
+			// The stock toggleTourney, which also answers the join offer.
+			cvarSystem->SetCVarBool( "ui_joined", true );
+			ToggleSpectate();
+			break;
+		default: return false;
+	}
+	DisableMenu();
+	return true;
+}
+
+/*
+================
+idMultiplayerGame::PublishRetainedWelcome
+
+The Welcome card (section 14.18): the server's welcome and the player count
+in the header; on the Join page the mode and map, the match state, the limit,
+and in team modes each team's score, size and, in CTF, its flag's state; the
+three leaders elsewhere, and the arenas in play in Tourney; then the actions
+the player has.
+================
+*/
+void idMultiplayerGame::PublishRetainedWelcome( idUserInterface *card, bool &changed ) {
+	const auto publish = [&]( const char *key, const char *value ) { changed |= PublishRetainedValue( card, key, value ); };
+	const idDict &si = gameLocal.serverInfo;
+	publish( "mp.welcome.title", va( common->GetLocalizedString( "#str_231034" ), MPRetainedPlainText( si.GetString( "si_name" ), 64, 1 ).c_str() ) );
+	publish( "mp.welcome.players", va( common->GetLocalizedString( "#str_42810" ), NumActualClients( true ), si.GetInt( "si_maxPlayers" ) ) );
+	idStr mapName;
+	publish( "mp.welcome.match", va( "%s - %s", LocalizeGametype(), ResolveScoreboardMapName( si.GetString( "si_map" ), mapName ) ) );
+	const char *stateToken = "#str_42816";
+	switch ( gameState->GetMPGameState() ) {
+		case WARMUP: stateToken = "#str_42811"; break;
+		case COUNTDOWN: stateToken = "#str_42812"; break;
+		case GAMEON: stateToken = "#str_42813"; break;
+		case SUDDENDEATH: stateToken = "#str_42814"; break;
+		case GAMEREVIEW:
+		case NEXTGAME: stateToken = "#str_42815"; break;
+		default: break;
+	}
+	publish( "mp.welcome.state", common->GetLocalizedString( stateToken ) );
+	const char *limitLabel = "";
+	int limitValue = 0;
+	MPResolveMatchLimit( limitLabel, limitValue );
+	publish( "mp.welcome.limit", limitValue > 0 ? va( "%s %d", limitLabel, limitValue ) : "" );
+	publish( "mp.welcome.team_mode", gameLocal.IsTeamGame() ? "1" : "0" );
+	int teamCount[ TEAM_MAX ] = { 0, 0 };
+	NumActualClients( false, teamCount );
+	const bool flags = gameLocal.gameType == GAME_CTF || gameLocal.gameType == GAME_ARENA_CTF;
+	for ( int team = 0; team < TEAM_MAX; team++ ) {
+		publish( va( "mp.welcome.team%d.score", team ), va( "%d", GetScoreForTeam( team ) ) );
+		publish( va( "mp.welcome.team%d.count", team ), va( "%d", teamCount[ team ] ) );
+		const char *flag = "";
+		if ( flags ) {
+			switch ( static_cast<rvCTFGameState *>( gameState )->GetFlagState( team ) ) {
+				case FS_AT_BASE: flag = "#str_231035"; break;
+				case FS_DROPPED: flag = "#str_231037"; break;
+				default: flag = "#str_231036"; break;
+			}
+		}
+		publish( va( "mp.welcome.team%d.flag", team ), flag[ 0 ] ? common->GetLocalizedString( flag ) : "" );
+	}
+	// The three leaders, by the scoreboard's ranking.
+	for ( int i = 0; i < 3; i++ ) {
+		idPlayer *leader = i < rankedPlayers.Num() ? rankedPlayers[ i ].First() : NULL;
+		publish( va( "mp.welcome.leader%d.name", i ), leader != NULL ? MPRetainedPlainText( leader->GetUserInfo()->GetString( "ui_name" ), 64, 1 ).c_str() : "" );
+		publish( va( "mp.welcome.leader%d.score", i ), leader != NULL ? va( "%d", rankedPlayers[ i ].Second() ) : "" );
+	}
+	// Tourney's arenas in play.
+	int arenas = 0;
+	if ( gameLocal.gameType == GAME_TOURNEY ) {
+		rvTourneyGameState *tourney = static_cast<rvTourneyGameState *>( gameState );
+		for ( int i = 0; i < MAX_ARENAS && arenas < 4; i++ ) {
+			rvTourneyArena &arena = tourney->GetArena( i );
+			idPlayer **fighters = arena.GetPlayers();
+			if ( !arena.IsPlaying() || fighters[ 0 ] == NULL || fighters[ 1 ] == NULL ) {
+				continue;
+			}
+			const idStr first = MPRetainedPlainText( fighters[ 0 ]->GetUserInfo()->GetString( "ui_name" ), 48, 1 );
+			const idStr second = MPRetainedPlainText( fighters[ 1 ]->GetUserInfo()->GetString( "ui_name" ), 48, 1 );
+			publish( va( "mp.welcome.arena%d", arenas++ ), va( "%s %d   %s %d - %d %s", common->GetLocalizedString( "#str_107716" ), i + 1,
+				first.c_str(), arena.GetPlayerScore( 0 ), arena.GetPlayerScore( 1 ), second.c_str() ) );
+		}
+	}
+	for ( int i = arenas; i < 4; i++ ) {
+		publish( va( "mp.welcome.arena%d", i ), "" );
+	}
+	publish( "mp.welcome.arena_count", va( "%d", arenas ) );
+	retainedTeamSlot_t slots[ RETAINED_WELCOME_SLOTS ];
+	RetainedWelcomeSlots( slots );
+	for ( int i = 0; i < RETAINED_WELCOME_SLOTS; i++ ) {
+		publish( va( "mp.join%d.shown", i ), slots[ i ].action != RTA_NONE ? "1" : "0" );
+		publish( va( "mp.join%d.available", i ), slots[ i ].available ? "1" : "0" );
+		publish( va( "mp.join%d.label", i ), slots[ i ].label.c_str() );
+		publish( va( "mp.join%d.reason", i ), slots[ i ].reason.c_str() );
+		publish( va( "mp.join%d.detail", i ), slots[ i ].detail.c_str() );
+	}
+}
+
 bool idMultiplayerGame::PublishRetainedValue( idUserInterface *card, const char *key, const char *value ) {
 	if ( retainedMenuPublished.FindKey( key ) != NULL && !idStr::Cmp( retainedMenuPublished.GetString( key ), value ) ) {
 		return false;
@@ -16250,6 +16438,7 @@ void idMultiplayerGame::PublishRetainedMenu( idUserInterface *card ) {
 	publish( "mp.rotation_count", va( "%d", rotation ) );
 	publish( "mp.rotation_current", va( "%d", current ) );
 	PublishRetainedPlayers( card, changed );
+	PublishRetainedWelcome( card, changed );
 	if ( changed ) {
 		card->SetStateInt( "mp.revision", ++retainedMenuRevision );
 	}
@@ -16263,6 +16452,8 @@ The card's commands. "retained team <slot>" chooses one of the Team page's
 actions, derived again here from the player's state, never from the card;
 an action that is unavailable now does nothing and keeps the menu open.
 Joining, spectating and readying close the menu, as the stock buttons do.
+"retained welcome <slot>" chooses one of the Welcome card's Join page
+actions in the same way.
 "retained select|mute|friend <client>" shows a player's statistics, or mutes
 or befriends them, for a client with a row on the Players page now; neither
 of the last two applies to the player's own row, and none closes the menu.
@@ -16284,16 +16475,20 @@ bool idMultiplayerGame::HandleRetainedMenuCommand( const idCmdArgs &args, int &i
 		if ( slot.action == RTA_NONE || !slot.available ) {
 			return false;
 		}
-		switch ( slot.action ) {
-			case RTA_JOIN_MARINE: JoinTeam( "marine" ); break;
-			case RTA_JOIN_STROGG: JoinTeam( "strogg" ); break;
-			case RTA_JOIN_AUTO: JoinTeam( "auto" ); break;
-			case RTA_SPECTATE: JoinTeam( "spectator" ); break;
-			case RTA_READY: ToggleReady(); break;
-			default: return false;
+		return RunRetainedAction( slot.action );
+	}
+	if ( !sub.Icmp( "welcome" ) && args.Argc() - icmd >= 1 ) {
+		const idStr slotText = args.Argv( icmd++ );
+		if ( slotText.Length() != 1 || slotText[ 0 ] < '0' || slotText[ 0 ] >= '0' + RETAINED_WELCOME_SLOTS ) {
+			return false;
 		}
-		DisableMenu();
-		return true;
+		retainedTeamSlot_t slots[ RETAINED_WELCOME_SLOTS ];
+		RetainedWelcomeSlots( slots );
+		const retainedTeamSlot_t &slot = slots[ slotText[ 0 ] - '0' ];
+		if ( slot.action == RTA_NONE || !slot.available ) {
+			return false;
+		}
+		return RunRetainedAction( slot.action );
 	}
 	if ( ( !sub.Icmp( "select" ) || !sub.Icmp( "mute" ) || !sub.Icmp( "friend" ) ) && args.Argc() - icmd >= 1 ) {
 		const idStr clientText = args.Argv( icmd++ );

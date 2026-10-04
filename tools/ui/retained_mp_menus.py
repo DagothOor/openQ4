@@ -3,10 +3,12 @@
 Built by tools/ui/build_retained_screens.py, which writes and checks them with
 the other retained screens. The Escape card covers the game's multiplayer menu
 (mpmain.gui) while a match runs: a card centered over the softened view with a
-header, a horizontal strip of eight tabs, the page and a prompt bar. A page
-that is not built yet hands off to its stock page through the mpStockPage
-verb, and the session keeps the card opt-in (ui_retainedMultiplayer) while
-any page does (RETAINED_MP_ESCAPE_MISSING_PAGES).
+header, a horizontal strip of eight tabs, the page and a prompt bar. The
+Welcome card covers it while the player has not answered the join offer, with
+Join, Server, Players and Settings. A page that is not built yet hands off to
+its stock page through the mpStockPage verb, and the session keeps each card
+opt-in (ui_retainedMultiplayer) while any of its pages does
+(RETAINED_MP_ESCAPE_MISSING_PAGES, RETAINED_MP_WELCOME_MISSING_PAGES).
 
 The tab strip cannot fit eight Marine labels in the specified 648 dp card in
 any shipped language: with the active tab's flare and shoulder, even the
@@ -67,7 +69,7 @@ KEY_PREVIOUS, KEY_NEXT = "#str_231009", "#str_231010"
 VERB_TABS = "#str_231011"
 HANDOFF_NOTE, HANDOFF_ACTION = "#str_231012", "#str_231013"
 KEY_ESCAPE, KEY_ENTER = "#str_107020", "#str_107019"
-VERB_RESUME, VERB_SELECT = "#str_200381", "#str_200747"
+VERB_RESUME, VERB_SELECT = "#str_200381", "#str_231042"
 MAIN_MENU, DISCONNECT, DISCONNECT_BODY = "#str_200188", "#str_200006", "#str_200173"
 
 
@@ -100,18 +102,41 @@ def strip_chrome() -> float:
     return 2 * (STRIP_EDGE + KEYCAP_W + KEYCAP_GAP)
 
 
-def fitted_card_width(keys: list) -> float:
-    """The Escape card's width: the specified 648 dp, or the widest language's
-    tabs with the strip's keycaps and edges and a 2 % margin against layout
-    rounding, rounded up to a whole dp. Fails when that needs more than a 4:3
-    view allows."""
+def fitted_card_width(keys: list, prompts: tuple | None = None) -> float:
+    """A card's width: the specified 648 dp, or the widest language's tabs
+    with the strip's keycaps and edges, or the widest language's prompt bar
+    (`prompts`: the back verb and the trailing links) inside the card's
+    insets, each with a 2 % margin against layout rounding, rounded up to a
+    whole dp. Fails when that needs more than a 4:3 view allows."""
     strips = {language: sum(tab_slot(label_width(key, language)) for key in keys) for language in b.LANGUAGES}
     needed = max(strips.values()) * 1.02 + strip_chrome()
+    if prompts is not None:
+        # Measured exactly as laid out, with 4 dp to spare.
+        bars = {language: prompt_width(language, *prompts) for language in b.LANGUAGES}
+        needed = max(needed, max(bars.values()) + 4 + 2 * INSET)
     limit = VIEW_43 - 2 * SIDE_MARGIN
     if needed > limit:
-        raise SystemExit(f"the Escape tab strip needs {needed:.0f} dp, past a 4:3 view's {limit:g} dp; per language: "
+        raise SystemExit(f"the card needs {needed:.0f} dp, past a 4:3 view's {limit:g} dp; tab strips: "
                          + ", ".join(f"{language} {round(width)}" for language, width in strips.items()))
     return max(ESCAPE_MIN_W, float(int(needed + 0.999)))
+
+
+def prompt_width(language: str, back_verb: str, links: list) -> float:
+    """The prompt bar's natural width in `language` (prompt_row's layout):
+    each keycap padded 7 dp a side with 3 dp between caps and 6 dp after the
+    last, each verb with 18 dp after it, then the trailing links, 10.5 dp of
+    marker before each label and 21 dp between them."""
+    def text(key: str) -> str:
+        return any_text(key)[language]
+
+    def caps(keys: list) -> float:
+        return sum(14 + b.text_width("lowpixel", text(key), 13) for key in keys) + 3 * (len(keys) - 1) + 6
+    width = 0.0
+    for keys, verb in (([KEY_ESCAPE], back_verb), ([KEY_PREVIOUS, KEY_NEXT], VERB_TABS), ([KEY_ENTER], VERB_SELECT)):
+        width += caps(keys) + b.text_width("marine", text(verb), 14) + 18
+    for index, key in enumerate(links):
+        width += 10.5 + b.text_width("marine", text(key), 16) + (21 if index < len(links) - 1 else 0)
+    return width
 
 
 # ------------------------------------------------------------------- the card
@@ -605,7 +630,8 @@ def team_band(ident: str, width: float, height: float, tint: str, cut: float = 8
     ])
 
 
-def player_row(doc: Document, prefix: str, kind: str, row: int, width: float, columns: dict) -> tuple[dict, str]:
+def player_row(doc: Document, prefix: str, kind: str, row: int, width: float, columns: dict,
+               interactive: bool = True) -> tuple[dict, str]:
     """One row of a list, the scoreboard's row (section 14.14): a band at
     0.08, 0.29 and the marker for the player's own row; the speaker, crossed
     when muted, and the friend symbol; the name, the score and the ping. The
@@ -627,9 +653,10 @@ def player_row(doc: Document, prefix: str, kind: str, row: int, width: float, co
     chosen = vector(f"{ident}-chosen", {**absolute(left=0, top=0, width=width, height=length(100, "%")), "display": keyword("none")},
                     [path("fill", whole, fill=linear((0, 0), ({"fraction": 1}, 0),
                                                      [(0, rgb(OLIVE, 0.6)), (0.4, rgb(OLIVE, 0.45)), (1, rgb(OLIVE, 0))]))])
-    selected = {"op": "&&", "args": [{"op": ">=", "args": [{"state": f"{key}.client"}, 0]},
-                                     {"op": "==", "args": [{"state": f"{key}.client"}, {"state": "mp.stat.client"}]}]}
-    doc.bind(f"{ident}-chosen.display", f"{ident}-chosen", "display", {"op": "select", "args": [selected, "block", "none"]})
+    if interactive:
+        selected = {"op": "&&", "args": [{"op": ">=", "args": [{"state": f"{key}.client"}, 0]},
+                                         {"op": "==", "args": [{"state": f"{key}.client"}, {"state": "mp.stat.client"}]}]}
+        doc.bind(f"{ident}-chosen.display", f"{ident}-chosen", "display", {"op": "select", "args": [selected, "block", "none"]})
     focus = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=width, height=length(100, "%")), "opacity": number(0)},
                    [path("inset", [(0.75, 1), (0.75, {"fraction": 1, "dp": -1.5}), (width, {"fraction": 1, "dp": -1.5})], closed=False,
                          stroke=stroke(solid(rgb(ORANGE)), 1.2))])
@@ -659,25 +686,29 @@ def player_row(doc: Document, prefix: str, kind: str, row: int, width: float, co
     content = group(f"{ident}-content", {**absolute(left=2, top=0, width=width - 2, height=length(100, "%")), "display": keyword("flex"),
                                          "flex-direction": keyword("row"), "align-items": keyword("center"), "pointer-events": keyword("none")},
                     [marker, spacer, speaker, friend, name, score, ping])
-    ids = doc.states(ident, {
-        "default": [(f"{ident}-focus", "opacity", number(0)), (f"{ident}-name", "color", colour([1, 1, 1, 0.85]))],
-        "hover": [(f"{ident}-focus", "opacity", number(0.5)), (f"{ident}-name", "color", colour([1, 1, 1, 1]))],
-        "focus": [(f"{ident}-focus", "opacity", number(1)), (f"{ident}-name", "color", colour(rgb(ORANGE)))],
-        "pressed": [(f"{ident}-focus", "opacity", number(1)), (f"{ident}-name", "color", colour(rgb(ORANGE)))],
-        "disabled": [(f"{ident}-focus", "opacity", number(0)), (f"{ident}-name", "color", colour([1, 1, 1, 0.85]))],
-    })
-    event = f"{prefix}_{kind}{row}"
-    doc.events[event] = [{"op": "setState", "values": {"card.client": {"state": f"{key}.client"}}},
-                         {"op": "action", "action": "mpSelectPlayer"}]
-    node = group(ident, {"position": keyword("relative"), "display": keyword("none"), "width": length(width), "height": length(ROW_MAX),
-                         "min-height": length(ROW_MIN), "flex-shrink": number(1)},
-                 [band, chosen, focus, content], control={"role": "button", "label": PLACEHOLDER, "event": event, "states": ids})
+    props = {"position": keyword("relative"), "display": keyword("none"), "width": length(width), "height": length(ROW_MAX),
+             "min-height": length(ROW_MIN), "flex-shrink": number(1)}
+    if interactive:
+        ids = doc.states(ident, {
+            "default": [(f"{ident}-focus", "opacity", number(0)), (f"{ident}-name", "color", colour([1, 1, 1, 0.85]))],
+            "hover": [(f"{ident}-focus", "opacity", number(0.5)), (f"{ident}-name", "color", colour([1, 1, 1, 1]))],
+            "focus": [(f"{ident}-focus", "opacity", number(1)), (f"{ident}-name", "color", colour(rgb(ORANGE)))],
+            "pressed": [(f"{ident}-focus", "opacity", number(1)), (f"{ident}-name", "color", colour(rgb(ORANGE)))],
+            "disabled": [(f"{ident}-focus", "opacity", number(0)), (f"{ident}-name", "color", colour([1, 1, 1, 0.85]))],
+        })
+        event = f"{prefix}_{kind}{row}"
+        doc.events[event] = [{"op": "setState", "values": {"card.client": {"state": f"{key}.client"}}},
+                             {"op": "action", "action": "mpSelectPlayer"}]
+        node = group(ident, props, [band, chosen, focus, content],
+                     control={"role": "button", "label": PLACEHOLDER, "event": event, "states": ids})
+    else:
+        node = group(ident, props, [band, content])
     doc.bind(f"{ident}.display", ident, "display",
              {"op": "select", "args": [{"op": "<", "args": [row, {"state": f"mp.players.{kind}.count"}]}, "block", "none"]})
     return node, ident
 
 
-def player_lists(doc: Document, prefix: str, width: float, height: float) -> tuple[dict, list, list]:
+def player_lists(doc: Document, prefix: str, width: float, height: float, interactive: bool = True) -> tuple[dict, list, list]:
     """The team lists (section 14.18 with the scoreboard's rows, section
     14.14): headings once above them, then each list's band in its team's
     color with its title and score over its rows; the spectators' band shows
@@ -685,8 +716,10 @@ def player_lists(doc: Document, prefix: str, width: float, height: float) -> tup
     is 24 dp and shrinks with the others, down to 14 dp, to share what the
     bands leave, so sixteen players and three bands fit; rows past that are
     clipped. Returns the lists, their controls and the steps that focus the
-    player whose statistics show (or the first row)."""
-    doc.state.update({"card.client": {"type": "number", "initial": -1}, "mp.stat.client": {"type": "number", "initial": -1}})
+    player whose statistics show (or the first row). Without `interactive`
+    the rows are not controls and the page's tab keeps the focus."""
+    if interactive:
+        doc.state.update({"card.client": {"type": "number", "initial": -1}, "mp.stat.client": {"type": "number", "initial": -1}})
     columns = list_columns(width)
     heading = {**typeface("lowpixel", 11, LIST_HEAD_H, [1, 1, 1, 0.4]), "white-space": keyword("nowrap")}
     name_left = columns["marker"] + columns["speaker"] + columns["friend"] + 2
@@ -732,14 +765,17 @@ def player_lists(doc: Document, prefix: str, width: float, height: float) -> tup
         doc.bind(f"{band}.display", band, "display", {"op": "select", "args": [shown[kind], "block", "none"]})
         children.append(holder)
         for row in range(PLAYER_ROWS):
-            node, control = player_row(doc, prefix, kind, row, width, columns)
+            node, control = player_row(doc, prefix, kind, row, width, columns, interactive)
             children.append(node)
-            controls.append(control)
+            if interactive:
+                controls.append(control)
     lists = group(f"{prefix}-lists", {**absolute(left=0, top=0, width=width, height=height), "display": keyword("flex"),
                                       "flex-direction": keyword("column"), "overflow": keyword("hidden")}, children)
     # The first row of the first list with players, unless the player whose
     # statistics show has a row: a later focus step overrides an earlier one.
     focus = [{"op": "focus", "control": f"tab-{prefix}"}]
+    if not interactive:
+        return lists, controls, focus
     for kind, _tints in reversed(PLAYER_LISTS):
         focus.append({"op": "if", "condition": {"op": ">", "args": [{"state": f"mp.players.{kind}.count"}, 0]},
                       "then": [{"op": "focus", "control": f"{prefix}-{kind}-0"}]})
@@ -752,6 +788,16 @@ def player_lists(doc: Document, prefix: str, width: float, height: float) -> tup
                 "then": [{"op": "focus", "control": f"{prefix}-{kind}-{row}"}]})
     doc.session("mpSelectPlayer", "mpSelectPlayer")
     return lists, controls, focus
+
+
+def welcome_players_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, list]:
+    """The Welcome card's Players page (section 14.18): the team lists with
+    the speaker and friend symbols, score and ping, spectators below; nothing
+    to choose, so its tab keeps the focus."""
+    page_width = width - 2 * INSET
+    page_height = height - PAGE_TOP - PROMPT_BOTTOM - PROMPT_H - 16
+    lists, _rows, focus = player_lists(doc, ident, page_width, page_height, interactive=False)
+    return page_group(doc, index, ident, width, height, [lists], []), focus
 
 
 def check_stat_labels(width: float) -> None:
@@ -864,6 +910,182 @@ def players_page(doc: Document, index: int, ident: str, width: float, height: fl
     return page_group(doc, index, ident, width, height, [lists, stats], rows + plates), focus
 
 
+# ----------------------------------------------------------- Welcome: Join
+
+WELCOME_TABS = [
+    ("join", "#str_231033", None),
+    ("server", "#str_231007", None),
+    ("players", "#str_231002", None),
+    ("settings", "#str_231005", "qj_b_settings"),
+]
+WELCOME_SLOTS = 4                 # RETAINED_WELCOME_SLOTS in the game
+LEAVE_SERVER, VERB_SPECTATE = "#str_231039", "#str_200195"
+LEADERS_KEY, ARENAS_KEY, PLAYERS_KEY = "#str_231040", "#str_231041", "#str_200038"
+TEAM_CARD_TOP, TEAM_CARD_H, TEAM_BAND_H = 56.0, 100.0, 30.0
+
+
+def team_card(doc: Document, team: int, left: float, width: float) -> tuple[dict, str]:
+    """A team card on the Join page (section 14.18), the plate that joins the
+    team: the header band in the team's color with its name and score, then
+    its player count and, in CTF, its flag's state. Its availability and
+    reason come from the game (mp.join<team>.*) as an action plate's do: an
+    unavailable card dims with a lock and its reason and shakes when chosen."""
+    ident, key = f"join-slot-{team}", f"mp.join{team}"
+    for name, kind in (("shown", "boolean"), ("available", "boolean"), ("label", "string"), ("reason", "string"), ("detail", "string")):
+        doc.state[f"{key}.{name}"] = {"type": kind, "initial": False if kind == "boolean" else ""}
+    tint = BAND_TINTS[team]
+    whole = [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (12, {"fraction": 1}), (0, {"fraction": 1, "dp": -12})]
+    body = vector(f"{ident}-body", {**absolute(left=0, top=0, width=width, height=TEAM_CARD_H), "opacity": number(0.62)}, [
+        path("fill", whole, fill=linear((0, 0), ({"fraction": 1}, 0), [(0, rgb(OLIVE, 0.4)), (0.6, rgb(OLIVE, 0.25)), (1, rgb(OLIVE, 0.08))])),
+        path("rail", [(0.75, 0), (0.75, {"fraction": 1, "dp": -12}), (12, {"fraction": 1, "dp": -0.75}), ({"fraction": 1}, {"fraction": 1, "dp": -0.75})],
+             closed=False, stroke=stroke(linear((0, 0), ({"fraction": 1}, 0), [(0, rgb(OLIVE)), (0.6, rgb(OLIVE)), (1, rgb(OLIVE, 0))]), 1.5)),
+    ])
+    focus = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=width, height=TEAM_CARD_H), "opacity": number(0)}, [
+        path("inset", [(3.5, TEAM_BAND_H + 3), (3.5, {"fraction": 1, "dp": -13}), (13.5, {"fraction": 1, "dp": -3.5}),
+                       ({"fraction": 1, "dp": -20}, {"fraction": 1, "dp": -3.5})], closed=False, stroke=stroke(solid(rgb(ORANGE)), 1.2))])
+    band = team_band(f"{ident}-band", width, TEAM_BAND_H, tint)
+    band["properties"]["display"] = keyword("block")
+    name = label(f"{ident}-label", PLACEHOLDER, {**absolute(left=16, top=0, width=width * 0.62, height=TEAM_BAND_H),
+                 **typeface("marine", 20, TEAM_BAND_H, [1, 1, 1, 0.95]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+    doc.bind(f"{ident}-label.text", f"{ident}-label", "text", {"state": f"{key}.label"})
+    score = label(f"{ident}-score", PLACEHOLDER, {**absolute(left=width * 0.62, top=0, right=12, height=TEAM_BAND_H),
+                  **typeface("lowpixel", 22, TEAM_BAND_H, rgb(VALUE)), "text-align": keyword("right"), "white-space": keyword("nowrap")})
+    doc.bind(f"{ident}-score.text", f"{ident}-score", "text", {"state": f"mp.welcome.team{team}.score"})
+    count_label = label(f"{ident}-count-label", PLAYERS_KEY, {**absolute(left=16, top=TEAM_BAND_H + 6, width=width * 0.45, height=20),
+                        **typeface("lowpixel", 13, 20, HEADING), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+    count = label(f"{ident}-count", PLACEHOLDER, {**absolute(left=width * 0.45 + 16, top=TEAM_BAND_H + 6, width=60, height=20),
+                  **typeface("lowpixel", 16, 20, [1, 1, 1, 0.9]), "white-space": keyword("nowrap")})
+    doc.bind(f"{ident}-count.text", f"{ident}-count", "text", {"state": f"mp.welcome.team{team}.count"})
+    flag = label(f"{ident}-flag", PLACEHOLDER, {**absolute(left=16, top=TEAM_BAND_H + 28, width=width - 32, height=18),
+                 **typeface("lowpixel", 14, 18, [1, 1, 1, 0.75]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+    doc.bind(f"{ident}-flag.text", f"{ident}-flag", "text", {"state": f"mp.welcome.team{team}.flag"})
+    lock = padlock(f"{ident}-lock", rgb(ERROR))
+    lock["properties"].update(absolute(left=width - 30, top=TEAM_BAND_H + 9))   # under the band, clear of the score
+    unavailable = {"op": "!", "args": [{"state": f"{key}.available"}]}
+    doc.bind(f"{ident}-lock.display", f"{ident}-lock", "display", {"op": "select", "args": [unavailable, "block", "none"]})
+    reason = label(f"{ident}-reason", PLACEHOLDER, {**absolute(left=16, top=TEAM_CARD_H - 22, width=width - 32, height=18),
+                   **typeface("lowpixel", 14, 18, rgb(ERROR)), "white-space": keyword("nowrap"), "overflow": keyword("hidden"),
+                   "display": keyword("none"), "opacity": number(1)})
+    doc.bind(f"{ident}-reason.text", f"{ident}-reason", "text", {"state": f"{key}.reason"})
+    doc.bind(f"{ident}-reason.display", f"{ident}-reason", "display", {"op": "select", "args": [unavailable, "block", "none"]})
+    ids = doc.states(ident, {
+        "default": [(f"{ident}-body", "opacity", number(0.62)), (f"{ident}-focus", "opacity", number(0)),
+                    (f"{ident}-label", "color", colour([1, 1, 1, 0.95]))],
+        "hover": [(f"{ident}-body", "opacity", number(0.85)), (f"{ident}-focus", "opacity", number(0)),
+                  (f"{ident}-label", "color", colour(rgb(ORANGE)))],
+        "focus": [(f"{ident}-body", "opacity", number(1)), (f"{ident}-focus", "opacity", number(1)),
+                  (f"{ident}-label", "color", colour(rgb(ORANGE)))],
+        "pressed": [(f"{ident}-body", "opacity", number(1)), (f"{ident}-focus", "opacity", number(1)),
+                    (f"{ident}-label", "color", colour(rgb(ORANGE)))],
+        "disabled": [(f"{ident}-body", "opacity", number(0.62)), (f"{ident}-focus", "opacity", number(0)),
+                     (f"{ident}-label", "color", colour([1, 1, 1, 0.95]))],
+    })
+    event = f"join_slot_{team}"
+    plate = group(ident, {**absolute(left=0, top=0, width=width, height=TEAM_CARD_H), "opacity": number(1)},
+                  [body, band, focus, name, score, count_label, count, flag, lock],
+                  control={"role": "button", "label": PLACEHOLDER, "event": event, "states": ids})
+    doc.bind(f"{ident}.opacity", ident, "opacity", {"op": "select", "args": [{"state": f"{key}.available"}, 1, 0.6]})
+    holder = group(f"{ident}-slot", {**absolute(left=left, top=TEAM_CARD_TOP, width=width, height=TEAM_CARD_H),
+                                     "transform": transform(), "display": keyword("none")}, [plate, reason])
+    doc.bind(f"{ident}-slot.display", f"{ident}-slot", "display", {"op": "select", "args": [{"state": f"{key}.shown"}, "block", "none"]})
+    shake = f"shake-{ident}"
+    doc.timelines.add(shake, 300, [
+        track(f"{ident}-slot", "transform", [(0, transform()), (50, transform(tx=-6)), (110, transform(tx=6)), (170, transform(tx=-4)),
+                                             (230, transform(tx=3)), (300, transform())]),
+        track(f"{ident}-reason", "opacity", [(0, number(1)), (100, number(0.35)), (200, number(1)), (300, number(1))]),
+    ])
+    doc.events[event] = [{"op": "if", "condition": {"state": f"{key}.available"},
+                          "then": [{"op": "setState", "values": {"card.welcome_action": team}}, {"op": "action", "action": "mpWelcomeAction"}],
+                          "else": [{"op": "playTimeline", "timeline": shake}]}]
+    return holder, ident
+
+
+def join_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, list]:
+    """The Welcome card's Join page (section 14.18): the mode and map; the
+    match state with the time left in the value color, the limit and the
+    player count. Team modes then show the two team cards, Auto join
+    (focused, naming the team it picks) and Spectate; deathmatch the three
+    leaders, Join game and Spectate; Tourney the arenas in play and joining or
+    leaving the tournament. The game derives each action again when it is
+    chosen."""
+    page_width = width - 2 * INSET
+    page_height = height - PAGE_TOP - PROMPT_BOTTOM - PROMPT_H - 16
+    doc.state.update({
+        "card.welcome_action": {"type": "number", "initial": -1},
+        "mp.welcome.match": {"type": "string", "initial": ""}, "mp.welcome.state": {"type": "string", "initial": ""},
+        "mp.welcome.limit": {"type": "string", "initial": ""}, "mp.welcome.team_mode": {"type": "boolean", "initial": False},
+        "mp.welcome.arena_count": {"type": "number", "initial": 0},
+        **{f"mp.welcome.team{team}.{part}": {"type": "string", "initial": ""} for team in range(2) for part in ("score", "count", "flag")},
+        **{f"mp.welcome.leader{rank}.{part}": {"type": "string", "initial": ""} for rank in range(3) for part in ("name", "score")},
+        **{f"mp.welcome.arena{arena}": {"type": "string", "initial": ""} for arena in range(4)},
+    })
+    match = label("join-match", PLACEHOLDER, {**absolute(left=0, top=0, width=page_width, height=26),
+                  **typeface("marine", 18, 26, [1, 1, 1, 0.9]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+    doc.bind("join-match.text", "join-match", "text", {"state": "mp.welcome.match"})
+    line = {"position": keyword("relative"), "display": keyword("block"), "white-space": keyword("nowrap"), "margin-right": length(16),
+            "flex-shrink": number(0)}
+    facts = []
+    for node, state, face, size, tint in (("join-state", "mp.welcome.state", "lowpixel", 15, [1, 1, 1, 0.8]),
+                                          ("join-clock", "mp.clock", "lowpixel", 17, rgb(VALUE)),
+                                          ("join-limit", "mp.welcome.limit", "lowpixel", 15, [1, 1, 1, 0.7]),
+                                          ("join-players", "mp.welcome.players", "lowpixel", 15, [1, 1, 1, 0.7])):
+        facts.append(label(node, PLACEHOLDER, {**line, **typeface(face, size, 22, tint)}))
+        doc.bind(f"{node}.text", node, "text", {"state": state})
+    facts_row = group("join-facts", {**absolute(left=0, top=28, width=page_width, height=22), "display": keyword("flex"),
+                                     "flex-direction": keyword("row"), "align-items": keyword("center"), "overflow": keyword("hidden")}, facts)
+    # Team modes: the cards side by side, then Auto join and Spectate.
+    card_w = (page_width - 12) / 2
+    cards = [team_card(doc, team, round(team * (card_w + 12), 3), round(card_w, 3)) for team in range(2)]
+    team_steps = lambda slot: [{"op": "setState", "values": {"card.welcome_action": slot}}, {"op": "action", "action": "mpWelcomeAction"}]
+    automatic = action_plate(doc, "join-slot-2", "mp.join2", min(page_width, SLOT_W), TEAM_CARD_TOP + TEAM_CARD_H + 10, "join_slot_2",
+                             team_steps(2), primary=True)
+    spectate = action_plate(doc, "join-slot-3", "mp.join3", min(page_width, SLOT_W), TEAM_CARD_TOP + TEAM_CARD_H + 10 + SLOT_PITCH,
+                            "join_slot_3", team_steps(3))
+    if TEAM_CARD_TOP + TEAM_CARD_H + 10 + SLOT_PITCH + 58 > page_height:
+        raise SystemExit("the Join page's team layout leaves the page")
+    team_layout = group("join-teams", {**absolute(left=0, top=0, width=page_width, height=page_height), "display": keyword("none")},
+                        [card for card, _ident in cards] + [automatic, spectate])
+    doc.bind("join-teams.display", "join-teams", "display", {"op": "select", "args": [{"state": "mp.welcome.team_mode"}, "block", "none"]})
+    # Elsewhere: the three leaders (or Tourney's arenas), then Join game (or
+    # the tournament) and Spectate, on the same slots.
+    heading = {**typeface("lowpixel", 13, 18, HEADING), "white-space": keyword("nowrap")}
+    leaders = [label("join-leaders-label", LEADERS_KEY, {**absolute(left=0, top=56, width=page_width, height=18), **heading})]
+    for rank in range(3):
+        top = 76 + 22 * rank
+        leaders.append(label(f"join-leader-{rank}-rank", PLACEHOLDER, {**absolute(left=0, top=top, width=24, height=22),
+                             **typeface("lowpixel", 16, 22, rgb(VALUE)), "white-space": keyword("nowrap")}))
+        doc.bind(f"join-leader-{rank}-rank.text", f"join-leader-{rank}-rank", "text",
+                 {"op": "select", "args": [{"op": "!=", "args": [{"state": f"mp.welcome.leader{rank}.name"}, ""]},
+                                           {"op": "numberText", "args": [rank + 1]}, ""]})
+        leaders.append(label(f"join-leader-{rank}", PLACEHOLDER, {**absolute(left=28, top=top, width=page_width * 0.6, height=22),
+                             **typeface("lowpixel", 16, 22, [1, 1, 1, 0.85]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")}))
+        doc.bind(f"join-leader-{rank}.text", f"join-leader-{rank}", "text", {"state": f"mp.welcome.leader{rank}.name"})
+        leaders.append(label(f"join-leader-{rank}-score", PLACEHOLDER, {**absolute(left=page_width * 0.6 + 32, top=top, width=60, height=22),
+                             **typeface("lowpixel", 16, 22, rgb(VALUE)), "text-align": keyword("right"), "white-space": keyword("nowrap")}))
+        doc.bind(f"join-leader-{rank}-score.text", f"join-leader-{rank}-score", "text", {"state": f"mp.welcome.leader{rank}.score"})
+    leader_group = group("join-leaders", {**absolute(left=0, top=0, width=page_width, height=150), "display": keyword("block")}, leaders)
+    arenas = [label("join-arenas-label", ARENAS_KEY, {**absolute(left=0, top=56, width=page_width, height=18), **heading})]
+    for arena in range(4):
+        node = f"join-arena-{arena}"
+        arenas.append(label(node, PLACEHOLDER, {**absolute(left=0, top=76 + 18 * arena, width=page_width, height=18),
+                            **typeface("lowpixel", 15, 18, [1, 1, 1, 0.8]), "white-space": keyword("pre"), "overflow": keyword("hidden")}))
+        doc.bind(f"{node}.text", node, "text", {"state": f"mp.welcome.arena{arena}"})
+    arena_group = group("join-arenas", {**absolute(left=0, top=0, width=page_width, height=150), "display": keyword("none")}, arenas)
+    tourney = {"op": ">", "args": [{"state": "mp.welcome.arena_count"}, 0]}
+    doc.bind("join-arenas.display", "join-arenas", "display", {"op": "select", "args": [tourney, "block", "none"]})
+    doc.bind("join-leaders.display", "join-leaders", "display", {"op": "select", "args": [tourney, "none", "block"]})
+    solo = [action_plate(doc, f"join-solo-{slot}", f"mp.join{slot}", min(page_width, SLOT_W), 156 + SLOT_PITCH * slot, f"join_solo_{slot}",
+                         team_steps(slot), primary=slot == 0) for slot in range(2)]
+    solo_layout = group("join-solo", {**absolute(left=0, top=0, width=page_width, height=page_height), "display": keyword("none")},
+                        [leader_group, arena_group, *solo])
+    doc.bind("join-solo.display", "join-solo", "display", {"op": "select", "args": [{"state": "mp.welcome.team_mode"}, "none", "block"]})
+    doc.session("mpWelcomeAction", "mpWelcomeAction")
+    controls = [ident for _card, ident in cards] + ["join-slot-2", "join-slot-3", "join-solo-0", "join-solo-1"]
+    focus = [{"op": "if", "condition": {"state": "mp.welcome.team_mode"}, "then": [{"op": "focus", "control": "join-slot-2"}],
+              "else": [{"op": "focus", "control": "join-solo-0"}]}]
+    return page_group(doc, index, ident, width, height, [match, facts_row, team_layout, solo_layout], controls), focus
+
+
 # -------------------------------------------------------------- Server page
 
 ROTATION_SLOTS = 16
@@ -953,6 +1175,10 @@ def prompt_row(width: float, height: float, back_verb: str, trailing: list) -> d
              prompt("select", [KEY_ENTER], VERB_SELECT))
     spacer = group("prompt-spacer", {"position": keyword("relative"), "display": keyword("block"), "flex-grow": number(1),
                                      "height": length(PROMPT_H)})
+    # Prompts never shrink: the card is fitted to the bar, and a bar that did
+    # not fit would show past the card instead of squeezing its labels.
+    for item in items + trailing:
+        item["properties"]["flex-shrink"] = number(0)
     return group("prompts", {**absolute(left=INSET, top=height - PROMPT_BOTTOM - PROMPT_H, width=width - 2 * INSET, height=PROMPT_H),
                              "display": keyword("flex"), "flex-direction": keyword("row"), "align-items": keyword("center")},
                  items + [spacer] + trailing)
@@ -1063,12 +1289,61 @@ def card_motion(doc: Document, tabs: list, focus: list) -> None:
     doc.events["onBack"] = [{"op": "action", "action": "mpClose"}]
 
 
+WELCOME_BUILDERS = {"join": join_page, "server": server_page, "players": welcome_players_page}
+
+
+def welcome_document() -> dict:
+    """The Welcome card (section 14.18), which opens while the player has not
+    answered the join offer, Spectate leading its prompt bar: Esc closes it
+    and leaves the player spectating, and the menu key opens it again until
+    the player joins or spectates. Its Settings tab hands off to the join
+    panel's settings for now. It takes the Escape card's specified 648 x 477 dp
+    rather than its own 570 x 402: the Players and Server pages it shares need
+    the room."""
+    doc = Document("openq4.mp_welcome")
+    width = fitted_card_width([key for _, key, _ in WELCOME_TABS], (VERB_SPECTATE, [MAIN_MENU, LEAVE_SERVER]))
+    height = ESCAPE_H
+    doc.state.update({
+        "card.tab": {"type": "number", "initial": 0},
+        "card.leaving": {"type": "number", "initial": -1},
+        "card.stock_page": {"type": "number", "initial": -1},
+        "card.released": {"type": "boolean", "initial": False},
+        "reduced_motion": {"type": "boolean", "initial": False, "cvar": "ui_retainedReducedMotion"},
+        "mp.welcome.title": {"type": "string", "initial": ""},
+        "mp.welcome.players": {"type": "string", "initial": ""},
+        "mp.clock": {"type": "string", "initial": ""},
+    })
+    for verb in ("mpClose", "mpMainMenu", "mpDisconnect", "mpStockPage"):
+        doc.session(verb, verb)
+    trailing = [bound_text("header-players", doc, "mp.welcome.players", "lowpixel", 15, [1, 1, 1, 0.8])]
+    pages, focus = [], []
+    for index, (ident, _key, _window) in enumerate(WELCOME_TABS):
+        page, primary = WELCOME_BUILDERS.get(ident, lambda d, i, n, w, h: handoff_page(d, i, n, w, h))(doc, index, ident, width, height)
+        pages.append(page)
+        focus.append([{"op": "focus", "control": primary}] if isinstance(primary, str) else primary)
+    actions = [link(doc, "prompt-mainmenu", MAIN_MENU, action="mpMainMenu"),
+               link(doc, "prompt-leave", LEAVE_SERVER, event="leaveModalShow")]
+    actions[-1]["properties"]["margin-right"] = length(0)
+    card = group("card", {"position": keyword("absolute"), "left": length(50, "%"), "top": length(50, "%"),
+                          "width": length(width), "height": length(height), "margin-left": length(-width / 2),
+                          "margin-top": length(-height / 2), "opacity": number(0), "transform": transform()},
+                 [card_frame(width, height), *card_header(doc, width, "mp.welcome.title", trailing), *tab_strip(doc, width, WELCOME_TABS),
+                  *pages, prompt_row(width, height, VERB_SPECTATE, actions)])
+    leave = confirmation(doc, "leaveModal", LEAVE_SERVER, DISCONNECT_BODY, "mpDisconnect")
+    chrome = group("chrome", {**FULL, "display": keyword("block")}, [card, leave])
+    doc.bind("chrome.display", "chrome", "display", {"op": "select", "args": [{"state": "card.released"}, "none", "block"]})
+    root = group("screen", {**FULL, "font-family": b.font("marine"), "font-size": length(16), "color": colour([1, 1, 1, 0.8])},
+                 [*backdrop(doc), chrome])
+    card_motion(doc, WELCOME_TABS, focus)
+    return doc.build(root)
+
+
 def escape_document() -> dict:
     """The Escape card (section 14.18), opened with the menu key during a
     match, Resume leading its prompt bar. The Team, Players and Server pages
     are built; the others hand off to their stock pages for now."""
     doc = Document("openq4.mp_escape")
-    width, height = fitted_card_width([key for _, key, _ in ESCAPE_TABS]), ESCAPE_H
+    width, height = fitted_card_width([key for _, key, _ in ESCAPE_TABS], (VERB_RESUME, [MAIN_MENU, DISCONNECT])), ESCAPE_H
     doc.state.update({
         "card.tab": {"type": "number", "initial": 0},
         "card.leaving": {"type": "number", "initial": -1},

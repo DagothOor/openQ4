@@ -73,7 +73,7 @@ bool SessionMenuCommand(const std::string& command) {
 		"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
         "campaigns","campaignQuake4","campaignAwakening","campaignArena","campaignBack","campaignHome",
         "mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction",
-        "mpSelectPlayer","mpMute","mpFriend"};
+        "mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction"};
 	return commands.contains(command);
 }
 

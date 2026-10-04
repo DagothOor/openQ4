@@ -751,8 +751,12 @@
   beside the chosen player's kills, deaths, score, accuracy per weapon and
   awards, and mutes or befriends them; its Server page shows the server's
   message, rules and map rotation. Its other pages still open the classic
-  pages for now, and the menu shown when you first join a server stays
-  classic.
+  pages for now. With the same setting, joining a server opens a matching
+  Welcome card: team cards that join each team (and say why when the balance
+  rule refuses one), Auto join naming the team it picks, Spectate, the
+  server's rules and the players; Esc spectates for now, and the menu key
+  brings it back until you join. The prompt bars' Select now reads correctly
+  in Spanish and Italian.
 
 - The classic multiplayer Players page's Add Friend button now marks the
   player as your friend in the lists and on the scoreboard. It did nothing on

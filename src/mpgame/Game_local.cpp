@@ -5111,6 +5111,9 @@ void idGameLocal::HandleMainMenuCommands( const char *menuCommand, idUserInterfa
 	} else if ( !idStr::Icmp( menuCommand, "retainedMultiplayerCover" ) ) {
 		// openQ4: the session's retained menu card covers mainGui.
 		mpGame.SetRetainedMenuCover( true, gui );
+	} else if ( !idStr::Icmp( menuCommand, "retainedMultiplayerVariant" ) ) {
+		// openQ4: which card the session covers the menu with.
+		gui->SetStateBool( "mp.welcome", mpGame.RetainedMenuWelcome() );
 	} else if ( !idStr::Icmp( menuCommand, "retainedMultiplayerUncover" ) ) {
 		mpGame.SetRetainedMenuCover( false, gui );
 	} else if ( !idStr::Icmp( menuCommand, "retainedMultiplayerState" ) ) {

@@ -137,7 +137,7 @@ static void CheckSchema() {
 
 static const std::set<std::string> SessionCommands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
 	"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
-	"mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction","mpSelectPlayer","mpMute","mpFriend"};
+	"mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction","mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction"};
 
 static void CheckSessionActions(const Document& document) {
 	for (const auto& [id,action] : document.Model().actions) {
@@ -460,8 +460,111 @@ static void CheckEscape(ScreenHost& host, const char* path) {
 	host.softFocus = false;
 }
 
+// The multiplayer Welcome card (section 14.18): centered, each mode's join
+// choices, a refused team card, the Players page without choices, the hand-off
+// to the join panel's settings, Spectate on Back and Leave Server asking first.
+static void CheckWelcome(ScreenHost& host, const char* path) {
+	const auto source = Read(path);
+	Document document; std::vector<Diagnostic> diagnostics;
+	const bool valid = document.Load(source,diagnostics);
+	for (const auto& diagnostic : diagnostics) std::fprintf(stderr,"mp_welcome %s: %s\n",diagnostic.pointer.c_str(),diagnostic.message.c_str());
+	Check(valid && document.Model().id == "openq4.mp_welcome" && document.Model().canvasHeight == 720,"the Welcome card validates");
+	CheckSessionActions(document);
+	Runtime runtime(host);
+	Check(runtime.Initialize() && runtime.LoadDocument(source,"guis/menu/mp_welcome.q4ui",diagnostics),"the Welcome card loads into a runtime");
+	Viewport viewport; viewport.canvasHeight = 720; viewport.width = 1280; viewport.height = 720;
+	std::string error;
+	Runtime::EventEffects effects;
+	const auto bounds = [&](const std::string& id) { Bounds b; Check(runtime.GetBounds(id,b),"a Welcome node is laid out"); return b; };
+	const auto number = [&](const char* node, const char* property) {
+		const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented value"); return static_cast<float>(value->data[0]);
+	};
+	const auto text = [&](const char* node, const char* property) {
+		const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented keyword"); return value->text;
+	};
+	const auto asked = [&](const char* command) {
+		return effects.actions.size() == 1 && std::get<std::string>(effects.actions[0].arguments.at("command")) == command;
+	};
+	// A team mode: the balance rule refuses the Marines, the Strogg are open,
+	// and Auto join names the team it picks.
+	Check(runtime.SetState({{"mp.welcome.title",std::string("WELCOME TO OPENQ4")},{"mp.welcome.players",std::string("6/12 PLAYERS")},
+		{"mp.welcome.match",std::string("Team Deathmatch - The Fragging Yard")},{"mp.welcome.state",std::string("MATCH IN PROGRESS")},
+		{"mp.clock",std::string("9:12")},{"mp.welcome.limit",std::string("Frag limit 50")},{"mp.welcome.team_mode",true},
+		{"mp.welcome.team0.score",std::string("12")},{"mp.welcome.team0.count",std::string("4")},{"mp.welcome.team0.flag",std::string("FLAG AT BASE")},
+		{"mp.welcome.team1.score",std::string("9")},{"mp.welcome.team1.count",std::string("2")},
+		{"mp.join0.shown",true},{"mp.join0.available",false},{"mp.join0.label",std::string("MARINES")},
+		{"mp.join0.reason",std::string("Too many players on the Marine team.")},
+		{"mp.join1.shown",true},{"mp.join1.available",true},{"mp.join1.label",std::string("STROGG")},
+		{"mp.join2.shown",true},{"mp.join2.available",true},{"mp.join2.label",std::string("AUTO JOIN")},{"mp.join2.detail",std::string("Joins STROGG.")},
+		{"mp.join3.shown",true},{"mp.join3.available",true},{"mp.join3.label",std::string("SPECTATE")}},error,1),"publish the Join page");
+	host.softFocus = true;
+	Check(runtime.RunEvent("open",2,effects,error),"the Welcome card opens");
+	runtime.Frame(viewport,2.3);
+	const auto card = bounds("card");
+	Check(Near(card.x+card.width/2,640) && Near(card.y+card.height/2,360),"the Welcome card is centered");
+	Check(card.width >= 648-.5f && card.width <= 928+.5f && Near(card.height,477,1),"the Welcome card takes the specified Escape height and fits a 4:3 view");
+	Check(runtime.FocusedControl() == "join-slot-2","Auto join has focus");
+	Check(text("join-teams","display") == "block" && text("join-solo","display") == "none","team modes show the team cards");
+	const auto marines = bounds("join-slot-0"), strogg = bounds("join-slot-1"), automatic = bounds("join-slot-2");
+	Check(marines.x+marines.width <= strogg.x && Near(marines.y,strogg.y) && automatic.y >= marines.y+marines.height,
+		"the team cards stand side by side above Auto join");
+	Check(Near(number("join-slot-0","opacity"),.6f,.001f) && text("join-slot-0-lock","display") == "block" &&
+		text("join-slot-0-reason","display") == "block","a refused team dims with its lock and reason");
+	Check(Near(number("join-slot-1","opacity"),1,.001f) && text("join-slot-1-lock","display") == "none" &&
+		text("join-slot-1-reason","display") == "none","an open team has neither");
+	Check(text("join-slot-2-detail","display") == "block","Auto join names the team it picks");
+	const auto spectate = bounds("prompt-back-0"), leave = bounds("prompt-leave");
+	Check(spectate.x >= card.x+23 && leave.x+leave.width <= card.x+card.width-23,"the prompt bar keeps the card's insets");
+	Check(runtime.RunEvent("join_slot_1",2.4,effects,error) && asked("mpWelcomeAction") &&
+		std::get<double>(runtime.GetState().at("card.welcome_action")) == 1,"an open team card joins its team");
+	Check(runtime.RunEvent("join_slot_0",2.5,effects,error) && effects.actions.empty(),"a refused one asks nothing");
+	runtime.Frame(viewport,2.56);
+	const auto shaking = runtime.PresentedValue("join-slot-0-slot","transform");
+	Check(shaking && std::abs(shaking->data[0]) > .5f,"it shakes instead");
+	Check(runtime.RunEvent("join_slot_2",2.9,effects,error) && asked("mpWelcomeAction") &&
+		std::get<double>(runtime.GetState().at("card.welcome_action")) == 2,"Auto join asks the game");
+	// Deathmatch: the three leaders, then Join game focused and Spectate.
+	Check(runtime.SetState({{"mp.welcome.team_mode",false},{"mp.welcome.leader0.name",std::string("Anderson")},
+		{"mp.welcome.leader0.score",std::string("7")},{"mp.welcome.leader1.name",std::string("Kane")},{"mp.welcome.leader1.score",std::string("5")},
+		{"mp.join0.available",true},{"mp.join0.label",std::string("JOIN GAME")},{"mp.join0.reason",std::string("")},
+		{"mp.join1.label",std::string("SPECTATE")},{"mp.join2.shown",false},{"mp.join3.shown",false}},error,3),"publish deathmatch");
+	Check(runtime.RunEvent("tab_server",3.1,effects,error) && runtime.RunEvent("tab_join",3.3,effects,error),"back to the Join tab");
+	runtime.Frame(viewport,3.5);
+	Check(text("join-solo","display") == "block" && text("join-teams","display") == "none" && text("join-leaders","display") == "block" &&
+		text("join-arenas","display") == "none","deathmatch shows its leaders");
+	Check(runtime.FocusedControl() == "join-solo-0","Join game has focus");
+	const auto first = runtime.PresentedValue("join-leader-0-rank","text"), third = runtime.PresentedValue("join-leader-2-rank","text");
+	Check(first && first->text == "1" && third && third->text.empty(),"leaders are ranked, an empty place unnumbered");
+	Check(runtime.RunEvent("join_solo_0",3.6,effects,error) && asked("mpWelcomeAction") &&
+		std::get<double>(runtime.GetState().at("card.welcome_action")) == 0,"Join game asks the game");
+	// Tourney: the arenas in play instead of the leaders.
+	Check(runtime.SetState({{"mp.welcome.arena_count",2.0},{"mp.welcome.arena0",std::string("Arena 1   Anderson 2 - 1 Kane")},
+		{"mp.welcome.arena1",std::string("Arena 2   Voss 0 - 0 Rhodes")}},error,3.7),"publish Tourney's arenas");
+	runtime.Frame(viewport,3.8);
+	Check(text("join-arenas","display") == "block" && text("join-leaders","display") == "none","Tourney shows its arenas");
+	// The Players page lists without choices; its tab keeps the focus.
+	Check(runtime.SetState({{"mp.players.a.shown",true},{"mp.players.a.title",std::string("MARINES")},{"mp.players.a.count",2.0},
+		{"mp.players.a0.name",std::string("Anderson")},{"mp.players.a1.name",std::string("Kane")},{"mp.players.a1.local",true}},error,3.9),
+		"publish the Players page");
+	Check(runtime.RunEvent("tab_players",4,effects,error),"to the Players tab");
+	runtime.Frame(viewport,4.2);
+	Check(runtime.FocusedControl() == "tab-players" && !runtime.CanActivateControl("players-a-0",4.2),"rows are not choices on Welcome");
+	Check(text("players-a-1","display") == "block" && text("players-a-2","display") == "none" &&
+		text("players-a-1-marker","display") == "block","the lists show their players and the player's own row");
+	// Settings hands off to the join panel's settings for now.
+	Check(runtime.RunEvent("stock_settings",4.3,effects,error) && asked("mpStockPage") &&
+		std::get<double>(runtime.GetState().at("card.stock_page")) == 3,"Settings hands off to the join panel's settings");
+	// Back spectates for now; Leave Server asks first.
+	Check(runtime.RunEvent("onBack",4.4,effects,error) && asked("mpClose"),"Back closes the card and the player spectates");
+	Check(runtime.RunEvent("leaveModalShow",4.5,effects,error),"Leave Server asks first");
+	runtime.Frame(viewport,4.8);
+	Check(runtime.FocusedControl() == "leaveModal_no","the confirmation's NO has focus");
+	Check(runtime.RunEvent("leaveModalHide",4.9,effects,error),"NO closes it");
+	host.softFocus = false;
+}
+
 int main(int argc, char** argv) {
-	Check(argc == 8,"usage: title.q4ui pause.q4ui loading.q4ui pause_strogg.q4ui singleplayer.q4ui campaigns.q4ui mp_escape.q4ui");
+	Check(argc == 9,"usage: title.q4ui pause.q4ui loading.q4ui pause_strogg.q4ui singleplayer.q4ui campaigns.q4ui mp_escape.q4ui mp_welcome.q4ui");
 	CheckSchema();
 	ScreenHost host;
 	CheckTransformedClip(host);
@@ -1513,6 +1616,7 @@ int main(int argc, char** argv) {
 		sub.SetReducedMotion(false,7.2);
 	}
 	CheckEscape(host,argv[7]);
+	CheckWelcome(host,argv[8]);
 	Check(host.errors == 0,"no retained diagnostics");
 	std::printf("retained screens: %d checks passed\n",checks);
 	return 0;

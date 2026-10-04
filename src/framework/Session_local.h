@@ -477,12 +477,15 @@ public:
 	int					retainedSubpageBegan;	// presentation time the change began
 	int					retainedSubpageUntil;	// presentation time of the hand-over
 	bool				retainedHomeReturning;
-	// The multiplayer Escape card, loaded inside each multiplayer level load;
-	// the card covering the game's menu now (NULL: none); a stock page that
-	// took the menu over until it closes; the game's last published revision;
-	// and a hand-off to a stock page waiting for its menu column to show.
+	// The multiplayer Escape and Welcome cards, loaded inside each
+	// multiplayer level load; the card covering the game's menu now (NULL:
+	// none) and whether it is Welcome; a stock page that took the menu over
+	// until it closes; the game's last published revision; and a hand-off to
+	// a stock page waiting for its menu column to show.
 	idUserInterface *	guiRetainedEscape;
+	idUserInterface *	guiRetainedWelcome;
 	idUserInterface *	guiRetainedMultiplayer;
+	bool				retainedMultiplayerWelcome;
 	bool				retainedMultiplayerUncovered;
 	int					retainedMultiplayerRevision;
 	int					retainedMultiplayerHandoff;		// the stock page's index (-1: none)

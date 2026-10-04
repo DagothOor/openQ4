@@ -212,6 +212,7 @@ static bool preview = false;
 static bool RetainedUI_IsOpen() { return preview; }
 static int RetainedUI_ViewCount() { return static_cast<int>(managerObject.storage.size()); }
 static std::vector<std::string> legacyActions;
+static bool welcomeAnswer = false;   // the game names the Welcome card
 static bool legacyActionAvailable = true;
 static bool UI_RunLegacyWindowAction(idUserInterface*, const char* window, bool back, idStr& command) {
     CHECK(!back); legacyActions.push_back(window); command = "play main_menu_selection"; return legacyActionAvailable;
@@ -284,7 +285,8 @@ public:
     bool RetainedSystemAvailable() const;
     void PreloadRetainedScreens(); void PrepareRetainedLevel(const char*, bool); void PrecacheRetainedLevelImages();
     void ReportRetainedScreens();
-    idUserInterface *guiRetainedEscape = nullptr, *guiRetainedMultiplayer = nullptr;
+    idUserInterface *guiRetainedEscape = nullptr, *guiRetainedWelcome = nullptr, *guiRetainedMultiplayer = nullptr;
+    bool retainedMultiplayerWelcome = false;
     bool retainedMultiplayerUncovered = false; int retainedMultiplayerRevision = -1;
     int retainedMultiplayerHandoff = -1, retainedMultiplayerHandoffUntil = 0;
     bool RetainedMultiplayerCovers() const; void UpdateRetainedMultiplayer(); void RetainedMultiplayerFrameEvent();
@@ -295,7 +297,8 @@ public:
 
 MAIN = r'''
 static const char* const DOCUMENTS[] = {"guis/menu/title.q4ui", "guis/menu/pause.q4ui", "guis/menu/pause_strogg.q4ui", "guis/loading/loading.q4ui",
-    "guis/menu/singleplayer.q4ui", "guis/menu/campaigns.q4ui", "guis/menu/settings/system.q4ui", "guis/menu/mp_escape.q4ui"};
+    "guis/menu/singleplayer.q4ui", "guis/menu/campaigns.q4ui", "guis/menu/settings/system.q4ui", "guis/menu/mp_escape.q4ui",
+    "guis/menu/mp_welcome.q4ui"};
 // The documents that fell back to their stock screens, in order.
 static std::vector<std::string> Stock(const idSessionLocal& session) {
     return std::vector<std::string>(session.retainedStock.begin(), session.retainedStock.end());
@@ -324,7 +327,7 @@ int main() {
         s.HandleRetainedSessionRequest(s.guiMainMenu, "quit");
         CHECK(commonObject.quits == 0 && legacyActions.empty());
         s.ReportRetainedScreens();
-        CHECK(commonObject.output.find("OPENQ4_RETAINED enabled=0 system=0 multiplayer=0 home=- title=0 pause=0 strogg=0 handoff=0 release=0 mp=- views=0 stock=-") != std::string::npos);
+        CHECK(commonObject.output.find("OPENQ4_RETAINED enabled=0 system=0 multiplayer=0 welcome=0 home=- title=0 pause=0 strogg=0 handoff=0 release=0 mp=- views=0 stock=-") != std::string::npos);
         // Off, the campaign selectors are the stock ones and nothing retained loads.
         s.OpenCampaignSelector(false); CHECK(arenaCampaign.selectors == 1 && managerObject.loads.empty());
         s.OpenCampaignSelector(true); CHECK((managerObject.loads == std::vector<std::string>{"guis/campaign_menu.gui"}));
@@ -730,6 +733,7 @@ int main() {
             mpMenu = idUserInterface("guis/mpmain.gui"); mpMenu.state["gameDraw"] = "1"; s.guiActive = &mpMenu;
             chat = idUserInterface("guis/mpchat.gui"); chat.state["gameDraw"] = "1";
             gameObject.publish = [](idUserInterface* gui) {
+                if (gameObject.commands.back() == "retainedMultiplayerVariant") gui->SetStateBool("mp.welcome", welcomeAnswer);
                 if (gameObject.commands.back() == "retainedMultiplayerCover") { gui->SetStateInt("mp.protocol", 1); gui->SetStateBool("mp.cover_allowed", true); }
                 if (gameObject.commands.back() != "retainedMultiplayerUncover") gui->SetStateInt("mp.revision", static_cast<int>(gameObject.commands.size()));
             };
@@ -743,12 +747,15 @@ int main() {
         }
         auto s = Mp(true, true);
         s.PrepareRetainedLevel("mp/q4dm1", true);  // loaded inside the level load
-        CHECK((managerObject.loads == std::vector<std::string>{"guis/menu/mp_escape.q4ui"}) && s.guiRetainedEscape && s.guiRetainedEscape->state["card.tab"] == "0");
+        CHECK((managerObject.loads == std::vector<std::string>{"guis/menu/mp_escape.q4ui", "guis/menu/mp_welcome.q4ui"}) &&
+              s.guiRetainedEscape && s.guiRetainedEscape->state["card.tab"] == "0" && s.guiRetainedWelcome &&
+              s.guiRetainedWelcome->state["card.tab"] == "0");
         CHECK(managerObject.flags[0].unique && !managerObject.flags[0].shared);
         s.UpdateRetainedMultiplayer();
         auto* card = s.guiRetainedMultiplayer;
         CHECK(card == s.guiRetainedEscape && s.RetainedMultiplayerCovers() && card->active && card->named.back() == "open");
-        CHECK((gameObject.commands == std::vector<std::string>{"retainedMultiplayerCover"}) && card->stateChanges == 1 && s.drains == 1);
+        CHECK((gameObject.commands == std::vector<std::string>{"retainedMultiplayerVariant", "retainedMultiplayerCover"}) &&
+              card->stateChanges == 1 && s.drains == 1 && !s.retainedMultiplayerWelcome);
         s.ReportRetainedScreens(); CHECK(commonObject.output.find("multiplayer=1 ") != std::string::npos && commonObject.output.find(" mp=escape ") != std::string::npos);
         // Each frame asks the game for what changed; only a new revision publishes.
         s.UpdateRetainedMultiplayer(); CHECK(gameObject.commands.back() == "retainedMultiplayerState" && card->stateChanges == 2);
@@ -847,13 +854,13 @@ int main() {
         auto refused = Mp(true, true);
         gameObject.publish = [](idUserInterface* gui) { gui->SetStateInt("mp.protocol", 1); gui->SetStateBool("mp.cover_allowed", false); };
         refused.UpdateRetainedMultiplayer(); refused.UpdateRetainedMultiplayer();
-        CHECK(refused.guiRetainedMultiplayer == nullptr && refused.retainedMultiplayerUncovered && gameObject.commands.size() == 1 && refused.retainedStock.Num() == 0);
+        CHECK(refused.guiRetainedMultiplayer == nullptr && refused.retainedMultiplayerUncovered && gameObject.commands.size() == 2 && refused.retainedStock.Num() == 0);
         refused.guiActive = nullptr; refused.UpdateRetainedMultiplayer(); refused.guiActive = &mpMenu; refused.UpdateRetainedMultiplayer();
-        CHECK(gameObject.commands.size() == 2);
+        CHECK(gameObject.commands.size() == 4);
         // A game module without the protocol keeps the stock menu for the session.
         auto old = Mp(true, true); gameObject.publish = nullptr;
         old.UpdateRetainedMultiplayer(); old.UpdateRetainedMultiplayer();
-        CHECK(old.guiRetainedMultiplayer == nullptr && (Stock(old) == std::vector<std::string>{"guis/menu/mp_escape.q4ui"}) && gameObject.commands.size() == 1);
+        CHECK(old.guiRetainedMultiplayer == nullptr && (Stock(old) == std::vector<std::string>{"guis/menu/mp_escape.q4ui"}) && gameObject.commands.size() == 2);
         // So does a mod's own multiplayer menu, and a card that stopped drawing.
         auto mod = Mp(true, true); cvarSystemObject.strings["fs_game"] = "mymod"; fileSystemObject.gameDirFiles["mymod"] = {"guis/mpmain.gui"};
         mod.UpdateRetainedMultiplayer();
@@ -862,7 +869,49 @@ int main() {
         failed.guiActive = nullptr; failed.UpdateRetainedMultiplayer(); stopped->failed = true; failed.guiActive = &mpMenu; failed.UpdateRetainedMultiplayer();
         CHECK(failed.guiRetainedMultiplayer == nullptr && commonObject.warnings.back().find("stopped drawing") != std::string::npos);
         auto missing = Mp(true, true); fileSystemObject.files.erase("guis/menu/mp_escape.q4ui"); missing.UpdateRetainedMultiplayer();
-        CHECK(missing.guiRetainedMultiplayer == nullptr && commonObject.warnings.empty() && gameObject.commands.empty());
+        CHECK(missing.guiRetainedMultiplayer == nullptr && commonObject.warnings.empty() &&
+              (gameObject.commands == std::vector<std::string>{"retainedMultiplayerVariant"}));
+        // Welcome: while the player has not answered the join offer the game
+        // names the Welcome card, which covers the menu with its own verbs. A
+        // Join page action reaches the game as "retained welcome <slot>" and
+        // closes the menu when the game acts; its Settings tab hands off to the
+        // join panel's settings button.
+        welcomeAnswer = true;
+        auto w = Mp(true, true); w.PrepareRetainedLevel("mp/q4dm1", true); w.UpdateRetainedMultiplayer();
+        auto* welcome = w.guiRetainedMultiplayer;
+        CHECK(welcome && welcome == w.guiRetainedWelcome && w.retainedMultiplayerWelcome && welcome->named.back() == "open");
+        w.ReportRetainedScreens();
+        CHECK(commonObject.output.find(" welcome=1 ") != std::string::npos && commonObject.output.find(" mp=welcome ") != std::string::npos);
+        gameObject.answer = [](const char*) -> const char* { return nullptr; };
+        welcome->state["card.welcome_action"] = "2"; w.HandleRetainedSessionRequest(welcome, "mpWelcomeAction");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; retained welcome 2" && w.guiRetainedMultiplayer == nullptr &&
+              welcome->named.back() == "release");
+        w.guiActive = &mpMenu; w.guiRetainedReleasing = nullptr; w.UpdateRetainedMultiplayer(); CHECK(w.guiRetainedMultiplayer == welcome);
+        const size_t joined = gameObject.guiCommands.size();
+        for (const char* slot : {"-1", "4"}) {
+            welcome->state["card.welcome_action"] = slot; w.HandleRetainedSessionRequest(welcome, "mpWelcomeAction");
+            CHECK(gameObject.guiCommands.size() == joined && w.guiRetainedMultiplayer == welcome &&
+                  commonObject.warnings.back().find("join action") != std::string::npos);
+        }
+        gameObject.answer = nullptr;
+        welcome->state["card.stock_page"] = "0"; w.HandleRetainedSessionRequest(welcome, "mpStockPage");
+        CHECK(w.guiRetainedMultiplayer == welcome && !w.retainedMultiplayerUncovered);   // the Join page has no stock page
+        mpMenu.state["initial_join"] = "1";   // the join offer stands: the join panel's settings
+        welcome->state["card.stock_page"] = "3"; w.HandleRetainedSessionRequest(welcome, "mpStockPage");
+        CHECK(legacyActions.back() == "qj_b_settings" && w.retainedMultiplayerUncovered && w.guiRetainedMultiplayer == nullptr);
+        mpMenu.state["initial_join"] = "0";   // once it has closed: the menu column's settings
+        w.guiActive = nullptr; w.UpdateRetainedMultiplayer(); w.guiActive = &mpMenu; w.UpdateRetainedMultiplayer();
+        CHECK(w.guiRetainedMultiplayer == welcome);
+        welcome->state["card.stock_page"] = "3"; w.HandleRetainedSessionRequest(welcome, "mpStockPage");
+        CHECK(legacyActions.back() == "main_b_settings" && w.retainedMultiplayerUncovered);
+        // Once the player answers, the game names Escape again.
+        welcomeAnswer = false; w.guiActive = nullptr; w.UpdateRetainedMultiplayer(); w.guiActive = &mpMenu; w.UpdateRetainedMultiplayer();
+        CHECK(w.guiRetainedMultiplayer == w.guiRetainedEscape && !w.retainedMultiplayerWelcome);
+        // Each card has its own gate: with only ui_retained on, a card whose
+        // pages still hand off leaves the stock menu to its openings.
+        welcomeAnswer = true; auto gated = Mp(true, false); gated.UpdateRetainedMultiplayer();
+        CHECK((gated.guiRetainedMultiplayer != nullptr) == (RETAINED_MP_WELCOME_MISSING_PAGES[0] == NULL));
+        welcomeAnswer = false;
     }
     std::printf("ui_retained gate: %d checks passed\n", checks);
 }
@@ -1490,13 +1539,54 @@ def check_server_card(compiler: str, directory: Path) -> None:
         assert re.search(r'idCVar si_motd\(\s+"si_motd",\s+"",\s+CVAR_GAME \| CVAR_SERVERINFO \| PC_CVAR_ARCHIVE', cvars), module
 
 
+def prompt_bar_fits(document: dict, name: str) -> None:
+    """The card's prompt bar, measured from the document itself in every
+    language's shipped faces (its texts, sizes, paddings and margins), fits
+    inside the card's insets: the generator fits the card to the bar, and the
+    native test's host cannot see real text widths."""
+    import build_retained_screens as screens
+    import retained_mp_menus
+
+    def find(node, ident):
+        if node['id'] == ident:
+            return node
+        for child in node.get('children', []):
+            found = find(child, ident)
+            if found:
+                return found
+        return None
+
+    def dp(node, key):
+        value = node.get('properties', {}).get(key)
+        return float(value['value']) if value and value.get('unit') == 'dp' else 0.0
+
+    def width(node, language):
+        props = node.get('properties', {})
+        if props.get('position', {}).get('value') == 'absolute':
+            return 0.0
+        outer = dp(node, 'margin-left') + dp(node, 'margin-right')
+        if node['type'] == 'text':
+            text = retained_mp_menus.any_text(props['text']['value'])[language]
+            return outer + screens.text_width(props['font-family']['value'], text, props['font-size']['value'])
+        inner = dp(node, 'padding-left') + dp(node, 'padding-right')
+        return outer + inner + sum(width(child, language) for child in node.get('children', []))
+
+    card = find(document['root'], 'card')
+    room = card['properties']['width']['value'] - 2 * retained_mp_menus.INSET
+    bar = find(document['root'], 'prompts')
+    items = [child for child in bar['children'] if child['id'] != 'prompt-spacer']
+    for language in screens.LANGUAGES:
+        needed = sum(width(item, language) for item in items)
+        assert needed <= room, f'{name}: the {language} prompt bar needs {needed:.0f} dp, past the card\'s {room:g} dp'
+
+
 def check_retained_multiplayer(menu: str, session: str) -> None:
     """The multiplayer card's contracts that the compiled cases cannot see:
     its opt-in and missing pages, the game's side of the cover protocol, the
     frame, input and draw order, and the document the generator writes."""
     assert 'idCVar ui_retainedMultiplayer( "ui_retainedMultiplayer", "0", CVAR_GUI | CVAR_BOOL' in menu
-    assert ('return ui_retainedMultiplayer.GetBool() || ( Session_RetainedScreensEnabled() && '
-            'RETAINED_MP_ESCAPE_MISSING_PAGES[0] == NULL );') in menu
+    assert ('const char *const *missing = welcome ? RETAINED_MP_WELCOME_MISSING_PAGES : RETAINED_MP_ESCAPE_MISSING_PAGES;\n'
+            '\treturn ui_retainedMultiplayer.GetBool() || ( Session_RetainedScreensEnabled() && missing[0] == NULL );') in menu.replace('\r\n', '\n')
     sys.path.insert(0, str(ROOT / 'tools' / 'ui'))
     import retained_mp_menus
     text = (ROOT / 'content/baseoq4/pak0/guis/menu/mp_escape.q4ui').read_text(encoding='utf-8')
@@ -1516,6 +1606,30 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
         event = document['events'].get(f'stock_{ident}')
         if event is not None:
             assert event == [{'op': 'setState', 'values': {'card.stock_page': index}}, {'op': 'action', 'action': 'mpStockPage'}], ident
+    # The Welcome card: its missing pages are its hand-offs, and each presses
+    # the join panel's button for its page.
+    welcome_text = (ROOT / 'content/baseoq4/pak0/guis/menu/mp_welcome.q4ui').read_text(encoding='utf-8')
+    welcome_document = json.loads(re.sub(r'^\s*//.*$', '', welcome_text, flags=re.M))
+    welcome_handoffs = {name[len('stock_'):] for name in welcome_document['events'] if name.startswith('stock_')}
+    welcome_missing = re.search(r'RETAINED_MP_WELCOME_MISSING_PAGES\[\] = \{([^}]*)\};', menu).group(1)
+    assert welcome_missing.strip().endswith('NULL') and set(re.findall(r'"([a-z]+)"', welcome_missing)) == welcome_handoffs
+    welcome_pages = re.search(r'RETAINED_MP_WELCOME_STOCK_PAGES\[\] = \{([^}]*)\};', menu).group(1)
+    assert [None if item.strip() == 'NULL' else item.strip().strip('"') for item in welcome_pages.split(',')] == \
+        [window for _ident, _key, window in retained_mp_menus.WELCOME_TABS]
+    # Once the join panel has closed, the same pages hand off to the menu
+    # column's buttons, the Escape card's.
+    menu_pages = re.search(r'RETAINED_MP_WELCOME_MENU_PAGES\[\] = \{([^}]*)\};', menu).group(1)
+    escape_windows = {ident: window for ident, _key, window in retained_mp_menus.ESCAPE_TABS}
+    assert [None if item.strip() == 'NULL' else item.strip().strip('"') for item in menu_pages.split(',')] == \
+        [None if window is None else escape_windows[ident] for ident, _key, window in retained_mp_menus.WELCOME_TABS]
+    for index, (ident, _key, window) in enumerate(retained_mp_menus.WELCOME_TABS):
+        if window is not None:
+            assert f'windowDef {window}\n' in stock_menu.replace('\r\n', '\n'), f'the stock menu has no {window}'
+            assert welcome_document['events'][f'stock_{ident}'] == [{'op': 'setState', 'values': {'card.stock_page': index}},
+                                                                   {'op': 'action', 'action': 'mpStockPage'}], ident
+    assert welcome_document['events']['onBack'] == [{'op': 'action', 'action': 'mpClose'}]
+    prompt_bar_fits(document, 'mp_escape')
+    prompt_bar_fits(welcome_document, 'mp_welcome')
     # The game answers the protocol the session expects, and its menu stops
     # drawing while covered.
     protocol = int(re.search(r'static const int RETAINED_MP_PROTOCOL = (\d+);', menu).group(1))
@@ -1523,12 +1637,17 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
     assert f'static const int RETAINED_MENU_PROTOCOL = {protocol};' in mp_game
     cover = function_body(mp_game, 'void idMultiplayerGame::SetRetainedMenuCover(')
     assert 'card->SetStateInt( "mp.protocol", RETAINED_MENU_PROTOCOL );' in cover
-    assert 'const bool allowed = currentMenu == 1 && mainGui != NULL && !joinScreenPending && !IsArenaCampaignMatch();' in cover
+    # The join offer is the Welcome card's; the card's softening replaces the join panel's blur.
+    assert 'const bool allowed = currentMenu == 1 && mainGui != NULL && !IsArenaCampaignMatch();' in cover
+    assert cover.index('retainedMenuCovered = true;') < cover.index('SetJoinScreenSoftFocus( false );')
+    assert ('return joinScreenPending || ( player != NULL && player->spectating && !cvarSystem->GetCVarBool( "ui_joined" ) );'
+            in function_body(mp_game, 'bool idMultiplayerGame::RetainedMenuWelcome('))
     draw = function_body(mp_game, 'bool idMultiplayerGame::Draw(')
     assert 'if ( !retainedMenuCovered ) {\n\t\t\t\tmainGui->Redraw( gameLocal.time );' in draw.replace('\r\n', '\n')
     assert 'retainedMenuCovered = false;' in function_body(mp_game, 'void idMultiplayerGame::DisableMenu(')
     mp_local = (ROOT / 'src/mpgame/Game_local.cpp').read_text(encoding='utf-8', errors='replace')
-    for verb, call in (('retainedMultiplayerCover', 'mpGame.SetRetainedMenuCover( true, gui );'),
+    for verb, call in (('retainedMultiplayerVariant', 'gui->SetStateBool( "mp.welcome", mpGame.RetainedMenuWelcome() );'),
+                       ('retainedMultiplayerCover', 'mpGame.SetRetainedMenuCover( true, gui );'),
                        ('retainedMultiplayerUncover', 'mpGame.SetRetainedMenuCover( false, gui );'),
                        ('retainedMultiplayerState', 'mpGame.PublishRetainedMenu( gui );')):
         answer = mp_local[mp_local.index(f'!idStr::Icmp( menuCommand, "{verb}" )'):]
@@ -1547,8 +1666,16 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
     drawing = function_body(session, 'void idSessionLocal::Draw(')
     assert ('} else if ( RetainedMultiplayerCovers() ) {' in drawing and
             drawing.index('UI_RunTimeEvents( guiActive, presentationTime );') < drawing.index('guiRetainedMultiplayer->Redraw( presentationTime );'))
-    assert 'guiRetainedEscape = guiRetainedMultiplayer = NULL;' in function_body(session, 'void idSessionLocal::Clear(')
-    assert menu.count('RETAINED_MP_ESCAPE_GUI') == 9
+    assert 'guiRetainedEscape = guiRetainedWelcome = guiRetainedMultiplayer = NULL;' in function_body(session, 'void idSessionLocal::Clear(')
+    # Each card loads inside the level load, and the game names the card
+    # before the session loads or covers with it.
+    prepare = function_body(menu, 'void idSessionLocal::PrepareRetainedLevel(')
+    assert 'guiRetainedEscape = FindRetainedGui( RETAINED_MP_ESCAPE_GUI, false, false );' in prepare
+    assert 'guiRetainedWelcome = FindRetainedGui( RETAINED_MP_WELCOME_GUI, false, false );' in prepare
+    update = function_body(menu, 'void idSessionLocal::UpdateRetainedMultiplayer(')
+    assert update.index('game->HandleMainMenuCommands( "retainedMultiplayerVariant", guiActive );') < \
+        update.index('if ( !Session_RetainedMultiplayerEnabled( welcome ) || retainedStock.FindIndex( path ) >= 0 ) {') < update.index('document = FindRetainedGui( path, false, false );') < \
+        update.index('game->HandleMainMenuCommands( "retainedMultiplayerCover", card );')
     release_ms = int(re.search(r'static const int RETAINED_RELEASE_MSEC = (\d+);', menu).group(1))
     timelines = {item['id']: item for item in document['timelines']}
     assert timelines['release']['durationMs'] == release_ms
@@ -1563,7 +1690,18 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
     assert slots == retained_mp_menus.TEAM_SLOTS and all(f'team_slot_{slot}' in document['events'] for slot in range(slots))
     command = function_body(mp_game, 'bool idMultiplayerGame::HandleRetainedMenuCommand(')
     assert command.index('RetainedTeamSlots( slots );') < command.index('if ( slot.action == RTA_NONE || !slot.available ) {') < \
-        command.index('DisableMenu();')
+        command.index('return RunRetainedAction( slot.action );')
+    welcome_branch = command[command.index('if ( !sub.Icmp( "welcome" )'):]
+    assert welcome_branch.index('RetainedWelcomeSlots( slots );') < welcome_branch.index('if ( slot.action == RTA_NONE || !slot.available ) {') < \
+        welcome_branch.index('return RunRetainedAction( slot.action );')
+    runner = function_body(mp_game, 'bool idMultiplayerGame::RunRetainedAction(')
+    assert runner.index('default: return false;') < runner.index('DisableMenu();') < runner.index('return true;')
+    # The Welcome card's Join page slots: the session bounds them, and the
+    # session, the game and the document agree on four.
+    welcome_slots = int(re.search(r'static const int RETAINED_MP_WELCOME_SLOTS = (\d+);', menu).group(1))
+    assert f'static const int RETAINED_WELCOME_SLOTS = {welcome_slots};' in header
+    assert welcome_slots == retained_mp_menus.WELCOME_SLOTS and all(f'join_slot_{slot}' in welcome_document['events'] for slot in range(welcome_slots))
+    assert 'if ( slot < 0 || slot >= RETAINED_MP_WELCOME_SLOTS ) {' in function_body(menu, 'void idSessionLocal::HandleRetainedMultiplayerRequest(')
     # HandleGuiCommands' _XENON branches defeat a brace count; pin the statement.
     assert mp_game.replace('\r\n', '\n').count('if ( HandleRetainedMenuCommand( args, icmd ) ) {\n\t\t\t\treturn NULL;') == 1
     # The Players page: the session bounds the client to the server's slots,
@@ -1629,7 +1767,7 @@ def main() -> int:
             path = match.group(1)
             allowed = {'guis/menu/settings/system.q4ui', 'guis/menu/title.q4ui', 'guis/menu/pause.q4ui', 'guis/menu/pause_strogg.q4ui',
                        'guis/loading/loading.q4ui', 'guis/menu/singleplayer.q4ui', 'guis/menu/campaigns.q4ui',
-                       'guis/menu/mp_escape.q4ui'}
+                       'guis/menu/mp_escape.q4ui', 'guis/menu/mp_welcome.q4ui'}
             assert path in allowed, f'{name} names an ungated retained document {path}'
     # Every retained document loads through FindRetainedGui, which falls back to
     # the stock screen; the SYSTEM page and the campaign selectors fall back too.

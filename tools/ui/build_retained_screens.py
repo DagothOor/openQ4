@@ -37,6 +37,7 @@ OUTPUTS = {
     "singleplayer": PAK0 / "guis" / "menu" / "singleplayer.q4ui",
     "campaigns": PAK0 / "guis" / "menu" / "campaigns.q4ui",
     "mp_escape": PAK0 / "guis" / "menu" / "mp_escape.q4ui",
+    "mp_welcome": PAK0 / "guis" / "menu" / "mp_welcome.q4ui",
 }
 
 U = 1.5            # dp per stock source unit at the 720 dp canvas
@@ -2760,11 +2761,11 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="fail when a generated document differs from its source")
     args = parser.parse_args()
     # The multiplayer menus live in their own module, which builds on this one.
-    from retained_mp_menus import escape_document
+    from retained_mp_menus import escape_document, welcome_document
     documents = {"title": title_document(), "pause": pause_document(), "pause_strogg": pause_document(strogg=True),
                  "loading": loading_document(),
                  "singleplayer": campaign_document(False), "campaigns": campaign_document(True),
-                 "mp_escape": escape_document()}
+                 "mp_escape": escape_document(), "mp_welcome": welcome_document()}
     stale = []
     for name, document in documents.items():
         output = OUTPUTS[name]

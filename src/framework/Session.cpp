@@ -3808,7 +3808,8 @@ void idSessionLocal::Clear() {
 	retainedSubpageBegan = 0;
 	retainedSubpageUntil = 0;
 	retainedHomeReturning = false;
-	guiRetainedEscape = guiRetainedMultiplayer = NULL;
+	guiRetainedEscape = guiRetainedWelcome = guiRetainedMultiplayer = NULL;
+	retainedMultiplayerWelcome = false;
 	retainedMultiplayerUncovered = false;
 	retainedMultiplayerRevision = -1;
 	retainedMultiplayerHandoff = -1;

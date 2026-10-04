@@ -7,18 +7,20 @@ Escape card's shell came first: the card, its header, the eight-tab strip, the
 prompt bar, the Disconnect confirmation, the softening and its release, and the
 session and game plumbing that let the card cover the game's own menu. The
 Team, Players and Server pages are built on it; the other five pages still
-hand off to their stock pages, so the card stays opt-in. The Welcome card and
-the other pages follow in later increments (the plan's B4 to B9).
+hand off to their stock pages, so the card stays opt-in. The Welcome card
+covers the connect-time join offer with its Join, Server, Players and Settings
+pages; its Settings page hands off too. The other pages follow in later
+increments (the plan's B5 to B9).
 
 ## The gate
 
-`ui_retainedMultiplayer` (default 0) opts into the card. `ui_retained` alone
-includes it only once no page hands off any more: the session lists the
-Escape pages that still do in `RETAINED_MP_ESCAPE_MISSING_PAGES`, today
-Vote, Match, Settings, Voice and Admin, and
-`tools/tests/ui_retained_gate.py` keeps that list equal to the
-document's hand-off pages (its `stock_<page>` programs). Players never see a
-mix of card and stock pages unless they opt in.
+`ui_retainedMultiplayer` (default 0) opts into both cards. `ui_retained` alone
+includes a card only once none of its pages hands off any more: the session
+lists the pages that still do in `RETAINED_MP_ESCAPE_MISSING_PAGES`, today
+Vote, Match, Settings, Voice and Admin, and `RETAINED_MP_WELCOME_MISSING_PAGES`,
+today Settings, and `tools/tests/ui_retained_gate.py` keeps each list equal to
+its document's hand-off pages (its `stock_<page>` programs). Players never see
+a mix of card and stock pages unless they opt in.
 
 ## The cover
 
@@ -32,18 +34,24 @@ over it while all of these hold (`idSessionLocal::UpdateRetainedMultiplayer`):
   the chat, buy and summary screens are other GUIs and are never covered;
 - no test GUI or retained preview is open, and no stock page has taken this
   opening over (below);
+- the game names the card (`retainedMultiplayerVariant`): Welcome while the
+  player has not answered the join offer (the offer stands, or `ui_joined` is
+  still 0 while the player spectates), Escape otherwise; and that card's gate
+  is on;
 - the game answers `retainedMultiplayerCover` with the protocol the session
-  expects (`mp.protocol` 1) and allows the cover now (`mp.cover_allowed`). The
-  game refuses while the connect-time join offer stands, since the card has no
-  Welcome variant yet and the stock join card keeps that opening, and in an
-  Arena Campaign match, which keeps its own menu.
+  expects (`mp.protocol` 1) and allows the cover now (`mp.cover_allowed`). It
+  refuses in an Arena Campaign match, which keeps its own menu. Over the join
+  offer the card's softening replaces the join panel's blur, which comes back
+  if the stock menu takes the offer over.
 
 Otherwise the stock menu presents. Like the other retained screens, the card
 falls back to the stock menu for the session when its document is not
 installed (quietly), cannot load (one warning) or stops drawing (one warning),
 when a mod supplies its own `guis/mpmain.gui`, and when the game module does
 not answer the protocol, as an older or a mod's game module would not. A
-refused cover holds only for that opening.
+game module that does not name the card gets Escape, which its join offer
+refuses. Whatever keeps the stock menu keeps it only for that opening; the
+next asks the game again.
 
 Each frame the session asks the game for the card's state
 (`retainedMultiplayerState`). The game writes only the keys that changed and a
@@ -54,9 +62,9 @@ menu again. A map change retires it without a release and opens the next
 map's card on its first page; the document itself loads inside each
 multiplayer level load.
 
-`ui_retainedStatus` reports the opt-in as `multiplayer=` and the covering card
-as `mp=escape` (`mp=-` otherwise); `openq4_retainedGui` addresses the card
-while it covers.
+`ui_retainedStatus` reports each card's gate as `multiplayer=` (Escape) and
+`welcome=`, and the covering card as `mp=escape` or `mp=welcome` (`mp=-`
+otherwise); `openq4_retainedGui` addresses the card while it covers.
 
 ## The card
 
@@ -148,6 +156,39 @@ There is no friends service on PC (the engine's is empty), so a friend is the
 player's own mark, shown in the lists and on the scoreboard while the map runs;
 the stock page's Friend button keeps the same mark now.
 
+### The Welcome card
+
+The Welcome card covers the menu the game opens when a player joins without
+`ui_autoJoin`, and the menu key opens it again until the player answers: Esc
+(Spectate on the prompt bar) closes it and leaves the player spectating, while
+joining a team, the game or the tournament, or choosing Spectate on the page,
+answers the offer, and the menu key opens Escape from then on. The header holds
+the server's welcome ("WELCOME TO" and its name) and the player count; the
+prompt bar has Spectate, Tabs and Select, then Main Menu and Leave Server,
+which asks first in the stock confirmation.
+
+- **Join.** The mode and map, then the match state, the time left in the value
+  color, the limit and the player count. Team modes show the two team cards,
+  each the plate that joins its team: the header band in the team's color with
+  its name and score, its player count and, in CTF, its flag's state (at
+  base, taken or dropped). A team the stock balance rule refuses dims with its
+  lock and reason and shakes when chosen. Auto join follows, focused, naming
+  the team it picks, then Spectate. Deathmatch shows the three leaders with
+  their scores, then Join game, focused, and Spectate; Tourney shows the arenas
+  in play with their scores and joining or leaving the tournament.
+- **Server.** The Escape card's Server page.
+- **Players.** The Escape card's lists, the speaker and friend symbols, score
+  and ping, spectators below, with nothing to choose: its tab keeps the focus.
+- **Settings.** Hands off to the join panel's settings for now.
+
+The game publishes the Welcome card's keys with the rest: `mp.welcome.title`,
+`mp.welcome.players`, `mp.welcome.match`, `mp.welcome.state`,
+`mp.welcome.limit`, `mp.welcome.team_mode`, `mp.welcome.team<0-1>.{score,count,flag}`,
+`mp.welcome.leader<0-2>.{name,score}`, `mp.welcome.arena<0-3>` and
+`mp.welcome.arena_count`, and the Join page's four actions as
+`mp.join<0-3>.{shown,available,label,reason,detail}`, which the game derives
+again when one is chosen.
+
 ### The Server page
 
 The server's name and address, its message (`si_motd`, three lines) in
@@ -184,12 +225,16 @@ leading `#str_` broken so a name never translates.
 The specified 648 dp cannot hold eight tabs: with the active tab's flare and
 shoulder each tab needs its label plus 31 dp, and even the shortest English
 labels need about 800 dp at 14 dp, so the Escape card grows to the widest
-language's fitted strip. `tools/ui/retained_mp_menus.py` measures every
-language's labels in the shipped Marine face, sizes the card to the widest
-strip plus a 2 % margin, today 890 dp (Hungarian), and fails the build if a
-language would need more than a 4:3 view allows (928 dp, 16 dp from each
-side). Each tab is as wide as its label in the running language, and the tabs
-share the remainder.
+language's fitted strip. Neither card's prompt bar fits the specified widths
+either. `tools/ui/retained_mp_menus.py` measures every language's labels in
+the shipped faces and sizes each card to the wider of its widest tab strip
+(plus a 2 % margin) and its widest prompt bar (plus 4 dp) inside the card's
+insets: today Escape is 907 dp and Welcome 873 dp, both set by the Spanish,
+German and Ukrainian prompt bars. The build fails if a language would need
+more than a 4:3 view allows (928 dp, 16 dp from each side). Each tab is as
+wide as its label in the running language, and the tabs share the remainder.
+The Welcome card keeps Escape's 477 dp height instead of its specified 402 dp,
+since its Players and Server pages need the room.
 
 ## Input
 
@@ -214,6 +259,7 @@ The card's verbs are the stock menu's own commands with its selection sound:
 | `mpSelectPlayer` | `play main_menu_selection ; retained select <client>`, by `card.client` |
 | `mpMute` | `play main_menu_selection ; retained mute <client>`, by `card.client` |
 | `mpFriend` | `play main_menu_selection ; retained friend <client>`, by `card.client` |
+| `mpWelcomeAction` | `play main_menu_selection ; retained welcome <slot>`, by `card.welcome_action` |
 
 A row records its player's client number before it asks, and Mute and Friend
 record the selected player's. The session refuses a client outside the
@@ -252,6 +298,11 @@ without affecting players:
 - **Motion (D6).** No card exit motion; reduced motion as above.
 - **Tabs per map (D18).** The card remembers its tab while a map runs and
   starts each map on Team.
+- **Welcome (D10).** Welcome while `ui_joined` is 0 and the player spectates,
+  or while the join offer stands; it re-offers after every map change, as the
+  join card did.
+- **Card sizes.** Each card fits its widest prompt bar; Welcome takes
+  Escape's height (above).
 - **Players page.** Rows run 14 to 24 dp, tighter than the held scoreboard,
   so sixteen players fit beside the statistics without scrolling; the lists
   hold their order while the menu stays open; Mute and Friend refuse the
@@ -338,6 +389,38 @@ The Players page adds:
 Evidence: `.tmp/ui/retained-mp-players/validation-evidence.json`, SHA-256
 `6ef9ecdea0cd0d453a3485185bdffa0562cd091d703969aa96244f2febccefb6`.
 
+The Welcome card adds:
+
+- gate cases: the game naming the card for each opening, the Welcome card
+  covering and latching its variant, `mpWelcomeAction` reaching the game as
+  `retained welcome <slot>` and closing the menu when the game acts, slots
+  outside the four refused, the Settings hand-off pressing the join panel's
+  button while the offer stands and the menu column's afterwards, the Join
+  page having no stock page, Escape again once the player answers, each
+  card's own gate, and fallbacks holding for the opening; pins for the game's
+  variant rule, the cover allowing the join offer and dropping its blur, the
+  action runner closing the menu, both cards' missing pages and stock
+  buttons, and four Join slots in the session, the game and the document;
+- native checks of the card: centered at Escape's height inside a 4:3 view,
+  Auto join focused, the team cards side by side, a refused card dimmed with
+  its lock and reason and shaking instead of asking, an open card and Auto
+  join asking with their slots, deathmatch's ranked leaders with Join game
+  focused, Tourney's arenas, the Players rows without choices, the Settings
+  hand-off, Back, Leave Server asking first and the prompt bar inside the
+  card;
+- the generator fitting each card to its widest tab strip and prompt bar in
+  every language, and a gate audit that measures each card's prompt bar again
+  from the generated document (the native test's host cannot see real text
+  widths);
+- live probes with bots and `ui_autoJoin 0`: Team DM in English (the join
+  offer opening Welcome, a balance refusal, Back, the menu key opening
+  Welcome again, Auto join, then Escape), DM in German on Vulkan, Tourney in
+  French with the Settings hand-off after Back, and CTF with its flag states
+  and the hand-off during the offer.
+
+Evidence: `.tmp/ui/retained-mp-welcome/validation-evidence.json`, SHA-256
+`1620a52f64b2971dabf170c00bbe91d50b1041ccdbad74a66e67feaa503d0887`.
+
 The card's acceptance continues under `FLOW-046`.
 
 ## Known limitations
@@ -360,8 +443,10 @@ The card's acceptance continues under `FLOW-046`.
   server past sixteen clients clips the last rows.
 - Left and right move focus between the lists and the statistics; they do not
   switch tabs as section 14.18 asks (decision D2 is open).
-- There is no Welcome card: the connect-time join offer keeps the stock join
-  card.
+- The Welcome card's Join page has no Watch for Tourney's arenas and no
+  place in the queue (neither has a model yet), and its team cards carry no
+  faction mark.
+- The Welcome card's Settings page hands off to the join panel's settings.
 - The prompt bar shows keyboard keycaps only; controller glyphs wait for the
   glyph families (`INP-011`).
 - Narrower views than 4:3 (5:4, portrait) do not scale the card down yet

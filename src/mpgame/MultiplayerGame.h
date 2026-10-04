@@ -381,6 +381,10 @@ public:
 	bool			RetainedMenuCovered( void ) const { return retainedMenuCovered; }
 	// The card's commands ("retained ..."); true when the menu closes.
 	bool			HandleRetainedMenuCommand( const idCmdArgs &args, int &icmd );
+	// Which card the menu opens: Welcome while the player has not answered the
+	// join offer (the offer stands, or ui_joined is still 0 while spectating),
+	// Escape otherwise.
+	bool			RetainedMenuWelcome( void );
 	// What joining a team would refuse, as the stock CheckTeamBalance tells
 	// it ("#str_202039" to "#str_202042"), or NULL; and the team "join auto"
 	// picks.
@@ -1158,7 +1162,7 @@ private:
 	idDict			retainedMenuPublished;
 	// The Team page's three action slots (section 14.18), derived from the
 	// local player's state each time they are published or chosen.
-	enum retainedTeamAction_t { RTA_NONE, RTA_JOIN_MARINE, RTA_JOIN_STROGG, RTA_JOIN_AUTO, RTA_SPECTATE, RTA_READY };
+	enum retainedTeamAction_t { RTA_NONE, RTA_JOIN_MARINE, RTA_JOIN_STROGG, RTA_JOIN_AUTO, RTA_SPECTATE, RTA_READY, RTA_TOURNEY };
 	struct retainedTeamSlot_t {
 		retainedTeamAction_t	action;
 		idStr					label, reason, detail;
@@ -1166,6 +1170,15 @@ private:
 	};
 	static const int RETAINED_TEAM_SLOTS = 3;
 	void			RetainedTeamSlots( retainedTeamSlot_t slots[ RETAINED_TEAM_SLOTS ] );
+	// The Welcome card's Join page (section 14.18): in team modes the two team
+	// cards, Auto join and Spectate; in Tourney joining or leaving the
+	// tournament; elsewhere Join game and Spectate.
+	static const int RETAINED_WELCOME_SLOTS = 4;
+	void			RetainedWelcomeSlots( retainedTeamSlot_t slots[ RETAINED_WELCOME_SLOTS ] );
+	void			PublishRetainedWelcome( idUserInterface *card, bool &changed );
+	// Takes a card action as the stock buttons take it and closes the menu;
+	// false for an action that does nothing.
+	bool			RunRetainedAction( retainedTeamAction_t action );
 	bool			PublishRetainedValue( idUserInterface *card, const char *key, const char *value );
 	// The Players page's lists: the player's own team (Marines while
 	// spectating, everyone outside team modes), the other team and the
