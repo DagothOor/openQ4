@@ -417,7 +417,8 @@ static bool RB_ARB2_BindPackedMD5RStageVertexData(
 	int vertexFormatIndex,
 	bool needsTexCoord0,
 	bool needsNormals,
-	bool needsTangents ) {
+	bool needsTangents,
+	bool needsVertexColor ) {
 	if ( vertexBuffer.numVertices <= 0 || vertexBuffer.positions.Num() != vertexBuffer.numVertices ) {
 		return false;
 	}
@@ -457,6 +458,23 @@ static bool RB_ARB2_BindPackedMD5RStageVertexData(
 		GL_FLOAT,
 		sizeof( idVec4 ),
 		vertexBuffer.positions.Ptr()->ToFloatPtr() );
+
+	// Every md5r stage program reads vertex.color. The caller's classic colour
+	// array is an idDrawVert view of the ambient cache, and a stage after an
+	// earlier packed one built it while buffer 0 was bound, so its VBO offset
+	// became a CPU address and the draw faulted in the driver. Feed the packed
+	// colours; otherwise the program reads the current colour, white when the
+	// stage wants vertex colour that this buffer does not carry.
+	const bool hasVertexColors = vertexBuffer.diffuseColors.Num() == vertexBuffer.numVertices;
+	if ( needsVertexColor && hasVertexColors ) {
+		glColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( dword ), reinterpret_cast<const void *>( vertexBuffer.diffuseColors.Ptr() ) );
+		glEnableClientState( GL_COLOR_ARRAY );
+	} else {
+		glDisableClientState( GL_COLOR_ARRAY );
+		if ( needsVertexColor ) {
+			glColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
+		}
+	}
 
 	if ( needsTexCoord0 ) {
 		glVertexAttribPointerARB( 8, 2, GL_FLOAT, GL_FALSE, sizeof( idVec4 ), vertexBuffer.texCoords[0].Ptr()->ToFloatPtr() );
@@ -1220,9 +1238,10 @@ void RB_ARB2_PrepareStageTexturing( const shaderStage_t *pStage, const drawSurf_
 		break;
 	}
 
+	const bool needsVertexColor = !fillingDepth && pStage->vertexColor != SVC_IGNORE;
 	if ( stageVertexProgram == PROG_INVALID
 		|| !RB_ARB2_CanDrawPackedMD5RStageBatches( surf, vertexFormatIndex )
-		|| !RB_ARB2_BindPackedMD5RStageVertexData( *drawVertexBuffer, vertexFormatIndex, needsTexCoord0, needsNormals, needsTangents ) ) {
+		|| !RB_ARB2_BindPackedMD5RStageVertexData( *drawVertexBuffer, vertexFormatIndex, needsTexCoord0, needsNormals, needsTangents, needsVertexColor ) ) {
 		return;
 	}
 

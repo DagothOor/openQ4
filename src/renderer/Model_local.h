@@ -185,6 +185,10 @@ public:
 	void						DeleteSurfacesWithNegativeId( void );
 	bool						FindSurfaceWithId( int id, int &surfaceNum );
 
+	// createBackSides false finishes surfaces that already carry their back
+	// sides, such as MD5R surfaces rebuilt 1:1 from packed meshes
+	void						FinishSurfaces( bool createBackSides );
+
 public:
 	idList<modelSurface_t>		surfaces;
 	idBounds					bounds;

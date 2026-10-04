@@ -252,6 +252,29 @@
   sky particles. `renderer_md5r_conversion_contract.py` pins the converter,
   the skinned sil-trace copy and the packed shadow program choice.
 
+- [x] Make static models converted by the opt-in `r_convertStaticToMD5R` load
+  and draw like the originals. The report that Air Defense 1 never finished
+  loading with it was not a slow converter. Its 127 static models convert in
+  about 0.3 s in a debug build, plus about 1 s of collision extraction that
+  the unconverted load pays later anyway. The 2026-10-03 run that hit its
+  240 s limit was four to six times slow even in phases with no MD5R work.
+  The first frame did crash the OpenGL driver, though, and in a hidden-window
+  run the crash dialog leaves the client waiting. A packed stage left buffer
+  0 bound, so the next stage's classic colour array took its ambient-cache
+  offset as a CPU address, and the packed stage draw never gave the md5r
+  stage programs their vertex colours. Each stage now rebinds the ambient
+  cache, and the packed stage feeds its own colours. Converted models also
+  drew their two-sided lit surfaces twice: the converter packs the back-side
+  copies the source model made, and surface generation then made more.
+  Surfaces now stay 1:1 with the packed meshes, as in retail. On Air Defense 1
+  at a fixed game tick, converted and unconverted frames match on OpenGL and
+  Vulkan apart from particles, and `r_showLightCount` over the pod-crash roof
+  matches where it doubled before. In three alternating cold-load pairs on a
+  busy machine (debug build), whole loads swung between 67 and 124 s in
+  either mode, while the model and collision precache, where conversion
+  happens, stayed within a second of the unconverted run.
+  `renderer_md5r_conversion_contract.py` pins both fixes.
+
 - [x] Turn shadow maps on in the `quality` and `ultra` performance presets and
   default projected-light filtering to PCSS-lite (`r_shadowMapFilterMode 2`)
   with a 2-texel minimum radius (`r_shadowMapFilterRadius 2.0`). Lower presets

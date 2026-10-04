@@ -16,6 +16,14 @@ The converter now packs MD5 meshes the way retail does: prim batches of at most
 stream, the sil-trace view sharing it, a turbo shadow stream of two vertices
 per sil-trace vertex, and silhouette edges renumbered per batch with cross-batch
 edges left dangling on both sides.
+
+r_convertStaticToMD5R crashed the OpenGL driver on the first frame. A packed
+stage left buffer 0 bound, so the next stage's classic colour array took its
+ambient-cache offset as a CPU address, and the packed stage draw never fed
+md5rstdtex.vp the colours it reads. Converted static models also drew their
+two-sided lit surfaces twice: the converter packs the back-side copies the
+source's FinishSurfaces made, and GenerateStaticSurfaces then made more.
+Retail keeps static surfaces 1:1 with the packed meshes.
 """
 
 from __future__ import annotations
@@ -245,6 +253,73 @@ def validate_backend() -> None:
     )
 
 
+def validate_static_conversion(source: str, local: str) -> None:
+    model = read("src/renderer/Model.cpp")
+    require(
+        compact(function_body(model, "void idRenderModelStatic::FinishSurfaces()")),
+        "void idRenderModelStatic::FinishSurfaces() { FinishSurfaces( true ); }",
+        "the virtual FinishSurfaces still makes back sides for every other model",
+    )
+    finish = function_body(model, "void idRenderModelStatic::FinishSurfaces( bool createBackSides )")
+    require_ordered(
+        finish,
+        (
+            "for ( i = 0 ; i < numOriginalSurfaces && createBackSides ; i++ ) {",
+            "if ( surf->shader->ShouldCreateBackSides() ) {",
+            "R_ReverseTriangles( newTri );",
+            "R_CleanupTriangles(",
+        ),
+        "FinishSurfaces( false ) skips only the back-side copies",
+    )
+    require(local, "void\t\t\t\t\t\tFinishSurfaces( bool createBackSides );", "Model_local.h FinishSurfaces overload")
+
+    generate = function_body(source, "bool rvRenderModelMD5R::GenerateStaticSurfaces()")
+    require(generate, "FinishSurfaces( false );", "static MD5R surfaces stay 1:1 with the packed meshes")
+    forbid(generate, "FinishSurfaces();", "GenerateStaticSurfaces never recreates back sides")
+
+    arb2 = read("src/renderer/draw_arb2.cpp")
+    bind = function_body(arb2, "static bool RB_ARB2_BindPackedMD5RStageVertexData(")
+    require(compact(bind), "bool needsTangents, bool needsVertexColor ) {", "the packed stage bind owns the colour array")
+    require_ordered(
+        bind,
+        (
+            "idVertexCache::BindArrayBuffer( 0 );",
+            "if ( needsVertexColor && hasVertexColors ) {",
+            "glColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( dword ), reinterpret_cast<const void *>( vertexBuffer.diffuseColors.Ptr() ) );",
+            "glEnableClientState( GL_COLOR_ARRAY );",
+            "} else {",
+            "glDisableClientState( GL_COLOR_ARRAY );",
+        ),
+        "packed stages read the packed colours, never the caller's classic colour array",
+    )
+    prepare = function_body(arb2, "void RB_ARB2_PrepareStageTexturing(")
+    require_ordered(
+        prepare,
+        (
+            "const bool needsVertexColor = !fillingDepth && pStage->vertexColor != SVC_IGNORE;",
+            "RB_ARB2_BindPackedMD5RStageVertexData( *drawVertexBuffer, vertexFormatIndex, "
+            "needsTexCoord0, needsNormals, needsTangents, needsVertexColor )",
+        ),
+        "the stage's vertex-colour mode decides the packed colour source",
+    )
+
+    common = read("src/renderer/draw_common.cpp")
+    passes = function_body(common, "void RB_STD_T_RenderShaderPasses(")
+    require_ordered(
+        passes,
+        (
+            "for ( stage = 0; stage < stageCount ; stage++ ) {",
+            "if ( R_TriHasPrimBatchMesh( tri ) ) {",
+            "ac = (idDrawVert *)vertexCache.Position( tri->ambientCache );",
+            "glVertexPointer( 3, GL_FLOAT, sizeof( idDrawVert ), RB_DrawVertAttributePointer( ac, offsetof( idDrawVert, xyz ) ) );",
+            "resetTexCoords = true;",
+            "if ( resetTexCoords ) {",
+            "RB_SetStageVertexColorPointer( surf, stage, ac );",
+        ),
+        "each stage rebinds the ambient cache before deriving classic pointers from ac",
+    )
+
+
 def validate_registration() -> None:
     validator = read("tools/validation/openq4_validate.py")
     require(validator, '"renderer_md5r_conversion_contract.py"', "openq4_validate.py")
@@ -261,6 +336,7 @@ def main() -> None:
     validate_converter(source, local)
     validate_cache(source)
     validate_backend()
+    validate_static_conversion(source, local)
     validate_registration()
     print("renderer_md5r_conversion_contract: ok")
 

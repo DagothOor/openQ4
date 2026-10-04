@@ -188,7 +188,7 @@ def validate_static_surface_gate() -> None:
     require_order(
         function,
         (
-            "FinishSurfaces();",
+            "FinishSurfaces( false );",
             "if ( R_MD5R_UsePackedRuntimeSurfaces() )",
             "tri->primBatchMesh =",
         ),

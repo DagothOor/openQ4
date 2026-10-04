@@ -1961,6 +1961,10 @@ Extends the bounds of deformed surfaces so they don't cull incorrectly at screen
 ================
 */
 void idRenderModelStatic::FinishSurfaces() {
+	FinishSurfaces( true );
+}
+
+void idRenderModelStatic::FinishSurfaces( bool createBackSides ) {
 	int			i;
 	int			totalVerts, totalIndexes;
 
@@ -2013,7 +2017,7 @@ void idRenderModelStatic::FinishSurfaces() {
 	// It is better to create completely separate surfaces, rather than
 	// add vertexes and indexes to the existing surface, because the
 	// tangent generation wouldn't like the acute shared edges
-	for ( i = 0 ; i < numOriginalSurfaces ; i++ ) {
+	for ( i = 0 ; i < numOriginalSurfaces && createBackSides ; i++ ) {
 		const modelSurface_t	*surf = &surfaces[i];
 
 		if ( surf->shader->ShouldCreateBackSides() ) {

@@ -4760,7 +4760,10 @@ bool rvRenderModelMD5R::GenerateStaticSurfaces() {
 	}
 
 	geometrySectionsSkipped = ( skippedSurfaces > 0 );
-	FinishSurfaces();
+	// Surfaces stay 1:1 with the packed meshes, as in retail. A converted
+	// static or proc model already packed the back-side copies its source's
+	// FinishSurfaces made, so making more drew two-sided lit surfaces twice.
+	FinishSurfaces( false );
 
 #if defined( _MD5R_SUPPORT ) || defined( Q4SDK_MD5R )
 	if ( R_MD5R_UsePackedRuntimeSurfaces() ) {
