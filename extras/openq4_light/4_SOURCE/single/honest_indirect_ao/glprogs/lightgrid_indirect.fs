@@ -81,7 +81,7 @@ vec3 DecodeBakedIrradiance( vec3 value ) {
 // stays linear up to kAlbedoKnee and rolls off smoothly towards kAlbedoCap;
 // colour is kept. Direct light is not affected. kAlbedoCap 0 = off.
 const float kAlbedoKnee = 0.25;
-const float kAlbedoCap = 0.4;
+const float kAlbedoCap = 0.0;  // 0 = off (physical); 0.4 = tame light-coloured models
 
 vec3 CapAlbedo( vec3 a ) {
 	if ( kAlbedoCap <= 0.0 ) {
