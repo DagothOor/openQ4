@@ -131,6 +131,13 @@ after you the way the stick would move it: it takes a moment to catch up,
 and while you hold the stick your steps stay leans, up to
 `vr_headOffsetLimit` from your character.
 
+Crouch in your room and your character crouches too, so you can duck
+behind cover and under low openings: it happens once your head is about
+40 cm below where you recentred. Your view stays where your head really is
+rather than dropping a second time, and stays low enough that you can't
+see over what your crouching character hides behind. The B button still
+crouches you too, lowering your view, which is handy when seated.
+
 You can change these settings:
 
 | Setting | Default | What it does |
@@ -142,6 +149,7 @@ You can change these settings:
 | `vr_stickDeadzone` | 0.2 | thumbstick deadzone |
 | `vr_comfortVignette` | 0.5 | how strongly the comfort vignette narrows your view, from 0 (off) to 1 (a black edge around a 60 degree clear centre) |
 | `vr_roomScale` | 1 | 1 your character follows your steps about the room, 0 it stays put |
+| `vr_physicalCrouch` | 1 | 1 crouching in your room crouches your character, 0 only the button does |
 | `vr_headOffsetLimit` | 16 | how far you can lean from your character before the view stops (game units) |
 
 Use `vr_recenter` to make your current position and direction the front. It

@@ -413,6 +413,8 @@ public:
 	idVec3					firstPersonViewOrigin;
 	idMat3					firstPersonViewAxis;
 	int						presentationViewTime;
+	// openQ4 VR: the body crouched by the button, until it stands again
+	mutable bool			vrButtonCrouch;
 	bool					presentationCanInterpolate;
 	idVec3					presentationPrevViewOrigin;
 	idMat3					presentationPrevViewAxis;
@@ -565,6 +567,9 @@ public:
 	bool					GetVRAimMarker( vrAimMarker_t &marker ) const;
 	// Room scale: walks the body after the tracked head (vr_roomScale).
 	void					UpdateVRRoomScale( void );
+	// How far the tracking origin sits above the body's eye: a crouch the
+	// tracked head made must not lower the view again.
+	float					VRCrouchLift( const vrFrameState_t &frame ) const;
 	// A pulse in the local player's weapon hand, other hand, or both.
 	void					VRVibrate( bool weaponHand, bool otherHand, float amplitude, int durationMsec ) const;
  	void					OffsetThirdPersonView( float angle, float range, float height, bool clip );

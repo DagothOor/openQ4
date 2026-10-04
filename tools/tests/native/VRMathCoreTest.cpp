@@ -201,6 +201,14 @@ static void TestRoomScaleWalkInput( void ) {
 	Check( Near( forward, 0.0f, 0.0001f ) && Near( right, 0.5f, 0.0001f ), "the walk turns into the aim frame" );
 }
 
+static void TestPhysicalCrouch( void ) {
+	Check( !VR_PhysicalCrouch( 0.1f, false ), "a nod is no crouch" );
+	Check( !VR_PhysicalCrouch( 0.35f, false ), "a stoop above the line stays standing" );
+	Check( VR_PhysicalCrouch( 0.45f, false ), "a head 45 cm down crouches" );
+	Check( VR_PhysicalCrouch( 0.35f, true ), "rising a little keeps the crouch" );
+	Check( !VR_PhysicalCrouch( 0.25f, true ), "rising past 30 cm stands again" );
+}
+
 static void TestTwoHandedAim( void ) {
 	const float upm = 40.0f;	// units per metre
 	const vrVec3_t palm = VR_Vec3( 10.0f, -8.0f, -14.0f );
@@ -293,6 +301,7 @@ int main() {
 	TestEyeImage();
 	TestRotationBetween();
 	TestTwoHandedAim();
+	TestPhysicalCrouch();
 	TestRoomScaleWalkInput();
 	TestComfortVignette();
 	TestZoomScale();

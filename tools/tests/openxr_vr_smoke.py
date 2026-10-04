@@ -29,6 +29,8 @@ Checks:
 - room scale: half a metre's step forward walks the body after the head, so
   the head ends up within a few units of the tracking origin, while with
   vr_roomScale 0 the same step leaves the whole distance as a lean;
+- physical crouch: a head 0.5 m down crouches the body (its eye drops by the
+  crouch) and raising it stands the body again;
 - a stick snap turn turns the body by vr_snapTurnAngle and a controller
   trigger press reaches the binding system;
 - the controller's menu button opens the pause menu on an opaque, world-locked
@@ -173,6 +175,8 @@ def main(argv: list[str] | None = None) -> None:
         f"when {marker('room_walk')} head 0 0 0 0 1.6 -0.5",
         f"when {marker('room_lean')} head 0 0 0 0 1.6 -1.0",
         f"when {marker('room_back')} head 0 0 0 0 1.6 0",
+        f"when {marker('crouch')} head 0 0 0 0 1.1 0",
+        f"when {marker('rise')} head 0 0 0 0 1.6 0",
         f"when {marker('turn')} head 40 0 0",
         f"when {marker('turned')} capture {profile / 'xr_turned'}",
         f"when {marker('snap')} head 0 0 0",
@@ -229,6 +233,10 @@ def main(argv: list[str] | None = None) -> None:
         "vr_roomScale 1", "condump vr_marker_room_walk.txt", "waitMsec 1200", "echo VR_ROOM_WALKED", "vr_status",
         "vr_roomScale 0", "condump vr_marker_room_lean.txt", "waitMsec 1000", "echo VR_ROOM_LEANED", "vr_status",
         "condump vr_marker_room_back.txt", "waitMsec 600", "vr_recenter", "vr_roomScale 1", "waitMsec 600",
+        # physical crouch: a head 0.5 m down crouches the body, and rising stands it
+        "echo VR_STANDING", "getviewpos", "condump vr_marker_crouch.txt", "waitMsec 1500",
+        "echo VR_CROUCHED", "getviewpos", "condump vr_marker_rise.txt", "waitMsec 1500",
+        "echo VR_RISEN", "getviewpos",
         "condump vr_marker_turn.txt", "waitMsec 700",
         "condump vr_marker_turned.txt", "waitMsec 700",
         "echo VR_SNAP_BEFORE", "vr_status",
@@ -382,6 +390,16 @@ def main(argv: list[str] | None = None) -> None:
         zoom_alpha = zoom_hud.convert("RGBA").getchannel("A")
         zoom_covered = sum(zoom_alpha.histogram()[16:]) / float(zoom_hud.width * zoom_hud.height)
     assert zoom_covered < 0.2, f"the zoomed HUD carries a head-locked scope picture ({zoom_covered:.3f} covered)"
+
+    # physical crouch: the body's eye drops by the crouch (68 to 32 units) and comes back
+    def eye_height(after: str) -> float:
+        found = re.search(r"\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)\s+-?\d", text.partition(after)[2])
+        assert found, f"getviewpos after {after} printed no view position"
+        return float(found.group(3))
+    standing, crouched, risen = eye_height("VR_STANDING"), eye_height("VR_CROUCHED"), eye_height("VR_RISEN")
+    assert 30.0 < standing - crouched < 42.0, \
+        f"a head 0.5 m down should crouch the body ({standing:.1f} to {crouched:.1f})"
+    assert abs(risen - standing) < 3.0, f"raising the head should stand the body again ({standing:.1f}, {risen:.1f})"
 
     # a shot pulses the weapon hand, and only it (a hit would pulse both, for 90 ms)
     pulses = [e for e in events if e.get("event") == "haptic" and e.get("duration_ns") == 40_000_000]

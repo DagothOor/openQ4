@@ -34,6 +34,7 @@ extern idCVar vr_weaponOffsetY;
 extern idCVar vr_weaponOffsetZ;
 extern idCVar vr_weaponPitch;
 extern idCVar vr_twoHanded;
+extern idCVar vr_physicalCrouch;
 extern idCVar vr_roomScale;
 extern idCVar vr_hapticStrength;
 extern idCVar vr_aimLaser;

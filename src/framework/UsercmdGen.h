@@ -57,6 +57,9 @@ const int BUTTON_TOURNEY = BIT(7);
 // twhitaker: strafe
 const int BUTTON_STRAFE = BIT(8);
 const int BUTTON_WEAPONWHEEL = BIT(9);
+// openQ4 VR: the tracked head crouched (vr_physicalCrouch). It crouches the
+// body like a held crouch, and tells the game the view must not drop again.
+const int BUTTON_VRCROUCH = BIT(10);
 // RAVEN END
 
 // usercmd_t->impulse commands

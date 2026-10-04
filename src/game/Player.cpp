@@ -1740,6 +1740,7 @@ idPlayer::idPlayer
 ==============
 */
 idPlayer::idPlayer() {
+	vrButtonCrouch = false;
 	memset( &usercmd, 0, sizeof( usercmd ) );
 
 	alreadyDidTeamAnnouncerSound = false;
@@ -13276,6 +13277,7 @@ bool idPlayer::GetVRWeaponTransform( idVec3 &origin, idMat3 &axis, bool presenta
 		idMat3 eyeAxis;
 		GetPresentationViewPos( eyeOrigin, eyeAxis );
 	}
+	eyeOrigin.z += VRCrouchLift( frame );
 	// the gun sits in the hand the way its own model holds it
 	idVec3 barrel;
 	idVec3 grip;
@@ -13300,14 +13302,16 @@ bool idPlayer::GetVRAimOrigin( idVec3 &origin ) const {
 	}
 	vrPose_t pose = aim;
 	pose.origin += VR_HeadOffsetCorrection( frame );
+	idVec3 eyeOrigin = firstPersonViewOrigin;
+	eyeOrigin.z += VRCrouchLift( frame );
 	idVec3 handOrigin;
 	idMat3 handAxis;
-	VR_PoseToWorld( pose, firstPersonViewOrigin, trackingYaw, handOrigin, handAxis );
+	VR_PoseToWorld( pose, eyeOrigin, trackingYaw, handOrigin, handAxis );
 
 	// a hand reaching through a wall must not fire from behind it
 	trace_t trace;
-	gameLocal.TracePoint( this, trace, firstPersonViewOrigin, handOrigin, MASK_SHOT_RENDERMODEL, this );
-	origin = trace.fraction < 1.0f ? firstPersonViewOrigin + ( trace.endpos - firstPersonViewOrigin ) * 0.9f : handOrigin;
+	gameLocal.TracePoint( this, trace, eyeOrigin, handOrigin, MASK_SHOT_RENDERMODEL, this );
+	origin = trace.fraction < 1.0f ? eyeOrigin + ( trace.endpos - eyeOrigin ) * 0.9f : handOrigin;
 	return true;
 }
 
@@ -13337,6 +13341,7 @@ bool idPlayer::GetVRAimMarker( vrAimMarker_t &marker ) const {
 	idVec3 eyeOrigin;
 	idMat3 eyeAxis;
 	GetPresentationViewPos( eyeOrigin, eyeAxis );
+	eyeOrigin.z += VRCrouchLift( frame );
 	const idVec3 headCorrection = VR_HeadOffsetCorrection( frame );
 	vrPose_t pose = aim;
 	pose.origin += headCorrection;
@@ -13405,6 +13410,36 @@ void idPlayer::UpdateVRRoomScale( void ) {
 	if ( walkedTracking.LengthSqr() > 0.0f ) {
 		vrSystem->ShiftTrackingOrigin( walkedTracking );
 	}
+}
+
+/*
+===============
+idPlayer::VRCrouchLift
+
+openQ4 VR: how far the tracking origin sits above the body's eye. A crouch the
+head made (BUTTON_VRCROUCH, vr_physicalCrouch) lowers the body, but the
+tracked head is already down, so the view must not drop again: the tracking
+origin stays at the standing eye height. It stays at most 16 units above the
+crouched eye, as far as vr_headOffsetLimit lets a head lean sideways, so a
+shallow real crouch cannot see over what hides the body. A crouch the button
+made lowers the view as on a flat screen, until the body stands again.
+===============
+*/
+float idPlayer::VRCrouchLift( const vrFrameState_t &frame ) const {
+	if ( usercmd.upmove < 0 ) {
+		vrButtonCrouch = true;
+	} else if ( EyeHeight() >= pm_normalviewheight.GetFloat() - 0.5f ) {
+		vrButtonCrouch = false;
+	}
+	if ( vrButtonCrouch || health <= 0 || spectating || IsInVehicle() ) {
+		return 0.0f;
+	}
+	const float drop = pm_normalviewheight.GetFloat() - EyeHeight();
+	if ( drop <= 0.0f ) {
+		return 0.0f;
+	}
+	const float headDown = frame.head.valid ? Max( 0.0f, -frame.head.origin.z ) : 0.0f;
+	return Min( drop, 16.0f + headDown );
 }
 
 /*

@@ -462,6 +462,8 @@ public:
 	// openQ4 VR: where the body stood at the last reported tic (room scale)
 	idVec3					vrRoomScaleOrigin;
 	bool					vrRoomScaleOriginValid;
+	// openQ4 VR: the body crouched by the button, until it stands again
+	mutable bool			vrButtonCrouch;
 	bool					presentationCanInterpolate;
 	idVec3					presentationPrevViewOrigin;
 	idMat3					presentationPrevViewAxis;
@@ -597,6 +599,9 @@ public:
 	// Where this frame's shot lands, for the weapon hand's aim marker. False
 	// when nothing is aimed by hand.
 	bool					GetVRAimMarker( vrAimMarker_t &marker ) const;
+	// How far the tracking origin sits above the body's eye: a crouch the
+	// tracked head made must not lower the view again.
+	float					VRCrouchLift( const vrFrameState_t &frame ) const;
 	// A pulse in the local player's weapon hand, other hand, or both.
 	void					VRVibrate( bool weaponHand, bool otherHand, float amplitude, int durationMsec ) const;
 	// Room scale: report a new tic's predicted progress to the tracking space.

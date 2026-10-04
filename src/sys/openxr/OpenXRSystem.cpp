@@ -344,6 +344,7 @@ private:
 	bool					roomScaleStickIdle;	// the locomotion stick rests (multiplayer room scale)
 	int						roomScaleWalkMsec;	// when the head last walked the body through the usercmd
 	bool					roomScaleWalking;	// a usercmd walk is under way (VR_RoomScaleWalkInput)
+	bool					physicalCrouch;		// the tracked head crouched (VR_PhysicalCrouch)
 };
 
 static idVRSystemOpenXR *	vrOpenXR = NULL;
@@ -485,6 +486,7 @@ idVRSystemOpenXR::idVRSystemOpenXR( void ) {
 	roomScaleStickIdle = true;
 	roomScaleWalkMsec = 0;
 	roomScaleWalking = false;
+	physicalCrouch = false;
 }
 
 /*
@@ -1688,8 +1690,14 @@ void idVRSystemOpenXR::SyncInput( float frameSeconds ) {
 	}
 	roomScaleStickIdle = stickIdle;
 
+	// physical crouch: the head well below where it was recentred crouches the body
+	const float unitsPerMetre = vr_worldScale.GetFloat();
+	const bool crouching = !menu && vr_physicalCrouch.GetBool() && frame.head.valid && unitsPerMetre > 0.0f
+		&& VR_PhysicalCrouch( -frame.head.origin.z / unitsPerMetre, physicalCrouch );
+
 	Sys_EnterCriticalSection( VR_INPUT_CRITICAL_SECTION );
 	inputValid = sessionRunning && sessionFocused;
+	physicalCrouch = crouching;
 	if ( bodyYawValid ) {
 		bodyYaw = VR_NormalizeDegrees180( bodyYaw + turn );
 	}
@@ -1720,6 +1728,7 @@ bool idVRSystemOpenXR::GetUsercmdInput( float otherYawDelta, float currentYaw, v
 	input.aimPitch = aimLocalPitch;
 	input.forward = moveForward;
 	input.right = moveRight;
+	input.crouch = physicalCrouch;
 	Sys_LeaveCriticalSection( VR_INPUT_CRITICAL_SECTION );
 	return true;
 }

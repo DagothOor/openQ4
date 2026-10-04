@@ -1267,6 +1267,9 @@ void idUsercmdGenLocal::MakeCurrent( void ) {
 			viewangles[ROLL] = 0.0f;
 			cmd.forwardmove = idMath::ClampChar( cmd.forwardmove + idMath::FtoiFast( vrInput.forward * 127.0f ) );
 			cmd.rightmove = idMath::ClampChar( cmd.rightmove + idMath::FtoiFast( vrInput.right * 127.0f ) );
+			if ( vrInput.crouch ) {
+				cmd.buttons |= BUTTON_VRCROUCH;
+			}
 		}
 	} else {
 		mouseDx = 0;

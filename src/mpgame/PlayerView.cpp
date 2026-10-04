@@ -999,6 +999,7 @@ void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const
 	idVec3 eyeOrigin;
 	idMat3 eyeAxis;
 	player->GetPresentationViewPos( eyeOrigin, eyeAxis );
+	eyeOrigin.z += player->VRCrouchLift( vrFrame );
 
 	// the listener follows the tracked head
 	if ( vrFrame.head.valid ) {

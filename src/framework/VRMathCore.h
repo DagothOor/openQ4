@@ -407,6 +407,20 @@ inline bool VR_RoomScaleWalkInput( float headX, float headY, float aimYawDegrees
 
 /*
 ====================
+Physical crouch
+
+The tracked head lowered well below where it was recentred crouches the
+body: from 0.4 m down, and it stands again above 0.3 m, so a head hovering
+near the line does not flicker between the two. headDropMetres is positive
+downwards.
+====================
+*/
+inline bool VR_PhysicalCrouch( float headDropMetres, bool crouching ) {
+	return crouching ? headDropMetres > 0.3f : headDropMetres > 0.4f;
+}
+
+/*
+====================
 Two-handed aim
 
 The off hand steadies the gun when its palm closes in front of the weapon

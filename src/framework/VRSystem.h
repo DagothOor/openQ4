@@ -93,6 +93,7 @@ typedef struct vrUsercmdInput_s {
 	float					aimPitch;		// usercmd pitch, degrees (positive looks down)
 	float					forward;		// locomotion, -1..1, in the aim frame
 	float					right;
+	bool					crouch;			// the tracked head crouched (vr_physicalCrouch)
 } vrUsercmdInput_t;
 
 class idVRSystem {

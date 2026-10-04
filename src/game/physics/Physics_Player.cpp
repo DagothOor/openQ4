@@ -1166,7 +1166,8 @@ void idPhysics_Player::CheckDuck( void ) {
 		maxZ = pm_deadheight.GetFloat();
 	} else {
 		// stand up when up against a ladder
-		if ( command.upmove < 0 && !ladder ) {
+		// openQ4 VR: a head crouched in the room crouches the body too
+		if ( ( command.upmove < 0 || ( command.buttons & BUTTON_VRCROUCH ) != 0 ) && !ladder ) {
 			// duck
 			current.movementFlags |= PMF_DUCKED;
 		} else {

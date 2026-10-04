@@ -65,7 +65,7 @@
   stereo-correct laser dot (optional beam) where controller-aimed shots land,
   controller haptics on each shot and hit, room scale (the body walks after
   the head: directly with collision in single player, through the usercmd in
-  multiplayer), weapons held at full size by each
+  multiplayer), physical crouch, weapons held at full size by each
   model's own grip with the barrel along the aim (measured from its idle
   pose; every stock weapon checked; earlier builds' archived offsets reset
   once), two-handed aim with the off hand on the foregrip, a comfort

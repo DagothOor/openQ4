@@ -64,6 +64,8 @@ idCVar vr_weaponPitch( "vr_weaponPitch", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_
 	"view weapon pitch relative to the controller's aim, in degrees (positive tilts down)", -60.0f, 60.0f );
 idCVar vr_comfortVignette( "vr_comfortVignette", "0.5", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
 	"comfort vignette while the stick moves or smoothly turns you: 0 off, up to 1 for a black edge and a 60 degree clear centre", 0.0f, 1.0f );
+idCVar vr_physicalCrouch( "vr_physicalCrouch", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL,
+	"1 = crouching in your room (your head 40 cm below where you recentred) crouches your character" );
 idCVar vr_twoHanded( "vr_twoHanded", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL,
 	"1 = squeezing the off-hand grip on the gun's foregrip, in front of the weapon hand, holds the gun in both hands; elsewhere that squeeze opens the weapon wheel" );
 idCVar vr_roomScale( "vr_roomScale", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL,

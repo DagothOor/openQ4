@@ -181,7 +181,7 @@ def check_documents() -> None:
             raise AssertionError(f"missing {relative}")
     guide = read("docs/user/vr.md")
     for cvar in ("vr_enable", "vr_aimMode", "vr_aimLaser", "vr_hapticStrength", "vr_turnMode", "vr_recenter",
-                 "vr_restart", "vr_twoHanded", "vr_comfortVignette"):
+                 "vr_restart", "vr_twoHanded", "vr_comfortVignette", "vr_physicalCrouch"):
         require(guide, cvar, "the VR guide documents the settings players use")
 
 
