@@ -33,6 +33,8 @@ Checks:
   vr_roomScale 0 the same step leaves the whole distance as a lean;
 - physical crouch: a head 0.5 m down crouches the body (its eye drops by the
   crouch) and raising it stands the body again;
+- the off-hand stick walks the body where the head faces, and with
+  vr_moveDirection 1 where the off hand points;
 - a stick snap turn turns the body by vr_snapTurnAngle and a controller
   trigger press reaches the binding system;
 - the controller's menu button opens the pause menu on an opaque, world-locked
@@ -85,6 +87,9 @@ FOREGRIP_POSE = "0.2 1.248 -0.645 0 0 0"
 # Open ground ahead of airdefense1's start for a spawned walker; airdefense1
 # has walkers of its own, so it is precached.
 VEHICLE_ORIGIN = "10094 -6825 60"
+# Where the stick walks start: the smoke's standing spot near airdefense1's
+# start, facing the battlefield (x y z yaw, as getviewpos prints it).
+STICK_WALK_POSE = "10310.89 -6950.34 6.96 150.7"
 
 
 def read_events(path: Path) -> list[dict]:
@@ -103,6 +108,26 @@ def body_yaws(text: str) -> list[float]:
 
 def yaw_delta(before: float, after: float) -> float:
     return (after - before + 180.0) % 360.0 - 180.0
+
+
+def frame_guarded(commands: list[str]) -> list[str]:
+    """Lets frames run after every real-time wait and before every marker.
+
+    The runtime acts on the frame after a marker appears, and the script's
+    waits are in real time. A busy machine (peers building and testing on it)
+    can drop the stereo world to a few frames a second or stall it for over a
+    second: one frame begun before a cvar change then reached a capture after
+    it (a "laser off" frame still showed the dot), and a 1.2 s wait passed
+    with no frame at all, so vr_status reported the head before it moved.
+    """
+    guarded = []
+    for command in commands:
+        if command.startswith("condump vr_marker_"):
+            guarded.append("wait 2")
+        guarded.append(command)
+        if command.startswith("waitMsec "):
+            guarded.append("wait 3")
+    return guarded
 
 
 def changed_box(before, after, threshold=48):
@@ -191,6 +216,11 @@ def main(argv: list[str] | None = None) -> None:
         f"when {marker('room_back')} head 0 0 0 0 1.6 0",
         f"when {marker('crouch')} head 0 0 0 0 1.1 0",
         f"when {marker('rise')} head 0 0 0 0 1.6 0",
+        f"when {marker('stick_head')} stick left 0 1",
+        f"when {marker('stick_head_stop')} stick left 0 0",
+        f"when {marker('offhand_left')} hand left -0.2 1.25 -0.35 90 0 0",
+        f"when {marker('stick_hand')} stick left 0 1",
+        f"when {marker('stick_hand_stop')} stick left 0 0",
         f"when {marker('turn')} head 40 0 0",
         f"when {marker('turned')} capture {profile / 'xr_turned'}",
         f"when {marker('snap')} head 0 0 0",
@@ -258,6 +288,18 @@ def main(argv: list[str] | None = None) -> None:
         "echo VR_STANDING", "getviewpos", "condump vr_marker_crouch.txt", "waitMsec 1500",
         "echo VR_CROUCHED", "getviewpos", "condump vr_marker_rise.txt", "waitMsec 1500",
         "echo VR_RISEN", "getviewpos",
+        # walking with the off-hand stick: where the head faces, then
+        # (vr_moveDirection 1) where the off hand points, 90 degrees left. It
+        # tests how the stick becomes movement, so both walks start from the
+        # same spot and facing (the smooth turn above ends wherever its timing
+        # leaves it) and fly in noclip, where neither slope nor rock bends them
+        "noclip", f"setviewpos {STICK_WALK_POSE}", "waitMsec 500",
+        "echo VR_STICK_HEAD", "getviewpos", "condump vr_marker_stick_head.txt", "waitMsec 600",
+        "condump vr_marker_stick_head_stop.txt", "waitMsec 600", "echo VR_STICK_HEAD_DONE", "getviewpos",
+        "vr_moveDirection 1", "condump vr_marker_offhand_left.txt", f"setviewpos {STICK_WALK_POSE}", "waitMsec 500",
+        "echo VR_STICK_HAND", "getviewpos", "condump vr_marker_stick_hand.txt", "waitMsec 600",
+        "condump vr_marker_stick_hand_stop.txt", "waitMsec 600", "echo VR_STICK_HAND_DONE", "getviewpos",
+        "vr_moveDirection 0", "noclip", f"setviewpos {STICK_WALK_POSE}", "waitMsec 500",
         "condump vr_marker_turn.txt", "waitMsec 700",
         "condump vr_marker_turned.txt", "waitMsec 700",
         "echo VR_SNAP_BEFORE", "vr_status",
@@ -292,8 +334,8 @@ def main(argv: list[str] | None = None) -> None:
         "echo VR_AFTER_EXIT", "vr_status", "vr_enable",
         "echo VR_SMOKE_COMPLETE", "quit",
     ]
-    (game / "openxr_vr_smoke.cfg").write_text("\n".join(commands) + "\n", encoding="utf-8")
-    (game / "openxr_vr_smoke_menu.cfg").write_text("\n".join(menu_commands) + "\n", encoding="utf-8")
+    (game / "openxr_vr_smoke.cfg").write_text("\n".join(frame_guarded(commands)) + "\n", encoding="utf-8")
+    (game / "openxr_vr_smoke_menu.cfg").write_text("\n".join(frame_guarded(menu_commands)) + "\n", encoding="utf-8")
 
     launches = json.loads((ROOT / ".vscode/launch.json").read_text(encoding="utf-8"))
     launch = next(c for c in launches["configurations"] if c["name"] == "(SP) Main menu — GL")
@@ -432,6 +474,26 @@ def main(argv: list[str] | None = None) -> None:
     assert 30.0 < standing - crouched < 42.0, \
         f"a head 0.5 m down should crouch the body ({standing:.1f} to {crouched:.1f})"
     assert abs(risen - standing) < 3.0, f"raising the head should stand the body again ({standing:.1f}, {risen:.1f})"
+
+    # the off-hand stick walks where the head faces, and with vr_moveDirection 1
+    # where the off hand points, here 90 degrees left of the facing
+    def walked(start: str, end: str) -> tuple[float, float]:
+        poses = []
+        for tag in (start, end):
+            found = re.search(r"\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)\s+(-?\d+(?:\.\d+)?)",
+                              text.partition(tag)[2])
+            assert found, f"getviewpos after {tag} printed no view position"
+            poses.append([float(found.group(i)) for i in (1, 2, 4)])
+        (x0, y0, facing), (x1, y1, _) = poses
+        heading = math.degrees(math.atan2(y1 - y0, x1 - x0))
+        return math.hypot(x1 - x0, y1 - y0), yaw_delta(facing, heading)
+    head_walk, head_off = walked("VR_STICK_HEAD", "VR_STICK_HEAD_DONE")
+    assert head_walk > 10.0, f"the stick barely walked the body ({head_walk:.1f} units)"
+    assert abs(head_off) < 20.0, f"the stick should walk where the head faces, walked {head_off:.0f} degrees off it"
+    hand_walk, hand_off = walked("VR_STICK_HAND", "VR_STICK_HAND_DONE")
+    assert hand_walk > 10.0, f"the stick barely walked the body with vr_moveDirection 1 ({hand_walk:.1f} units)"
+    assert abs(hand_off - 90.0) < 25.0, \
+        f"with vr_moveDirection 1 the stick should walk where the off hand points, 90 degrees left, not {hand_off:.0f}"
 
     # a shot pulses the weapon hand, and only it (a hit would pulse both, for 90 ms)
     pulses = [e for e in events if e.get("event") == "haptic" and e.get("duration_ns") == 40_000_000]
@@ -586,7 +648,8 @@ def main(argv: list[str] | None = None) -> None:
             image(f"xr_laser_{name}", eye).save(profile / f"xr_laser_{name}_{eye}.png")
     print(f"OpenXR VR smoke: PASS (eye difference {eye_difference:.2f}, head turn {turn_difference:.2f}, "
           f"HUD coverage {covered:.3f}, aim marker at {marker_depth:.2f} m, left hand's dot "
-          f"{min(left_handed_shift):.0f} px left, pointer at {px},{py}, "
+          f"{min(left_handed_shift):.0f} px left, stick walks {head_off:.0f} and {hand_off:.0f} degrees off the facing, "
+          f"pointer at {px},{py}, "
           f"walker cockpit turned {cockpit_turn:.1f}); evidence={profile}")
 
 

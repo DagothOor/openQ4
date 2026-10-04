@@ -104,7 +104,8 @@
   contract, `openxr_vr_smoke.py` and `openxr_vr_menu_smoke.py` pass against
   the in-tree OpenXR test runtime on Air Defense 1 (stereo parallax, head
   tracking, HUD alpha, snap turn, the aim dot fusing on the shot's path and
-  following the left controller when left-handed, a shot
+  following the left controller when left-handed, the stick walking where
+  the head faces or the off hand points, a shot
   pulsing the weapon hand, a room-scale step walking the body, trigger
   binding, a click on Resume with the window unfocused, a walker's cockpit
   turning 45 degrees after the head about a fixed eye, changing Laser Sight
