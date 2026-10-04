@@ -22,6 +22,14 @@
   and `renderer_native_ui_output.py` pin the routing, refusals and filter
   restore.
 
+- [x] Qualify the experimental Vulkan renderer further on Windows: 20 stock
+  multiplayer maps host bot matches on Vulkan/NVIDIA, Vulkan/Intel and OpenGL
+  (60 runs, zero validation errors), and a 25-minute soak of 16 map loads with
+  a `vid_restart` stays validation-clean with memory that plateaus like
+  OpenGL's. `gfxInfo` and the new `rendererVulkanMemoryInfo` report Vulkan
+  heap usage, budget and live allocations. See the
+  [gap-closure ledger](plans/2026-09-20-vulkan-gap-closure.md).
+
 - [x] Bring translucent moment shadows (`r_shadowMapTranslucentMoments`) to
   the experimental Vulkan renderer: a frame-boundary RGBA16F moment atlas
   whose blocks mirror the depth-atlas blocks, the GL caster stage analysis and

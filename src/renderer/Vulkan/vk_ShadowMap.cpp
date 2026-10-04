@@ -607,6 +607,7 @@ VkPipelineLayout VK_Exec_MomentCasterPipelineLayout( void );
 VkDescriptorSet VK_Exec_InteractionUniformSet( void );
 int VK_Exec_InteractionUniformAlloc( const void *data, int bytes );
 bool VK_Exec_SetShadowMomentViews( const VkImageView views[ 3 ], VkSampler sampler );
+bool VK_Exec_ShadowMomentViewsPublished( void );
 void VK_Exec_RefreshShadowMomentSets( VkDescriptorSet sets[ VK_FRAMES_IN_FLIGHT ] );
 
 static const VkFormat VK_SHADOW_MOMENT_FORMAT = VK_FORMAT_R16G16B16A16_SFLOAT;
@@ -782,7 +783,9 @@ static bool VK_ShadowMap_PublishMomentViews( void ) {
 // exists, so the atlas and cube sets are complete from their first write.
 static bool VK_ShadowMap_EnsureMomentPlaceholder( void ) {
 	if ( vkShadow.momentPlaceholderView != VK_NULL_HANDLE ) {
-		return true;
+		// An executor that re-initialized under a live shadow module has
+		// fresh, never-bound sets; name the moment views in them again.
+		return VK_Exec_ShadowMomentViewsPublished() || VK_ShadowMap_PublishMomentViews();
 	}
 	if ( vkShadow.momentSampler == VK_NULL_HANDLE ) {
 		VkSamplerCreateInfo sci;

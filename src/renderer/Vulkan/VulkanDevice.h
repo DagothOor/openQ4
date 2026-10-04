@@ -213,6 +213,10 @@ void	VK_Device_BlockPresentation( renderDisplayOutcome_t outcome, VkResult error
 // is also what GL does, so they must not be passed here.
 void	VK_Device_CountDrawIndexed( int indexCount, int vertexCount );
 
+// per-heap VMA usage, budget and live allocations (gfxInfo,
+// rendererVulkanMemoryInfo)
+void	VK_Device_PrintMemoryInfo( void );
+
 // acquires, records a dynamic-rendering clear with the given color, and
 // presents; handles OUT_OF_DATE/SUBOPTIMAL by recreating and retrying once
 void	VK_Device_PresentClearFrame( const float clearColor[ 4 ] );

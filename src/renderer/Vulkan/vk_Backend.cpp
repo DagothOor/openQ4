@@ -1625,7 +1625,15 @@ void R_RenderGraphResources_Init( const renderBackendCaps_t &caps, const renderF
 void R_RenderGraphResources_Shutdown( void ) {
 }
 
+// The Vulkan module's GPU resources live in VMA heaps rather than GL's
+// render-graph pool, so report those instead.
 void R_RenderGraphResources_PrintGfxInfo( void ) {
+	VK_Device_PrintMemoryInfo();
+}
+
+void R_RendererVulkanMemoryInfo_f( const idCmdArgs &args ) {
+	(void)args;
+	VK_Device_PrintMemoryInfo();
 }
 
 void R_RenderGraphResources_DumpLatest( void ) {

@@ -5834,8 +5834,11 @@ void R_InitCommands( void ) {
 	extern void R_RendererVulkanHDRInfo_f( const idCmdArgs &args );
 	extern void R_RendererVulkanHDRSelfTest_f( const idCmdArgs &args );
 	extern void R_RendererVulkanTemporalMotionSelfTest_f( const idCmdArgs &args );
+	extern void R_RendererVulkanMemoryInfo_f( const idCmdArgs &args );
 	cmdSystem->AddCommand( "rendererVulkanTemporalMotionSelfTest", R_RendererVulkanTemporalMotionSelfTest_f,
 			CMD_FL_RENDERER, "test Vulkan rigid temporal motion and history rejection on the active GPU" );
+	cmdSystem->AddCommand( "rendererVulkanMemoryInfo", R_RendererVulkanMemoryInfo_f,
+			CMD_FL_RENDERER, "report Vulkan memory heap usage, budget and live allocations" );
 	cmdSystem->AddCommand( "rendererVulkanHDRSelfTest", R_RendererVulkanHDRSelfTest_f,
 			CMD_FL_RENDERER, "test Vulkan floating-point scenes and exposure on the active GPU" );
 	cmdSystem->AddCommand( "rendererVulkanHDRInfo", R_RendererVulkanHDRInfo_f,

@@ -142,8 +142,9 @@ GLSL. `r_enhancedMaterials`, the sharpened and nearest `r_resolutionScaleMode`
 upscales and the experimental colored translucent shadows
 (`r_shadowMapTranslucentMoments`) work as they do on OpenGL. On the development
 laptop, a Windows machine with an NVIDIA RTX 4060 and Intel Iris Xe graphics,
-all 29 stock single-player maps load and draw their opening view clean under the
-Vulkan validation layers on both GPUs. It stays experimental because it has
+all 29 stock single-player maps load and draw their opening view, and 20 stock
+multiplayer maps host matches with bots, clean under the Vulkan validation
+layers on both GPUs. It stays experimental because it has
 been tried on few GPUs and drivers. Linux CI runs software-Vulkan startup, render-target,
 recovery and fallback checks on every push. Physical GPU coverage and the gaps
 under [What Vulkan does not do yet](#what-vulkan-does-not-do-yet) remain.

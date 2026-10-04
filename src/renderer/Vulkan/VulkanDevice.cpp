@@ -833,6 +833,39 @@ void VK_Device_CountDrawIndexed( int indexCount, int vertexCount ) {
 
 /*
 ====================
+VK_Device_PrintMemoryInfo
+
+gfxInfo and rendererVulkanMemoryInfo: VMA's view of every memory heap, the
+usage against the driver's budget plus the live allocation count and bytes.
+A long session that keeps growing allocations is leaking GPU resources.
+====================
+*/
+void VK_Device_PrintMemoryInfo( void ) {
+	if ( vkCtx.allocator == VK_NULL_HANDLE ) {
+		common->Printf( "Vulkan memory: unavailable (no allocator)\n" );
+		return;
+	}
+	const VkPhysicalDeviceMemoryProperties *properties = NULL;
+	vmaGetMemoryProperties( vkCtx.allocator, &properties );
+	if ( properties == NULL ) {
+		return;
+	}
+	VmaBudget budgets[ VK_MAX_MEMORY_HEAPS ];
+	memset( budgets, 0, sizeof( budgets ) );
+	vmaGetHeapBudgets( vkCtx.allocator, budgets );
+	const double mib = 1.0 / ( 1024.0 * 1024.0 );
+	for ( uint32_t heap = 0 ; heap < properties->memoryHeapCount && heap < VK_MAX_MEMORY_HEAPS ; heap++ ) {
+		const VmaBudget &budget = budgets[ heap ];
+		common->Printf( "Vulkan memory: heap %u %s used=%.1f MiB budget=%.1f MiB blocks=%u (%.1f MiB) allocations=%u (%.1f MiB)\n",
+			heap, ( properties->memoryHeaps[ heap ].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT ) != 0 ? "device-local" : "host",
+			(double)budget.usage * mib, (double)budget.budget * mib,
+			budget.statistics.blockCount, (double)budget.statistics.blockBytes * mib,
+			budget.statistics.allocationCount, (double)budget.statistics.allocationBytes * mib );
+	}
+}
+
+/*
+====================
 Pipeline cache
 
 The driver keeps its compiled pipelines in an opaque blob. Without one, every

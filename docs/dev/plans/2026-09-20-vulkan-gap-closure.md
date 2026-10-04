@@ -22,10 +22,30 @@ underwater effects, and debug views have already landed.
 | Shadows | Translucent moments implemented 2026-10-03 (moment atlas, GL caster/resolve ports, both receivers) and matched against OpenGL in a controlled transparent-caster scene. Remaining: complete mapped/stencil/hybrid qualification. | Controlled transparent-caster comparisons plus stock projected, point, CSM, dynamic, cutout, constrained-budget, and fallback gameplay captures. |
 | Render targets and tools | Cubemap faces, depth-only targets and multiple color attachments are implemented; finish capture/debug parity qualification, documenting intentional asynchronous diagnostic latency. | Every cube face/aspect, nested capture, resolve, resize and resource-lifetime tests; engine-generated screenshot comparisons. |
 | Optimization | Audit the planned indirect/culling, command recording, upload overlap, pipeline warm-up, descriptors, and barriers; implement the remaining applicable Vulkan paths. | Measured CPU/GPU pass times and memory use, performance validation, and correctness comparisons for each enabled path. |
-| Release qualification | Windows physical coverage now spans two vendors (NVIDIA RTX 4060, Intel Iris Xe); all 29 stock SP maps load validation-clean on both. Remaining: five-run OpenGL/Vulkan comparisons per required scene/preset, MP and long-session testing, clean staged-package evidence, and Linux/MoltenVK hardware coverage. | Retained provenance-bound reports, engine captures, user visual/soak sign-off, and Windows/Linux/MoltenVK hardware records. No synthetic claim for unavailable hardware. |
+| Release qualification | Windows physical coverage now spans two vendors (NVIDIA RTX 4060, Intel Iris Xe): all 29 stock SP maps load and 20 stock MP maps host bot matches validation-clean on both; a 25-minute 16-load soak with `vid_restart` stays validation-clean and plateaus like OpenGL; a five-run synchronous comparison of four scenes is recorded. Remaining: the harness's per-scene/preset budget runs, Linux/MoltenVK and AMD hardware coverage, and user visual/soak sign-off. | Retained provenance-bound reports, engine captures, user visual/soak sign-off, and Windows/Linux/MoltenVK hardware records. No synthetic claim for unavailable hardware. |
 | Promotion | Implement the Vulkan-specific evidence/sign-off gate and reconcile all status/usage/release documentation. | Gate negative tests, exact evidence provenance, explicit sign-off, and a requirement-by-requirement completion audit before changing `best` or support status. |
 
 ## Work record
+
+- 2026-10-04 adds multiplayer, soak and performance evidence and a memory
+  report. Loopback-only listen servers (`net_ip 127.0.0.1`, `net_LANServer 1`)
+  with four bots ran 20 stock MP maps (q4dm1-11, q4tourney1, q4ctf1-8) on
+  Vulkan/NVIDIA, Vulkan/Intel and OpenGL: all 60 runs exit cleanly with zero
+  VUIDs, and the only warnings Vulkan logs that OpenGL does not are random
+  bot-character precache and ragdoll lines. A soak tours eight SP maps twice
+  (16 loads, one `vid_restart`, shadow maps, CSM and translucent moments on,
+  validation on) in 25 minutes with zero VUIDs; Vulkan heap allocations per map
+  repeat across cycles (for example hub1 1746/1751, storage1 1859/1867) and
+  settle near 990 MiB, and private bytes rise in the first cycle and then
+  plateau, the same pattern the identical OpenGL soak shows. Five synchronous
+  `benchmark` runs per scene (1280x720, default 8x MSAA and SMAA, validation
+  off, RTX 4060) give median frame times of 5.8/3.5/3.5/3.4 ms on Vulkan
+  against 4.8/2.0/2.7/2.6 ms on OpenGL for airdefense1, storage2, medlabs and
+  hub1. Vulkan's figure includes a full device wait, presentation included,
+  every frame, and both stay far inside the 20/28 ms budgets. `gfxInfo` and
+  the new `rendererVulkanMemoryInfo` print VMA usage, budget and live
+  allocations per heap. Evidence: `.tmp/vk-stable/` (`sweep-mpdm*`,
+  `sweep-mpctf*`, `runs/soak-vk3`, `runs/soak-gl3`, `bench-perf.json`).
 
 - 2026-10-03 (second batch) adds translucent moment shadows and a second
   physical GPU. `r_shadowMapTranslucentMoments` no longer stops at the
