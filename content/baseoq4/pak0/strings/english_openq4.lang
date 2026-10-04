@@ -1216,4 +1216,5 @@
 	"#str_231056"	"TEST MICROPHONE"
 	"#str_231057"	"Voice chat is not available."
 	"#str_231058"	"By weapon"
+	"#str_231059"	"Enter a whole number from 0 to 10000."
 }

@@ -1088,6 +1088,12 @@ static void CheckEventBridge() {
     };
     assert(ValidInvocation(valued("mpVoteMap",3.0),error) && ValidInvocation(valued("mpVoteKick",-1.0),error));
     assert(ValidInvocation(valued("mpVoteControlTime",999.0),error) && ValidInvocation(valued("mpVoteBalance",true),error));
+    // A Match Control rule's value is a whole number from 0 to 10000, the
+    // largest value a rule takes; the other verbs keep -1 to 999.
+    assert(ValidInvocation(valued("mpMatchRuleValue",10000.0),error) && ValidInvocation(valued("mpMatchRuleValue",0.0),error));
+    assert(ValidInvocation(valued("mpMatchScope",1.0),error) && !ValidInvocation(valued("mpMatchScope",1000.0),error));
+    for (const auto& bad : {valued("mpMatchRuleValue",10001.0),valued("mpMatchRuleValue",-1.0),valued("mpMatchRuleValue",2.5)})
+        assert(!ValidInvocation(bad,error));
     for (const auto& bad : {valued("mpVoteMap",3.5),valued("mpVoteMap",1000.0),valued("mpVoteMap",-2.0),valued("mpClose",1.0),
                             valued("mpVoteMap",std::string("3")),valued("mpVoteMap",std::numeric_limits<double>::infinity()),
                             ActionInvocation{"x","session.menuValue",{{"command",std::string("mpVoteMap")}}},

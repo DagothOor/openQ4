@@ -1220,4 +1220,5 @@
 	"#str_231056"	"PROVA MICROFONO"
 	"#str_231057"	"La chat vocale non è disponibile."
 	"#str_231058"	"Per arma"
+	"#str_231059"	"Inserisci un numero intero da 0 a 10000."
 }

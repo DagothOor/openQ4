@@ -545,6 +545,8 @@ On engine `09c9d97018b26933eaf5806947df02aa9c379f08` the multiplayer Escape card
 
 On engine `c93ecbad3d8c502bda29bd41d2d9230fff4b9142` the multiplayer Escape card's Match page gains its Teams section: Match Control's team and roster rows and the participants a substitution can bring in, chosen by index as the stock list's own selection, the role an invitation or an assignment gives, and the team, queue and roster actions with their reasons and the stock confirmations. The gate and native screens tests, a mutation pass and live probes qualify it; `FLOW-012` and `FLOW-046` gain partial evidence. Evidence: `.tmp/ui/retained-mp-match-teams/validation-evidence.json`, SHA-256 `39a117a008411b46d33444719522c720b0a498a66cc15e190feaa9add95e76df`.
 
+On engine `ded46e92e916a794bb26f028d5059c848ef79de1` the multiplayer Escape card's Match page gains its Proposals and Rules sections: the running proposals, the ballot target, the ballots and the proposals to make; the committed and staged rules, the profiles and rule fields, a whole-number value to stage and the rule actions with the stock confirmation. The gate and native screens tests, a mutation pass and live probes qualify it; `FLOW-012` and `FLOW-046` gain partial evidence. Evidence: `.tmp/ui/retained-mp-match-proposals-rules/validation-evidence.json`, SHA-256 `830d701016bab145731404a0e018a3619ff5a24694f3737b140f13406e0d619c`.
+
 There are **94 partial, 245 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.

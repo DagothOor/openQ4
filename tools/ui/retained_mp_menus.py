@@ -1896,7 +1896,7 @@ def welcome_settings_page(doc: Document, index: int, ident: str, width: float, h
 # move along the strip and accept chooses.
 MATCH_SECTIONS = ("status", "teams", "proposals", "rules", "series", "evidence")
 MATCH_SECTION_KEYS = ("#str_41701", "#str_41702", "#str_41703", "#str_41704", "#str_41705", "#str_41706")
-MATCH_BUILT = ("status", "teams")       # the others hand off to the stock page
+MATCH_BUILT = ("status", "teams", "proposals", "rules")   # the others hand off to the stock page
 # The card's Match Control actions by index (card.match_op): the session's
 # RETAINED_MP_MATCH_TOKENS lists the same stock tokens in the same order.
 MATCH_TOKENS = ("refresh", "ready_toggle", "team_ready_toggle", "arm_force_ready", "timeout", "tech_pause", "resume",
@@ -1904,7 +1904,9 @@ MATCH_TOKENS = ("refresh", "ready_toggle", "team_ready_toggle", "arm_force_ready
                 "follow_prev", "follow_next", "follow_free", "confirm", "cancel_confirm",
                 "team_join_marine", "team_join_strogg", "team_spectate", "queue_join", "queue_defer", "queue_leave",
                 "roster_accept", "roster_leave", "roster_invite", "arm_roster_remove", "arm_roster_substitute", "role_assign",
-                "team_lock_toggle", "broadcaster_set", "arm_participant_remove", "series_contestant_bind")
+                "team_lock_toggle", "broadcaster_set", "arm_participant_remove", "series_contestant_bind",
+                "proposal_create", "proposal_yes", "proposal_no", "proposal_abstain", "proposal_cancel",
+                "rules_select_profile", "rules_stage_field", "arm_rules_commit", "rules_discard")
 MATCH_STATUS_LINES = 6                  # RETAINED_MATCH_STATUS_LINES in the game
 # The Status section's actions by the game's operation name (mp.match.op.*),
 # with the token each sends, its accessible name and, for those Match Control
@@ -1935,13 +1937,26 @@ MATCH_TEAM_ACTIONS = (("join_marine", "team_join_marine", "#str_41723", None),
                       ("broadcaster", "broadcaster_set", "#str_41795", None),
                       ("participant_remove", "arm_participant_remove", "#str_41908", "#str_42349"),
                       ("contestant_bind", "series_contestant_bind", "#str_41909", None))
-MATCH_ACTIONS = MATCH_STATUS_ACTIONS + MATCH_TEAM_ACTIONS
+# The Proposals section's: Create proposal, then the ballots and the
+# cancellation; and the Rules section's, Commit rules asking first.
+MATCH_PROPOSAL_ACTIONS = (("proposal_create", "proposal_create", "#str_41740", None),
+                          ("proposal_yes", "proposal_yes", "#str_41741", None),
+                          ("proposal_no", "proposal_no", "#str_41742", None),
+                          ("proposal_abstain", "proposal_abstain", "#str_41743", None),
+                          ("proposal_cancel", "proposal_cancel", "#str_41744", None))
+MATCH_RULE_ACTIONS = (("rules_select_profile", "rules_select_profile", "#str_41747", None),
+                      ("rules_stage", "rules_stage_field", "#str_41748", None),
+                      ("rules_commit", "arm_rules_commit", "#str_41749", "#str_41901"),
+                      ("rules_discard", "rules_discard", "#str_41750", None))
+MATCH_ACTIONS = MATCH_STATUS_ACTIONS + MATCH_TEAM_ACTIONS + MATCH_PROPOSAL_ACTIONS + MATCH_RULE_ACTIONS
 # Every label a section's action row can show: Set ready reads Set not ready
 # once ready, Lock team Unlock team once locked, and Grant broadcaster Revoke
 # broadcaster for a broadcaster.
 MATCH_STATUS_LABELS = ("#str_41713", "#str_41714", "#str_41715", "#str_41716", "#str_41717", "#str_41718", "#str_41719",
                        "#str_41783", "#str_41784")
 MATCH_TEAM_LABELS = tuple(key for _name, _token, key, _body in MATCH_TEAM_ACTIONS) + ("#str_41735", "#str_41796")
+MATCH_PROPOSAL_LABELS = tuple(key for _name, _token, key, _body in MATCH_PROPOSAL_ACTIONS)
+MATCH_RULE_LABELS = tuple(key for _name, _token, key, _body in MATCH_RULE_ACTIONS)
 # The Match Control lists the card can select a row of, by the card's index
 # (card.match_list): the session's RETAINED_MP_MATCH_LISTS in the same order.
 MATCH_LISTS = ("team", "replacement", "proposal", "profile", "rule", "series_map")
@@ -1952,6 +1967,21 @@ MATCH_TEAMS_HEAD, MATCH_REPLACEMENTS_HEAD, MATCH_ROLE = "#str_41736", "#str_4178
 # The roles an invitation or an assignment gives: the protocol's roster
 # roles, 1 to 4 (the stock choice's values).
 MATCH_ROLES = (("#str_42470", 1), ("#str_42471", 2), ("#str_42472", 3), ("#str_42473", 4))
+# Proposals: the proposal a ballot or a cancellation goes to (the session's
+# RETAINED_MP_MATCH_SCOPES by index), under the stock page's own names for
+# the two, and the ballot each proposal the player may make takes.
+MATCH_PROPOSAL_ROWS = 6                 # RETAINED_MATCH_PROPOSAL_ROWS in the game
+MATCH_PROPOSALS_W = 430.0               # the running proposals and the ballots; the proposals to make take the rest
+MATCH_BALLOT_TARGET = "#str_41793"
+MATCH_SCOPES = (("#str_41738", 0), ("#str_41739", 1))
+MATCH_PROPOSAL_SCOPE_KEYS = ("#str_42490", "#str_42491")
+# Rules: the profiles and the rule fields (RETAINED_MATCH_PROFILE_ROWS and
+# _RULE_ROWS in the game), each field's type, and the value to stage, a whole
+# number up to the largest a rule takes (the session's
+# RETAINED_MP_MATCH_RULE_VALUE_MAX).
+MATCH_PROFILE_ROWS, MATCH_RULE_ROWS = 16, 34
+MATCH_PROFILE_HEAD, MATCH_RULES_HEAD, MATCH_VALUE, MATCH_STAGED_HEAD = "#str_41788", "#str_41745", "#str_41789", "#str_41746"
+MATCH_RULE_VALUE_MAX, MATCH_RULE_VALUE_MESSAGE = 10000, "#str_231059"
 MATCH_CONFIRM_TITLE = "#str_41797"
 MATCH_WAITING, MATCH_REFEREE, MATCH_SIGN_IN, MATCH_SIGN_OUT = "#str_41774", "#str_41779", "#str_41781", "#str_41782"
 MATCH_FOLLOW = (("previous", "follow_prev", "#str_42885"), ("next", "follow_next", "#str_42886"), ("free", "follow_free", "#str_42887"))
@@ -2108,18 +2138,21 @@ def match_side_chip(doc: Document, ident: str, side: int, left: float, top: floa
     return node
 
 
-def match_list_row(doc: Document, key: str, row: int, width: float, columns: tuple) -> tuple[dict, str]:
+def match_list_row(doc: Document, key: str, row: int, width: float, columns: tuple, fields: tuple | None = None) -> tuple[dict, str]:
     """A row of one of Match Control's lists, the scoreboard's row (section
     14.14) at 22 dp: its columns as the game publishes them
-    (mp.match.<key><row>.c<n>, `columns` giving each fixed column's width
-    after the first, which takes the rest), the row chosen lit in olive and
+    (mp.match.<key><row>.c<n>; `fields` the ones it shows, all by default,
+    and `columns` each fixed column's width after the first, which takes the
+    rest), the row chosen lit in olive and
     the focus rail at its leading edge. The team list tints a side's own row
     in its team's color. Choosing a row names it by its list's and its own
     index (card.match_list, card.match_row) and runs mpMatchSelect; the game
     checks the row against its model again."""
     ident, state = f"match-{key.replace('_', '-')}-{row}", f"mp.match.{key}{row}"
-    for column in range(1 + len(columns)):
-        doc.state[f"{state}.c{column}"] = {"type": "string", "initial": ""}
+    fields = fields or tuple(range(1 + len(columns)))
+    # Every column the game publishes is declared, shown or not.
+    for field in range(1 + max(fields)):
+        doc.state[f"{state}.c{field}"] = {"type": "string", "initial": ""}
     band = group(f"{ident}-band", {**FULL, "background-color": colour([1, 1, 1, 0.06])})
     if key == "team":
         doc.state.update({f"{state}.kind": {"type": "number", "initial": -1}, f"{state}.side": {"type": "number", "initial": -1}})
@@ -2139,21 +2172,22 @@ def match_list_row(doc: Document, key: str, row: int, width: float, columns: tup
                   [path("rail", [(0, 0), (3, 0), (3, MATCH_LIST_ROW_H), (0, MATCH_LIST_ROW_H)], fill=solid(rgb(ORANGE)))])
     cell = {"position": keyword("relative"), "display": keyword("block"), "white-space": keyword("nowrap"), "overflow": keyword("hidden"),
             "flex-shrink": number(0), **typeface("lowpixel", 14, MATCH_LIST_ROW_H, [1, 1, 1, 0.85])}
-    cells = [label(f"{ident}-c0", PLACEHOLDER, {**cell, "flex-grow": number(1), "flex-shrink": number(1), "min-width": length(0)})]
-    for column, column_width in enumerate(columns, 1):
-        cells.append(label(f"{ident}-c{column}", PLACEHOLDER, {**cell, "width": length(column_width), "margin-left": length(6),
-                                                                **typeface("lowpixel", 14, MATCH_LIST_ROW_H, [1, 1, 1, 0.6])}))
-    for column in range(1 + len(columns)):
-        doc.bind(f"{ident}-c{column}.text", f"{ident}-c{column}", "text", {"state": f"{state}.c{column}"})
+    lead = f"{ident}-c{fields[0]}"
+    cells = [label(lead, PLACEHOLDER, {**cell, "flex-grow": number(1), "flex-shrink": number(1), "min-width": length(0)})]
+    for field, column_width in zip(fields[1:], columns):
+        cells.append(label(f"{ident}-c{field}", PLACEHOLDER, {**cell, "width": length(column_width), "margin-left": length(6),
+                                                               **typeface("lowpixel", 14, MATCH_LIST_ROW_H, [1, 1, 1, 0.6])}))
+    for field in fields:
+        doc.bind(f"{ident}-c{field}.text", f"{ident}-c{field}", "text", {"state": f"{state}.c{field}"})
     content = group(f"{ident}-content", {**absolute(left=10, top=0, width=width - 14, height=MATCH_LIST_ROW_H), "display": keyword("flex"),
                                          "flex-direction": keyword("row"), "align-items": keyword("center"), "pointer-events": keyword("none")},
                     cells)
     states = doc.states(ident, {
-        "default": [(f"{ident}-focus", "opacity", number(0)), (f"{ident}-c0", "color", colour([1, 1, 1, 0.85]))],
-        "hover": [(f"{ident}-focus", "opacity", number(0.5)), (f"{ident}-c0", "color", colour([1, 1, 1, 1]))],
-        "focus": [(f"{ident}-focus", "opacity", number(1)), (f"{ident}-c0", "color", colour(rgb(ORANGE)))],
-        "pressed": [(f"{ident}-focus", "opacity", number(1)), (f"{ident}-c0", "color", colour(rgb(ORANGE)))],
-        "disabled": [(f"{ident}-focus", "opacity", number(0)), (f"{ident}-c0", "color", colour([1, 1, 1, 0.85]))],
+        "default": [(f"{ident}-focus", "opacity", number(0)), (lead, "color", colour([1, 1, 1, 0.85]))],
+        "hover": [(f"{ident}-focus", "opacity", number(0.5)), (lead, "color", colour([1, 1, 1, 1]))],
+        "focus": [(f"{ident}-focus", "opacity", number(1)), (lead, "color", colour(rgb(ORANGE)))],
+        "pressed": [(f"{ident}-focus", "opacity", number(1)), (lead, "color", colour(rgb(ORANGE)))],
+        "disabled": [(f"{ident}-focus", "opacity", number(0)), (lead, "color", colour([1, 1, 1, 0.85]))],
     })
     event = f"match_{key}_{row}"
     doc.events[event] = [{"op": "setState", "values": {"card.match_list": MATCH_LISTS.index(key), "card.match_row": row}},
@@ -2167,7 +2201,7 @@ def match_list_row(doc: Document, key: str, row: int, width: float, columns: tup
 
 
 def match_list(doc: Document, key: str, rows: int, left: float, top: float, width: float, height: float,
-               columns: tuple) -> tuple[dict, list]:
+               columns: tuple, fields: tuple | None = None) -> tuple[dict, list]:
     """One of Match Control's lists as a scrolling column of rows (focus
     scrolls a row into view, as the wheel does). Past the card's rows the
     list ends with a link to the stock page, which shows them all."""
@@ -2176,7 +2210,7 @@ def match_list(doc: Document, key: str, rows: int, left: float, top: float, widt
                       f"mp.match.{key}.selected": {"type": "number", "initial": -1}})
     children, controls = [], []
     for row in range(rows):
-        node, control = match_list_row(doc, key, row, width, columns)
+        node, control = match_list_row(doc, key, row, width, columns, fields)
         children.append(node)
         controls.append(control)
     more = link(doc, f"match-{key.replace('_', '-')}-more", HANDOFF_ACTION, event="stock_match")
@@ -2247,6 +2281,164 @@ def match_teams_section(doc: Document, width: float, height: float) -> tuple[lis
     actions_top = VOTE_ROW_H + 8
     children.append(group("match-team-actions", {**absolute(left=right_x, top=actions_top, width=right_w, height=height - actions_top),
                                                  "overflow": keyword("auto")}, rows))
+    return children, controls
+
+
+def match_text(doc: Document, ident: str, head: str | None, state: str, left: float, top: float, width: float, lines: int) -> list:
+    """A heading in olive, where there is one, over a text the game publishes,
+    wrapping to `lines` lines."""
+    nodes = []
+    if head is not None:
+        nodes.append(label(f"{ident}-head", head, {**absolute(left=left, top=top, width=width, height=18),
+                           **typeface("lowpixel", 14, 18, rgb(OLIVE)), "white-space": keyword("nowrap")}))
+        top += 20
+    nodes.append(label(ident, PLACEHOLDER, {**absolute(left=left, top=top, width=width, height=lines * 17),
+                       **typeface("lowpixel", 15, 17, [1, 1, 1, 0.85]), "white-space": keyword("normal"), "overflow": keyword("hidden")}))
+    doc.bind(f"{ident}.text", ident, "text", {"state": state})
+    return nodes
+
+
+def match_number_row(doc: Document, ident: str, label_key: str, width: float, value_x: float, *, value: dict, action: str,
+                     maximum: int, message: str) -> dict:
+    """A whole-number field as a setting row (section 7, with the SYSTEM page's
+    precise field): the label in its column, then the value, which the player
+    edits from 0 to `maximum`; outside that the field says so in `message`
+    under itself and asks nothing. Its value goes to `action`, and the game
+    checks it again."""
+    shape = [(6, 1), ({"fraction": 1}, 1), ({"fraction": 1}, {"fraction": 1, "dp": -1}), (0, {"fraction": 1, "dp": -1}), (0, 7)]
+    plate = vector(f"{ident}-plate", FULL, [path("plate", shape, fill=solid(rgb(OLIVE, 0.12)), stroke=stroke(solid(rgb(OLIVE, 0.32)), 1))])
+    wash = vector(f"{ident}-wash", {**FULL, "opacity": number(0)}, [
+        path("wash", shape, fill=linear((0, 0), ({"fraction": 1}, 0), [(0, rgb(OLIVE, 0.45)), (1, rgb(OLIVE, 0.1))]))])
+    rail = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=4, height=VOTE_ROW_H), "opacity": number(0)}, [
+        path("rail", [(0, 7), (6, 1), (6, VOTE_ROW_H - 1), (0, VOTE_ROW_H - 1)], fill=solid(rgb(ORANGE)))])
+    caption = label(f"{ident}-label", label_key, {"position": keyword("relative"), "display": keyword("block"), "flex-shrink": number(1),
+                    "min-width": length(0), **row_face(True), "overflow": keyword("hidden")})
+    head = group(f"{ident}-head", {**absolute(left=21, top=0, width=value_x - 29, height=VOTE_ROW_H), "display": keyword("flex"),
+                                   "flex-direction": keyword("row"), "align-items": keyword("center")}, [caption])
+    field_w = width - value_x - 12
+    whole = [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})]
+    # The runtime places, sizes and shows the selection, caret and composition,
+    # and blinks the caret, from these typed bases.
+    ink = lambda name, tint, w, h: vector(name, {**absolute(left=0, top=0, width=w, height=h), "display": keyword("block"),
+                                                 "opacity": number(1), "pointer-events": keyword("none")},
+                                          [path("ink", whole, fill=solid(tint))])
+    field_plate = vector(f"{ident}-field", {**FULL, "pointer-events": keyword("none")},
+                         [path("field", whole, fill=solid([0, 0, 0, 0.6]), stroke=stroke(solid(rgb(OLIVE, 0.45)), 1))])
+    text = label(f"{ident}-text", PLACEHOLDER, {**absolute(left=6, top=0, width=4096, height=VOTE_ROW_H - 4),
+                 **typeface("lowpixel", 15, VOTE_ROW_H - 4, rgb(VALUE)), "white-space": keyword("pre"), "text-align": keyword("left")})
+    viewport = group(f"{ident}-viewport", {**absolute(left=value_x - 8, top=2, width=field_w, height=VOTE_ROW_H - 4),
+                                           "overflow": keyword("hidden")},
+                     [field_plate, ink(f"{ident}-selection", rgb(ORANGE, 0.4), 0, VOTE_ROW_H - 4), text,
+                      ink(f"{ident}-caret", [1, 1, 1, 1], 1, VOTE_ROW_H - 4), ink(f"{ident}-composition", rgb(ORANGE), 0, 1)])
+    # The message spans the row under the field, and must fit it in every language.
+    need = max(b.text_width("lowpixel", text, 13) for text in table_text(message).values())
+    if need > width - 33:
+        raise SystemExit(f"the number field's message needs {need:.0f} dp, past its row's {width - 33:.0f} dp")
+    validation = label(f"{ident}-validation", message, {**absolute(left=21, top=VOTE_ROW_H + 1, width=width - 33, height=16),
+                       **typeface("lowpixel", 13, 16, rgb(ERROR)), "white-space": keyword("nowrap"), "overflow": keyword("hidden"),
+                       "display": keyword("none")})
+    parts = {part: f"{ident}-{part}" for part in ("viewport", "text", "selection", "caret", "composition", "validation")}
+    spec = {"role": "number", "label": label_key, "action": action, "value": value, "minimum": 0, "maximum": maximum, "integer": True,
+            "exponent": False, "maxBytes": 8, "parts": parts, "states": row_states(doc, ident)}
+    return group(ident, {"position": keyword("relative"), "display": keyword("block"), "width": length(width),
+                         "height": length(VOTE_ROW_H), "opacity": number(1), "flex-shrink": number(0)},
+                 [plate, wash, rail, head, viewport, validation], control=spec)
+
+
+def match_section_result(doc: Document, section: str, left: float, top: float, width: float) -> dict:
+    """The latest result, which the stock page keeps under every section, so an
+    action's outcome shows where it was taken."""
+    ident = f"match-{section}-result"
+    node = label(ident, PLACEHOLDER, {**absolute(left=left, top=top, width=width, height=36),
+                 **typeface("lowpixel", 15, 17, [1, 1, 1, 0.85]), "white-space": keyword("normal"), "overflow": keyword("hidden")})
+    doc.bind(f"{ident}.text", ident, "text", {"state": "mp.match.result"})
+    return node
+
+
+def match_column_actions(doc: Document, actions: tuple, left: float, top: float, width: float, value_x: float) -> tuple[list, list]:
+    """Actions stacked at the rows' pitch in a column of their own."""
+    rows, controls = [], []
+    for row_index, (name, token, accessible, body) in enumerate(actions):
+        row, row_id = match_action_row(doc, name, accessible, width, value_x, row_index * MATCH_ROW_PITCH,
+                                       match_action_steps(name, token, body))
+        rows.append(row)
+        controls.append(row_id)
+    ident = "match-" + actions[0][0].replace("_", "-") + "-column"
+    return [group(ident, absolute(left=left, top=top, width=width, height=len(actions) * MATCH_ROW_PITCH), rows)], controls
+
+
+def match_proposals_section(doc: Document, width: float, height: float) -> tuple[list, list]:
+    """The Proposals section (the stock page's Proposals): the running global
+    and team proposals, the one a ballot or a cancellation goes to and the
+    ballots, beside the proposals the player may make, Create proposal and the
+    latest result. Each action says why it is unavailable."""
+    doc.state.update({"mp.match.proposal.global": {"type": "string", "initial": ""},
+                      "mp.match.proposal.side": {"type": "string", "initial": ""},
+                      "mp.match.scope": {"type": "number", "initial": 0}})
+    doc.actions["mpMatchScope"] = {"operation": "session.menuValue", "input": "number",
+                                   "arguments": {"command": "mpMatchScope", "value": {"input": "value"}}}
+    left_w = MATCH_PROPOSALS_W
+    right_x = left_w + 16
+    right_w = width - right_x
+    value_x = check_match_labels(left_w, MATCH_PROPOSAL_LABELS + (MATCH_BALLOT_TARGET,))
+    children = [*match_text(doc, "match-proposal-global", MATCH_SCOPES[0][0], "mp.match.proposal.global", 0, 0, left_w, 2),
+                *match_text(doc, "match-proposal-side", MATCH_SCOPES[1][0], "mp.match.proposal.side", 0, 60, left_w, 2)]
+    target = value_row(doc, "match-scope", MATCH_BALLOT_TARGET, "choice", left_w, value_x, value={"state": "mp.match.scope"},
+                       action="mpMatchScope", entries=list(MATCH_SCOPES), wrap=True)
+    children.append(group("match-scope-slot", absolute(left=0, top=122, width=left_w, height=VOTE_ROW_H), [target]))
+    controls = [target["id"]]
+    ballots, ballot_controls = match_column_actions(doc, MATCH_PROPOSAL_ACTIONS[1:], 0, 156, left_w, value_x)
+    children += ballots
+    controls += ballot_controls
+    # The proposals the player may make: each operation and its ballot.
+    scope_w = math.ceil(max(b.text_width("lowpixel", text, 14) for key in MATCH_PROPOSAL_SCOPE_KEYS for text in table_text(key).values()))
+    proposals, proposal_controls = match_list(doc, "proposal", MATCH_PROPOSAL_ROWS, right_x, 0, right_w,
+                                              MATCH_PROPOSAL_ROWS * (MATCH_LIST_ROW_H + 1), (float(scope_w),))
+    children.append(proposals)
+    controls += proposal_controls
+    create, create_controls = match_column_actions(doc, MATCH_PROPOSAL_ACTIONS[:1], right_x, MATCH_PROPOSAL_ROWS * (MATCH_LIST_ROW_H + 1) + 8,
+                                                   right_w, check_match_labels(right_w, MATCH_PROPOSAL_LABELS[:1]))
+    children += create
+    controls += create_controls
+    children.append(match_section_result(doc, "proposals", right_x, height - 36, right_w))
+    return children, controls
+
+
+def match_rules_section(doc: Document, width: float, height: float) -> tuple[list, list]:
+    """The Rules section (the stock page's Rules): the committed rules, the
+    profiles and the rule fields, beside the value to stage for the field
+    chosen, the staged changes, the rule actions and the latest result;
+    Commit rules asks first. The value is a number field whose value waits on
+    the game's menu, as the stock field's does."""
+    doc.state.update({"mp.match.rules.summary": {"type": "string", "initial": ""},
+                      "mp.match.rules.staged": {"type": "string", "initial": ""},
+                      "mp.match.rule_value": {"type": "number", "initial": 0}})
+    doc.actions["mpMatchRuleValue"] = {"operation": "session.menuValue", "input": "number",
+                                       "arguments": {"command": "mpMatchRuleValue", "value": {"input": "value"}}}
+    head = {**typeface("lowpixel", 14, 18, rgb(OLIVE)), "white-space": keyword("nowrap")}
+    list_w = MATCH_TEAMS_W
+    right_x = list_w + 16
+    right_w = width - right_x
+    children = match_text(doc, "match-rules-summary", None, "mp.match.rules.summary", 0, 0, list_w, 2)
+    profiles, profile_controls = match_list(doc, "profile", MATCH_PROFILE_ROWS, 0, 60, list_w, 58, ())
+    rule_top = 146
+    # Each field's name and value (a staged one after its arrow); the type the
+    # projection writes between them is left out, for the names' room.
+    value_w = math.ceil(b.text_width("lowpixel", f"{MATCH_RULE_VALUE_MAX} -> {MATCH_RULE_VALUE_MAX}", 14)) + 2
+    rules, rule_controls = match_list(doc, "rule", MATCH_RULE_ROWS, 0, rule_top, list_w, height - rule_top, (float(value_w),), (0, 2))
+    children += [label("match-profiles-head", MATCH_PROFILE_HEAD, {**absolute(left=0, top=40, width=list_w, height=18), **head}), profiles,
+                 label("match-rules-head", MATCH_RULES_HEAD, {**absolute(left=0, top=rule_top - 20, width=list_w, height=18), **head}), rules]
+    controls = profile_controls + rule_controls
+    value_x = check_match_labels(right_w, MATCH_RULE_LABELS + (MATCH_VALUE,))
+    field = match_number_row(doc, "match-rule-value", MATCH_VALUE, right_w, value_x, value={"state": "mp.match.rule_value"},
+                             action="mpMatchRuleValue", maximum=MATCH_RULE_VALUE_MAX, message=MATCH_RULE_VALUE_MESSAGE)
+    children.append(group("match-rule-value-slot", absolute(left=right_x, top=0, width=right_w, height=VOTE_ROW_H), [field]))
+    controls.append(field["id"])
+    children += match_text(doc, "match-rules-staged", MATCH_STAGED_HEAD, "mp.match.rules.staged", right_x, 50, right_w, 2)
+    actions, action_controls = match_column_actions(doc, MATCH_RULE_ACTIONS, right_x, 112, right_w, value_x)
+    children += actions
+    controls += action_controls
+    children.append(match_section_result(doc, "rules", right_x, height - 36, right_w))
     return children, controls
 
 
@@ -2396,17 +2588,19 @@ def match_page(doc: Document, index: int, ident: str, width: float, height: floa
                     **typeface("lowpixel", 17, 24, [1, 1, 1, 0.8]), "white-space": keyword("nowrap"), "display": keyword("none")})
     doc.bind("match-waiting.display", "match-waiting", "display", {"op": "select", "args": [{"state": "mp.match.available"}, "none", "block"]})
     sections = [section_group("status", 0, [waiting, live])]
-    # Teams, which waits for a view as Status does.
-    teams_children, teams_controls = match_teams_section(doc, page_width, section_height)
-    teams_live = group("match-teams-live", {**absolute(left=0, top=0, width=page_width, height=section_height), "display": keyword("none")},
-                       teams_children)
-    doc.bind("match-teams-live.display", "match-teams-live", "display", {"op": "select", "args": [{"state": "mp.match.available"}, "block", "none"]})
-    teams_waiting = label("match-teams-waiting", MATCH_WAITING, {**absolute(left=0, top=0, width=page_width, height=24),
-                          **typeface("lowpixel", 17, 24, [1, 1, 1, 0.8]), "white-space": keyword("nowrap"), "display": keyword("none")})
-    doc.bind("match-teams-waiting.display", "match-teams-waiting", "display",
-             {"op": "select", "args": [{"state": "mp.match.available"}, "none", "block"]})
-    sections.append(section_group("teams", MATCH_SECTIONS.index("teams"), [teams_waiting, teams_live]))
-    controls += teams_controls
+    # Teams, Proposals and Rules, each waiting for a view as Status does.
+    for section, builder in (("teams", match_teams_section), ("proposals", match_proposals_section), ("rules", match_rules_section)):
+        section_children, section_controls = builder(doc, page_width, section_height)
+        live = group(f"match-{section}-live", {**absolute(left=0, top=0, width=page_width, height=section_height),
+                                               "display": keyword("none")}, section_children)
+        doc.bind(f"match-{section}-live.display", f"match-{section}-live", "display",
+                 {"op": "select", "args": [{"state": "mp.match.available"}, "block", "none"]})
+        waiting = label(f"match-{section}-waiting", MATCH_WAITING, {**absolute(left=0, top=0, width=page_width, height=24),
+                        **typeface("lowpixel", 17, 24, [1, 1, 1, 0.8]), "white-space": keyword("nowrap"), "display": keyword("none")})
+        doc.bind(f"match-{section}-waiting.display", f"match-{section}-waiting", "display",
+                 {"op": "select", "args": [{"state": "mp.match.available"}, "none", "block"]})
+        sections.append(section_group(section, MATCH_SECTIONS.index(section), [waiting, live]))
+        controls += section_controls
     # The sections not built yet open the stock page.
     plate_width = max(300.0, max(b.text_width("marine", text, 20) for text in table_text(HANDOFF_ACTION).values()) + 46)
     for position, section in enumerate(MATCH_SECTIONS):

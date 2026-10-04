@@ -81,12 +81,13 @@ bool SessionMenuCommand(const std::string& command) {
 
 // Session verbs a value control may request with its new value: the
 // multiplayer card's Vote page fields, its Settings pages' model lists and
-// crosshair, and its Match page's role. The session maps each verb to its
-// field and the game checks the value against the field's rules.
+// crosshair, and its Match page's role, ballot target and rule value. The
+// session maps each verb to its field and the game checks the value against
+// the field's rules.
 bool SessionMenuValueCommand(const std::string& command) {
 	static const std::set<std::string> commands = {"mpVoteMap","mpVoteGameType","mpVoteTimeLimit","mpVoteFragLimit",
 		"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart",
-		"mpVoteBuying","mpVoteKick","mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair","mpMatchRole"};
+		"mpVoteBuying","mpVoteKick","mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair","mpMatchRole","mpMatchScope","mpMatchRuleValue"};
 	return commands.contains(command);
 }
 
@@ -127,11 +128,14 @@ bool PlayerSettingValue(const std::string& cvar, const StateValue& value) {
 
 // A value a session verb carries: a whole number from -1 to 999, or a
 // Boolean as 1 or 0.
-std::optional<int> SessionMenuValue(const StateValue& value) {
+// A value verb's operand: a whole number from -1 to 999, or for a Match
+// Control rule's value from 0 to 10000, the largest value a rule takes.
+std::optional<int> SessionMenuValue(const std::string& command, const StateValue& value) {
 	if (std::holds_alternative<bool>(value)) return std::get<bool>(value) ? 1 : 0;
 	if (!std::holds_alternative<double>(value)) return {};
 	const double number = std::get<double>(value);
-	if (!std::isfinite(number) || number != std::floor(number) || number < -1 || number > 999) return {};
+	const bool rule = command == "mpMatchRuleValue";
+	if (!std::isfinite(number) || number != std::floor(number) || number < (rule ? 0 : -1) || number > (rule ? 10000 : 999)) return {};
 	return static_cast<int>(number);
 }
 
@@ -190,7 +194,7 @@ bool ValidInvocation(const ActionInvocation& invocation, std::string& error) {
 		const auto command = invocation.arguments.find("command"), value = invocation.arguments.find("value");
 		if (invocation.arguments.size() == 2 && command != invocation.arguments.end() && value != invocation.arguments.end() &&
 			std::holds_alternative<std::string>(command->second) && SessionMenuValueCommand(std::get<std::string>(command->second)) &&
-			SessionMenuValue(value->second)) return true;
+			SessionMenuValue(std::get<std::string>(command->second),value->second)) return true;
 		error = "Unsupported session value request: "+invocation.action; return false;
 	}
 	const auto value = invocation.arguments.find("value");
@@ -347,6 +351,25 @@ struct idUserInterfaceRetained::Impl {
 	// Accepted session.menu verbs, in order, for the session to take after a
 	// dispatch; they never survive a source, save or resource replacement.
 	std::vector<std::string> sessionRequests;
+	// A number field's value sent to the session comes back through the
+	// field's bound state a frame or two later. The runtime accepts a number
+	// only once it reads it back, so its proposal is acknowledged then, and
+	// refused if the value has not come back within a second.
+	struct SessionNumberProposal { std::string control; std::uint64_t token = 0; double value = 0, deadline = 0; };
+	std::vector<SessionNumberProposal> sessionNumbers;
+	void SettleSessionNumbers() {
+		auto* runtime = RuntimeView();
+		if (!runtime) return;
+		const double now = RetainedUI_PresentationTime();
+		for (auto it = sessionNumbers.begin(); it != sessionNumbers.end();) {
+			const auto widget = runtime->GetWidgetState(it->control);
+			const bool current = widget && widget->proposalToken == it->token;
+			const bool readBack = current && std::holds_alternative<double>(widget->accepted) && std::get<double>(widget->accepted) == it->value;
+			if (current && !readBack && now < it->deadline) { ++it; continue; }
+			if (current) runtime->AcknowledgeControlProposal(it->control,it->token,readBack);
+			it = sessionNumbers.erase(it);
+		}
+	}
 	bool interactive = true, interactiveSet = false, unique = false, active = false;
 	bool suspended = false, pointerVisible = false, close = false, worldReported = false;
 	bool unavailable = false;
@@ -386,7 +409,12 @@ struct idUserInterfaceRetained::Impl {
 				runtime->AcknowledgeControlProposal(action.control,action.proposalToken,false);
 			return discard;
 		}),actions.end());
-		if (discardPrograms) sessionRequests.clear();
+		if (discardPrograms) {
+			sessionRequests.clear();
+			if (auto* runtime = RuntimeView())
+				for (const auto& number : sessionNumbers) runtime->AcknowledgeControlProposal(number.control,number.token,false);
+			sessionNumbers.clear();
+		}
 		if (auto* runtime = RuntimeView()) {
 			if (cancelRuntime) runtime->CancelInput(RetainedUI_PresentationTime());
 			runtime->ReleaseInputSources(); runtime->TakeActions();
@@ -926,6 +954,8 @@ void idUserInterfaceRetained::Redraw(int time, bool useAspectCorrection) {
 	const bool drawn = RetainedUI_DrawViewRoot(impl->view,viewport);
 	// Timeline completion programs run inside the frame; publish their writes.
 	if (auto* runtime = impl->RuntimeView()) impl->PublishWrites(runtime->TakeCompletionWrites());
+	// The frame read the bound state back; settle the number fields it answers.
+	impl->SettleSessionNumbers();
 	if (drawn && impl->active && impl->interactive) {
 		// A restored world frame alone cannot arm Keep. Require this owner and
 		// its actually activatable Revert control to have reached the draw path.
@@ -1045,12 +1075,18 @@ bool idUserInterfaceRetained::DispatchApplicationActions(const char* command, bo
 		}
 		if (invocation.operation == "session.menuValue") {
 			// Validated again at resolution; the session reads "<verb> <value>".
-			const auto value = SessionMenuValue(invocation.arguments.at("value"));
+			const auto value = SessionMenuValue(std::get<std::string>(invocation.arguments.at("command")),invocation.arguments.at("value"));
 			const auto request = std::get<std::string>(invocation.arguments.at("command"))+" "+std::to_string(value.value_or(0));
 			const bool accepted = value && impl->sessionRequests.size() < 64;
 			if (accepted) impl->sessionRequests.push_back(request);
 			else impl->Error(value ? "Session menu request queue exceeded 64 requests" : "Session value request out of range");
-			if (pending.proposalToken) impl->RuntimeView()->AcknowledgeControlProposal(pending.control,pending.proposalToken,accepted);
+			if (pending.proposalToken) {
+				// A number field waits for its value to come back (SettleSessionNumbers).
+				const auto widget = impl->RuntimeView()->GetWidgetState(pending.control);
+				if (accepted && widget && widget->role == ControlRole::Number && impl->sessionNumbers.size() < 64)
+					impl->sessionNumbers.push_back({pending.control,pending.proposalToken,static_cast<double>(*value),RetainedUI_PresentationTime()+1});
+				else impl->RuntimeView()->AcknowledgeControlProposal(pending.control,pending.proposalToken,accepted);
+			}
 			if (cvarSystem->GetCVarBool("ui_retainedTrace")) common->Printf("RETAINED_GUI_SESSION path=%s command=%s accepted=%d\n",
 				Name(),request.c_str(),accepted ? 1 : 0);
 			continue;

@@ -1216,4 +1216,5 @@
 	"#str_231056"	"TESTAR MICROFONE"
 	"#str_231057"	"O chat de voz não está disponível."
 	"#str_231058"	"Por arma"
+	"#str_231059"	"Digite um número inteiro de 0 a 10000."
 }

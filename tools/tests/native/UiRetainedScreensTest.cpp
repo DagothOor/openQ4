@@ -154,7 +154,7 @@ static const std::set<std::string> SessionCommands = {"continue","singlePlayer",
 // The value controls' verbs, which carry the control's new value.
 static const std::set<std::string> SessionValueCommands = {"mpVoteMap","mpVoteGameType","mpVoteTimeLimit","mpVoteFragLimit",
 	"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart","mpVoteBuying","mpVoteKick",
-	"mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair","mpMatchRole"};
+	"mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair","mpMatchRole","mpMatchScope","mpMatchRuleValue"};
 // The player settings the multiplayer card's Settings and Voice pages change.
 static const std::set<std::string> PlayerSettings = {"ui_handicap","cl_player_outline_enemy","cl_player_outline_team",
 	"cl_player_rimlight_enemy","cl_player_rimlight_team","cl_player_visibility_enemy_color","cl_player_visibility_team_color",
@@ -653,7 +653,8 @@ static void CheckMatch(ScreenHost& host, const char* path) {
 	enum { REFRESH, READY, TEAM_READY, ARM_FORCE_READY, TIMEOUT, TECH_PAUSE, RESUME, ARM_FORFEIT, ARM_ABORT, REFEREE_LOGOUT,
 		SIDE_A, SIDE_B, FOLLOW_PREV, FOLLOW_NEXT, FOLLOW_FREE, CONFIRM, CANCEL_CONFIRM, JOIN_MARINE, JOIN_STROGG, SPECTATE,
 		QUEUE_JOIN, QUEUE_DEFER, QUEUE_LEAVE, ROSTER_ACCEPT, ROSTER_LEAVE, ROSTER_INVITE, ARM_ROSTER_REMOVE, ARM_ROSTER_SUBSTITUTE,
-		ROLE_ASSIGN, TEAM_LOCK, BROADCASTER, ARM_PARTICIPANT_REMOVE, CONTESTANT_BIND };
+		ROLE_ASSIGN, TEAM_LOCK, BROADCASTER, ARM_PARTICIPANT_REMOVE, CONTESTANT_BIND, PROPOSAL_CREATE, PROPOSAL_YES, PROPOSAL_NO,
+		PROPOSAL_ABSTAIN, PROPOSAL_CANCEL, RULES_SELECT_PROFILE, RULES_STAGE, ARM_RULES_COMMIT, RULES_DISCARD };
 	const auto press = [&](MenuInput input, double at) { runtime.MenuAction(input,true,at); runtime.MenuAction(input,false,at+.01); };
 	const auto asked = [&](int token) {
 		return effects.actions.size() == 1 && std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpMatch" &&
@@ -857,21 +858,124 @@ static void CheckMatch(ScreenHost& host, const char* path) {
 	Check(runtime.SetState({{"mp.match.team.more",true}},error,7.5),"more rows than the card has");
 	runtime.Frame(viewport,7.6);
 	Check(text("match-team-more","display") == "block","the list offers the stock page");
-	// The sections not built yet still open the stock page.
+	// Proposals: the running proposals, the ballot target and the ballots;
+	// the proposals to make, Create proposal and the latest result.
 	Check(runtime.RunEvent("onSectionNext",7.7,effects,error) && section() == 2,"on to Proposals");
+	StateValues proposals = {{"mp.match.proposal.global",std::string("Pause match | Global | Yes 1/3, No 0 | 0:25")},
+		{"mp.match.proposal.side",std::string("No additional details")},{"mp.match.scope",0.0},{"mp.match.proposal.count",2.0},
+		{"mp.match.proposal.more",false},{"mp.match.proposal.selected",0.0},{"mp.match.proposal0.c0",std::string("Pause match")},
+		{"mp.match.proposal0.c1",std::string("Global")},{"mp.match.proposal1.c0",std::string("Change rules")},
+		{"mp.match.proposal1.c1",std::string("Global")}};
+	for (const char* name : {"proposal_create","proposal_yes","proposal_no","proposal_abstain","proposal_cancel"}) {
+		const std::string key = std::string("mp.match.op.")+name, id = name;
+		proposals[key+".shown"] = true;
+		proposals[key+".available"] = id == "proposal_create" || id == "proposal_yes";
+		proposals[key+".label"] = id;
+		proposals[key+".reason"] = std::string("You already voted.");
+	}
+	Check(runtime.SetState(proposals,error,7.75),"publish the Proposals section");
 	runtime.Frame(viewport,7.8);
-	Check(text("match-section-proposals","display") == "block" && runtime.CanActivateControl("match-proposals-open",7.8),"which hands off");
-	Check(runtime.RunEvent("stock_match",7.9,effects,error) && effects.actions.size() == 1 &&
-		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpStockPage","to the stock page");
-	Check(runtime.RunEvent("match_section_status",8,effects,error) && section() == 0 &&
-		runtime.RunEvent("onSectionPrevious",8.1,effects,error) && section() == 5 && runtime.FocusedControl() == "match-tab-evidence",
-		"back around the strip from Status to Evidence");
-	Check(runtime.RunEvent("tab_vote",8.2,effects,error) && runtime.RunEvent("onSectionNext",8.3,effects,error) && section() == 5,
-		"the triggers page sections only on the Match page");
+	Check(text("match-proposals-live","display") == "block" && text("match-proposal-global","text") == "Pause match | Global | Yes 1/3, No 0 | 0:25" &&
+		text("match-proposal-side","text") == "No additional details","the running proposals");
+	Check(text("match-proposal-0","display") == "block" && text("match-proposal-1-c0","text") == "Change rules" &&
+		text("match-proposal-2","display") == "none" && text("match-proposal-0-chosen","display") == "block","the proposals to make");
+	const auto ballots = bounds("match-proposal-yes"), templates = bounds("match-proposal-list"), create = bounds("match-proposal-create");
+	Check(ballots.x+ballots.width <= templates.x && create.y >= templates.y+templates.height && Near(create.x,templates.x,.5f) &&
+		bounds("match-proposal-cancel").y+bounds("match-proposal-cancel").height <= bounds("match-section-proposals").y+289.5f,
+		"the ballots beside the proposals to make, Create proposal under them");
+	Check(runtime.RunEvent("match_proposal_1",7.85,effects,error) && selected(2,1),"choosing a proposal names it to the game");
+	Check(runtime.RunEvent("match_proposal_yes",7.86,effects,error) && asked(PROPOSAL_YES) &&
+		runtime.RunEvent("match_proposal_create",7.87,effects,error) && asked(PROPOSAL_CREATE),"Vote yes and Create proposal ask the game");
+	Check(runtime.RunEvent("match_proposal_no",7.88,effects,error) && effects.actions.empty() &&
+		text("match-proposal-no-reason","text") == "You already voted.","a refused ballot says why and asks nothing");
+	Check(text("match-proposals-result","text") == "Ready accepted.","the latest result");
+	Check(runtime.FocusControl("match-scope",7.9) && runtime.OpenChoicePopup("match-scope",7.9),"the ballot target unfolds");
+	runtime.Frame(viewport,7.95);
+	press(MenuInput::Down,8);
+	press(MenuInput::Accept,8.05);
+	const auto scopeActions = runtime.TakeActions();
+	Check(scopeActions.size() == 1 && scopeActions[0].action == "mpMatchScope" && scopeActions[0].proposal &&
+		std::get<double>(*scopeActions[0].proposal) == 1,"choosing the team proposal asks for target 1");
+	if (scopeActions.size() == 1 && scopeActions[0].proposalToken) runtime.AcknowledgeControlProposal(scopeActions[0].node,scopeActions[0].proposalToken,true);
+	// Rules: the committed rules, the profiles and the rule fields; the value to
+	// stage, the staged changes, the rule actions and the latest result.
+	Check(runtime.RunEvent("onSectionNext",8.1,effects,error) && section() == 3,"on to Rules");
+	StateValues rules = {{"mp.match.rules.summary",std::string("Competitive TDM | Next match | 3/ab12cd34")},
+		{"mp.match.rules.staged",std::string("Competitive TDM | Customized | 4/ef56 | 1")},{"mp.match.rule_value",15.0},
+		{"mp.match.profile.count",3.0},{"mp.match.profile.more",false},{"mp.match.profile.selected",1.0},
+		{"mp.match.rule.count",5.0},{"mp.match.rule.more",false},{"mp.match.rule.selected",2.0}};
+	for (int row = 0; row < 3; ++row) rules["mp.match.profile"+std::to_string(row)+".c0"] = std::string("Profile ")+std::to_string(row);
+	for (int row = 0; row < 5; ++row) {
+		const std::string key = "mp.match.rule"+std::to_string(row);
+		rules[key+".c0"] = std::string("Rule ")+std::to_string(row); rules[key+".c1"] = std::string("Number");
+		rules[key+".c2"] = std::string(row == 2 ? "10 -> 15" : "10");
+	}
+	for (const char* name : {"rules_select_profile","rules_stage","rules_commit","rules_discard"}) {
+		const std::string key = std::string("mp.match.op.")+name;
+		rules[key+".shown"] = true; rules[key+".available"] = true; rules[key+".label"] = std::string(name); rules[key+".reason"] = std::string("");
+	}
+	Check(runtime.SetState(rules,error,8.15),"publish the Rules section");
+	runtime.Frame(viewport,8.2);
+	Check(text("match-rules-live","display") == "block" && text("match-rules-summary","text") == "Competitive TDM | Next match | 3/ab12cd34" &&
+		text("match-rules-staged","text") == "Competitive TDM | Customized | 4/ef56 | 1","the committed and staged rules");
+	Check(text("match-profile-2","display") == "block" && text("match-profile-3","display") == "none" &&
+		text("match-rule-4","display") == "block" && text("match-rule-2-c2","text") == "10 -> 15" &&
+		text("match-rule-2-chosen","display") == "block","the profiles and the rule fields");
+	const auto ruleValue = runtime.GetWidgetState("match-rule-value");
+	Check(ruleValue && std::holds_alternative<double>(ruleValue->accepted) && std::get<double>(ruleValue->accepted) == 15 &&
+		text("match-rules-result","text") == "Ready accepted.","the value to stage and the result");
+	Check(runtime.RunEvent("match_profile_0",8.25,effects,error) && selected(3,0) &&
+		runtime.RunEvent("match_rule_4",8.26,effects,error) && selected(4,4),"choosing a profile or a rule names it to the game");
+	Check(runtime.RunEvent("match_rules_stage",8.27,effects,error) && asked(RULES_STAGE) &&
+		runtime.RunEvent("match_rules_select_profile",8.28,effects,error) && asked(RULES_SELECT_PROFILE),"Stage value and Select profile ask the game");
+	Check(runtime.RunEvent("match_rules_commit",8.3,effects,error) && asked(ARM_RULES_COMMIT),"Commit rules arms its confirmation");
 	runtime.Frame(viewport,8.6);
-	Check(!runtime.CanActivateControl("match-tab-status",8.6) && !runtime.CanActivateControl("match-evidence-open",8.6) &&
-		!runtime.CanActivateControl("match-team-0",8.6) && !runtime.CanActivateControl("match-role",8.6),
-		"the Match page takes no input from another tab");
+	Check(text("matchRulesCommitModal","display") == "block" && text("matchRulesCommitModal-body","text") == "#str_41901","and asks first");
+	Check(runtime.RunEvent("matchRulesCommitModalYes",8.65,effects,error) && asked(CONFIRM),"Yes confirms it");
+	runtime.Frame(viewport,9);
+	// The value: a whole number the player types and commits. One past the
+	// largest a rule takes is held in the field as out of range and asks
+	// nothing; a value in range reaches the session.
+	const auto numberId = [&]() { return runtime.GetWidgetState("match-rule-value")->number->identity; };
+	const auto type = [&](const char* value, double at) {
+		const auto size = runtime.GetWidgetState("match-rule-value")->number->state.text.size();
+		return runtime.SetNumberSelection("match-rule-value",numberId(),0,size,error,at) &&
+			runtime.ReplaceNumberSelection("match-rule-value",numberId(),value,error,at);
+	};
+	Check(runtime.FocusControl("match-rule-value",9.05) && runtime.BeginNumberEdit("match-rule-value",error,9.05),"edit the value");
+	Check(type("20000",9.1) && !runtime.CommitNumberEdit("match-rule-value",numberId(),error,9.1) && runtime.TakeActions().empty(),
+		"a value past the largest asks nothing");
+	const auto refused = runtime.GetWidgetState("match-rule-value");
+	Check(refused && refused->number && refused->number->status == TextNumberStatus::OutOfRange,"and the field holds it as out of range");
+	Check(type("25",9.2) && runtime.CommitNumberEdit("match-rule-value",numberId(),error,9.2),"type 25 and commit it");
+	const auto valueActions = runtime.TakeActions();
+	Check(valueActions.size() == 1 && valueActions[0].action == "mpMatchRuleValue" && valueActions[0].proposal &&
+		std::get<double>(*valueActions[0].proposal) == 25,"the value reaches the session");
+	// The value comes back through the game; acknowledged once it has, as the
+	// adapter does for a number field, it settles without a conflict.
+	Check(valueActions.size() == 1 && valueActions[0].proposalToken,"the value waits for the game");
+	Check(runtime.SetState({{"mp.match.rule_value",25.0}},error,9.25),"the game takes the value");
+	runtime.Frame(viewport,9.3);
+	Check(runtime.AcknowledgeControlProposal(valueActions[0].node,valueActions[0].proposalToken,true),"and the field accepts it");
+	runtime.Frame(viewport,9.35);
+	const auto settled = runtime.GetWidgetState("match-rule-value");
+	Check(settled && (!settled->number || !settled->number->conflict) && std::holds_alternative<double>(settled->accepted) &&
+		std::get<double>(settled->accepted) == 25,"without a conflict");
+	// The sections not built yet still open the stock page.
+	Check(runtime.RunEvent("onSectionNext",9.5,effects,error) && section() == 4,"on to Series");
+	runtime.Frame(viewport,9.6);
+	Check(text("match-section-series","display") == "block" && runtime.CanActivateControl("match-series-open",9.6),"which hands off");
+	Check(runtime.RunEvent("stock_match",9.7,effects,error) && effects.actions.size() == 1 &&
+		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpStockPage","to the stock page");
+	Check(runtime.RunEvent("match_section_status",10,effects,error) && section() == 0 &&
+		runtime.RunEvent("onSectionPrevious",10.1,effects,error) && section() == 5 && runtime.FocusedControl() == "match-tab-evidence",
+		"back around the strip from Status to Evidence");
+	Check(runtime.RunEvent("tab_vote",10.2,effects,error) && runtime.RunEvent("onSectionNext",10.3,effects,error) && section() == 5,
+		"the triggers page sections only on the Match page");
+	runtime.Frame(viewport,10.6);
+	Check(!runtime.CanActivateControl("match-tab-status",10.6) && !runtime.CanActivateControl("match-evidence-open",10.6) &&
+		!runtime.CanActivateControl("match-team-0",10.6) && !runtime.CanActivateControl("match-role",10.6) &&
+		!runtime.CanActivateControl("match-rule-value",10.6),"the Match page takes no input from another tab");
 }
 
 // The multiplayer cards' Settings pages and the Escape card's Voice page

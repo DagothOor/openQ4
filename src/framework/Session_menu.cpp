@@ -142,7 +142,9 @@ static const char *const RETAINED_MP_MATCH_TOKENS[] = {
 	"follow_prev", "follow_next", "follow_free", "confirm", "cancel_confirm",
 	"team_join_marine", "team_join_strogg", "team_spectate", "queue_join", "queue_defer", "queue_leave",
 	"roster_accept", "roster_leave", "roster_invite", "arm_roster_remove", "arm_roster_substitute", "role_assign",
-	"team_lock_toggle", "broadcaster_set", "arm_participant_remove", "series_contestant_bind"
+	"team_lock_toggle", "broadcaster_set", "arm_participant_remove", "series_contestant_bind",
+	"proposal_create", "proposal_yes", "proposal_no", "proposal_abstain", "proposal_cancel",
+	"rules_select_profile", "rules_stage_field", "arm_rules_commit", "rules_discard"
 };
 static const int RETAINED_MP_MATCH_ACTIONS = static_cast<int>( sizeof( RETAINED_MP_MATCH_TOKENS ) / sizeof( RETAINED_MP_MATCH_TOKENS[0] ) );
 // The Match page's lists, by the card's index (card.match_list): the stock
@@ -158,11 +160,18 @@ static const char *const RETAINED_MP_MATCH_LISTS[][2] = {
 static const int RETAINED_MP_MATCH_LIST_COUNT = static_cast<int>( sizeof( RETAINED_MP_MATCH_LISTS ) / sizeof( RETAINED_MP_MATCH_LISTS[0] ) );
 // The most rows a Match Control list holds (MP_MATCH_CONTROL_MAX_TEAM_ROWS).
 static const int RETAINED_MP_MATCH_ROWS = 128;
-// The Match page's choices, "<verb> <value>": the role an invitation or an
-// assignment gives, 1 to 4 (the protocol's roster roles), which the stock
-// choice keeps on the game's menu and the game reads as it sends either.
-static const char *const RETAINED_MP_MATCH_CHOICES[] = { "mpMatchRole" };
+// The Match page's choices, "<verb> <value>", which the stock choices keep on
+// the game's menu and the game reads as it acts: the role an invitation or an
+// assignment gives, 1 to 4 (the protocol's roster roles), and the proposal a
+// ballot or a cancellation goes to, 0 the global one and 1 the team's.
+static const char *const RETAINED_MP_MATCH_CHOICES[] = { "mpMatchRole", "mpMatchScope" };
 static const int RETAINED_MP_MATCH_ROLES = 4;
+static const char *const RETAINED_MP_MATCH_SCOPES[] = { "global", "side" };
+// The value to stage for a Match Control rule, "mpMatchRuleValue <value>",
+// which the stock field keeps on the game's menu: at most the largest value a
+// rule takes (the readiness threshold's basis points). The game checks the
+// rule's own bounds as it stages it.
+static const int RETAINED_MP_MATCH_RULE_VALUE_MAX = 10000;
 // The stock menu buttons the card's hand-offs press, by the card's page
 // index (card.stock_page), in the generator's order.
 static const char *const RETAINED_MP_STOCK_PAGES[] = {
@@ -222,6 +231,24 @@ static bool Session_RetainedValueRequest( const char *request, const char *const
 	}
 	value = digits ? atoi( number ) : 0;
 	return digits && value >= -1 && value <= 999;
+}
+
+// "mpMatchRuleValue <value>": a whole number from 0 to the largest value a
+// Match Control rule takes, in at most five digits.
+static bool Session_RetainedRuleValueRequest( const char *request, int &value ) {
+	static const char verb[] = "mpMatchRuleValue ";
+	const int verbLength = static_cast<int>( sizeof( verb ) ) - 1;
+	if ( idStr::Icmpn( request, verb, verbLength ) != 0 ) {
+		return false;
+	}
+	const char *number = request + verbLength;
+	const int length = static_cast<int>( strlen( number ) );
+	bool digits = length >= 1 && length <= 5;
+	for ( int i = 0; digits && i < length; i++ ) {
+		digits = number[ i ] >= '0' && number[ i ] <= '9';
+	}
+	value = digits ? atoi( number ) : 0;
+	return digits && value <= RETAINED_MP_MATCH_RULE_VALUE_MAX;
 }
 
 // The name of the key a prompt would show for `binding` (from the device
@@ -5920,8 +5947,8 @@ server, the Team page's and the Welcome card's Join page actions, the
 Players page's selection, Mute and Friend, the Vote page's ballots, call
 and drafted fields, the Match page's actions and list rows, and the
 Settings pages' models, rail color and crosshair go to the game (the Match
-page's role choice waits on the game's menu, as the stock choice's does);
-Controls, Game Options and System leave for the
+page's choices and rule value wait on the game's menu, as the stock
+controls' values do); Controls, Game Options and System leave for the
 main menu's pages; and a page still in development, or one the card cannot
 edit yet (name and clan), hands off to its stock page. Every other request
 is refused, as the card's own verbs are anywhere else.
@@ -5979,13 +6006,23 @@ void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, con
 		command = gameCommand.c_str();
 	} else if ( Session_RetainedValueRequest( request, RETAINED_MP_MATCH_CHOICES,
 		static_cast<int>( sizeof( RETAINED_MP_MATCH_CHOICES ) / sizeof( RETAINED_MP_MATCH_CHOICES[0] ) ), voteField, voteValue ) ) {
-		if ( voteValue < 1 || voteValue > RETAINED_MP_MATCH_ROLES ) {
-			common->Warning( "retained UI: the multiplayer card chose match role %d", voteValue );
+		const bool role = voteField == 0;
+		if ( role ? ( voteValue < 1 || voteValue > RETAINED_MP_MATCH_ROLES ) : ( voteValue < 0 || voteValue > 1 ) ) {
+			common->Warning( "retained UI: the multiplayer card chose %s %d", role ? "match role" : "ballot target", voteValue );
 			return;
 		}
 		// The stock choice's own value on the game's menu, quietly; the game
-		// reads it as it sends an invitation or an assignment.
-		guiActive->SetStateInt( "match_role_choice", voteValue );
+		// reads it as it acts.
+		if ( role ) {
+			guiActive->SetStateInt( "match_role_choice", voteValue );
+		} else {
+			guiActive->SetStateString( "match_proposal_scope_choice", RETAINED_MP_MATCH_SCOPES[ voteValue ] );
+		}
+		return;
+	} else if ( Session_RetainedRuleValueRequest( request, voteValue ) ) {
+		// The stock field's own value on the game's menu, quietly; the game
+		// checks it against the rule chosen as it stages it.
+		guiActive->SetStateInt( "match_rule_value", voteValue );
 		return;
 	} else if ( !idStr::Icmp( request, "mpTeamAction" ) ) {
 		const int slot = gui->State().GetInt( "card.team_action", "-1" );

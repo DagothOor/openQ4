@@ -7,13 +7,14 @@ Escape card's shell came first: the card, its header, the eight-tab strip, the
 prompt bar, the Disconnect confirmation, the softening and its release, and the
 session and game plumbing that let the card cover the game's own menu. The
 Team, Players, Vote, Settings, Voice and Server pages are built on it, and the
-Match page's Status and Teams sections; Match's other sections and Admin still
-hand off to their stock pages, so the Escape card stays opt-in. The Welcome
-card covers the connect-time join offer with its Join, Server, Players and
-Settings pages, all built, so it presents by default. The loading screen hands
-a join over to the Welcome card (B8). The Match page's other sections follow
-(the plan's B9c to B9f); Admin waits for text fields, and its stock page's
-password check now works (B7).
+Match page's Status, Teams, Proposals and Rules sections; Match's Series and
+Evidence sections and Admin still hand off to their stock pages, so the Escape
+card stays opt-in. The Welcome card covers the connect-time join offer with
+its Join, Server, Players and Settings pages, all built, so it presents by
+default. The loading screen hands a join over to the Welcome card (B8). The
+Match page's Series and Evidence sections follow (the plan's B9e and B9f);
+Admin waits for text fields, and its stock page's password check now works
+(B7).
 
 ## The gate
 
@@ -255,6 +256,32 @@ Teams is built:
   as on Status, in a column that scrolls as focus moves down it. Remove,
   Substitute and Expel ask first in the stock confirmation.
 
+Proposals is built:
+
+- **The running proposals.** The global proposal and the player's team's,
+  each as Match Control writes it (what it changes, its ballot, the tally,
+  the time left and the player's own ballot), then the ballot target, the
+  proposal a ballot or a cancellation goes to, a list that keeps its value
+  on the game's menu as the stock choice does, and Vote yes, Vote no, Abstain
+  and Cancel proposal.
+- **Making one.** The proposals the player may make, each with its ballot, a
+  row chosen as on Teams, and Create proposal, which takes the team row,
+  rule and value chosen where the proposal needs one, and the latest result.
+
+Rules is built:
+
+- **The rules.** The committed rules (the profile, whether customized, the
+  boundary they apply at and their revision), the profiles and the rule
+  fields with their value, a staged value after its arrow (the stock page's
+  type column is left out, for the names' room); a row chosen as on Teams.
+- **Staging.** The value to stage for the field chosen, a whole-number field
+  the player types into (the game fills in the field's value as it is
+  chosen), which keeps its value on the game's menu as the stock field does
+  and refuses a number past the largest any rule takes; the staged changes;
+  Select profile, Stage value, Commit rules, which asks first in the stock
+  confirmation, and Discard changes; and the latest result. The game checks
+  the value against the field's own bounds as it stages it.
+
 The page asks for each action by its index in the session's
 `RETAINED_MP_MATCH_TOKENS`, which holds the stock page's own fixed tokens,
 and for a list's row by the list's index in `RETAINED_MP_MATCH_LISTS` and
@@ -414,9 +441,18 @@ only when it changes and moving `mp.revision` when anything did:
   `mp.match.replacement<row>.c0` (each list's columns as the projection
   writes them, split at its tabs; up to `RETAINED_MATCH_TEAM_ROWS` and
   `RETAINED_MATCH_REPLACEMENT_ROWS`), and the role choice's value as
-  `mp.match.role`. Players' names reach the card as plain text, which never
-  translates. The game projects its menu again whenever the accepted view
-  has moved since it last did.
+  `mp.match.role`; the running proposals as
+  `mp.match.proposal.{global,side}`, the ballot target as `mp.match.scope`
+  (0 global, 1 the team's) and the proposals to make as
+  `mp.match.proposal.{count,more,selected}` with
+  `mp.match.proposal<row>.{c0,c1}`; the committed and staged rules as
+  `mp.match.rules.{summary,staged}`, the value to stage as
+  `mp.match.rule_value`, the profiles as `mp.match.profile.{count,more,selected}`
+  with `mp.match.profile<row>.c0` and the rule fields as
+  `mp.match.rule.{count,more,selected}` with `mp.match.rule<row>.{c0,c1,c2}`.
+  Players' names reach the card as plain text, which never translates. The
+  game projects its menu again whenever the accepted view has moved since it
+  last did.
 
 The session writes the names of the keys bound to the ballots and to push to
 talk, `mp.keys.vote_yes`, `mp.keys.vote_no` and `mp.keys.voice_chat` with
@@ -477,6 +513,8 @@ The card's verbs are the stock menu's own commands with its selection sound:
 | `mpMatch` | `play main_menu_selection ; matchControl <token>`, by `card.match_op` (the refresh without the sound) |
 | `mpMatchSelect` | the stock list's `<list>_sel_0` on the game's menu set to `card.match_row`, then `play main_menu_selection ; matchControl <select token>`, by `card.match_list` |
 | `mpMatchRole <role>` | the game's menu's `match_role_choice` set to the role, 1 to 4, quietly; nothing reaches the game |
+| `mpMatchScope <target>` | the game's menu's `match_proposal_scope_choice` set to `global` (0) or `side` (1), quietly |
+| `mpMatchRuleValue <value>` | the game's menu's `match_rule_value` set to the value, 0 to 10000, quietly |
 
 The Vote page's rows are value controls. Their actions use the adapter's
 `session.menuValue` operation, which carries the control's new value with a
@@ -492,7 +530,14 @@ open. A list sends its row (the kick list's "No one" is -1), a check box 1 or
 same operation with `mpModelSelf`, `mpModelEnemy`, `mpModelTeam` and
 `mpCrosshair` (`RETAINED_MP_APPEARANCE_VALUES`): the session sends `retained
 appearance <slot> <row>` or `retained crosshair <index>` for a value of 0 or
-more.
+more. The Match page's role and ballot target use it with `mpMatchRole` and
+`mpMatchScope`, and its rule value with `mpMatchRuleValue`, whose value runs
+from 0 to 10000; the session keeps each on the game's menu, as the stock
+controls do. A number field's value comes back through the card's state a
+frame or two after the session takes it, and the runtime accepts a number only
+once it reads it back, so the adapter acknowledges a number field's request
+then, and refuses it if the value has not come back within a second; a list or
+a check box is acknowledged as its request is queued.
 
 The other settings rows use the adapter's `settings.player.set` operation, a
 literal setting with the control's value. The adapter allows only the
@@ -539,7 +584,10 @@ without affecting players:
   pointing. Teams' sixteen actions share one column that scrolls.
 - **Match lists.** Match Control's lists as the scoreboard's rows in a
   scrolling column, up to a set number of rows each (32 team and roster rows,
-  16 participants), after which the stock page shows the rest.
+  16 participants, every proposal, profile and rule field), after which the
+  stock page shows the rest.
+- **Rule value.** A whole-number field from 0 to 10000, the largest value a
+  rule takes; the stock field takes any text and the game checks it.
 - **Tab labels (D7).** Marine 14 dp, short labels written for the strip; the
   active label is white.
 - **Softening (D1).** `modal.softfocus` values, with a centred scrim and
@@ -820,13 +868,47 @@ The Match page's Teams section adds:
 Evidence: `.tmp/ui/retained-mp-match-teams/validation-evidence.json`, SHA-256
 `39a117a008411b46d33444719522c720b0a498a66cc15e190feaa9add95e76df`.
 
+The Match page's Proposals and Rules sections add:
+
+- gate cases: the Proposals and Rules actions by index and an index past the
+  table refused; the ballot target on the game's menu in the stock choice's
+  own words and a target outside the two refused; the rule value on the
+  game's menu, with a value past 10000, a negative one, one of six digits or
+  more and text refused; pins that the mirrored operations follow each
+  section's actions, that the proposal, profile and rule rows match Match
+  Control's own bounds, that the ballot target matches the stock choice and
+  the game's parse, that the rule value's bound is the largest value a rule
+  takes in the session and the adapter, and that the adapter acknowledges a
+  number field's request only once its value reads back;
+- adapter checks that the rule value takes 0 to 10000 and the ballot target
+  the usual range;
+- native checks of the sections: the running proposals, the proposals to
+  make and their selection, the ballots beside them with Create proposal
+  under the list, a refused ballot's reason, the ballot target's new value,
+  the committed and staged rules, the profiles and rule fields and their
+  selection, the value to stage, a value past the largest held as out of
+  range and asking nothing, a typed value reaching the session and settling
+  without a conflict once it reads back, Stage value, Select profile, Commit
+  rules asking first with Yes confirming, the latest result under each
+  section, and Series still handing off;
+- live probes on listen servers with bots in a warm-up and the opt-in, in
+  English on OpenGL and German on Vulkan: the Proposals section, choosing a
+  proposal, the ballot target through its list; the Rules section, choosing
+  the time limit, which fills in its value, typing 15 through the field's
+  semantic edit verbs and staging it (the casual profile applies it at once:
+  the clock moves to 15 minutes and the result says so), and 20000 refused
+  in the field with its message.
+
+Evidence: `.tmp/ui/retained-mp-match-proposals-rules/validation-evidence.json`, SHA-256
+`830d701016bab145731404a0e018a3619ff5a24694f3737b140f13406e0d619c`.
+
 The card's acceptance continues under `FLOW-046`.
 
 ## Known limitations
 
-- Admin, the Match page's sections other than Status and Teams and its
-  referee sign-in hand off to their stock pages, and the stock menu then keeps
-  the menu until it closes; the card does not come back over it. So do the
+- Admin, the Match page's Series and Evidence sections and its referee
+  sign-in hand off to their stock pages, and the stock menu then keeps the
+  menu until it closes; the card does not come back over it. So do the
   Settings pages' name and clan.
 - Joining a team through Match Control commits but leaves a listen server's
   player on their team, on the stock page as on the card (seen in B9b's

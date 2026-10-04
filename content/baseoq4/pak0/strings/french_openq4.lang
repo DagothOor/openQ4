@@ -1220,4 +1220,5 @@
 	"#str_231056"	"TESTER LE MICRO"
 	"#str_231057"	"Le chat vocal n'est pas disponible."
 	"#str_231058"	"Selon l'arme"
+	"#str_231059"	"Entrez un nombre entier de 0 à 10000."
 }

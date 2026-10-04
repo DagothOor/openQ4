@@ -1216,4 +1216,5 @@
 	"#str_231056"	"PROBAR MICRÓFONO"
 	"#str_231057"	"El chat de voz no está disponible."
 	"#str_231058"	"Según el arma"
+	"#str_231059"	"Introduce un número entero de 0 a 10000."
 }

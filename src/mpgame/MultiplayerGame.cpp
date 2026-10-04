@@ -16868,7 +16868,7 @@ void idMultiplayerGame::PublishRetainedSettings( idUserInterface *card, bool &ch
 // match_op_<prefix>_available and _reason, and the label, which for Set ready,
 // the team lock and the broadcaster the projection names (`labelState`, the
 // stock label until it does). Joining either team and spectating share one
-// operation.
+// operation, as do the three ballots.
 struct retainedMatchOperation_t {
 	const char *	name;
 	const char *	prefix;
@@ -16902,6 +16902,15 @@ static const retainedMatchOperation_t RETAINED_MATCH_OPERATIONS[] = {
 	{ "broadcaster", "broadcaster_set", "#str_41795", "match_broadcaster_action" },
 	{ "participant_remove", "participant_remove", "#str_41908", NULL },
 	{ "contestant_bind", "series_contestant_bind", "#str_41909", NULL },
+	{ "proposal_create", "proposal_create", "#str_41740", NULL },
+	{ "proposal_yes", "proposal_cast", "#str_41741", NULL },
+	{ "proposal_no", "proposal_cast", "#str_41742", NULL },
+	{ "proposal_abstain", "proposal_cast", "#str_41743", NULL },
+	{ "proposal_cancel", "proposal_cancel", "#str_41744", NULL },
+	{ "rules_select_profile", "rules_select_profile", "#str_41747", NULL },
+	{ "rules_stage", "rules_stage_field", "#str_41748", NULL },
+	{ "rules_commit", "rules_commit", "#str_41749", NULL },
+	{ "rules_discard", "rules_discard", "#str_41750", NULL },
 };
 
 /*
@@ -16987,6 +16996,22 @@ void idMultiplayerGame::PublishRetainedMatch( idUserInterface *card, bool &chang
 	PublishRetainedMatchList( card, changed, "match_replacement_rows", "replacement",
 		available ? clientMatchControlModel.ReplacementRowCount() : 0, RETAINED_MATCH_REPLACEMENT_ROWS, 1 );
 	publish( "mp.match.role", va( "%d", state.GetInt( "match_role_choice", "1" ) ) );
+	// Proposals: the running global and team proposals, the proposal a ballot
+	// or a cancellation goes to, and those the player may make. Rules: the
+	// committed and staged rules, the profiles, the rule fields and the value
+	// to stage, which the stock field keeps on the menu.
+	publish( "mp.match.proposal.global", MPRetainedPlainText( state.GetString( "match_global_proposal" ), 512, 2 ).c_str() );
+	publish( "mp.match.proposal.side", MPRetainedPlainText( state.GetString( "match_side_proposal" ), 512, 2 ).c_str() );
+	publish( "mp.match.scope", !idStr::Icmp( state.GetString( "match_proposal_scope_choice" ), "side" ) ? "1" : "0" );
+	PublishRetainedMatchList( card, changed, "match_proposal_rows", "proposal",
+		available ? clientMatchControlModel.ProposalTemplateRowCount() : 0, RETAINED_MATCH_PROPOSAL_ROWS, 2 );
+	publish( "mp.match.rules.summary", MPRetainedPlainText( state.GetString( "match_rules_summary" ), 512, 2 ).c_str() );
+	publish( "mp.match.rules.staged", MPRetainedPlainText( state.GetString( "match_staged_summary" ), 512, 2 ).c_str() );
+	publish( "mp.match.rule_value", va( "%d", state.GetInt( "match_rule_value" ) ) );
+	PublishRetainedMatchList( card, changed, "match_profile_rows", "profile",
+		available ? clientMatchControlModel.ProfileRowCount() : 0, RETAINED_MATCH_PROFILE_ROWS, 1 );
+	PublishRetainedMatchList( card, changed, "match_rule_rows", "rule",
+		available ? clientMatchControlModel.RuleRowCount() : 0, RETAINED_MATCH_RULE_ROWS, 3 );
 }
 
 /*

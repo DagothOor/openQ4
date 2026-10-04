@@ -856,8 +856,14 @@ int main() {
         CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl arm_roster_remove");
         card->state["card.match_op"] = "32"; s.HandleRetainedSessionRequest(card, "mpMatch");
         CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl series_contestant_bind" && s.guiRetainedMultiplayer == card);
+        card->state["card.match_op"] = "34"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl proposal_yes");
+        card->state["card.match_op"] = "40"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl arm_rules_commit");
+        card->state["card.match_op"] = "41"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl rules_discard" && s.guiRetainedMultiplayer == card);
         const size_t matched = gameObject.guiCommands.size();
-        for (const char* action : {"-1", "33", "99"}) {
+        for (const char* action : {"-1", "42", "99"}) {
             card->state["card.match_op"] = action; s.HandleRetainedSessionRequest(card, "mpMatch");
             CHECK(gameObject.guiCommands.size() == matched && s.guiRetainedMultiplayer == card &&
                   commonObject.warnings.back().find("match action") != std::string::npos);
@@ -892,6 +898,30 @@ int main() {
         }
         s.HandleRetainedSessionRequest(card, "mpMatchRole x");
         CHECK(mpMenu.state["match_role_choice"] == "3" && commonObject.warnings.back().find("unhandled multiplayer request") != std::string::npos);
+        // The proposal a ballot or a cancellation goes to waits on the game's
+        // menu in the stock choice's own words; a target outside the two is
+        // refused.
+        s.HandleRetainedSessionRequest(card, "mpMatchScope 1");
+        CHECK(mpMenu.state["match_proposal_scope_choice"] == "side" && gameObject.guiCommands.size() == selected);
+        s.HandleRetainedSessionRequest(card, "mpMatchScope 0");
+        CHECK(mpMenu.state["match_proposal_scope_choice"] == "global" && gameObject.guiCommands.size() == selected);
+        for (const char* bad : {"mpMatchScope 2", "mpMatchScope -1"}) {
+            s.HandleRetainedSessionRequest(card, bad);
+            CHECK(mpMenu.state["match_proposal_scope_choice"] == "global" && gameObject.guiCommands.size() == selected &&
+                  commonObject.warnings.back().find("ballot target") != std::string::npos);
+        }
+        // The value to stage for a rule waits on the game's menu, a whole number
+        // up to the largest a rule takes; anything else is refused.
+        s.HandleRetainedSessionRequest(card, "mpMatchRuleValue 10000");
+        CHECK(mpMenu.state["match_rule_value"] == "10000" && gameObject.guiCommands.size() == selected && s.guiRetainedMultiplayer == card);
+        s.HandleRetainedSessionRequest(card, "mpMatchRuleValue 0");
+        CHECK(mpMenu.state["match_rule_value"] == "0" && gameObject.guiCommands.size() == selected);
+        for (const char* bad : {"mpMatchRuleValue 10001", "mpMatchRuleValue -1", "mpMatchRuleValue 123456", "mpMatchRuleValue x",
+                                "mpMatchRuleValue ", "mpMatchRuleValue 1 2"}) {
+            s.HandleRetainedSessionRequest(card, bad);
+            CHECK(mpMenu.state["match_rule_value"] == "0" && gameObject.guiCommands.size() == selected &&
+                  commonObject.warnings.back().find("unhandled multiplayer request") != std::string::npos);
+        }
         // The Players page: the client a row or the statistics name reaches the
         // game as "retained select|mute|friend <client>", none of which closes
         // the menu; a client outside the server's slots is refused.
@@ -1961,7 +1991,7 @@ def check_retained_match(menu: str) -> None:
     operations = re.findall(r'\{ "(\w+)", "(\w+)", "(#str_\d+)", (NULL|"\w+") \},', table[:table.index('};')])
     names = [name for name, _prefix, _label, _state in operations]
     assert names == [name for name, *_ in cards.MATCH_STATUS_ACTIONS] + ['referee_login', 'referee_logout'] + \
-        [name for name, *_ in cards.MATCH_TEAM_ACTIONS], names
+        [name for name, *_ in cards.MATCH_TEAM_ACTIONS + cards.MATCH_PROPOSAL_ACTIONS + cards.MATCH_RULE_ACTIONS], names
     prefixes = {name: prefix for name, prefix, _label, _state in operations}
     projection = (ROOT / 'src/mpgame/mp/match/MatchControlProjection.cpp').read_text(encoding='utf-8')
     named = {'ready': ('match_ready_action', '#str_41714'), 'team_lock': ('match_team_lock_action', '#str_41735'),
@@ -1991,6 +2021,28 @@ def check_retained_match(menu: str) -> None:
     assert int(re.search(r'RETAINED_MP_MATCH_ROWS = (\d+);', menu).group(1)) == longest == 128
     assert int(re.search(r'RETAINED_MATCH_TEAM_ROWS = (\d+);', header).group(1)) == cards.MATCH_TEAM_ROWS
     assert int(re.search(r'RETAINED_MATCH_REPLACEMENT_ROWS = (\d+);', header).group(1)) == cards.MATCH_REPLACEMENT_ROWS
+    # Proposals, profiles and rule fields: as many rows as Match Control has.
+    assert int(re.search(r'RETAINED_MATCH_PROPOSAL_ROWS = (\d+);', header).group(1)) == cards.MATCH_PROPOSAL_ROWS == \
+        int(re.search(r'MP_MATCH_CONTROL_MAX_PROPOSAL_TEMPLATE_ROWS = (\d+);', model_header).group(1))
+    assert int(re.search(r'RETAINED_MATCH_PROFILE_ROWS = (\d+);', header).group(1)) == cards.MATCH_PROFILE_ROWS == \
+        int(re.search(r'MP_MATCH_CONTROL_MAX_PROFILE_ROWS = (\d+);', model_header).group(1))
+    rules_header = (ROOT / 'src/mpgame/mp/match/MatchRules.h').read_text(encoding='utf-8')
+    fields = re.search(r'typedef enum \{\s*MP_RULE_GAME_TYPE = 0,(.*?)MP_RULE_FIELD_COUNT', rules_header, re.S).group(1)
+    assert int(re.search(r'RETAINED_MATCH_RULE_ROWS = (\d+);', header).group(1)) == cards.MATCH_RULE_ROWS == 1 + fields.count('MP_RULE_')
+    # The ballot target in the stock choice's own words, which the game reads;
+    # the rule value up to the largest value a rule takes, which the adapter
+    # and the session both allow.
+    assert re.search(r'RETAINED_MP_MATCH_SCOPES\[\] = \{ "global", "side" \};', menu)
+    stock_page = (ROOT / 'content/baseoq4/pak0/guis/matchcontrol.gui').read_text(encoding='utf-8')
+    assert 'choices\t"#str_41794"' in stock_page and 'values\t"global;side"' in stock_page
+    assert 'strcmp( scope, "global" ) == 0' in handler and 'strcmp( scope, "side" ) == 0' in handler
+    assert [key for key, _value in cards.MATCH_SCOPES] == ['#str_41738', '#str_41739']
+    rules = (ROOT / 'src/mpgame/mp/match/MatchRules.cpp').read_text(encoding='utf-8')
+    maxima = [int(value) for value in re.findall(r'MP_RULE_FIELD\( MP_RULE_\w+, "\w+", MP_RULE_TYPE_\w+,\s*-?\d+, (\d+),', rules)]
+    assert len(maxima) >= 20 and max(maxima) == cards.MATCH_RULE_VALUE_MAX == int(re.search(r'RETAINED_MP_MATCH_RULE_VALUE_MAX = (\d+);', menu).group(1))
+    assert 'number > (rule ? 10000 : 999)' in (ROOT / 'src/ui/UserInterfaceRetained.cpp').read_text(encoding='utf-8')
+    assert 'guiActive->SetStateInt( "match_rule_value", voteValue );' in menu and 'parseStateInteger( "match_rule_value",' in handler
+    assert 'mainGui->GetStateString(\n\t\t\t"match_proposal_scope_choice", "" );' in handler.replace('\r\n', '\n')
     # The role choice: the protocol's roster roles, 1 to 4, by the projection's
     # own names for them; the game reads the stock choice's value.
     assert int(re.search(r'RETAINED_MP_MATCH_ROLES = (\d+);', menu).group(1)) == len(cards.MATCH_ROLES)
@@ -2028,6 +2080,18 @@ def check_retained_match(menu: str) -> None:
     assert 'key == K_JOY16 ? "onSectionPrevious" : key == K_JOY15 ? "onSectionNext"' in adapter, 'the triggers page sections'
     assert {'mpMatch', 'mpMatchSelect'} <= cpp_allowlist(adapter)
     assert 'mpMatchRole' in cpp_allowlist(adapter, 'bool SessionMenuValueCommand(')
+    # A number field's value goes through the session and comes back a frame
+    # later; the runtime accepts a number only once it reads it back, so the
+    # adapter acknowledges the field's proposal then (or refuses it after a
+    # second), never as it sends the request.
+    dispatch = function_body(adapter, 'bool idUserInterfaceRetained::DispatchApplicationActions(')
+    value_branch = dispatch[dispatch.index('if (invocation.operation == "session.menuValue") {'):]
+    value_branch = value_branch[:value_branch.index('continue;')]
+    assert 'widget->role == ControlRole::Number && impl->sessionNumbers.size() < 64' in value_branch
+    assert 'impl->sessionNumbers.push_back({pending.control,pending.proposalToken,static_cast<double>(*value),RetainedUI_PresentationTime()+1});' in value_branch
+    settle = function_body(adapter, 'void SettleSessionNumbers() {')
+    assert 'runtime->AcknowledgeControlProposal(it->control,it->token,readBack);' in settle and 'now < it->deadline' in settle
+    assert 'impl->SettleSessionNumbers();' in function_body(adapter, 'void idUserInterfaceRetained::Redraw(')
 
 
 def prompt_bar_fits(document: dict, name: str) -> None:
@@ -2207,9 +2271,9 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
     fields = re.findall(r'"(mpVote[A-Za-z]+)"', re.search(r'RETAINED_MP_VOTE_FIELDS\[\] = \{([^}]*)\};', menu).group(1))
     appearance = re.findall(r'"(mp[A-Za-z]+)"', re.search(r'RETAINED_MP_APPEARANCE_VALUES\[\] = \{([^}]*)\};', menu).group(1))
     choices = re.findall(r'"(mp[A-Za-z]+)"', re.search(r'RETAINED_MP_MATCH_CHOICES\[\] = \{([^}]*)\};', menu).group(1))
-    assert set(fields) | set(appearance) | set(choices) == value_verbs and \
-        len(fields) + len(appearance) + len(choices) == len(value_verbs), (fields, appearance, choices, value_verbs)
-    assert appearance == [*retained_mp_menus.MODEL_VERBS, 'mpCrosshair'] and choices == ['mpMatchRole']
+    assert set(fields) | set(appearance) | set(choices) | {'mpMatchRuleValue'} == value_verbs and \
+        len(fields) + len(appearance) + len(choices) + 1 == len(value_verbs), (fields, appearance, choices, value_verbs)
+    assert appearance == [*retained_mp_menus.MODEL_VERBS, 'mpCrosshair'] and choices == ['mpMatchRole', 'mpMatchScope']
     enum = [name.strip() for name in re.search(r'enum retainedVoteField_t \{([^}]*)\};', header).group(1).split(',') if name.strip()]
     assert enum[-1] == 'RVF_COUNT'
     keys = [name[len('RVF_'):].lower() for name in enum[:-1]]
