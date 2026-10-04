@@ -846,12 +846,14 @@
   The prompt bars' Select now reads correctly in Spanish and Italian.
 
 - Joining a server without automatic joining now opens the new Welcome card
-  over the softened match instead of the classic join panel: team cards that
-  join each team (and say why when the balance rule refuses one), Auto join
-  naming the team it picks, Spectate, the server's rules, the players, and
-  your name, model, rail color and crosshair. Esc spectates for now, and the
-  menu key brings it back until you join. Set `ui_retained 0` to keep the
-  classic menus.
+  over the softened match instead of the classic join panel. The loading
+  screen stays up, reading JOINING, until the card is ready, then fades into
+  it, so the join no longer flashes the bare match first. The card offers team
+  cards that join each team (and say why when the balance rule refuses one),
+  Auto join naming the team it picks, Spectate, the server's rules, the
+  players, and your name, model, rail color and crosshair. Esc spectates for
+  now, and the menu key brings it back until you join. Set `ui_retained 0` to
+  keep the classic menus.
 
 - The classic multiplayer Players page's Add Friend button now marks the
   player as your friend in the lists and on the scoreboard. It did nothing on

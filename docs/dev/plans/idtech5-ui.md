@@ -155,7 +155,7 @@ its header, the eight-tab strip, the prompt bar, the Disconnect confirmation
 and the softening, with the Team, Players, Vote, Settings, Voice and Server
 pages built and Match and Admin still handing off to their stock pages; the
 Welcome card covers the connect-time join offer, by default now that all its
-pages are built.
+pages are built, and a join's loading screen hands over to it.
 Event programs can move focus, and Q, E and the shoulders page a document's
 tabs. The Escape pages and the Welcome menu remain. No gate closes.
 

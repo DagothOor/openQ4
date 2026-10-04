@@ -71,8 +71,10 @@ struct idSessionLocal {
     void UpdateRetainedSubpage() {}
     bool RetainedSubpageEvent(const sysEvent_t*) { return false; }
     void HandleRetainedSessionRequest(idUserInterface*,const char*) { assert(false); }
-    // The multiplayer card is covered by the retained screens suite.
+    // The multiplayer card and the loading hold are covered by the retained screens suite.
     idUserInterface* guiRetainedMultiplayer=nullptr;
+    idUserInterface* guiLoadingHold=nullptr;
+    void UpdateRetainedLoadingHold() {}
     void UpdateRetainedMultiplayer() {}
     void RetainedMultiplayerFrameEvent() {}
     bool RetainedMultiplayerCovers() const { return false; }

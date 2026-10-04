@@ -4332,9 +4332,12 @@ void idSessionLocal::GuiFrameEvents() {
 	sysEvent_t  ev;
 	idUserInterface	*gui;
 
+	// A loading screen held over a join gives way to the Welcome card.
+	UpdateRetainedLoadingHold();
+
 	// stop generating move and button commands when a local console or menu is active
 	// running here so SP, async networking and no game all go through it
-	if ( console->Active() || guiActive || guiTest || RetainedUI_IsOpen() ) {
+	if ( console->Active() || guiActive || guiTest || RetainedUI_IsOpen() || guiLoadingHold != NULL ) {
 		usercmdGen->InhibitUsercmd( INHIBIT_SESSION, true );
 	} else {
 		usercmdGen->InhibitUsercmd( INHIBIT_SESSION, false );
@@ -5486,6 +5489,8 @@ idUserInterface *idSessionLocal::SelectRetainedLoadingGui( idUserInterface *lega
 	retained->SetStateBool( "loading_mp", multiplayer );
 	retained->SetStateBool( "loading_intro", idStr::Icmp( legacy->Name(), "guis/loading/intro.gui" ) == 0 );
 	retained->SetStateBool( "loading_ready", false );
+	// Whole again after the last join's hand-off faded it out.
+	retained->HandleNamedEvent( "present" );
 	return retained;
 #endif
 }
@@ -5563,6 +5568,127 @@ static bool Session_IsGameMenu( idUserInterface *gui ) {
 
 bool idSessionLocal::RetainedMultiplayerCovers() const {
 	return guiRetainedMultiplayer != NULL && Session_IsGameMenu( guiActive );
+}
+
+/*
+===============
+idSessionLocal::BeginRetainedLoadingHold
+
+At the end of a multiplayer load the retained loading screen presented: a
+player who joins by the Welcome card (no ui_autoJoin, the card on) keeps the
+screen, reading JOINING, until the card presents (section 14.17), so the
+join never shows the bare match or the stock menu between them. The hold
+gives up after 5 s: a remote client's card took 2 to 3 s to come, the
+menu's first opening among it. False when the load ends as before, with
+the wipe.
+===============
+*/
+static const int RETAINED_LOADING_HOLD_MSEC = 5000;
+static const int RETAINED_LOADING_HANDOFF_MSEC = 250;
+
+bool idSessionLocal::BeginRetainedLoadingHold() {
+#ifdef ID_DEDICATED
+	return false;
+#else
+	ClearRetainedLoadingHold();
+	// ExecuteMapChange asks just before it marks the map spawned.
+	if ( !retainedLoadingActive || guiLoading == NULL || !IsMultiplayer() || readDemo != NULL ||
+			idAsyncNetwork::multiViewDemo.IsPlaying() || cvarSystem->GetCVarBool( "ui_autoJoin" ) ||
+			!Session_RetainedMultiplayerEnabled( true ) || retainedStock.FindIndex( RETAINED_MP_WELCOME_GUI ) >= 0 ||
+			Session_ModSuppliesFile( "guis/mpmain.gui" ) ) {
+		return false;
+	}
+	// The 5 s count from the first frame the presentation clock moves.
+	guiLoadingHold = guiLoading;
+	retainedLoadingHoldBegan = common->GetPresentationTime();
+	if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+		common->Printf( "RETAINED_LOADING_HOLD begin\n" );
+	}
+	return true;
+#endif
+}
+
+/*
+===============
+idSessionLocal::FadeRetainedLoadingHold
+
+The held screen fades out over 250 ms (80 ms under reduced motion), over the
+card that takes over or over the match; the session draws it until then.
+===============
+*/
+void idSessionLocal::FadeRetainedLoadingHold( const char *reason ) {
+#ifndef ID_DEDICATED
+	// Not before the clock moves after the load (UpdateRetainedLoadingHold).
+	if ( guiLoadingHold == NULL || retainedLoadingHoldFading || retainedLoadingHoldLive == 0 ) {
+		return;
+	}
+	const int now = common->GetPresentationTime();
+	guiLoadingHold->HandleNamedEvent( "handoff" );
+	retainedLoadingHoldFading = true;
+	retainedLoadingHoldUntil = now + RETAINED_LOADING_HANDOFF_MSEC;
+	if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+		common->Printf( "RETAINED_LOADING_HOLD fade=%s waited=%d\n", reason, now - retainedLoadingHoldLive );
+	}
+#endif
+}
+
+/*
+===============
+idSessionLocal::UpdateRetainedLoadingHold
+
+Each frame, before the card's own update: the hold fades once a card has
+presented, when anything else takes the screen, or after 5 s, and ends with
+its fade. A card that presents this frame starts the fade on the next, so its
+first frame, the slowest (the menu opening, the softening's first draw), draws
+under the screen and the fade plays on the quick frames after it. A new load
+or a stop drops the hold at once.
+===============
+*/
+void idSessionLocal::UpdateRetainedLoadingHold() {
+#ifndef ID_DEDICATED
+	if ( guiLoadingHold == NULL ) {
+		return;
+	}
+	if ( !mapSpawned || insideExecuteMapChange ) {
+		ClearRetainedLoadingHold();
+		return;
+	}
+	const int now = common->GetPresentationTime();
+	if ( retainedLoadingHoldFading ) {
+		if ( now >= retainedLoadingHoldUntil ) {
+			if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+				common->Printf( "RETAINED_LOADING_HOLD end faded=%d\n", now - ( retainedLoadingHoldUntil - RETAINED_LOADING_HANDOFF_MSEC ) );
+			}
+			ClearRetainedLoadingHold();
+		}
+		return;
+	}
+	// The presentation clock stands still through the load and the rest of
+	// its frame, then catches up at once: the hold counts its 5 s, and may
+	// fade, only from the first frame the clock moves.
+	if ( retainedLoadingHoldLive == 0 ) {
+		if ( now == retainedLoadingHoldBegan ) {
+			return;
+		}
+		retainedLoadingHoldLive = now;
+		retainedLoadingHoldUntil = now + RETAINED_LOADING_HOLD_MSEC;
+	}
+	if ( guiRetainedMultiplayer != NULL ) {
+		FadeRetainedLoadingHold( "card" );
+	} else if ( RetainedUI_IsOpen() || ( guiActive != NULL && ( !Session_IsGameMenu( guiActive ) || retainedMultiplayerUncovered ) ) ) {
+		FadeRetainedLoadingHold( "screen" );
+	} else if ( now >= retainedLoadingHoldUntil ) {
+		FadeRetainedLoadingHold( "expired" );
+	}
+#endif
+}
+
+void idSessionLocal::ClearRetainedLoadingHold() {
+	guiLoadingHold = NULL;
+	retainedLoadingHoldBegan = 0;
+	retainedLoadingHoldLive = 0;
+	retainedLoadingHoldUntil = 0;
+	retainedLoadingHoldFading = false;
 }
 
 /*

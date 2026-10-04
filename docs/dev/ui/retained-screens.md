@@ -257,7 +257,8 @@ after editing the script; `--check` fails when an output is stale.
   server's name in its header, then its address in Profont, the mode and the
   limits, the players by team, and the server's message (`si_motd`), and a
   finished multiplayer load reads JOINING, since multiplayer never waits for
-  a click. The card stands on 384 u, clear of the lower corner bracket, and
+  a click; joining by the Welcome card, the screen stays up until the card
+  presents ([hand-off](#hand-off-to-the-welcome-card)). The card stands on 384 u, clear of the lower corner bracket, and
   its parts flow, so it grows upward with what it holds. The game module names
   the mode, the limits it enforces (the scoreboard's rule:
   `MPResolveMatchLimitFor`) and whether it has teams from the server info the
@@ -504,6 +505,28 @@ time once the level is ready. The continue prompt follows
 bindings already track; the wait for continue republishes it, so touching a
 controller or the mouse switches the prompt.
 
+## Hand-off to the Welcome card
+
+A multiplayer load that ends at the Welcome card, with `ui_autoJoin` off and
+the card on, keeps the loading screen up, reading JOINING, until the card
+presents (`BeginRetainedLoadingHold`), in place of the load's wipe: the join
+never shows the bare match or the stock menu in between. The session draws
+the held screen above the game and its menu, under any wipe and the console,
+and user commands wait while it holds. On the frame after the card first
+presents, the screen fades out over 250 ms (the runtime's 80 ms under reduced
+motion; the document's `handoff`) over the card and its softened match, so
+the card's first frame, the slowest, draws under the screen. Another screen
+taking over (the stock menu in the card's place, another GUI, a retained
+dialog) ends the hold with the same fade, and so does its ceiling, 5 s; a new
+load or a stop drops it at once. Each load presents the screen whole again
+(`present`).
+
+The presentation clock stands still through the load and the rest of its
+frame, then catches up at once, so the hold counts its 5 s, and may fade,
+only from the first frame the clock moves. A listen server's card presented
+in the load's own frame; a remote client's came 2 to 4 s after it, the menu's
+first opening among that time.
+
 ## Validation
 
 - `openq4-ui-retained-screens` (native) loads the four production documents,
@@ -511,8 +534,9 @@ controller or the mouse switches the prompt.
   state. It checks the schema additions, the additive and multiplied draws,
   the transformed clip, the emblem glint and its reduced-motion rule, the
   levelshot drift, the phase line, the percentage and the controller prompt,
-  the multiplayer server card and JOINING, the arsenal's fade, tint and two
-  rows, the tips (hidden until published, the slot cross-fade, the tag and
+  the multiplayer server card and JOINING, the hand-off's fade over 250 ms
+  (80 ms under reduced motion) and `present` making the screen whole again,
+  the arsenal's fade, tint and two rows, the tips (hidden until published, the slot cross-fade, the tag and
   two-line box inside the band, and the band given to the continue prompt
   when the level is ready, or to the arsenal in multiplayer), the title
   carry on both menus, the
@@ -630,6 +654,20 @@ controller or the mouse switches the prompt.
   back, with shots mid-change and at rest; `subpage-reduced` does the same
   under reduced motion. Back during a change reaches the session only as
   real input, so the gate and screens tests cover the reversal.
+- `tools/tests/ui_retained_gate.py` compiles the session's loading hold
+  against a stand-in session and drives it: who it holds for (each refusal:
+  the stock screen, single player, a demo, `ui_autoJoin`, the card off or
+  fallen back, a mod's menu), a listen server's join on the clock the load
+  left standing, a remote client's card coming seconds later and fading on
+  the next frame, the ceiling counted from the first moving frame, the
+  screens that end it and the drops. It pins where the session begins it in
+  place of the wipe, draws it under the wipe, updates it before the card and
+  holds user commands, and the loading document's `handoff` and `present`.
+- Live probes with `ui_autoJoin 0` traced the hold and captured it: a listen
+  server on OpenGL in English, its card in the load's own frame and the
+  fade over the next 60 and 120 ms; a remote client on OpenGL whose card came
+  2 to 4 s after the load, JOINING held until then; Vulkan in German under
+  reduced motion; and no hold with `ui_autoJoin 1` or `ui_retained 0`.
 
 ## Evidence
 
@@ -851,6 +889,9 @@ connection traced the players they published. Evidence:
 `.tmp/ui/retained-server-card/validation-evidence.json`, SHA-256
 `dc352d1c28dfe32f9057dcb7d8ee69d17ad11ba1712b42cb1472c236b617c113`.
 
+The hand-off to the Welcome card was traced and captured on listen servers and a remote client with `ui_autoJoin 0`: JOINING held until the card presented and then faded out over it, on OpenGL in English and on Vulkan in German under reduced motion, and no hold with automatic joining or the stock screens. Evidence: `.tmp/ui/retained-loading-handoff/validation-evidence.json`, SHA-256
+`ed845b87064b11dea753eab7d7f27b70ad79d07e649d400d0c43325619e02c1e`.
+
 ## Known limitations
 
 - The completed objectives are kept per map and not saved, so after loading a
@@ -874,9 +915,12 @@ connection traced the players they published. Evidence:
   inside a composition layer gets no soft focus, because only the base
   surface is read. Only the confirmation width exists.
 - The multiplayer Escape card is opt-in (`ui_retainedMultiplayer`) while its
-  pages hand off to the stock menu, and the Welcome card is not built
-  ([multiplayer menus](multiplayer-menus.md#known-limitations)); the
-  retained home screen is never presented in a multiplayer game.
+  Match and Admin pages hand off to the stock menu; the Welcome card presents
+  by default ([multiplayer menus](multiplayer-menus.md#known-limitations)).
+  The retained home screen is never presented in a multiplayer game.
+- The Welcome card's own opening runs on the clock the load left standing
+  and ends at once, so the hand-off reveals the card already softened. A
+  first card frame slower than the fade still cuts it short.
 - The sub-page level covers Single Player's Campaign only. Arena opens its
   stock selector, Multiplayer's Join Game, Create Server and Demos keep the
   stock menus, and Campaign's New Campaign and Chapters are not yet levels of
@@ -892,7 +936,7 @@ connection traced the players they published. Evidence:
   so where a list cannot open at all there is no other way to change it
   ([SYSTEM display rows](system-display-rows.md#known-limitations)).
 - The loading screen has no touch prompt (touch counts as desktop input).
-  JOINING does not yet hand over to a Welcome menu. The arsenal fills in only
+  The arsenal fills in only
   where the map spawns its items: a listen server's own load, not a client
   joining another server. The server card lists a joining client under the
   team it asks for, which the server may balance differently, and a

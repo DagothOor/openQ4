@@ -10,8 +10,9 @@ Team, Players, Vote, Settings, Voice and Server pages are built on it; Match
 and Admin still hand off to their stock pages, so the Escape card stays
 opt-in. The Welcome card covers the connect-time join offer with its Join,
 Server, Players and Settings pages, all built, so it presents by default.
-Match follows in a later increment (the plan's B9); Admin waits for text
-fields, and its stock page's password check now works (B7).
+The loading screen hands a join over to the Welcome card (B8). Match follows
+in a later increment (the plan's B9); Admin waits for text fields, and its
+stock page's password check now works (B7).
 
 ## The gate
 
@@ -234,6 +235,8 @@ the reason "Voice chat is not available." while voice chat does not work.
 
 ### The Welcome card
 
+A join's loading screen stays up, reading JOINING, until the card presents,
+then fades out over it ([hand-off](retained-screens.md#hand-off-to-the-welcome-card)).
 The Welcome card covers the menu the game opens when a player joins without
 `ui_autoJoin`, and the menu key opens it again until the player answers: Esc
 (Spectate on the prompt bar) closes it and leaves the player spectating, while

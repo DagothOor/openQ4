@@ -299,6 +299,8 @@ public:
     bool RetainedMultiplayerCovers() const; void UpdateRetainedMultiplayer(); void RetainedMultiplayerFrameEvent();
     void RetireRetainedMultiplayer(bool); void HandleRetainedMultiplayerRequest(idUserInterface*, const char*);
     void HandleGameMenuReturn(const char*);
+    // The loading hold has its own compiled case (check_loading_hold).
+    void FadeRetainedLoadingHold(const char*) {}
 };
 '''
 
@@ -1621,6 +1623,262 @@ def check_server_card(compiler: str, directory: Path) -> None:
         assert re.search(r'idCVar si_motd\(\s+"si_motd",\s+"",\s+CVAR_GAME \| CVAR_SERVERINFO \| PC_CVAR_ARCHIVE', cvars), module
 
 
+HOLD = r"""
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <vector>
+static int checks = 0;
+#define CHECK(x) do { ++checks; if (!(x)) { std::fprintf(stderr, "check failed line %d: %s\n", __LINE__, #x); std::abort(); } } while (false)
+struct idStr {
+    static int Icmp(const char* a, const char* b) {
+        for (;; ++a, ++b) {
+            const int x = *a >= 'A' && *a <= 'Z' ? *a + 32 : *a, y = *b >= 'A' && *b <= 'Z' ? *b + 32 : *b;
+            if (x != y) return x - y;
+            if (!x) return 0;
+        }
+    }
+};
+struct idUserInterface {
+    std::string name; bool gameDraw = false; std::vector<std::string> events;
+    idUserInterface(const char* path, bool draw = false) : name(path), gameDraw(draw) {}
+    struct View { bool gameDraw; bool GetBool(const char* key) const { return !std::strcmp(key, "gameDraw") && gameDraw; } };
+    View State() const { return {gameDraw}; }
+    const char* Name() const { return name.c_str(); }
+    void HandleNamedEvent(const char* event) { events.push_back(event); }
+};
+struct idStrList {
+    std::vector<std::string> items;
+    int FindIndex(const char* text) const {
+        for (size_t i = 0; i < items.size(); ++i) if (items[i] == text) return static_cast<int>(i);
+        return -1;
+    }
+};
+static const char* const RETAINED_MP_WELCOME_GUI = "guis/menu/mp_welcome.q4ui";
+static bool welcomeEnabled = true, modMenu = false, retainedOpen = false;
+static bool Session_RetainedMultiplayerEnabled(bool welcome) { return welcome && welcomeEnabled; }
+static bool Session_ModSuppliesFile(const char* path) { return modMenu && !std::strcmp(path, "guis/mpmain.gui"); }
+static bool RetainedUI_IsOpen() { return retainedOpen; }
+struct Common {
+    int now = 1000; std::string output;
+    int GetPresentationTime() const { return now; }
+    void Printf(const char* fmt, ...) { char text[512]; va_list args; va_start(args, fmt); std::vsnprintf(text, sizeof(text), fmt, args); va_end(args); output += text; }
+} commonObject, *common = &commonObject;
+struct CVarSystem {
+    bool autoJoin = false;
+    bool GetCVarBool(const char* name) const { return !std::strcmp(name, "ui_autoJoin") ? autoJoin : !std::strcmp(name, "ui_retainedTrace"); }
+} cvarObject, *cvarSystem = &cvarObject;
+struct MultiViewDemo { bool playing = false; bool IsPlaying() const { return playing; } };
+struct idAsyncNetwork { static MultiViewDemo multiViewDemo; };
+MultiViewDemo idAsyncNetwork::multiViewDemo;
+class idSessionLocal {
+public:
+    bool multiplayer = true; void* readDemo = nullptr;
+    bool IsMultiplayer() { return multiplayer; }
+    bool retainedLoadingActive = true, mapSpawned = false, insideExecuteMapChange = false, retainedMultiplayerUncovered = false;
+    idUserInterface *guiLoading = nullptr, *guiLoadingHold = nullptr, *guiRetainedMultiplayer = nullptr, *guiActive = nullptr;
+    int retainedLoadingHoldBegan = 0, retainedLoadingHoldLive = 0, retainedLoadingHoldUntil = 0;
+    bool retainedLoadingHoldFading = false;
+    idStrList retainedStock;
+    bool BeginRetainedLoadingHold(); void FadeRetainedLoadingHold(const char* reason);
+    void UpdateRetainedLoadingHold(); void ClearRetainedLoadingHold();
+};
+"""
+
+HOLD_MAIN = r"""
+static idUserInterface loading{"guis/loading/loading.q4ui"}, menu{"guis/mpmain.gui", true}, card{"guis/menu/mp_welcome.q4ui"},
+    chat{"guis/mpchat.gui", true};
+// A session at the end of a multiplayer load that the retained screen presented.
+static idSessionLocal Loaded() {
+    idSessionLocal session; session.guiLoading = &loading; loading.events.clear(); common->output.clear(); common->now = 1000;
+    return session;
+}
+// One frame: the clock, then the hold's update at the top of the frame.
+static void Frame(idSessionLocal& session, int now) { common->now = now; session.UpdateRetainedLoadingHold(); }
+static bool Held(const idSessionLocal& session) { return session.guiLoadingHold == &loading; }
+static bool Traced(const char* line) { return common->output.find(line) != std::string::npos; }
+
+int main() {
+    // Only a Welcome join keeps the screen: the retained screen presented the
+    // load, it is multiplayer and no demo, ui_autoJoin is off and the card can
+    // present (its gate, no fallback, no mod menu).
+    struct Refusal { const char* why; void (*set)(idSessionLocal&, bool); };
+    const Refusal refusals[] = {
+        {"stock screen", [](idSessionLocal& s, bool on) { s.retainedLoadingActive = !on; }},
+        {"no screen", [](idSessionLocal& s, bool on) { s.guiLoading = on ? nullptr : &loading; }},
+        {"single player", [](idSessionLocal& s, bool on) { s.multiplayer = !on; }},
+        {"demo", [](idSessionLocal& s, bool on) { static int demo; s.readDemo = on ? &demo : nullptr; }},
+        {"multiview demo", [](idSessionLocal&, bool on) { idAsyncNetwork::multiViewDemo.playing = on; }},
+        {"auto join", [](idSessionLocal&, bool on) { cvarSystem->autoJoin = on; }},
+        {"card off", [](idSessionLocal&, bool on) { welcomeEnabled = !on; }},
+        {"card fell back", [](idSessionLocal& s, bool on) { s.retainedStock.items = on ? std::vector<std::string>{RETAINED_MP_WELCOME_GUI} : std::vector<std::string>{}; }},
+        {"mod menu", [](idSessionLocal&, bool on) { modMenu = on; }},
+    };
+    for (const Refusal& refusal : refusals) {
+        idSessionLocal session = Loaded();
+        refusal.set(session, true);
+        CHECK(!session.BeginRetainedLoadingHold() && session.guiLoadingHold == nullptr);
+        refusal.set(session, false);
+        CHECK(session.BeginRetainedLoadingHold() && Held(session));
+    }
+    // A listen server: the card presents in the frame the load ends, on the
+    // clock the load left standing; the fade waits for the clock to move.
+    {
+        idSessionLocal session = Loaded();
+        CHECK(session.BeginRetainedLoadingHold() && Traced("RETAINED_LOADING_HOLD begin"));
+        session.mapSpawned = true;
+        session.guiActive = &menu; session.guiRetainedMultiplayer = &card;
+        Frame(session, 1000);
+        CHECK(Held(session) && loading.events.empty() && !session.retainedLoadingHoldFading);
+        session.FadeRetainedLoadingHold("card");
+        CHECK(loading.events.empty());
+        Frame(session, 3700);
+        CHECK(loading.events == std::vector<std::string>{"handoff"} && session.retainedLoadingHoldFading);
+        CHECK(Traced("RETAINED_LOADING_HOLD fade=card waited=0"));
+        Frame(session, 3700 + RETAINED_LOADING_HANDOFF_MSEC - 1);
+        CHECK(Held(session));
+        Frame(session, 3700 + RETAINED_LOADING_HANDOFF_MSEC);
+        CHECK(session.guiLoadingHold == nullptr && loading.events.size() == 1 && Traced("end faded="));
+    }
+    // A remote client: the card comes seconds later; its first frame draws
+    // under the screen and the fade starts on the next.
+    {
+        idSessionLocal session = Loaded();
+        CHECK(session.BeginRetainedLoadingHold());
+        session.mapSpawned = true;
+        Frame(session, 1000);
+        for (int now = 1016; now < 3016; now += 16) {
+            Frame(session, now);
+            CHECK(Held(session) && loading.events.empty());
+        }
+        Frame(session, 3016);
+        session.guiActive = &menu; session.guiRetainedMultiplayer = &card;
+        CHECK(loading.events.empty());
+        Frame(session, 3270);
+        CHECK(loading.events == std::vector<std::string>{"handoff"} && Traced("fade=card waited=2254"));
+    }
+    // No card: the hold gives up after its ceiling, counted from the first
+    // frame the clock moves, however far it jumped.
+    {
+        idSessionLocal session = Loaded();
+        CHECK(session.BeginRetainedLoadingHold());
+        session.mapSpawned = true;
+        const int live = 1000 + RETAINED_LOADING_HOLD_MSEC + 500;
+        Frame(session, live);
+        CHECK(Held(session) && loading.events.empty());
+        Frame(session, live + RETAINED_LOADING_HOLD_MSEC - 1);
+        CHECK(loading.events.empty());
+        Frame(session, live + RETAINED_LOADING_HOLD_MSEC);
+        CHECK(loading.events == std::vector<std::string>{"handoff"} && Traced("fade=expired"));
+        Frame(session, live + RETAINED_LOADING_HOLD_MSEC + RETAINED_LOADING_HANDOFF_MSEC);
+        CHECK(session.guiLoadingHold == nullptr);
+    }
+    // The game's menu waiting for its card keeps the screen; anything else
+    // that takes the screen ends the hold: another GUI, the stock menu
+    // presenting in the card's place, a retained modal.
+    {
+        idSessionLocal session = Loaded();
+        CHECK(session.BeginRetainedLoadingHold());
+        session.mapSpawned = true;
+        session.guiActive = &menu;
+        Frame(session, 1100);
+        CHECK(Held(session) && loading.events.empty());
+        struct Screen { idUserInterface* active; bool uncovered; bool modal; };
+        for (const Screen& screen : {Screen{&chat, false, false}, Screen{&menu, true, false}, Screen{nullptr, false, true}}) {
+            idSessionLocal other = Loaded();
+            CHECK(other.BeginRetainedLoadingHold());
+            other.mapSpawned = true;
+            other.guiActive = screen.active; other.retainedMultiplayerUncovered = screen.uncovered; retainedOpen = screen.modal;
+            Frame(other, 1100);
+            CHECK(loading.events == std::vector<std::string>{"handoff"} && Traced("fade=screen"));
+            retainedOpen = false;
+        }
+    }
+    // A new load or a stop drops the hold at once, without a fade.
+    {
+        idSessionLocal session = Loaded();
+        CHECK(session.BeginRetainedLoadingHold());
+        session.mapSpawned = true;
+        session.insideExecuteMapChange = true;
+        Frame(session, 1100);
+        CHECK(session.guiLoadingHold == nullptr && loading.events.empty());
+        idSessionLocal stopped = Loaded();
+        CHECK(stopped.BeginRetainedLoadingHold());
+        Frame(stopped, 1100);
+        CHECK(stopped.guiLoadingHold == nullptr && loading.events.empty());
+        stopped.mapSpawned = true;
+        CHECK(stopped.BeginRetainedLoadingHold() && Held(stopped));
+        stopped.ClearRetainedLoadingHold();
+        CHECK(stopped.guiLoadingHold == nullptr && stopped.retainedLoadingHoldBegan == 0 && stopped.retainedLoadingHoldLive == 0 &&
+              stopped.retainedLoadingHoldUntil == 0 && !stopped.retainedLoadingHoldFading);
+    }
+    std::printf("ui_retained gate: %d loading hold checks passed\n", checks);
+    return 0;
+}
+"""
+
+
+def check_loading_hold(compiler: str, directory: Path) -> None:
+    """The loading screen held over a Welcome join (section 14.17): compile the
+    production hold against a stand-in session and drive the listen server's
+    and the remote client's joins, the ceiling, the screens that end it and
+    the drops; then pin where the session calls it, and the loading
+    document's hand-off."""
+    menu = (ROOT / 'src/framework/Session_menu.cpp').read_text(encoding='utf-8')
+    session = (ROOT / 'src/framework/Session.cpp').read_text(encoding='utf-8')
+    constants = '\n'.join(re.search(rf'static const int {name} = \d+;', menu).group(0)
+                          for name in ('RETAINED_LOADING_HOLD_MSEC', 'RETAINED_LOADING_HANDOFF_MSEC'))
+    bodies = [constants, function_body(menu, 'static bool Session_IsGameMenu(')]
+    bodies += [function_body(menu, f'{kind} idSessionLocal::{name}(') for kind, name in (
+        ('bool', 'BeginRetainedLoadingHold'), ('void', 'FadeRetainedLoadingHold'), ('void', 'UpdateRetainedLoadingHold'),
+        ('void', 'ClearRetainedLoadingHold'))]
+    source = directory / 'hold.cpp'
+    binary = directory / 'hold.exe'
+    source.write_text(HOLD + '\n'.join(bodies) + HOLD_MAIN, encoding='utf-8')
+    subprocess.run([compiler, '-std=c++20', '-Wall', '-Wextra', '-Wno-unused-function', str(source), '-o', str(binary)], check=True)
+    result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    assert result.returncode == 0, 'the loading hold checks failed'
+    menu_lf, session_lf = menu.replace('\r\n', '\n'), session.replace('\r\n', '\n')
+    # The load ends with the hold or, without it, the wipe; the hold must ask
+    # while the retained screen still presents the load.
+    change = function_body(session_lf, 'void idSessionLocal::ExecuteMapChange(')
+    assert '\tif ( !BeginRetainedLoadingHold() ) {\n\t\tStartWipe( "gfx/wipes/fade_blend" );\n\t}' in change
+    assert change.index('ClearRetainedLoadingHold();') < change.index('BeginRetainedLoadingHold()') < change.index('retainedLoadingActive = false;\n\n\tSys_SetPhysicalWorkMemory')
+    # Drawn above the game and its menu, under the wipe and the console.
+    draw = function_body(session_lf, 'void idSessionLocal::Draw(')
+    held = draw.index('guiLoadingHold->Redraw( presentationTime );')
+    assert draw.index('} else if ( mapSpawned ) {') < held < draw.index('RetainedUI_Draw();') < draw.index('DrawWipeModel();')
+    # Updated at the top of every frame, before the card's update, and user
+    # commands wait while it holds.
+    frame = function_body(menu_lf, 'void idSessionLocal::GuiFrameEvents(')
+    assert frame.index('UpdateRetainedLoadingHold();') < frame.index('usercmdGen->InhibitUsercmd') < frame.index('UpdateRetainedMultiplayer();')
+    assert 'guiTest || RetainedUI_IsOpen() || guiLoadingHold != NULL ) {' in frame
+    assert 'FadeRetainedLoadingHold' not in function_body(menu, 'void idSessionLocal::UpdateRetainedMultiplayer('), \
+        'the card fades the hold from the next frame, not its own'
+    assert 'ClearRetainedLoadingHold();' in function_body(session, 'void idSessionLocal::Clear(')
+    assert 'ClearRetainedLoadingHold();' in function_body(session, 'void idSessionLocal::StopInternal(')
+    assert 'retained->HandleNamedEvent( "present" );' in function_body(menu, 'idUserInterface *idSessionLocal::SelectRetainedLoadingGui(')
+    # The loading document's hand-off: the whole screen fades over the
+    # session's hand-off time, and present makes it whole again.
+    text = (ROOT / 'content/baseoq4/pak0/guis/loading/loading.q4ui').read_text(encoding='utf-8')
+    document = json.loads(re.sub(r'^\s*//.*$', '', text, flags=re.M))
+    handoff_ms = int(re.search(r'RETAINED_LOADING_HANDOFF_MSEC = (\d+);', menu).group(1))
+    timelines = {timeline['id']: timeline for timeline in document['timelines']}
+    fade = timelines['handoff']
+    assert fade['durationMs'] == handoff_ms and len(fade['tracks']) == 1
+    track = fade['tracks'][0]
+    assert track['node'] == document['root']['id'] == 'screen' and track['property'] == 'opacity'
+    assert [key['value']['value'] for key in track['keys']] == [1, 0] and track['keys'][-1]['atMs'] == handoff_ms
+    assert [key['value']['value'] for key in timelines['present']['tracks'][0]['keys']] == [1, 1]
+    assert document['events']['handoff'] == [{'op': 'playTimeline', 'timeline': 'handoff'}]
+    assert document['events']['present'] == [{'op': 'playTimeline', 'timeline': 'present'}]
+    assert document['root']['properties']['opacity']['value'] == 1
+
+
 def prompt_bar_fits(document: dict, name: str) -> None:
     """The card's prompt bar, measured from the document itself in every
     language's shipped faces (its texts, sizes, paddings and margins), fits
@@ -2128,6 +2386,7 @@ def main() -> int:
         if result.returncode == 0:
             print(f'ui_retained gate: the Strogg faces resolve and {check_strogg_faces(compiler, Path(directory))} code points fold onto the rune face')
             check_server_card(compiler, Path(directory))
+            check_loading_hold(compiler, Path(directory))
         return result.returncode
 
 

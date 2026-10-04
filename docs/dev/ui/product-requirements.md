@@ -539,6 +539,8 @@ On engine `8ea6ec75de6db7b55cd58028f1c905e69e3522c6` the multiplayer Escape card
 
 On engine `399beec21e893594a35ec9d8848bccc5c79d311b` the multiplayer cards gain their Settings pages (the player's model, rail color, handicap or crosshair, and how opponents and teammates look) and the Escape card its Voice page; with all its pages built, the Welcome card presents by default. The gate, adapter and native screens tests, a mutation pass and live probes qualify them. `FLOW-046` gains partial evidence without a status change. Evidence: `.tmp/ui/retained-mp-settings/validation-evidence.json`, SHA-256 `ef740505998f2b64c757928e2c62e08fd34dda5a735a1645c369e9d817e83f8a`.
 
+On engine `f7173a4fc81ab9b4a33575e2c9d0e148c8bb2507` the retained loading screen hands a join over to the Welcome card: it stays up, reading JOINING, until the card presents, then fades out over it in place of the load's wipe. The gate's compiled hold case, the native screens test, a mutation pass and live probes on a listen server and a remote client qualify it. `FLOW-047` gains partial evidence without a status change. Evidence: `.tmp/ui/retained-loading-handoff/validation-evidence.json`, SHA-256 `ed845b87064b11dea753eab7d7f27b70ad79d07e649d400d0c43325619e02c1e`.
+
 There are **92 partial, 247 pending and one verified requirement**, counting the
 33 superseded rows at their recorded states. `BEH-002`
 remains partial for the implemented settings transaction/service boundary.

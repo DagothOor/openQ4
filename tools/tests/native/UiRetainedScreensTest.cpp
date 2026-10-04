@@ -1729,6 +1729,36 @@ int main(int argc, char** argv) {
 		const auto mpTips = runtime.PresentedValue("tips","display");
 		Check(mpTips && mpTips->text == "none","multiplayer shows its arsenal instead of tips");
 		Check(runtime.SetState({{"loading_mp",false},{"loading_tip_a",std::string("")},{"loading_tip_b",std::string("")}},error,10.8),"reset");
+		// A multiplayer join hands the screen to the Welcome card: handoff fades
+		// it whole over 250 ms (80 ms under reduced motion), and present makes
+		// it whole again for the next load.
+		const auto opacity = [&]() {
+			const auto value = runtime.PresentedValue("screen","opacity");
+			Check(value.has_value(),"the screen's opacity");
+			return static_cast<float>(value->data[0]);
+		};
+		runtime.Frame(viewport,11);
+		Check(Near(opacity(),1,.001f),"the screen presents whole");
+		Check(runtime.RunEvent("handoff",11,effects,error),"handoff plays");
+		runtime.Frame(viewport,11.125);
+		Check(opacity() > .3f && opacity() < .7f,"half way through the hand-off");
+		runtime.Frame(viewport,11.26);
+		Check(Near(opacity(),0,.001f),"handed off after 250 ms");
+		Check(runtime.RunEvent("present",11.5,effects,error),"present plays");
+		runtime.Frame(viewport,11.51);
+		Check(Near(opacity(),1,.001f),"whole again for the next load");
+		host.reducedMotion = true;
+		runtime.SetReducedMotion(true,12);
+		Check(runtime.RunEvent("handoff",12,effects,error),"handoff under reduced motion");
+		runtime.Frame(viewport,12.04);
+		Check(opacity() > .3f && opacity() < .7f,"half way after 40 ms");
+		runtime.Frame(viewport,12.09);
+		Check(Near(opacity(),0,.001f),"handed off within 80 ms");
+		Check(runtime.RunEvent("present",12.2,effects,error),"present under reduced motion");
+		runtime.Frame(viewport,12.21);
+		Check(Near(opacity(),1,.001f),"whole again");
+		host.reducedMotion = false;
+		runtime.SetReducedMotion(false,12.3);
 	}
 	// The Single Player page and its Campaign sub-page (sections 8 and 9, the
 	// sub-page level of 1.10): their rest states, going deeper and Back.

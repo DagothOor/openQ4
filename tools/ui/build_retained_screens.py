@@ -2722,8 +2722,17 @@ def loading_document() -> dict:
                                     track("tip-b", "color", [(0, shown), (250, hidden)])])
     doc.timelines.add("tipB", 250, [track("tip-b", "color", [(0, hidden), (250, shown)]),
                                     track("tip-a", "color", [(0, shown), (250, hidden)])])
+    # A multiplayer join that ends at the Welcome card hands the screen over
+    # (section 14.17): the session keeps drawing it, reading JOINING, until
+    # the card presents, then plays handoff, the whole screen fading over
+    # 250 ms (the runtime's 80 ms under reduced motion) while the card's
+    # softening ramps in below. Each load presents it whole again.
+    doc.timelines.add("handoff", 250, [track("screen", "opacity", [(0, number(1)), (250, number(0))])])
+    doc.timelines.add("present", 1, [track("screen", "opacity", [(0, number(1)), (1, number(1))])])
+    doc.events["handoff"] = [{"op": "playTimeline", "timeline": "handoff"}]
+    doc.events["present"] = [{"op": "playTimeline", "timeline": "present"}]
     root = group("screen", {**FULL, "background-color": colour([0, 0, 0, 1]), "font-family": font("marine"),
-                            "font-size": length(16), "color": colour([1, 1, 1, 0.8])}, [
+                            "font-size": length(16), "color": colour([1, 1, 1, 0.8]), "opacity": number(1)}, [
         shot,
         vector("load-grid", dict(FULL), [grid_path()]),
         top_band, bottom_band, brackets, dot_matrix, identity, objectives, server, arsenal, tips, progress,

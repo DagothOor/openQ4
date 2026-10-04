@@ -108,8 +108,10 @@ struct idSessionLocal {
     void UpdateRetainedHome() {}
     void RetainedHomeFrameEvent() {}
     void UpdateRetainedSubpage() {}
-    // Nor does the multiplayer card.
+    // Nor does the multiplayer card, or a loading screen held over a join.
     void UpdateRetainedMultiplayer() {}
+    idUserInterface* guiLoadingHold=nullptr;
+    void UpdateRetainedLoadingHold() {}
     void RetainedMultiplayerFrameEvent() {}
     void DispatchCommand(idUserInterface* gui,const char* command) {
         assert(gui && !gui->retired && command && *command);
