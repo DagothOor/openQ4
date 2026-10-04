@@ -17,7 +17,9 @@ Checks:
 - with game time stopped, the weapon hand's aim marker (vr_aimLaser) is the
   only difference between captures: one small red dot in each eye, at the
   same height in both, whose disparity puts it in front of the player at a
-  plausible range, and a beam that adds more;
+  plausible range, and a beam that adds more; left-handed (vr_leftHanded)
+  the left controller aims instead, so its dot lands left of the right
+  hand's;
 - two hands: the off-hand grip squeezed on the foregrip raises the aim (the
   dot in both eyes), buzzes the off hand and opens no weapon wheel;
 - the comfort vignette: a smooth turn at full strength blacks out the eyes'
@@ -74,6 +76,9 @@ EYE_SEPARATION_M = 0.064
 # For the aim marker the weapon hand points 10 degrees down from 0.35 m below
 # the eyes, so the shot meets the ground a few metres ahead.
 LASER_HAND_POSE = "0.2 1.25 -0.35 0 -10 0"
+# Left-handed (vr_leftHanded), the same aim from the left controller, 0.4 m
+# to the left, so its dot lands left of the right hand's.
+LEFT_LASER_HAND_POSE = "-0.2 1.25 -0.35 0 -10 0"
 # The off hand on the foregrip: 0.3 m along the laser pose's aim (10 degrees
 # down) and 5 cm above it, so holding the gun in both hands levels the aim.
 FOREGRIP_POSE = "0.2 1.248 -0.645 0 0 0"
@@ -162,6 +167,9 @@ def main(argv: list[str] | None = None) -> None:
         f"when {marker('laser_off')} capture {profile / 'xr_laser_off'}",
         f"when {marker('laser_dot')} capture {profile / 'xr_laser_dot'}",
         f"when {marker('laser_beam')} capture {profile / 'xr_laser_beam'}",
+        f"when {marker('left_aim')} hand left {LEFT_LASER_HAND_POSE}",
+        f"when {marker('left_off')} capture {profile / 'xr_left_off'}",
+        f"when {marker('left_dot')} capture {profile / 'xr_left_dot'}",
         f"when {marker('two_grab')} hand left {FOREGRIP_POSE}",
         f"when {marker('two_squeeze')} button left squeeze 1",
         f"when {marker('two_off')} capture {profile / 'xr_two_off'}",
@@ -215,6 +223,10 @@ def main(argv: list[str] | None = None) -> None:
         "condump vr_marker_laser_off.txt", "waitMsec 500", "vr_aimLaser 1", "waitMsec 500",
         "condump vr_marker_laser_dot.txt", "waitMsec 500", "vr_aimLaser 2", "waitMsec 500",
         "condump vr_marker_laser_beam.txt", "waitMsec 500", "vr_aimLaser 1",
+        # left-handed: the left controller aims, still against the frozen world
+        "vr_leftHanded 1", "condump vr_marker_left_aim.txt", "waitMsec 400", "vr_aimLaser 0", "waitMsec 500",
+        "condump vr_marker_left_off.txt", "waitMsec 500", "vr_aimLaser 1", "waitMsec 500",
+        "condump vr_marker_left_dot.txt", "waitMsec 500", "vr_leftHanded 0",
         # two hands: the off-hand grip closing on the foregrip steadies the gun
         # along both palms instead of opening the weapon wheel
         "echo VR_TWO_HANDS", "condump vr_marker_two_grab.txt", "waitMsec 400",
@@ -366,12 +378,14 @@ def main(argv: list[str] | None = None) -> None:
     for e in events:
         if e.get("event") == "capture":
             stage = next(s for s in ("gameplay", "turned", "menu", "laser_off", "laser_dot", "laser_beam",
-                                     "two_off", "two_dot", "vignette", "zoom_off", "zoom_on", "vehicle")
+                                     "left_off", "left_dot", "two_off", "two_dot", "vignette", "zoom_off",
+                                     "zoom_on", "vehicle")
                          if f"xr_{s}_" in Path(e["path"]).name)
             captures[f"{stage}_{e['layer']}"] = e
     for name in ("gameplay_left", "gameplay_right", "gameplay_quad1", "turned_left", "turned_right", "menu_quad1",
                  "laser_off_left", "laser_off_right", "laser_dot_left", "laser_dot_right",
-                 "laser_beam_left", "laser_beam_right", "two_off_left", "two_off_right", "two_dot_left",
+                 "laser_beam_left", "laser_beam_right", "left_off_left", "left_off_right", "left_dot_left",
+                 "left_dot_right", "two_off_left", "two_off_right", "two_dot_left",
                  "two_dot_right", "vignette_left", "vignette_right", "zoom_off_left", "zoom_on_left",
                  "zoom_on_quad1", "vehicle_left", "vehicle_right"):
         assert name in captures and captures[name]["written"], f"missing capture {name}: {sorted(captures)}"
@@ -446,6 +460,19 @@ def main(argv: list[str] | None = None) -> None:
     assert disparity > 0.0, f"the marker's disparity puts it behind the eyes ({disparity:.5f})"
     marker_depth = EYE_SEPARATION_M / disparity
     assert 1.0 < marker_depth < 40.0, f"the marker fuses at {marker_depth:.2f} m, not on the ground a few metres ahead"
+
+    # left-handed (vr_leftHanded): the left controller aims, so its dot lands
+    # left of the right hand's, which aimed the same way from 0.4 m further right
+    left_handed_shift = []
+    for eye in ("left", "right"):
+        left_box, _ = changed_box(image("xr_left_off", eye), image("xr_left_dot", eye))
+        assert left_box is not None, f"the left-handed aim marker changed nothing in the {eye} eye"
+        assert left_box[2] - left_box[0] <= 24 and left_box[3] - left_box[1] <= 24, \
+            f"the {eye} eye changed beyond a small dot when aiming left-handed: {left_box}"
+        right_box, _ = changed_box(image("xr_laser_off", eye), image("xr_laser_dot", eye))
+        shift = (right_box[0] + right_box[2]) / 2.0 - (left_box[0] + left_box[2]) / 2.0
+        assert shift > 30.0, f"the left hand's dot should land left of the right hand's in the {eye} eye ({shift:.0f} px)"
+        left_handed_shift.append(shift)
 
     # two hands on the gun: the squeeze held the gun instead of opening the
     # weapon wheel, buzzed the off hand, and the aim rose with the front palm
@@ -558,7 +585,8 @@ def main(argv: list[str] | None = None) -> None:
         for eye in ("left", "right"):
             image(f"xr_laser_{name}", eye).save(profile / f"xr_laser_{name}_{eye}.png")
     print(f"OpenXR VR smoke: PASS (eye difference {eye_difference:.2f}, head turn {turn_difference:.2f}, "
-          f"HUD coverage {covered:.3f}, aim marker at {marker_depth:.2f} m, pointer at {px},{py}, "
+          f"HUD coverage {covered:.3f}, aim marker at {marker_depth:.2f} m, left hand's dot "
+          f"{min(left_handed_shift):.0f} px left, pointer at {px},{py}, "
           f"walker cockpit turned {cockpit_turn:.1f}); evidence={profile}")
 
 
