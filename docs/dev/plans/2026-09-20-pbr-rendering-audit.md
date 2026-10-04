@@ -2,6 +2,9 @@
 
 Status: in progress. This task audits and completes the authored PBR material
 path and proves the result with a purpose-built, reproducible in-engine map.
+From 2026-10-04 the remaining production work (complete roughness/AO shading,
+per-surface OpenGL PBR in real gameplay, presentation, defaults) is tracked in
+the [production-readiness plan](2026-10-04-pbr-production-readiness.md).
 It coordinates with the Vulkan gap-closure task; neither task may claim the
 other backend is qualified merely because shared material metadata exists.
 

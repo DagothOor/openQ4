@@ -22,6 +22,14 @@ def linear(value):
     return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
 
 
+def multi_bounce_ao(visibility, albedo):
+    """Independent copy of PBRMultiBounceAO (Jimenez et al. 2016), one channel."""
+    v = min(max(visibility, 0.0), 1.0)
+    x = min(max(albedo, 0.0), 1.0)
+    bounced = ((v * (2.0404 * x - 0.3324) + (0.6417 - 4.7951 * x)) * v + (2.7552 * x + 0.6903)) * v
+    return min(max(bounced, v), 1.0)
+
+
 def compare(paths):
     reports = [json.loads(path.read_text()) for path in paths]
     paired = len(paths) == 2
@@ -108,12 +116,18 @@ def compare(paths):
 
         radiance = np.asarray((1, 0.5, 0.25))
 
-        def diffuse(rgb=(188, 188, 188), metallic=0, stages=1):
-            return np.asarray([linear(c) for c in rgb]) * (1 - metallic) * (0.96 / math.pi) * radiance * stages * 255
+        # An authored ambient light stands in for bounced light, so material
+        # AO occludes it through the same multi-bounce form as environment
+        # diffuse. The data specimens all carry AO 192/255; ao_zero is black.
+        def diffuse(rgb=(188, 188, 188), metallic=0, stages=1, ao=1.0):
+            color = np.asarray([linear(c) for c in rgb]) * (1 - metallic)
+            occlusion = np.asarray([multi_bounce_ao(ao, c) for c in color])
+            return color * occlusion * (0.96 / math.pi) * radiance * stages * 255
 
-        for name, stages in (('scalar', 1), ('packed', 1), ('separate', 1), ('ao-zero', 1),
+        for name, stages in (('scalar', 1), ('packed', 1), ('separate', 1),
                              ('two', 2), ('two-stages', 2), ('restored', 1)):
-            values(name, diffuse(metallic=102 / 255, stages=stages))
+            values(name, diffuse(metallic=102 / 255, stages=stages, ao=192 / 255))
+        values('ao-zero', (0, 0, 0))
         values('dark', (0, 0, 0))
         for kind in ('dielectric', 'metal'):
             for roughness in (0, 5):
@@ -136,7 +150,7 @@ def compare(paths):
             target = images['background-' + suffix] * (1 - alpha) + diffuse((50, 180, 255), stages=stages) * alpha
             values('alpha-' + suffix, target)
         values('alpha-owned', images['background-one'] * (1 - alpha) + np.asarray((0, 112, 0)))
-        exact_pairs = [('scalar', name) for name in ('packed', 'separate', 'ao-zero', 'restored')]
+        exact_pairs = [('scalar', name) for name in ('packed', 'separate', 'restored')]
         exact_pairs += [('normal-xyz', name) for name in ('normal-rg', 'normal-agb', 'normal-zero', 'dielectric-0', 'dielectric-5')]
         exact_pairs += [('alpha-one', 'alpha-' + name) for name in
                         ('restored', 'image-reload', 'partial-restart', 'full-restart')]

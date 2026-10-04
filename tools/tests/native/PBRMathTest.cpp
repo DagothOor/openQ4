@@ -78,6 +78,74 @@ static void EnvironmentTests() {
     Require(std::fabs(roughBRDF[0] + roughBRDF[1] - (1-std::log(2.0))) < 0.001, "split-sum rough furnace reference");
 }
 
+// The fitted directional albedo must stand in for the integrated table where
+// a pass cannot bind it, and compensation must restore a white furnace without
+// letting any F0 gain energy.
+static void EnergyCompensationTests() {
+    using namespace openq4PBR;
+    double worstInverse = 0;
+    for (int ri = 0; ri <= 20; ++ri) {
+        const float r = 0.045f + (1.0f - 0.045f) * ri / 20.0f;
+        for (int vi = 0; vi <= 18; ++vi) {
+            const float v = 0.1f + 0.9f * vi / 18.0f;
+            const auto ab = IntegrateBRDF(v, r, 4096);
+            const double reference = double(ab[0]) + ab[1];
+            const float fitted = kernel::PBRSpecularAlbedo(v, r);
+            Require(fitted >= 0.3f && fitted <= 1.0f, "fitted directional albedo range");
+            worstInverse = std::fmax(worstInverse, std::fabs(reference / fitted - 1.0));
+            const double white = reference * kernel::PBREnergyCompensation(1.0f, fitted);
+            Require(white > 0.96 && white < 1.04, "compensated white furnace");
+            for (float f0 : {0.0f, 0.04f, 0.25f, 0.5f, 0.75f, 1.0f}) {
+                const double single = f0 * ab[0] + ab[1];
+                const double compensated = single * kernel::PBREnergyCompensation(f0, fitted);
+                Require(compensated >= single - 1e-7 && compensated <= 1.04, "compensation adds bounded energy");
+            }
+        }
+    }
+    Require(worstInverse < 0.035, "fitted directional albedo accuracy");
+    Require(kernel::PBREnergyCompensation(0.0f, 0.3f) == 1.0f, "no compensation without F0");
+    Require(kernel::PBRSpecularAlbedo(0.0f, 0.5f) == kernel::PBRSpecularAlbedo(0.1f, 0.5f), "grazing view clamp");
+    Require(kernel::PBRSpecularAlbedo(1.0f, 0.0f) == kernel::PBRSpecularAlbedo(1.0f, 0.045f), "roughness floor");
+}
+
+static void OcclusionTests() {
+    for (float r : {0.045f, 0.2f, 0.5f, 0.8f, 1.0f}) {
+        for (int vi = 0; vi <= 20; ++vi) {
+            const float v = vi / 20.0f;
+            Require(kernel::PBRSpecularOcclusion(v, 1.0f, r) == 1.0f, "unoccluded specular");
+            Require(kernel::PBRSpecularOcclusion(v, 0.0f, r) == 0.0f, "fully occluded specular");
+            float previous = 0.0f;
+            for (int ai = 0; ai <= 20; ++ai) {
+                const float ao = ai / 20.0f;
+                const float occlusion = kernel::PBRSpecularOcclusion(v, ao, r);
+                Require(occlusion >= previous && occlusion <= 1.0f, "specular occlusion follows AO");
+                previous = occlusion;
+                if (r == 1.0f) {
+                    Require(std::fabs(occlusion - ao) < 0.001f, "rough lobes follow AO");
+                }
+            }
+        }
+    }
+    // Smooth lobes viewed head-on escape the cavity; grazing ones do not.
+    Require(kernel::PBRSpecularOcclusion(1.0f, 0.5f, 0.045f) > 0.7f, "head-on smooth specular escapes AO");
+    Require(kernel::PBRSpecularOcclusion(0.05f, 0.5f, 0.045f) < 0.5f, "grazing smooth specular is occluded");
+    for (int vi = 0; vi <= 20; ++vi) {
+        const float v = vi / 20.0f;
+        Require(kernel::PBRMultiBounceAO(v, 0.0f) == v, "black albedo has no bounce");
+        float previous = v;
+        for (int ai = 0; ai <= 10; ++ai) {
+            const float bounced = kernel::PBRMultiBounceAO(v, ai / 10.0f);
+            Require(bounced >= previous && bounced <= 1.0f, "brighter albedo bounces more");
+            previous = bounced;
+        }
+        Require(kernel::PBRMultiBounceAO(1.0f, vi / 20.0f) == 1.0f, "unoccluded multi-bounce");
+    }
+    Require(kernel::PBRMultiBounceAO(0.5f, 0.8f) > 0.6f, "multi-bounce lifts bright occluded diffuse");
+    Require(kernel::PBRHorizonOcclusion(-1.0f) == 0.0f && kernel::PBRHorizonOcclusion(-0.5f) == 0.25f
+        && kernel::PBRHorizonOcclusion(0.0f) == 1.0f && kernel::PBRHorizonOcclusion(1.0f) == 1.0f,
+        "horizon fade below the geometric surface");
+}
+
 int main() {
     const double pi = 3.141592653589793;
     const float roughnesses[] = {0.045f, 0.08f, 0.2f, 0.5f, 0.8f, 1.0f};
@@ -157,6 +225,8 @@ int main() {
         }
     }
     EnvironmentTests();
-    std::puts("PBRMathTest: passed sRGB, mirror peaks, Smith reference, reciprocity, 24 white furnaces, probe convolution, HDR, seams, irradiance and split-sum integration");
+    EnergyCompensationTests();
+    OcclusionTests();
+    std::puts("PBRMathTest: passed sRGB, mirror peaks, Smith reference, reciprocity, 24 white furnaces, probe convolution, HDR, seams, irradiance, split-sum integration, energy compensation, specular/multi-bounce/horizon occlusion");
     return 0;
 }

@@ -70,7 +70,7 @@ struct {bool initialized=true;VkPhysicalDevice physicalDevice{};VkDevice device{
 struct{int GetInteger()const{return 1;}}image_anisotropy;
 struct imageFilterState_t {int mode=0;bool usesMipmaps=true,minLinear=true,magLinear=true,mipLinear=true;};
 imageFilterState_t R_GetDefaultImageFilterState(){return {};}
-struct vkSamplerKey_t{textureFilter_t filter;textureRepeat_t repeat;bool mips;int anisotropy,defaultFilterMode;};
+struct vkSamplerKey_t{textureFilter_t filter;textureRepeat_t repeat;bool mips;int anisotropy,defaultFilterMode;bool explicitMipChain;};
 static constexpr int VK_MAX_SAMPLERS=4;
 static vkSamplerKey_t vkSamplerKeys[VK_MAX_SAMPLERS]{};
 static VkSampler vkSamplers[VK_MAX_SAMPLERS]{};static int vkNumSamplers=0;

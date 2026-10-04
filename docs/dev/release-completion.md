@@ -2,6 +2,15 @@
 
 ## 0.13.2 release candidate
 
+- [x] PBR production readiness, Stage A: complete roughness and AO shading on
+  both backends. Multiple-scattering energy compensation on every specular
+  lobe, specular and multi-bounce occlusion, horizon occlusion, AO on authored
+  ambient lights and a roughness-aware atlas-less GL fallback, all from the
+  numerically tested kernel in `PBRMath.h`. The audit also found that Vulkan
+  had sampled the PBR environment atlas's mirror level for every roughness
+  since c850233d; the atlas now keeps its mip chain, and GL/Vulkan IBL parity
+  is exact. Evidence and the remaining stages:
+  [production-readiness plan](plans/2026-10-04-pbr-production-readiness.md).
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:

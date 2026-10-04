@@ -2221,9 +2221,11 @@ VK_PBRDirectInteraction
 The native Vulkan interaction pipelines have six fixed 2D descriptor slots.
 Direct PBR uses slot 1 for an optional normal and slot 4 for albedo. Slot 5
 is packed ORM or separate roughness; the unused classic specular-table slot 0
-carries separate metallic. AO belongs to indirect light, not this BRDF.
-Emission is owned once in the ambient walk. Source alpha and unsupported
-ownership stay entirely classic.
+carries separate metallic. AO belongs to indirect light, not this BRDF; an
+authored ambient light stands in for indirect light, so its stage reads AO
+from the ORM red channel or from a separate AO map bound in slot 5 in place
+of the roughness it never uses (flag 16). Emission is owned once in the
+ambient walk. Source alpha and unsupported ownership stay entirely classic.
 ====================
 */
 typedef struct vkPBRDirectInteraction_s {
@@ -2231,11 +2233,13 @@ typedef struct vkPBRDirectInteraction_s {
 	idImage *	albedoImage;
 	idImage *	dataImage;
 	idImage *	metallicImage;
-	int			dataFlags;		// 1 packed ORM, 2 separate metallic, 4 separate roughness
+	idImage *	aoImage;		// separate AO map, NULL with ORM or scalar AO
+	int			dataFlags;		// 1 packed ORM, 2 separate metallic, 4 separate roughness, 16 AO in slot 5
 	int			normalFormat;	// 0 flat; otherwise pbrNormalFormat_t + 1
 	float		metallic;
 	float		roughness;
 	float		normalScale;
+	float		ao;
 } vkPBRDirectInteraction_t;
 
 static float VK_PBRRegisterValue( const drawSurf_t *surf, int registerIndex, float fallback ) {
@@ -2479,7 +2483,8 @@ static bool VK_PBRDirectMaterial( const drawSurf_t *surf,
 				|| !VK_PBRImageReady( info.normal.image, normalUsage ) ) )
 			|| ( info.orm.present && !VK_PBRImageReady( info.orm.image, TD_MATERIAL_DATA ) )
 			|| ( info.metallic.present && !VK_PBRImageReady( info.metallic.image, TD_MATERIAL_DATA ) )
-			|| ( info.roughness.present && !VK_PBRImageReady( info.roughness.image, TD_MATERIAL_DATA ) ) ) {
+			|| ( info.roughness.present && !VK_PBRImageReady( info.roughness.image, TD_MATERIAL_DATA ) )
+			|| ( info.ao.present && !VK_PBRImageReady( info.ao.image, TD_MATERIAL_DATA ) ) ) {
 		return false;
 	}
 
@@ -2489,6 +2494,7 @@ static bool VK_PBRDirectMaterial( const drawSurf_t *surf,
 	out.albedoImage = info.albedo.image;
 	out.dataImage = info.orm.present ? info.orm.image : ( info.roughness.present ? info.roughness.image : globalImages->whiteImage );
 	out.metallicImage = info.metallic.present ? info.metallic.image : NULL;
+	out.aoImage = info.ao.present ? info.ao.image : NULL;
 	out.dataFlags = ( info.orm.present ? 1 : 0 ) | ( info.metallic.present ? 2 : 0 ) | ( info.roughness.present ? 4 : 0 );
 	out.normalFormat = info.normal.present ? (int)info.normalFormat + 1 : 0;
 	out.metallic = idMath::ClampFloat( 0.0f, 1.0f,
@@ -2497,6 +2503,8 @@ static bool VK_PBRDirectMaterial( const drawSurf_t *surf,
 		VK_PBRRegisterValue( surf, info.roughnessRegister, 0.5f ) );
 	out.normalScale = idMath::ClampFloat( 0.0f, 4.0f,
 		VK_PBRRegisterValue( surf, info.normalScaleRegister, 1.0f ) );
+	out.ao = idMath::ClampFloat( 0.0f, 1.0f,
+		VK_PBRRegisterValue( surf, info.aoRegister, 1.0f ) );
 	return true;
 }
 
@@ -3232,6 +3240,14 @@ static void VK_DrawSingleInteractionMode( const drawInteraction_t *din,
 		return;
 	}
 
+	// An ambient light stage evaluates diffuse only, so it never reads
+	// roughness. With separate maps its slot 5 carries the AO map instead.
+	int pbrDataFlags = nativePBR ? pbr.dataFlags : 0;
+	idImage *pbrDataImage = nativePBR ? pbr.dataImage : NULL;
+	if ( nativePBR && din->ambientLight && pbr.aoImage != NULL && ( pbr.dataFlags & 1 ) == 0 ) {
+		pbrDataFlags = ( pbr.dataFlags & ~4 ) | 16;
+		pbrDataImage = pbr.aoImage;
+	}
 	VkDescriptorSet sets[ 8 ];
 	sets[ 0 ] = interPass.specTableSet;
 	if ( nativePBR && pbr.metallicImage != NULL ) {
@@ -3241,7 +3257,7 @@ static void VK_DrawSingleInteractionMode( const drawInteraction_t *din,
 	sets[ 2 ] = VK_Exec_ImageDescriptor( din->lightFalloffImage->GetDeviceHandle(), true );
 	sets[ 3 ] = VK_Exec_ImageDescriptor( din->lightImage->GetDeviceHandle(), true );
 	sets[ 4 ] = VK_Exec_ImageDescriptor( ( nativePBR ? pbr.albedoImage : din->diffuseImage )->GetDeviceHandle(), true );
-	sets[ 5 ] = VK_Exec_ImageDescriptor( ( nativePBR ? pbr.dataImage : din->specularImage )->GetDeviceHandle(), true );
+	sets[ 5 ] = VK_Exec_ImageDescriptor( ( nativePBR ? pbrDataImage : din->specularImage )->GetDeviceHandle(), true );
 	sets[ 6 ] = VK_Exec_InteractionUniformSet();
 	sets[ 7 ] = interPass.shadowSet;
 	for ( int i = 0 ; i < setCount ; i++ ) {
@@ -3300,15 +3316,21 @@ static void VK_DrawSingleInteractionMode( const drawInteraction_t *din,
 			break;
 	}
 	push.a[ 2 ] = din->ambientLight ? 1.0f : 0.0f;
-	push.b[ 0 ] = interPass.ambientDir[ 0 ];
-	push.b[ 1 ] = interPass.ambientDir[ 1 ];
-	push.b[ 2 ] = interPass.ambientDir[ 2 ];
+	if ( nativePBR ) {
+		// PBR never reads the classic tangent-space ambient direction. Its
+		// ambient light stage takes the material AO scalar from b.x instead.
+		push.b[ 0 ] = pbr.ao;
+	} else {
+		push.b[ 0 ] = interPass.ambientDir[ 0 ];
+		push.b[ 1 ] = interPass.ambientDir[ 1 ];
+		push.b[ 2 ] = interPass.ambientDir[ 2 ];
+	}
 	push.c[ 0 ] = parallaxScale;
 	push.c[ 1 ] = parallaxBias;
 	push.c[ 2 ] = parallax && !nativePBR ? 1.0f : 0.0f;
 	const bool enhanced = !nativePBR && interPass.enhancedChain;
 	if ( nativePBR ) {
-		push.c[ 0 ] = (float)pbr.dataFlags;
+		push.c[ 0 ] = (float)pbrDataFlags;
 		push.c[ 1 ] = (float)pbr.normalFormat;
 		push.c[ 3 ] = r_vkPBRSpecularAA.GetBool() ? 1.0f : 0.0f;
 	} else if ( enhanced ) {

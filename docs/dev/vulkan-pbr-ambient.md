@@ -9,8 +9,15 @@ Eligible PBR receivers now evaluate an ambient light in the same linear material
 domain as their point and projected lights. The source is isotropic diffuse:
 projection × falloff × light color × linear albedo × (1 − metallic) × 0.96/π.
 It has no normal-direction or roughness dependence and contributes no metallic
-specular lobe. Environment lighting retains that responsibility. Authored AO
-continues to affect the indirect source; it does not attenuate this light stage.
+specular lobe. Environment lighting retains that responsibility. An authored
+ambient light stands in for bounced light, so since 2026-10-04 material AO
+occludes it exactly like environment diffuse, through the shared multi-bounce
+form `PBRMultiBounceAO(ao, (1 - metallic) albedo)` on both backends. The AO
+scalar travels in `pc.b.x`, which the classic ambient direction occupies for
+classic draws only. The texel comes from the ORM red channel or, for an ambient
+stage only, from a separate AO map bound in the slot that holds the roughness
+map the stage never reads (`dataFlags & 16`). The parity oracle models the
+same factor; `ao_zero` is black under an ambient light.
 Material diagnostics and emission retain their once-per-surface owner.
 
 Previously, `VK_PBRDirectInteraction` rejected ambient lights. Opaque PBR

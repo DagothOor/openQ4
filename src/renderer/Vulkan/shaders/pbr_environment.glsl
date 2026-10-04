@@ -100,14 +100,23 @@ vec3 EvaluatePBREnvironment() {
     vec2 brdf = PBREnvironmentTile(63, vec2(NoV, roughness), 128.0).rg;
     vec3 f0 = mix(vec3(0.04), albedo, metallic);
     vec3 fresnel = f0 + (max(vec3(1.0 - roughness), f0) - f0) * PBRFresnelWeight(NoV);
-    vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * albedo * irradiance;
-    vec3 specular = prefiltered * (f0 * brdf.x + brdf.y);
+    // AO is indirect visibility. Diffuse takes its multi-bounce form; the
+    // specular cone takes its own occlusion and bounce off F0, and fades where
+    // the normal map turns the reflection below the geometric surface. The
+    // table's A + B is the single-scattering albedo the compensation restores.
+    vec3 diffuseColor = (1.0 - metallic) * albedo;
+    vec3 diffuseAO = PBRMultiBounceAOColor(ao, diffuseColor);
+    vec3 specularAO = PBRMultiBounceAOColor(PBRSpecularOcclusion(NoV, ao, roughness), f0)
+        * PBRHorizonOcclusion(dot(reflection, PBREnvironmentWorld(vPBRNormal)));
+    vec3 diffuse = (1.0 - fresnel) * diffuseColor * irradiance * diffuseAO;
+    vec3 specular = prefiltered * (f0 * brdf.x + brdf.y)
+        * PBREnergyCompensationColor(f0, brdf.x + brdf.y) * specularAO;
 #ifdef PBR_BAKED_LIGHTGRID
     vec4 baked = ModernBakedIrradiance(vLightProjectionTexCoord.xyw, n, pc.b.z > 0.5);
-    diffuse = ModernBakedClamp((1.0 - fresnel) * (1.0 - metallic) * albedo
-        * baked.rgb * ao * vVertexColor, baked.w);
-    return diffuse + specular * ao * pc.c.z * vVertexColor;
+    diffuse = ModernBakedClamp((1.0 - fresnel) * diffuseColor
+        * baked.rgb * diffuseAO * vVertexColor, baked.w);
+    return diffuse + specular * pc.c.z * vVertexColor;
 #else
-    return (diffuse + specular) * ao * pc.c.z * vVertexColor;
+    return (diffuse + specular) * pc.c.z * vVertexColor;
 #endif
 }

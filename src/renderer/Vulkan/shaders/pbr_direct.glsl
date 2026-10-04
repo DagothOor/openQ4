@@ -34,14 +34,28 @@ vec3 PBRDirectNormal(vec2 texCoord) {
         ? normal * inversesqrt(lengthSquared) : vec3(0.0, 0.0, 1.0);
 }
 
+// Per-channel wrappers of the shared scalar AO/energy kernel (PBRMath.h).
+vec3 PBRMultiBounceAOColor(float visibility, vec3 albedo) {
+    return vec3(PBRMultiBounceAO(visibility, albedo.r),
+        PBRMultiBounceAO(visibility, albedo.g), PBRMultiBounceAO(visibility, albedo.b));
+}
+
+vec3 PBREnergyCompensationColor(vec3 f0, float specularAlbedo) {
+    return vec3(PBREnergyCompensation(f0.r, specularAlbedo),
+        PBREnergyCompensation(f0.g, specularAlbedo), PBREnergyCompensation(f0.b, specularAlbedo));
+}
+
 vec3 EvaluatePBRDirect(vec3 localNormal, vec2 albedoTexCoord,
         vec2 dataTexCoord, float shadowFactor) {
     // Color uses sRGB storage and decodes before filtering. Data stays linear.
     vec3 albedo = texture(diffuseMap, albedoTexCoord).rgb;
     int dataFlags = int(pc.c.x + 0.5);
     vec2 materialData = vec2(1.0);
+    float aoTexel = 1.0;
     if ((dataFlags & 1) != 0) {
-        materialData = texture(specularMap, dataTexCoord).bg;
+        vec3 orm = texture(specularMap, dataTexCoord).rgb;
+        materialData = orm.bg;
+        aoTexel = orm.r;
     } else {
         if ((dataFlags & 2) != 0) {
             materialData.x = texture(specularTableMap, dataTexCoord).r;
@@ -57,11 +71,19 @@ vec3 EvaluatePBRDirect(vec3 localNormal, vec2 albedoTexCoord,
     if (pc.a.z > 0.5) {
         // Authored ambient lights are an isotropic diffuse source, matching
         // ModernClusterEvaluatePBRLight. They have neither the classic
-        // tangent-space ambient direction nor a view-dependent specular lobe.
-        // Metallic response belongs to the environment, and authored AO is
-        // reserved for that indirect source rather than this light stage.
-        return radiance * albedo * (1.0 - metallic)
-            * (0.96 / 3.14159265) * vVertexColor;
+        // tangent-space ambient direction nor a view-dependent specular lobe;
+        // metallic response belongs to the environment. They stand in for
+        // bounced light, so material AO occludes them like environment
+        // diffuse: pc.b.x is the AO scalar, and the texel comes from the ORM
+        // red channel or, for this light stage only, a separate AO map bound
+        // in place of the unused roughness map (flag 16).
+        if ((dataFlags & 16) != 0) {
+            aoTexel = texture(specularMap, dataTexCoord).r;
+        }
+        vec3 diffuseColor = albedo * (1.0 - metallic);
+        return radiance * diffuseColor * (0.96 / 3.14159265)
+            * PBRMultiBounceAOColor(clamp(aoTexel * pc.b.x, 0.0, 1.0), diffuseColor)
+            * vVertexColor;
     }
     float roughness = PBRRoughness(materialData.y * pc.d.z);
     // A flat tangent-space normal still varies across a curved surface.
@@ -92,7 +114,10 @@ vec3 EvaluatePBRDirect(vec3 localNormal, vec2 albedoTexCoord,
     float visibility = PBRVisibilitySmithGGX(ndotv, ndotl, roughness);
     vec3 f0 = mix(vec3(0.04), albedo, metallic);
     vec3 fresnel = f0 + (vec3(1.0) - f0) * PBRFresnelWeight(vdoth);
-    vec3 specular = distribution * visibility * fresnel;
+    // Single scattering loses up to 69% of a rough conductor's energy. No
+    // per-light pass binds the split-sum table, so the fitted albedo serves.
+    vec3 specular = distribution * visibility * fresnel
+        * PBREnergyCompensationColor(f0, PBRSpecularAlbedo(ndotv, roughness));
     vec3 diffuse = (vec3(1.0) - fresnel) * (1.0 - metallic)
         * albedo * (1.0 / 3.14159265);
     // Authored AO modulates indirect irradiance, never this direct light.

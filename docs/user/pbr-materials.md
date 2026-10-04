@@ -52,9 +52,23 @@ that a raw RGB normal and an A/G/B-swizzled normal contain the same channels.
 `metallic`, `roughness` and `ao` multiply their maps. Without maps they are
 scalar material values. For example, omit `ormMap` and use `metallic 0`,
 `roughness 0.6`, `ao 1` for a uniform dielectric. Do not declare packed ORM and
-separate material-data maps together. Roughness is bounded to `[0.045, 1]` for
-shading, with normal-variance filtering on OpenGL and native Vulkan PBR. AO
-attenuates indirect lighting, not direct lights.
+separate material-data maps together.
+
+Roughness is perceptual (the GGX alpha is its square) and bounded to
+`[0.045, 1]` for shading. It shapes every specular term: the direct-light
+lobe, the choice of prefiltered environment level, the split-sum response and
+the roughness-aware environment Fresnel. Both renderers widen it by the
+on-screen normal variance to suppress specular aliasing. Rough metals keep
+their full brightness: the renderer adds the multiple-scattering energy that a
+single-scattering GGX lobe loses (up to 69% for a white metal at roughness 1).
+
+AO is indirect visibility. It darkens environment lighting, baked diffuse and
+authored ambient lights (which stand in for bounced light), never point or
+projected lights. Diffuse uses a multi-bounce form, so bright occluded albedo
+darkens less than dark albedo. Environment specular uses specular occlusion
+derived from AO, roughness and view angle, so smooth surfaces seen head-on keep
+reflections a cavity would remove from rough ones. Reflections that a normal
+map would send below the geometric surface fade out.
 
 For a cutout, author the classic diffuse stage's `alphaTest` threshold. A
 conventional `translucent` material with a single `blend blend` stage can use
@@ -158,8 +172,9 @@ checks complete classic fallback and native recovery when transparent PBR
 resources cannot be prepared, including across image and video reloads.
 
 Authored ambient lights now supply isotropic PBR diffuse lighting, including
-through source-alpha transparency. Metallic surfaces receive their reflections
-from environment lighting; ambient lights do not add a diffuse metallic glow.
+through source-alpha transparency. Material AO occludes them like environment
+diffuse. Metallic surfaces receive their reflections from environment lighting;
+ambient lights do not add a diffuse metallic glow.
 The [ambient-light qualification](../dev/vulkan-pbr-ambient.md) records numerical,
 capacity and recovery controls. Both capacity and resource harnesses accept
 `--ambient-lights` to exercise those light stages.

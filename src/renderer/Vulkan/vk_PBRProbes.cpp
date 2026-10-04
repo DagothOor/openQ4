@@ -91,6 +91,12 @@ static void VK_PBR_GenerateEnvironment( idImage *image ) {
 			return;
 		}
 	}
+	// The shaders select prefiltered levels with explicit LODs. The image's
+	// TF_LINEAR sampler would otherwise clamp them all to the mirror level.
+	if ( !VK_Image_UseExplicitMipChain( image->GetDeviceHandle() ) ) {
+		image->PurgeImage();
+		return;
+	}
 	common->Printf( "Vulkan: native PBR filtered environment generated (7 mips, diffuse irradiance, BRDF LUT)\n" );
 }
 

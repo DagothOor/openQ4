@@ -1074,13 +1074,97 @@ def test_vulkan_pbr_support_stays_narrow_and_fail_closed() -> None:
         "PBRDistributionGGX(ndoth, roughness)",
         "PBRVisibilitySmithGGX(ndotv, ndotl, roughness)",
         "vec3 diffuse = (vec3(1.0) - fresnel) * (1.0 - metallic)",
-        "texture(specularMap, dataTexCoord).bg",
+        "vec3 orm = texture(specularMap, dataTexCoord).rgb",
+        "materialData = orm.bg",
         "texture(specularTableMap, dataTexCoord).r",
         "texture(specularMap, dataTexCoord).r",
         "value.agb",
         "sqrt(max(1.0 - dot(xy, xy), 0.0))",
     ):
         require(shared, token, "shared Vulkan PBR direct material decoding")
+
+
+def test_pbr_energy_and_occlusion_contract() -> None:
+    """Roughness and AO reach every PBR lighting term on both backends.
+
+    Single-scattering GGX loses up to 69% of a rough conductor's energy, so
+    every specular lobe carries the multiple-scattering compensation. AO is
+    indirect visibility: it occludes environment and baked diffuse through the
+    multi-bounce form, environment specular through specular occlusion and the
+    normal-map horizon, and authored ambient lights (which stand in for bounced
+    light) like environment diffuse. Direct point/projected light stays AO-free.
+    """
+    kernel = read(ROOT / "src/renderer/PBRMath.h")
+    for token in ("float PBRSpecularAlbedo(float NoV, float perceptualRoughness)",
+                  "float PBREnergyCompensation(float f0, float specularAlbedo)",
+                  "float PBRSpecularOcclusion(float NoV, float ao, float perceptualRoughness)",
+                  "float PBRMultiBounceAO(float visibility, float albedo)",
+                  "float PBRHorizonOcclusion(float RoN)"):
+        require(kernel, token, "shared roughness/AO kernel")
+    gl = read(ROOT / "src/renderer/ModernGLShaderLibrary.cpp")
+    for token in (
+        "float metallic, float roughness, float ao, out float attenuation",
+        "ModernPBRMultiBounceAO(ao, diffuseColor); }",
+        "ModernPBREnergyCompensation(f0, PBRSpecularAlbedo(ndotv, roughness))",
+        "specularAlbedo = brdf.x + brdf.y;",
+        "PBRSpecularOcclusion(ndotv, ao, roughness)",
+        "PBRHorizonOcclusion(dot(reflection, normalize(geometricNormal)))",
+        "ModernPBREnergyCompensation(f0, specularAlbedo) * specularAO",
+        "baked.rgb * diffuseAO",
+        "ModernPBRAnalyticEnvironmentFiltered(reflection, roughness)",
+        "ModernPBREnvironmentBRDFApprox(ndotv, roughness)",
+        "vec4(metallic, roughness, ao, PBRRoughness(orm.g * uLocalParams.y))",
+    ):
+        require(gl, token, "modern GL roughness/AO coverage")
+    if gl.count("ModernClusterEvaluatePBRLight(light,") != 3 or gl.count(", pbrData.z, attenuation)") != 2:
+        raise AssertionError("every modern GL PBR light call must carry the material AO")
+    reject(gl, "(diffuse + specular) * ao", "modern GL must not apply raw AO to specular")
+    direct = read(ROOT / "src/renderer/Vulkan/shaders/pbr_direct.glsl")
+    for token in (
+        "PBREnergyCompensationColor(f0, PBRSpecularAlbedo(ndotv, roughness))",
+        "if ((dataFlags & 16) != 0)",
+        "PBRMultiBounceAOColor(clamp(aoTexel * pc.b.x, 0.0, 1.0), diffuseColor)",
+    ):
+        require(direct, token, "Vulkan direct roughness/AO coverage")
+    environment = read(ROOT / "src/renderer/Vulkan/shaders/pbr_environment.glsl")
+    for token in (
+        "PBRSpecularOcclusion(NoV, ao, roughness)",
+        "PBRHorizonOcclusion(dot(reflection, PBREnvironmentWorld(vPBRNormal)))",
+        "PBREnergyCompensationColor(f0, brdf.x + brdf.y) * specularAO",
+        "baked.rgb * diffuseAO",
+    ):
+        require(environment, token, "Vulkan environment roughness/AO coverage")
+    reject(environment, "(diffuse + specular) * ao", "Vulkan must not apply raw AO to specular")
+    interactions = read(ROOT / "src/renderer/Vulkan/vk_Interactions.cpp")
+    for token in ("push.b[ 0 ] = pbr.ao;", "pbrDataFlags = ( pbr.dataFlags & ~4 ) | 16;",
+                  "( info.ao.present && !VK_PBRImageReady( info.ao.image, TD_MATERIAL_DATA ) )"):
+        require(interactions, token, "Vulkan ambient-light AO binding")
+
+
+def test_vulkan_environment_mip_chain_sampler() -> None:
+    """The prefiltered environment atlas must keep its whole mip chain.
+
+    Since c850233d an explicit TF_LINEAR sampler clamps to the base level to
+    match GL_LINEAR. The environment atlas is TF_LINEAR and selects its
+    roughness levels with explicit textureLod, so every rough Vulkan
+    reflection and authored probe silently sampled the mirror level (GL/VK
+    IBL parity max error 4, 11 with energy compensation; exact once fixed).
+    """
+    image = read(ROOT / "src/renderer/Vulkan/vk_Image.cpp")
+    for token in ("explicitMipChain = explicitMipChain && mips && filter == TF_LINEAR;",
+                  "if ( !explicitMipChain && ( filter != TF_DEFAULT || !defaultFilter.usesMipmaps ) )",
+                  "vkSamplerKeys[ i ].explicitMipChain == explicitMipChain",
+                  "explicitMipChain ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST",
+                  "VK_Image_GetSampler( filter, repeat, entry->numMips > 1, entry->explicitMipChain )",
+                  "bool VK_Image_UseExplicitMipChain( unsigned int texnum )"):
+        require(image, token, "explicit mip-chain sampler")
+    probes = read(ROOT / "src/renderer/Vulkan/vk_PBRProbes.cpp")
+    generator = function_body(probes, "static void VK_PBR_GenerateEnvironment(")
+    require(generator, "VK_Image_UseExplicitMipChain( image->GetDeviceHandle() )",
+            "the generated environment atlas must address its prefiltered levels")
+    environment = read(ROOT / "src/renderer/Vulkan/shaders/pbr_environment.glsl")
+    require(environment, "textureLod(lightFalloffMap, texel / float(2048 >> level), float(level))",
+            "explicit-LOD environment level sampling")
 
 
 def main() -> int:

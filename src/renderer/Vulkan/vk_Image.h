@@ -52,6 +52,9 @@ typedef struct vkImageEntry_s {
 	uint64_t		uploadGeneration;
 	// generation counter for executor-side descriptor caching
 	unsigned int	generation;
+	// Every level holds generated data read with explicit LODs (the PBR
+	// environment atlas). Sampler refreshes keep its whole mip chain.
+	bool			explicitMipChain;
 } vkImageEntry_t;
 
 static const int VK_MAX_IMAGES = 4096;
@@ -70,6 +73,7 @@ struct vkRenderTargetAttachments_t {
 };
 
 vkImageEntry_t *VK_Image_GetEntry( unsigned int texnum );
+bool VK_Image_UseExplicitMipChain( unsigned int texnum );
 VkImageView VK_Image_GetAttachmentView( vkImageEntry_t *entry, int cubeFace );
 // Does not call EnsureDeviceHandle: the backend uses this to initialize it.
 bool VK_Image_GetRenderTargetAttachments( const idRenderTexture *target, int cubeFace,

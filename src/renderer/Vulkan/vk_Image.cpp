@@ -239,6 +239,7 @@ typedef struct vkSamplerKey_s {
 	bool			mips;
 	int				anisotropy;
 	int				defaultFilterMode;
+	bool			explicitMipChain;
 } vkSamplerKey_t;
 
 static const int VK_MAX_SAMPLERS = 64;
@@ -246,13 +247,17 @@ static vkSamplerKey_t vkSamplerKeys[ VK_MAX_SAMPLERS ];
 static VkSampler vkSamplers[ VK_MAX_SAMPLERS ];
 static int vkNumSamplers = 0;
 
-static VkSampler VK_Image_GetSampler( textureFilter_t filter, textureRepeat_t repeat, bool mips ) {
+static VkSampler VK_Image_GetSampler( textureFilter_t filter, textureRepeat_t repeat, bool mips,
+		bool explicitMipChain = false ) {
 	const imageFilterState_t defaultFilter = R_GetDefaultImageFilterState();
 	const int defaultFilterMode = filter == TF_DEFAULT ? static_cast<int>( defaultFilter.mode ) : -1;
 	// Explicit linear/nearest filters select the base level even if the image
 	// was uploaded with a mip chain before its sampler state changed. Match
 	// GL_LINEAR/GL_NEAREST so reloadImages cannot change which level is used.
-	if ( filter != TF_DEFAULT || !defaultFilter.usesMipmaps ) {
+	// A generated data chain read with explicit LODs is the exception: its
+	// levels are separate data (prefiltered radiance), never a minification.
+	explicitMipChain = explicitMipChain && mips && filter == TF_LINEAR;
+	if ( !explicitMipChain && ( filter != TF_DEFAULT || !defaultFilter.usesMipmaps ) ) {
 		mips = false;
 	}
 	int anisotropy = 0;
@@ -269,7 +274,8 @@ static VkSampler VK_Image_GetSampler( textureFilter_t filter, textureRepeat_t re
 	for ( int i = 0; i < vkNumSamplers; i++ ) {
 		if ( vkSamplerKeys[ i ].filter == filter && vkSamplerKeys[ i ].repeat == repeat
 				&& vkSamplerKeys[ i ].mips == mips && vkSamplerKeys[ i ].anisotropy == anisotropy
-				&& vkSamplerKeys[ i ].defaultFilterMode == defaultFilterMode ) {
+				&& vkSamplerKeys[ i ].defaultFilterMode == defaultFilterMode
+				&& vkSamplerKeys[ i ].explicitMipChain == explicitMipChain ) {
 			return vkSamplers[ i ];
 		}
 	}
@@ -291,7 +297,7 @@ static VkSampler VK_Image_GetSampler( textureFilter_t filter, textureRepeat_t re
 		case TF_LINEAR:
 			sci.magFilter = VK_FILTER_LINEAR;
 			sci.minFilter = VK_FILTER_LINEAR;
-			sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+			sci.mipmapMode = explicitMipChain ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
 			break;
 		default:	// TF_DEFAULT
 			sci.magFilter = defaultFilter.magLinear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
@@ -343,6 +349,7 @@ static VkSampler VK_Image_GetSampler( textureFilter_t filter, textureRepeat_t re
 	vkSamplerKeys[ vkNumSamplers ].mips = mips;
 	vkSamplerKeys[ vkNumSamplers ].anisotropy = anisotropy;
 	vkSamplerKeys[ vkNumSamplers ].defaultFilterMode = defaultFilterMode;
+	vkSamplerKeys[ vkNumSamplers ].explicitMipChain = explicitMipChain;
 	vkSamplers[ vkNumSamplers ] = sampler;
 	vkNumSamplers++;
 	return sampler;
@@ -1303,8 +1310,30 @@ void idImage::SetTexParameters( void ) {
 	if ( entry == NULL ) {
 		return;
 	}
-	entry->sampler = VK_Image_GetSampler( filter, repeat, entry->numMips > 1 );
+	entry->sampler = VK_Image_GetSampler( filter, repeat, entry->numMips > 1, entry->explicitMipChain );
 	entry->generation = vkImageGenerationCounter++;
+}
+
+/*
+====================
+VK_Image_UseExplicitMipChain
+
+The PBR environment atlas stores roughness-prefiltered radiance in each level
+and selects levels with explicit textureLod. Its TF_LINEAR sampler otherwise
+clamps to the base level (matching GL_LINEAR), which silently replaced every
+rough reflection with the mirror level. Keep the chain addressable, including
+across later sampler refreshes; reallocation clears the flag again.
+====================
+*/
+bool VK_Image_UseExplicitMipChain( unsigned int texnum ) {
+	vkImageEntry_t *entry = VK_Image_GetEntry( texnum );
+	if ( entry == NULL || entry->numMips <= 1 ) {
+		return false;
+	}
+	entry->explicitMipChain = true;
+	entry->sampler = VK_Image_GetSampler( TF_LINEAR, TR_CLAMP, true, true );
+	entry->generation = vkImageGenerationCounter++;
+	return entry->sampler != VK_NULL_HANDLE;
 }
 
 void idImage::RefreshSamplerState() {

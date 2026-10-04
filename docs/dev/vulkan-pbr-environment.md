@@ -43,6 +43,21 @@ Generated image ownership handles image reload and device restart. Every mip
 must upload successfully before the atlas is usable; a partial upload purges
 the image. Ordinary stock materials and disabled PBR do not request it.
 
+The atlas keeps a sampler of its own that addresses the whole mip chain
+(`VK_Image_UseExplicitMipChain`). From c850233d (2026-09-25) until 2026-10-04,
+an explicit `TF_LINEAR` sampler clamped every image to its base level to match
+`GL_LINEAR`. The atlas is `TF_LINEAR`, so every explicit-LOD read returned the
+mirror level: rough Vulkan reflections and authored probes showed an unfiltered
+key highlight, and GL/Vulkan IBL parity failed `rough-high` and `double`
+(maximum 4 bytes; 11 once energy compensation brightened the specimen). With
+the dedicated sampler all 26 paired IBL controls match exactly. The OpenGL
+atlas is a raw texture with `GL_LINEAR_MIPMAP_LINEAR` and was never affected.
+
+Since 2026-10-04 the pass applies the shared roughness/AO kernel: specular
+occlusion and multi-bounce AO, horizon occlusion against the interpolated
+vertex normal, and multiple-scattering energy compensation from the split-sum
+table's `A + B`. See the [production-readiness plan](plans/2026-10-04-pbr-production-readiness.md).
+
 The opaque environment pass checks the existing baked receiver rules per surface:
 the default `r_useLightGrid 1` switch no longer disables environment lighting
 when the map or receiver has no eligible baked grid. The frozen v21 regression
