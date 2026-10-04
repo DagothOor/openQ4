@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 from pathlib import Path
+import re
 
 
 def assert_true(condition, message):
@@ -14,6 +15,29 @@ def read_repo_file(relative_path):
 
 def read_companion_file(relative_path):
     return (Path(__file__).resolve().parents[2] / relative_path).read_text(encoding="utf-8")
+
+
+def cxx_braced_block(source, start):
+    """The source from start through the brace closing the first block opened after it."""
+    assert_true(start >= 0, "the block's opening line should exist")
+    open_brace = source.find("{", start)
+    assert_true(open_brace >= 0, "the block should open a brace")
+    depth = 0
+    for index in range(open_brace, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start:index + 1]
+    raise AssertionError("the block should close its brace")
+
+
+def cxx_code(text):
+    """C++ without comments or layout, to compare two copies of the same code."""
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    text = re.sub(r"//[^\n]*", " ", text)
+    return " ".join(text.split())
 
 
 def test_msaa_cvar_exposes_guarded_steps():
@@ -114,6 +138,60 @@ def test_gfxinfo_reports_effective_aa_state():
         "gfxInfo should print the AA summary fields",
     )
     assert_true("R_GfxInfoPrintAAState();" in init_cpp, "gfxInfo should call the AA state reporter")
+
+
+def test_gles_view_path_records_main_scene_target():
+    # renderer-gles compiles RenderSystem_init.cpp but not draw_common.cpp, and
+    # draws views through its own RB_DrawView. Without a copy of RB_STD_DrawView's
+    # record, gfxInfo on an ES context only ever predicted the MSAA.
+    draw_common = read_repo_file(Path("src") / "renderer" / "draw_common.cpp")
+    gles_backend = read_repo_file(Path("src") / "renderer" / "GLES" / "gles_Backend.cpp")
+
+    desktop_test = cxx_braced_block(
+        draw_common, draw_common.find("static bool RB_IsMainScenePostProcessView( const viewDef_t *viewDef ) {"))
+    gles_test = cxx_braced_block(
+        gles_backend, gles_backend.find("static bool RB_GLES_IsMainScenePostProcessView( const viewDef_t *viewDef ) {"))
+    assert_true(
+        cxx_code(gles_test).replace("RB_GLES_IsMainScenePostProcessView", "RB_IsMainScenePostProcessView")
+        == cxx_code(desktop_test),
+        "the GLES main-view test should stay a copy of RB_IsMainScenePostProcessView")
+
+    draw_view = draw_common[draw_common.find("void\tRB_STD_DrawView( void ) {"):]
+    desktop_record = cxx_braced_block(draw_view, draw_view.find("if ( RB_IsMainScenePostProcessView( backEnd.viewDef )"))
+    gles_view = cxx_braced_block(gles_backend, gles_backend.find("void RB_DrawView( const void *data ) {"))
+    record_start = gles_view.find("if ( RB_GLES_IsMainScenePostProcessView( backEnd.viewDef )")
+    gles_record = cxx_braced_block(gles_view, record_start)
+    assert_true(
+        cxx_code(gles_record).replace("RB_GLES_IsMainScenePostProcessView", "RB_IsMainScenePostProcessView")
+        == cxx_code(desktop_record),
+        "the GLES view path should record the main scene target exactly as RB_STD_DrawView does")
+    for snippet, purpose in (
+        ("&& !tr.takingScreenshot && tr.tiledViewport[0] == 0 ) {", "screenshots and captures keep the gameplay frame's record"),
+        ("? backEnd.renderTexture : R_GetDefaultRenderTarget();", "the target choice stays RB_STD_DrawView's, VR stand-in included"),
+        ("backEnd.mainSceneTargetContext = tr.glContextGeneration;", "the record belongs to the current context"),
+        ("backEnd.mainSceneTargetIsWindow = ( sceneTarget == NULL );", "a scene drawn into the window reports the window's samples"),
+        ("backEnd.mainSceneTargetSamples = sceneColor != NULL ? Max( 0, sceneColor->GetOpts().numMSAASamples ) : 0;",
+         "the record keeps the target's color samples"),
+    ):
+        assert_true(snippet in gles_record, f"GLES record: {purpose}")
+
+    # Recorded where RB_STD_DrawView would run, after the empty-view and
+    # r_skipRender returns, and ahead of both ES paths: gles_d3 draws the view
+    # itself and the modern executor's path falls through.
+    skip_render = gles_view.find("if ( r_skipRender.GetBool() && backEnd.viewDef->viewEntitys ) {")
+    gles_d3_draw = gles_view.find("RB_GLESD3_DrawView();")
+    modern_path = gles_view.find("RB_GLES_ResolveSceneResolutionScale();")
+    assert_true(0 <= skip_render < record_start < gles_d3_draw < modern_path,
+                "the GLES view path should record each drawn main view before either backend draws it")
+    # RB_DrawView must stay gles_d3's only entry, or a view could skip the record.
+    renderer_root = Path(__file__).resolve().parents[2] / "src" / "renderer"
+    callers = {
+        path.relative_to(renderer_root).as_posix(): calls
+        for path in renderer_root.rglob("*.cpp")
+        if (calls := path.read_text(encoding="utf-8", errors="replace").count("RB_GLESD3_DrawView();"))
+    }
+    assert_true(callers == {"GLES/gles_Backend.cpp": 1},
+                f"RB_GLESD3_DrawView should be called only from the GLES RB_DrawView, found {callers}")
 
 
 def test_postaa_settings_surface_exposes_all_modes():
@@ -244,6 +322,7 @@ def main():
     test_msaa_cvar_exposes_guarded_steps()
     test_msaa_cvar_normalizes_unsupported_values_before_gl_init()
     test_gfxinfo_reports_effective_aa_state()
+    test_gles_view_path_records_main_scene_target()
     test_postaa_settings_surface_exposes_all_modes()
     test_postaa_smaa_quality_presets_are_explicit_and_logged()
     test_sdl3_context_creation_has_msaa_fallback_ladder()

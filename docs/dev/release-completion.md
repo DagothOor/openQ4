@@ -176,6 +176,28 @@
   `effective=4 reason=gl-max-clamp`, and the foundation self-tests are
   unchanged. See [display settings](../user/display-settings.md).
 
+- [x] Make `gfxInfo` report the MSAA the 3D scene actually rendered with on
+  OpenGL ES too. The ES renderer module, which Android uses, draws views
+  through its own backend, and that backend never recorded where the scene
+  drew, so its report kept predicting from `r_multiSamples`. Render targets are
+  single-sample there, so it always printed
+  `effective=0 reason=texture-msaa-unavailable`, even when the scene drew
+  straight into a multisampled window, which is the route with Post AA and the
+  post effects off, and `reason=supersampling` above 100% scale. It now
+  records the scene the way desktop OpenGL does: a scene drawn into the window
+  reports the window's samples (`default-framebuffer`, or
+  `default-framebuffer-single-sample` for a window without any), one drawn into
+  the game's targets reports `texture-msaa-unavailable`, and screenshots keep
+  the gameplay frame's report. Rendering is unchanged. Under Mesa llvmpipe's
+  OpenGL ES 3.2 on Xvfb, which gives the window 4x MSAA, Air Defense 1 at 8x
+  now reports `effective=4 reason=default-framebuffer` on the window route and
+  `texture-msaa-unavailable` at 150%, where it reported `effective=0` with
+  `texture-msaa-unavailable` and `supersampling`. A report taken right after an
+  `envshot` keeps the gameplay frame's value. The ES module does not compile on
+  main at the moment, because shared renderer code calls desktop-only GL. These
+  runs merged in the fix from the pending Android review round. An Android
+  device was not tested.
+
 - [x] Draw the OpenGL `r_showShadows` stencil shadow volumes in colour again.
   Modes 1 and 3 drew black lines and the additive mode 2 drew nothing, because
   the stock shadow vertex programs (`shadow.vp` and the `md5rshadow` family)
