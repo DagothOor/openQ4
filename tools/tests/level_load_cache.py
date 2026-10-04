@@ -30,6 +30,27 @@ def require_order(text: str, first: str, second: str, context: str) -> None:
         raise AssertionError(f"Expected {first!r} before {second!r} in {context}")
 
 
+def forbid(text: str, needle: str, context: str) -> None:
+    if needle in text:
+        raise AssertionError(f"Unexpected {needle!r} in {context}")
+
+
+def function_body(text: str, head: str) -> str:
+    """Return the definition that starts with head, through its closing brace."""
+    start = text.find(head)
+    if start < 0:
+        raise AssertionError(f"Missing definition of {head!r}")
+    depth = 0
+    for index in range(text.index("{", start), len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    raise AssertionError(f"Unbalanced body for {head!r}")
+
+
 def validate_abi_contract() -> None:
     engine_fs = read(ROOT, "src/framework/FileSystem.h")
     game_fs = read(GAME_ROOT, "src/framework/FileSystem.h")
@@ -43,12 +64,22 @@ def validate_abi_contract() -> None:
         "OpenGeneratedCacheRead",
         "WriteGeneratedCache",
         "DiscardGeneratedCache",
+        "GeneratedCacheReadsEnabled",
+        "GeneratedCacheWritesEnabled",
     ):
         require(engine_fs, token, "engine filesystem ABI")
         require(game_fs, token, "game filesystem ABI")
+    # the enable queries were appended after the campaign queries; older game
+    # modules keep the complete historical prefix of the shared vtable
+    require_order(
+        engine_fs,
+        "virtual const char *GetActiveGameDir() const = 0;",
+        "virtual bool\t\t\tGeneratedCacheReadsEnabled( generatedCacheKind_t kind ) const = 0;",
+        "append-only filesystem slots",
+    )
     require(
         read(ROOT, "src/renderer/RenderModuleAPI.h"),
-        "#define RENDER_API_VERSION\t\t\t22",
+        "#define RENDER_API_VERSION\t\t\t23",
         "renderer module ABI",
     )
     require(
@@ -176,6 +207,26 @@ def validate_pipeline_and_lifecycle() -> None:
     ):
         require(filesystem, token, "exact active content signature")
 
+    # A disabled cache must cost a cvar check: the gates come before the
+    # content key walks the search paths.
+    for head, gate in (
+        ("idFile *idFileSystemLocal::OpenGeneratedCacheRead(", "!GeneratedCacheReadsEnabled( kind )"),
+        ("bool idFileSystemLocal::WriteGeneratedCache(", "!GeneratedCacheWritesEnabled( kind )"),
+    ):
+        require_order(function_body(filesystem, head), gate, "BuildLevelLoadContentKey( contentKey );",
+                      "generated-cache gate before the content key")
+    require(manager, "return GeneratedCacheReadsEnabled( kind ) && com_levelLoadCacheWrite.GetBool();",
+            "writes require the read gate plus com_levelLoadCacheWrite")
+    open_read = function_body(manager, "idFile *idLevelLoadCacheManager::OpenGeneratedCacheRead(")
+    require_order(open_read, "!GeneratedCacheReadsEnabled( kind )", "OpenFileRead( normalized.c_str(), false )",
+                  "coordinator read gate")
+    # DecodeEnvelope already hashed the uncompressed payload against its digest
+    forbid(open_read, "idLevelLoadCache::ValidateDecodedPayload(", "uncompressed generated-cache read (third SHA-256 pass)")
+    write = function_body(manager, "bool idLevelLoadCacheManager::WriteGeneratedCache(")
+    require_order(write, "!GeneratedCacheWritesEnabled( kind )", "OpenFileRead( normalized.c_str(), false )",
+                  "coordinator write gate")
+    forbid(write, "ComputeHash( payload, payloadBytes )", "uncompressed generated-cache write (EncodeEnvelope hashes it)")
+
     unload = session[session.index("void idSessionLocal::UnloadMap()") :]
     require_order(unload, "CancelLevelLoadCache", "game->MapShutdown", "map teardown join")
     execute_start = session.index("void idSessionLocal::ExecuteMapChange")
@@ -227,6 +278,66 @@ def validate_resource_consumers() -> None:
         "edge.p2 > batch.silTraceGeoSpec.primitiveCount",
         "MD5R open-edge sentinel validation",
     )
+    # Every model load runs these helpers; with the cache off neither may build a
+    # payload, and the read still records the resource for the learned manifest.
+    model_cpp = read(ROOT, "src/renderer/Model.cpp")
+    try_read = function_body(model_cpp, "bool R_TryReadGeneratedRenderModelCache(")
+    require_order(try_read, "fileSystem->RecordLevelLoadResource( LEVEL_LOAD_RESOURCE_RENDER_MODEL,",
+                  "fileSystem->GeneratedCacheReadsEnabled( GENERATED_CACHE_RENDER_MODEL )",
+                  "render-model resource recorded before the read gate")
+    require_order(try_read, "fileSystem->GeneratedCacheReadsEnabled( GENERATED_CACHE_RENDER_MODEL )",
+                  "fileSystem->OpenGeneratedCacheRead( GENERATED_CACHE_RENDER_MODEL,", "render-model read gate")
+    write_model = function_body(model_cpp, "void R_WriteGeneratedRenderModelCache(")
+    require_order(write_model, "fileSystem->GeneratedCacheWritesEnabled( GENERATED_CACHE_RENDER_MODEL )",
+                  "WriteLevelLoadCachePayload( *payload )", "render-model write gate before serialization")
+    require_order(world, "fileSystem->GeneratedCacheWritesEnabled( GENERATED_CACHE_RENDER_WORLD )",
+                  "WriteLevelLoadCachePayload( *cachePayload )", "render-world write gate before serialization")
+    write_collision = function_body(collision, "void idCollisionModelManagerLocal::WriteGeneratedCollisionCache(")
+    require_order(write_collision, "fileSystem->GeneratedCacheWritesEnabled( GENERATED_CACHE_COLLISION_MODEL )",
+                  "cmCacheWriter_t writer( payload );", "collision write gate before serialization")
+
+    # The MD5R codec streams whole arrays like the static codec, in the byte
+    # layout the per-element codec wrote (so its parser version did not move).
+    md5r = read(ROOT, "src/renderer/Model_md5r.cpp")
+    for head, call in (
+        ("static bool R_MD5RCacheReadVec4List(", "reader.ReadFloatArray( reinterpret_cast<float *>( list.Ptr() ), count * 4 )"),
+        ("static bool R_MD5RCacheReadVec3List(", "reader.ReadFloatArray( reinterpret_cast<float *>( list.Ptr() ), count * 3 )"),
+        ("static bool R_MD5RCacheReadDwordList(", "reader.ReadIntArray( reinterpret_cast<int *>( list.Ptr() ), count )"),
+        ("static bool R_MD5RCacheReadFloatList(", "reader.ReadFloatArray( list.Ptr(), count )"),
+        ("static bool R_MD5RCacheReadJointMat(", "reader.ReadFloatArray( mat.ToFloatPtr(), 12 )"),
+        ("static bool R_MD5RCacheWriteVec4List(", "writer.WriteFloatArray( reinterpret_cast<const float *>( list.Ptr() ), list.Num() * 4 )"),
+        ("static bool R_MD5RCacheWriteVec3List(", "writer.WriteFloatArray( reinterpret_cast<const float *>( list.Ptr() ), list.Num() * 3 )"),
+        ("static bool R_MD5RCacheWriteDwordList(", "writer.WriteIntArray( reinterpret_cast<const int *>( list.Ptr() ), list.Num() )"),
+        ("static bool R_MD5RCacheWriteFloatList(", "writer.WriteFloatArray( list.Ptr(), list.Num() )"),
+        ("static bool R_MD5RCacheWriteJointMat(", "writer.WriteFloatArray( mat.ToFloatPtr(), 12 )"),
+    ):
+        require(function_body(md5r, head), call, f"MD5R bulk codec {head}")
+    read_indexes = function_body(md5r, "static bool R_MD5RCacheReadIndexBuffer(")
+    require_order(read_indexes, "reader.ReadIntArray( reinterpret_cast<int *>( buffer.indices.Ptr() ), buffer.numIndices )",
+                  "index < 0 || index >= MD5R_CACHE_MAX_VERTICES || ( buffer.bitDepth == 16 && index > 0xffff )",
+                  "MD5R bulk index read keeps the range check")
+    require(function_body(md5r, "static bool R_MD5RCacheWriteIndexBuffer("),
+            "writer.WriteIntArray( reinterpret_cast<const int *>( buffer.indices.Ptr() ), buffer.numIndices )",
+            "MD5R bulk index write")
+    require(md5r, "writer.WriteIntArray( reinterpret_cast<const int *>( resolvedSilEdges.Ptr() ), resolvedSilEdges.Num() * 4 )",
+            "MD5R bulk silhouette-edge write")
+    require_order(function_body(md5r, "bool rvRenderModelMD5R::ReadLevelLoadCachePayload("),
+                  "reader.ReadIntArray( reinterpret_cast<int *>( staged.silEdges.Ptr() ), silEdgeCount * 4 )",
+                  "edge.p1 < 0 || edge.p1 > MD5R_CACHE_MAX_INDICES / 3", "MD5R bulk silhouette-edge read keeps the range check")
+    for needle in ("reader.ReadVec4( list[i] )", "reader.ReadVec3( list[i] )", "reader.ReadUnsignedInt( list[i] )",
+                   "reader.ReadInt( edge.p1 )", "writer.WriteInt( edge.p1 )"):
+        forbid(md5r, needle, "MD5R per-element codec")
+    for assertion in (
+        "static_assert( sizeof( idVec4 ) == 4 * sizeof( float ),",
+        "static_assert( sizeof( idVec3 ) == 3 * sizeof( float ),",
+        "static_assert( sizeof( dword ) == sizeof( int ),",
+        "static_assert( sizeof( glIndex_t ) == sizeof( int ),",
+        "static_assert( sizeof( silEdge_t ) == 4 * sizeof( int ),",
+    ):
+        require(md5r, assertion, "MD5R bulk codec layout")
+    require(function_body(model_cpp, "bool idRenderModelCacheReader::ReadFloatArray("),
+            "!R_RenderModelCacheFloatIsFinite( values[i] )", "bulk float reads stay finite-checked")
+
     require(world, "WriteLevelLoadCachePayload", "render-world bounded payload")
     require(world, "R_RenderWorldCacheWriteShadowModel", "render-world shadow-only payload writer")
     require(world, "R_RenderWorldCacheReadShadowModel", "render-world shadow-only payload reader")

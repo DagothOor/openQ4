@@ -2481,7 +2481,8 @@ bool idRenderWorldLocal::InitFromMap( const char *name ) {
 		0u,
 		3u );
 
-	if ( !r_convertProcToMD5R.GetBool() ) {
+	if ( !r_convertProcToMD5R.GetBool()
+		&& fileSystem->GeneratedCacheWritesEnabled( GENERATED_CACHE_RENDER_WORLD ) ) {
 		idRenderWorldCacheMemoryFileOwner cachePayloadOwner;
 		idFile *cachePayload = cachePayloadOwner.Get();
 		if ( cachePayload != NULL && WriteLevelLoadCachePayload( *cachePayload ) && cachePayload->Length() > 0 ) {

@@ -376,6 +376,11 @@ bool R_TryReadGeneratedRenderModelCache( idRenderModel &model, const char *sourc
 	}
 	fileSystem->RecordLevelLoadResource( LEVEL_LOAD_RESOURCE_RENDER_MODEL,
 		sourcePath, settingsKey != NULL ? settingsKey : "", 0u, 2u );
+	// the learned manifest records the model either way; only the cache read
+	// depends on the generated caches being on
+	if ( !fileSystem->GeneratedCacheReadsEnabled( GENERATED_CACHE_RENDER_MODEL ) ) {
+		return false;
+	}
 	idFile *cache = fileSystem->OpenGeneratedCacheRead( GENERATED_CACHE_RENDER_MODEL,
 		sourcePath, parserVersion, settingsKey != NULL ? settingsKey : "" );
 	if ( cache == NULL ) {
@@ -397,6 +402,11 @@ void R_WriteGeneratedRenderModelCache( const idRenderModel &model, const char *s
 	if ( sourcePath == NULL || sourcePath[0] == '\0' || parserVersion == 0
 		|| cacheModel == NULL
 		|| cacheModel->LevelLoadCachePayloadType() == RENDER_MODEL_CACHE_UNSUPPORTED ) {
+		return;
+	}
+	// every static, MD5 and MD5R load ends here; with the generated caches off
+	// (the default) WriteGeneratedCache would discard the encoded payload
+	if ( !fileSystem->GeneratedCacheWritesEnabled( GENERATED_CACHE_RENDER_MODEL ) ) {
 		return;
 	}
 	idFile *payload = fileSystem->GetNewFileMemory();

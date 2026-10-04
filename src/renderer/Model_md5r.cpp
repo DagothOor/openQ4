@@ -2196,60 +2196,63 @@ namespace {
 		return true;
 	}
 
+	// The list, index and silhouette-edge codecs stream a whole array through
+	// one idFile call. The bytes are the ones the old per-element codec wrote
+	// (a count, then each element's little-endian floats or ints in order), so
+	// MD5R_MODEL_GENERATED_CACHE_PARSER_VERSION stays. ReadFloatArray and
+	// WriteFloatArray keep the per-float finite check; pin the layouts so a
+	// change breaks the build instead of the cache format.
+	static_assert( sizeof( idVec4 ) == 4 * sizeof( float ), "MD5R cache streams idVec4 lists as 4 floats per element" );
+	static_assert( sizeof( idVec3 ) == 3 * sizeof( float ), "MD5R cache streams idVec3 lists as 3 floats per element" );
+	static_assert( sizeof( dword ) == sizeof( int ), "MD5R cache streams dword lists as ints" );
+	static_assert( sizeof( glIndex_t ) == sizeof( int ), "MD5R cache streams index buffers as ints" );
+	static_assert( sizeof( silEdge_t ) == 4 * sizeof( int ), "MD5R cache streams silhouette edges as 4 ints" );
+
 	static bool R_MD5RCacheWriteVec4List( idRenderModelCacheWriter &writer, const idList<idVec4> &list ) {
-		if ( !writer.WriteInt( list.Num() ) ) return false;
-		for ( int i = 0; i < list.Num(); ++i ) if ( !writer.WriteVec4( list[i] ) ) return false;
-		return true;
+		return writer.WriteInt( list.Num() )
+			&& writer.WriteFloatArray( reinterpret_cast<const float *>( list.Ptr() ), list.Num() * 4 );
 	}
 
 	static bool R_MD5RCacheWriteVec3List( idRenderModelCacheWriter &writer, const idList<idVec3> &list ) {
-		if ( !writer.WriteInt( list.Num() ) ) return false;
-		for ( int i = 0; i < list.Num(); ++i ) if ( !writer.WriteVec3( list[i] ) ) return false;
-		return true;
+		return writer.WriteInt( list.Num() )
+			&& writer.WriteFloatArray( reinterpret_cast<const float *>( list.Ptr() ), list.Num() * 3 );
 	}
 
 	static bool R_MD5RCacheWriteDwordList( idRenderModelCacheWriter &writer, const idList<dword> &list ) {
-		if ( !writer.WriteInt( list.Num() ) ) return false;
-		for ( int i = 0; i < list.Num(); ++i ) if ( !writer.WriteUnsignedInt( list[i] ) ) return false;
-		return true;
+		return writer.WriteInt( list.Num() )
+			&& writer.WriteIntArray( reinterpret_cast<const int *>( list.Ptr() ), list.Num() );
 	}
 
 	static bool R_MD5RCacheWriteFloatList( idRenderModelCacheWriter &writer, const idList<float> &list ) {
-		if ( !writer.WriteInt( list.Num() ) ) return false;
-		for ( int i = 0; i < list.Num(); ++i ) if ( !writer.WriteFloat( list[i] ) ) return false;
-		return true;
+		return writer.WriteInt( list.Num() ) && writer.WriteFloatArray( list.Ptr(), list.Num() );
 	}
 
 	static bool R_MD5RCacheReadVec4List( idRenderModelCacheReader &reader, idList<idVec4> &list, int maxCount ) {
 		int count = 0;
 		if ( !reader.ReadCount( count, maxCount, sizeof( idVec4 ) ) ) return false;
 		list.SetNum( count );
-		for ( int i = 0; i < count; ++i ) if ( !reader.ReadVec4( list[i] ) ) return false;
-		return true;
+		return reader.ReadFloatArray( reinterpret_cast<float *>( list.Ptr() ), count * 4 );
 	}
 
 	static bool R_MD5RCacheReadVec3List( idRenderModelCacheReader &reader, idList<idVec3> &list, int maxCount ) {
 		int count = 0;
 		if ( !reader.ReadCount( count, maxCount, sizeof( idVec3 ) ) ) return false;
 		list.SetNum( count );
-		for ( int i = 0; i < count; ++i ) if ( !reader.ReadVec3( list[i] ) ) return false;
-		return true;
+		return reader.ReadFloatArray( reinterpret_cast<float *>( list.Ptr() ), count * 3 );
 	}
 
 	static bool R_MD5RCacheReadDwordList( idRenderModelCacheReader &reader, idList<dword> &list, int maxCount ) {
 		int count = 0;
 		if ( !reader.ReadCount( count, maxCount, sizeof( dword ) ) ) return false;
 		list.SetNum( count );
-		for ( int i = 0; i < count; ++i ) if ( !reader.ReadUnsignedInt( list[i] ) ) return false;
-		return true;
+		return reader.ReadIntArray( reinterpret_cast<int *>( list.Ptr() ), count );
 	}
 
 	static bool R_MD5RCacheReadFloatList( idRenderModelCacheReader &reader, idList<float> &list, int maxCount ) {
 		int count = 0;
 		if ( !reader.ReadCount( count, maxCount, sizeof( float ) ) ) return false;
 		list.SetNum( count );
-		for ( int i = 0; i < count; ++i ) if ( !reader.ReadFloat( list[i] ) ) return false;
-		return true;
+		return reader.ReadFloatArray( list.Ptr(), count );
 	}
 
 	static bool R_MD5RCacheWriteJointQuat( idRenderModelCacheWriter &writer, const idJointQuat &pose ) {
@@ -2264,13 +2267,11 @@ namespace {
 	}
 
 	static bool R_MD5RCacheWriteJointMat( idRenderModelCacheWriter &writer, const idJointMat &mat ) {
-		for ( int i = 0; i < 12; ++i ) if ( !writer.WriteFloat( mat.ToFloatPtr()[i] ) ) return false;
-		return true;
+		return writer.WriteFloatArray( mat.ToFloatPtr(), 12 );
 	}
 
 	static bool R_MD5RCacheReadJointMat( idRenderModelCacheReader &reader, idJointMat &mat ) {
-		for ( int i = 0; i < 12; ++i ) if ( !reader.ReadFloat( mat.ToFloatPtr()[i] ) ) return false;
-		return true;
+		return reader.ReadFloatArray( mat.ToFloatPtr(), 12 );
 	}
 
 	static bool R_MD5RCacheCanWriteVertexFormat( const rvMD5RVertexFormatDesc &format ) {
@@ -2398,12 +2399,11 @@ namespace {
 		for ( int i = 0; i < buffer.numIndices; ++i ) {
 			const unsigned int index = static_cast<unsigned int>( buffer.indices[i] );
 			if ( index >= static_cast<unsigned int>( MD5R_CACHE_MAX_VERTICES )
-				|| ( buffer.bitDepth == 16 && index > 0xffffU )
-				|| !writer.WriteInt( static_cast<int>( index ) ) ) {
+				|| ( buffer.bitDepth == 16 && index > 0xffffU ) ) {
 				return false;
 			}
 		}
-		return true;
+		return writer.WriteIntArray( reinterpret_cast<const int *>( buffer.indices.Ptr() ), buffer.numIndices );
 	}
 
 	static bool R_MD5RCacheReadIndexBuffer( idRenderModelCacheReader &reader, rvMD5RIndexBufferDesc &buffer ) {
@@ -2414,13 +2414,14 @@ namespace {
 			return false;
 		}
 		buffer.indices.SetNum( buffer.numIndices );
+		if ( !reader.ReadIntArray( reinterpret_cast<int *>( buffer.indices.Ptr() ), buffer.numIndices ) ) {
+			return false;
+		}
 		for ( int i = 0; i < buffer.numIndices; ++i ) {
-			int index = 0;
-			if ( !reader.ReadInt( index ) || index < 0 || index >= MD5R_CACHE_MAX_VERTICES
-				|| ( buffer.bitDepth == 16 && index > 0xffff ) ) {
+			const int index = buffer.indices[i];
+			if ( index < 0 || index >= MD5R_CACHE_MAX_VERTICES || ( buffer.bitDepth == 16 && index > 0xffff ) ) {
 				return false;
 			}
-			buffer.indices[i] = static_cast<glIndex_t>( index );
 		}
 		return true;
 	}
@@ -2789,11 +2790,12 @@ bool rvRenderModelMD5R::WriteLevelLoadCachePayload( idFile &file ) const {
 		if ( edge.p1 < 0 || edge.p1 > MD5R_CACHE_MAX_INDICES / 3
 			|| edge.p2 < 0 || edge.p2 > MD5R_CACHE_MAX_INDICES / 3
 			|| edge.v1 < 0 || edge.v1 >= MD5R_CACHE_MAX_VERTICES
-			|| edge.v2 < 0 || edge.v2 >= MD5R_CACHE_MAX_VERTICES
-			|| !writer.WriteInt( edge.p1 ) || !writer.WriteInt( edge.p2 )
-			|| !writer.WriteInt( edge.v1 ) || !writer.WriteInt( edge.v2 ) ) {
+			|| edge.v2 < 0 || edge.v2 >= MD5R_CACHE_MAX_VERTICES ) {
 			return false;
 		}
+	}
+	if ( !writer.WriteIntArray( reinterpret_cast<const int *>( resolvedSilEdges.Ptr() ), resolvedSilEdges.Num() * 4 ) ) {
+		return false;
 	}
 
 	if ( !writer.WriteInt( lods.Num() ) ) {
@@ -2994,11 +2996,12 @@ bool rvRenderModelMD5R::ReadLevelLoadCachePayload( idFile &file ) {
 		return false;
 	}
 	staged.silEdges.SetNum( silEdgeCount );
+	if ( !reader.ReadIntArray( reinterpret_cast<int *>( staged.silEdges.Ptr() ), silEdgeCount * 4 ) ) {
+		return false;
+	}
 	for ( int edgeIndex = 0; edgeIndex < silEdgeCount; ++edgeIndex ) {
-		silEdge_t &edge = staged.silEdges[edgeIndex];
-		if ( !reader.ReadInt( edge.p1 ) || !reader.ReadInt( edge.p2 )
-			|| !reader.ReadInt( edge.v1 ) || !reader.ReadInt( edge.v2 )
-			|| edge.p1 < 0 || edge.p1 > MD5R_CACHE_MAX_INDICES / 3
+		const silEdge_t &edge = staged.silEdges[edgeIndex];
+		if ( edge.p1 < 0 || edge.p1 > MD5R_CACHE_MAX_INDICES / 3
 			|| edge.p2 < 0 || edge.p2 > MD5R_CACHE_MAX_INDICES / 3
 			|| edge.v1 < 0 || edge.v1 >= MD5R_CACHE_MAX_VERTICES
 			|| edge.v2 < 0 || edge.v2 >= MD5R_CACHE_MAX_VERTICES ) {

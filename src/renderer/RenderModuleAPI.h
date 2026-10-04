@@ -78,7 +78,10 @@
 //      SetVRRenderTarget and GetVRFrameResult.
 // 22 - Append-only idRenderSystem slot PresentScaledScene: the game hands its
 //      below-native scene to the renderer's r_resolutionScaleMode upscale.
-#define RENDER_API_VERSION			22
+// 23 - Append-only idFileSystem slots GeneratedCacheReadsEnabled and
+//      GeneratedCacheWritesEnabled: model and world loads skip building a
+//      generated-cache payload the level-load coordinator would discard.
+#define RENDER_API_VERSION			23
 #define RENDER_API_ENTRY_POINT		"GetRenderAPI"
 
 class idSys;

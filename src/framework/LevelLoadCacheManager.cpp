@@ -991,13 +991,20 @@ idFile *idLevelLoadCacheManager::OpenPreloadedSource( const char *path,
 	}
 }
 
+bool idLevelLoadCacheManager::GeneratedCacheReadsEnabled( const generatedCacheKind_t kind ) const {
+	return impl != nullptr && com_levelLoadModernization.GetBool() &&
+		com_levelLoadCache.GetBool() && IsValidCacheKind( kind );
+}
+
+bool idLevelLoadCacheManager::GeneratedCacheWritesEnabled( const generatedCacheKind_t kind ) const {
+	return GeneratedCacheReadsEnabled( kind ) && com_levelLoadCacheWrite.GetBool();
+}
+
 idFile *idLevelLoadCacheManager::OpenGeneratedCacheRead(
 		const generatedCacheKind_t kind, const char *sourcePath,
 		const unsigned int parserVersion, const char *settingsKey,
 		const char *contentKey ) {
-	if ( impl == nullptr || !com_levelLoadModernization.GetBool() ||
-		!com_levelLoadCache.GetBool() || !IsValidCacheKind( kind ) ||
-		parserVersion == 0 ) {
+	if ( !GeneratedCacheReadsEnabled( kind ) || parserVersion == 0 ) {
 		return nullptr;
 	}
 	std::string normalized;
@@ -1030,10 +1037,10 @@ idFile *idLevelLoadCacheManager::OpenGeneratedCacheRead(
 
 	idLevelLoadCache::CacheEnvelope envelope;
 	idLevelLoadCache::Result result = idLevelLoadCache::DecodeEnvelopeForKey( encoded, expected, envelope );
-	if ( result && envelope.codec == idLevelLoadCache::CompressionCodec::NONE ) {
-		result = idLevelLoadCache::ValidateDecodedPayload( envelope,
-			envelope.payload.data(), envelope.payload.size() );
-	} else if ( result ) {
+	// DecodeEnvelope has already checked an uncompressed payload against its
+	// stored digest, so ValidateDecodedPayload would only hash the same bytes
+	// a third time. A compressed codec would need it after decompression.
+	if ( result && envelope.codec != idLevelLoadCache::CompressionCodec::NONE ) {
 		result.status = idLevelLoadCache::Status::INVALID_ENUM_VALUE;
 		result.diagnostic = "runtime does not support this generated-cache codec";
 	}
@@ -1064,9 +1071,7 @@ bool idLevelLoadCacheManager::WriteGeneratedCache( const generatedCacheKind_t ki
 		const char *sourcePath, const unsigned int parserVersion,
 		const char *settingsKey, const void *payload, const unsigned int payloadBytes,
 		const char *contentKey ) {
-	if ( impl == nullptr || !com_levelLoadModernization.GetBool() ||
-		!com_levelLoadCache.GetBool() || !com_levelLoadCacheWrite.GetBool() ||
-		!IsValidCacheKind( kind ) || parserVersion == 0 ||
+	if ( !GeneratedCacheWritesEnabled( kind ) || parserVersion == 0 ||
 		( payload == nullptr && payloadBytes != 0 ) || payloadBytes > idLevelLoadCache::DEFAULT_MAX_PAYLOAD_BYTES ) {
 		return false;
 	}
@@ -1089,8 +1094,9 @@ bool idLevelLoadCacheManager::WriteGeneratedCache( const generatedCacheKind_t ki
 	envelope.source = expected.source;
 	envelope.contentSignature = expected.contentSignature;
 	envelope.settingsSignature = expected.settingsSignature;
+	// EncodeEnvelope derives an uncompressed payload's length and digest from
+	// the stored bytes itself; hashing the payload here as well was discarded
 	envelope.decodedPayloadBytes = payloadBytes;
-	envelope.decodedPayloadHash = idLevelLoadCache::ComputeHash( payload, payloadBytes );
 	try {
 		const std::uint8_t *begin = static_cast<const std::uint8_t *>( payload );
 		if ( payloadBytes != 0 ) {

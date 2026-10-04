@@ -184,6 +184,22 @@ private file, records a miss/corruption when reporting is enabled, and lets the
 owner parse the source. Writes use a unique staging file, flush it, then
 atomically promote it over the final path.
 
+Owners ask `idFileSystem::GeneratedCacheReadsEnabled( kind )` or
+`GeneratedCacheWritesEnabled( kind )` (render API 23) before they decode or
+encode a payload, and `OpenGeneratedCacheRead`/`WriteGeneratedCache` apply the
+same gates before deriving the content key from the search paths. With
+`com_levelLoadModernization 0`, the default, a render-model, render-world or
+collision load therefore never builds a payload or a content key that would be
+thrown away. Render models still record their level-load resource before the
+read gate, so learned manifests are unchanged.
+
+An uncompressed envelope costs two SHA-256 passes over its payload on each read
+and write: the whole-record integrity hash and the payload digest, both computed
+by `DecodeEnvelope`/`EncodeEnvelope`. The runtime does not call
+`ValidateDecodedPayload` for the uncompressed codec, because that would hash the
+copy of bytes `DecodeEnvelope` just verified; a compressed codec needs it after
+decompression.
+
 ### Render models
 
 The model cache supports the exact static, MD5, and MD5R owner payloads selected
@@ -192,6 +208,12 @@ finite numeric data, surfaces, geometry, joints/weights, and type-specific
 state into a detached model, rejects trailing bytes, and swaps state only after
 the complete payload is valid. Unsupported model states remain on their source
 loader and are not silently flattened.
+
+The codecs move arrays through single `idFile` calls: the static codec's
+vertex, index, plane and topology arrays, and the MD5R codec's vertex lists,
+index buffers, silhouette edges and joint matrices. The bulk readers keep the
+per-element finite-float and index-range checks. The MD5R codec wrote the same
+bytes one element at a time before, so its parser version did not change.
 
 ### Render worlds
 
@@ -416,6 +438,47 @@ The resulting private `generated/` tree contained 987 files and 180,618,336 B:
 | Manifests | 1 | 923,296 |
 | Models | 186 | 22,846,157 |
 | Worlds | 1 | 41,539,042 |
+
+### Generated-cache cost on Air Defense 1
+
+Measured 2026-10-04 on a debug Windows build loading `game/airdefense1` with
+`r_convertStaticToMD5R 1` (127 static models converted to MD5R, 69 MD5
+models), OpenGL, hidden window, under cdb. Timers were temporary and are not
+in the tree; phase times come from `com_showLevelLoadTimes 1`. Ranges span two
+loads and other cells are one load on a shared, busy machine, so compare
+components, not whole-load totals.
+
+| Default `com_levelLoadModernization 0` | Before | After |
+|---|---:|---:|
+| Model payloads serialized and discarded | 133.7 ms (static 10.2, MD5 96.8, MD5R 26.7) | none |
+| Content keys built for cache calls that could not run | 650 calls, 55.3 ms | none |
+| `msec to load collision data` (collision payload no longer serialized) | 662 ms | 345 ms |
+
+| `com_levelLoadModernization 1` | Before | After |
+|---|---:|---:|
+| Warm: cache hits / rejected payloads | 325 / 0 | 325 / 0 |
+| Warm: envelope SHA-256 (integrity and payload digest) | 2,667-2,740 ms | 2,810 ms |
+| Warm: payload re-validation (third SHA-256 pass) | 1,338-1,357 ms | none |
+| Warm: reading the 82.6 MB of cache files | 1,095-1,191 ms | 1,177 ms |
+| Warm: MD5R stream decode, 127 payloads, 6.2 MB | 29.8-32.1 ms | 16.7 ms |
+| Warm: render-model precache phase | 3,123-3,151 ms | 2,904 ms |
+| Cold: envelope encoding of 325 payloads | 4,133 ms | 3,087 ms |
+| Cold: atomic staged writes with `Sync()` | 2,630 ms | 2,593 ms |
+| Cold: MD5R payload serialization | 28.3 ms | 12.4 ms |
+
+All 127 MD5R and 69 MD5 cache files the two builds wrote were byte-identical,
+so existing caches stay valid. Alternating warm loads of two renderer builds
+that differ only in the MD5R codec gave a median MD5R stream decode of 35.2 ms
+per element and 17.7 ms in bulk, over three loads each. That decode was never
+the slow part of a warm read: an earlier estimate of 1.8 s for those payloads
+also counted the envelope. Reading the files is mostly loading-screen redraws, because
+`AddToReadCount` updates the pacifier every MiB. On a warm load the remaining
+cost is the two SHA-256 passes over every payload.
+
+Static and world cache bytes are not reproducible from run to run, and this
+change does not cause that. Five static-model files differed in one float each.
+The world file differed in every surface's id, because
+`idRenderWorldLocal::ParseModel` leaves `modelSurface_t::id` uninitialised.
 
 ### Dedicated-server development run
 

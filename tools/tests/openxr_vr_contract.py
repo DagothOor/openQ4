@@ -68,7 +68,7 @@ def check_build() -> None:
 
 def check_abi() -> None:
     api = read("src/renderer/RenderModuleAPI.h")
-    require(api, "#define RENDER_API_VERSION\t\t\t22", "renderer module ABI v22")
+    require(api, "#define RENDER_API_VERSION\t\t\t23", "renderer module ABI v23")
     require(api, "void\t\t\t( *RendererDeviceEvent )( int event );\t// renderDeviceEvent_t\n} renderModuleServices_t;",
             "the device lifetime service is the last services slot")
 

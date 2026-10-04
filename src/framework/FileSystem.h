@@ -386,6 +386,12 @@ public:
 								const char *settingsKey = "" ) = 0;
 	virtual idCampaignContentInfo GetAwakeningContentInfo() = 0;
 	virtual const char *GetActiveGameDir() const = 0;
+	// Appended for RENDER_API_VERSION 23: whether OpenGeneratedCacheRead can
+	// return, or WriteGeneratedCache store, a cache of this kind right now.
+	// Owners ask before decoding or encoding a payload, so a disabled cache
+	// costs a cvar check instead of a serialization that is thrown away.
+	virtual bool			GeneratedCacheReadsEnabled( generatedCacheKind_t kind ) const = 0;
+	virtual bool			GeneratedCacheWritesEnabled( generatedCacheKind_t kind ) const = 0;
 };
 
 extern idFileSystem *		fileSystem;
