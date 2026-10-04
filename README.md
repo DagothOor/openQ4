@@ -60,7 +60,7 @@ It is for players who want the original Quake 4 experience on today's hardware.
 - **Better multiplayer** (experimental): a server browser with sorting, filters and favourites, bots with team objectives and personalities, readable chat with history, Duel queues and spectator match controls.
 - **A demo library and player** with pause, speed, stepping, rewind and fast-forward, plus free-fly playback of full-match recordings.
 - **Single-player and multiplayer in one install** on Windows, Linux, Steam Deck and macOS.
-- **Renderer previews**, all off by default: an experimental Vulkan renderer, [temporal anti-aliasing and dynamic resolution](docs/user/temporal-presentation.md), [volumetrics, reflections and indirect light](docs/user/advanced-screen-space-lighting.md), and [PBR materials](docs/user/pbr-materials.md).
+- **Renderer previews**, all off by default: a Vulkan renderer (a preview on Windows), [temporal anti-aliasing and dynamic resolution](docs/user/temporal-presentation.md), [volumetrics, reflections and indirect light](docs/user/advanced-screen-space-lighting.md), and [PBR materials](docs/user/pbr-materials.md).
 
 See the [Releases page](https://github.com/themuffinator/openQ4/releases) for what changed in each version.
 
@@ -84,7 +84,7 @@ See the [Releases page](https://github.com/themuffinator/openQ4/releases) for wh
 <p align="center"><sub>The CRT filter on mp/q4dm8, off and on.</sub></p>
 
 > [!TIP]
-> **OpenGL is the default and recommended renderer on every platform.** Vulkan is experimental: set `r_renderApi vulkan` and restart to try it. If Vulkan can't start, openQ4 switches back to OpenGL automatically. On macOS, Vulkan runs through the bundled MoltenVK translation layer. See [Display Settings → Renderer Backend](docs/user/display-settings.md#renderer-backend-opengl-default-vulkan-is-experimental).
+> **OpenGL is the default and recommended renderer on every platform.** Vulkan is a preview on Windows and experimental on Linux and macOS: set `r_renderApi vulkan` and restart to try it. If Vulkan can't start, openQ4 switches back to OpenGL automatically. On macOS, Vulkan runs through the bundled MoltenVK translation layer. See [Display Settings → Renderer Backend](docs/user/display-settings.md#renderer-backend-opengl-default-vulkan-preview-on-windows).
 
 ---
 

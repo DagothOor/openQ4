@@ -126,11 +126,12 @@ Nearest-texel modes automatically avoid anisotropic filtering so
 `image_anisotropy` cannot blur the requested pixel edges. The same values work
 with the supported OpenGL renderer and the experimental Vulkan renderer.
 
-## Renderer Backend (OpenGL default; Vulkan is experimental)
+## Renderer Backend (OpenGL default; Vulkan preview on Windows)
 
 openQ4 renders with **OpenGL by default on every platform**, and OpenGL is the
 only release-supported renderer. A **Vulkan renderer is included as an
-experimental opt-in**. It draws the stock game with OpenGL's effects: world
+opt-in preview on Windows x64**; on Linux and macOS it remains experimental.
+It draws the stock game with OpenGL's effects: world
 and model materials, including the stock heat-haze, glass, water, and other
 program effects, interaction lighting, baked light grids, stencil and mapped
 shadows, fog, decals, soft particles, GUIs, and cinematics, plus brightness
@@ -144,15 +145,17 @@ upscales and the experimental colored translucent shadows
 laptop, a Windows machine with an NVIDIA RTX 4060 and Intel Iris Xe graphics,
 all 29 stock single-player maps load and draw their opening view, and 20 stock
 multiplayer maps host matches with bots, clean under the Vulkan validation
-layers on both GPUs. It stays experimental because it has
-been tried on few GPUs and drivers. Linux CI runs software-Vulkan startup, render-target,
-recovery and fallback checks on every push. Physical GPU coverage and the gaps
-under [What Vulkan does not do yet](#what-vulkan-does-not-do-yet) remain.
-OpenGL remains the recommended renderer for normal play.
+layers on both GPUs. That real-hardware evidence makes it a preview on
+Windows rather than a supported renderer: it has been tried on few GPUs and
+drivers, AMD graphics have not been tested, and Linux and macOS have no such
+hardware runs. Linux CI runs software-Vulkan startup, render-target, recovery
+and fallback checks on every push. The gaps under
+[What Vulkan does not do yet](#what-vulkan-does-not-do-yet) remain. OpenGL
+remains the recommended renderer for normal play.
 
 | Setting | Default | What it does |
 |---|---:|---|
-| `r_renderApi` | `gl` | Renderer backend: `gl` (default, supported) or `vulkan` (**experimental**). `best` resolves to `gl` until the Vulkan backend clears its promotion evidence and sign-off. Takes effect on **engine restart**, not `vid_restart`. |
+| `r_renderApi` | `gl` | Renderer backend: `gl` (default, supported) or `vulkan` (**preview on Windows, experimental on Linux and macOS**). `best` resolves to `gl` until the Vulkan backend clears its promotion evidence and sign-off. Takes effect on **engine restart**, not `vid_restart`. |
 | `r_actualRenderApi` | (read-only) | Reports the backend that actually initialized. If loading or initializing Vulkan fails at startup, the engine **falls back to OpenGL** and this reports `gl`. |
 
 ### All `r_renderApi` values
@@ -161,7 +164,7 @@ OpenGL remains the recommended renderer for normal play.
 |---|---|---|
 | `best` | — | The platform default. Currently resolves to `gl` on **every** platform, and will keep doing so until Vulkan clears its promotion evidence and sign-off. |
 | `gl` | `opengl` | The OpenGL renderer. This is the default and the recommended choice. |
-| `vulkan` | `vk` | The experimental Vulkan renderer module. |
+| `vulkan` | `vk` | The Vulkan renderer module: a preview on Windows, experimental on Linux and macOS. |
 | `gl-module` | — | Always loads the OpenGL renderer as a module instead of using a statically linked copy. This is a diagnostic option; it renders identically to `gl`. |
 
 Anything else is rejected with a warning, and openQ4 uses `gl`.
@@ -230,7 +233,7 @@ does not replace or remove the OpenGL renderer.
 - To try it: open the console, run `r_renderApi vulkan`, then quit and relaunch
   openQ4. Check `r_actualRenderApi` or `gfxInfo` afterwards to confirm what
   actually started.
-- **Expect problems.** The Vulkan renderer is experimental on every platform,
+- **Expect problems.** The Vulkan renderer is experimental on macOS,
   and on macOS only one player has reported it working (openQ4 0.12.0 on an
   M4 Max MacBook Pro); nothing has checked its output against OpenGL there.
   Missing effects, wrong shading, poor performance, or a refusal to start are

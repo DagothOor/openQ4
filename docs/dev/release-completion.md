@@ -22,6 +22,12 @@
   and `renderer_native_ui_output.py` pin the routing, refusals and filter
   restore.
 
+- [x] Promote the Vulkan renderer to a preview on Windows x64 (user
+  sign-off 2026-10-04). It stays experimental on Linux and macOS, OpenGL stays
+  the default and `best` still resolves to `gl`. README, the user guides,
+  `TECHNICAL.md`, the platform-support tiers, the capability matrix, the
+  `r_renderApi` help text and the release notes now say so.
+
 - [x] Qualify the experimental Vulkan renderer further on Windows: 20 stock
   multiplayer maps host bot matches on Vulkan/NVIDIA, Vulkan/Intel and OpenGL
   (60 runs, zero validation errors), and a 25-minute soak of 16 map loads with

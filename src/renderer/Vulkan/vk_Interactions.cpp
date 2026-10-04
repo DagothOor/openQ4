@@ -3920,7 +3920,8 @@ static bool VK_Inter_PackedShadowHeaderValid( const srfTriangles_t *tri, int num
 // first-class Vulkan resources; unlike the former skip it preserves moving
 // character shadows and the retail cap/no-cap selection.
 static bool VK_Inter_DrawPackedShadowSurface( const drawSurf_t *surf, bool drawCaps,
-		bool external, VkStencilFaceFlags frontSidedFace, VkStencilFaceFlags backSidedFace ) {
+		bool external, VkStencilFaceFlags frontSidedFace, VkStencilFaceFlags backSidedFace,
+		bool debugView ) {
 	typedef struct vkPackedShadowBatchRange_s {
 		int vertexStart;
 		int vertexCount;
@@ -4108,6 +4109,18 @@ static bool VK_Inter_DrawPackedShadowSurface( const drawSurf_t *surf, bool drawC
 		const uint32_t drawCount = r_singleTriangle.GetBool()
 				? static_cast<uint32_t>( Min( 3, range.selectedIndexCount ) )
 				: static_cast<uint32_t>( range.selectedIndexCount );
+		if ( debugView ) {
+			// r_showShadows: the bound debug pipeline colors the volume once,
+			// as GL draws packed volumes through md5rshadow*.vp
+			vkCmdDrawIndexed( interPass.cmd, drawCount, 1,
+					static_cast<uint32_t>( range.destIndexStart ), 0, 0 );
+			interPass.volumeDrawCount++;
+			backEnd.pc.c_shadowElements++;
+			backEnd.pc.c_shadowIndexes += range.selectedIndexCount;
+			backEnd.pc.c_shadowVertexes += range.vertexCount;
+			drewAnything = true;
+			continue;
+		}
 		if ( !external ) {
 			vkCmdSetStencilOp( interPass.cmd, frontSidedFace, VK_STENCIL_OP_KEEP,
 					VK_STENCIL_OP_DECREMENT_AND_WRAP, VK_STENCIL_OP_DECREMENT_AND_WRAP, VK_COMPARE_OP_ALWAYS );
@@ -4343,9 +4356,6 @@ static bool VK_StencilShadowPass( const drawSurf_t *drawSurfs ) {
 			vkCmdSetDepthBounds( cmd, minDepth, maxDepth );
 		}
 
-		if ( debugPipeline != VK_NULL_HANDLE && packedPrimBatches ) {
-			continue;	// packed MD5R volumes stream through their own stencil path
-		}
 		if ( debugPipeline != VK_NULL_HANDLE ) {
 			// RB_T_Shadow's colors: mode 3 separates external (green) from
 			// internal (red) volumes; otherwise infinite turbo volumes are red
@@ -4369,6 +4379,15 @@ static bool VK_StencilShadowPass( const drawSurf_t *drawSurfs ) {
 			push.b[ 3 ] = 1.0f;
 			vkCmdPushConstants( cmd, interPass.layoutStencilShadow,
 					VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( push ), &push );
+#if defined( _MD5R_SUPPORT ) || defined( Q4SDK_MD5R )
+			if ( packedPrimBatches ) {
+				if ( !VK_Inter_DrawPackedShadowSurface( surf, packedCapInclusive, external,
+						frontSidedFace, backSidedFace, true ) ) {
+					interPass.volumeSkipCount++;
+				}
+				continue;
+			}
+#endif
 			vkCmdDrawIndexed( cmd, (uint32_t)numIndexes, 1, 0, 0, 0 );
 			interPass.volumeDrawCount++;
 			backEnd.pc.c_shadowElements++;
@@ -4380,7 +4399,7 @@ static bool VK_StencilShadowPass( const drawSurf_t *drawSurfs ) {
 #if defined( _MD5R_SUPPORT ) || defined( Q4SDK_MD5R )
 		if ( packedPrimBatches ) {
 			if ( !VK_Inter_DrawPackedShadowSurface( surf, packedCapInclusive, external,
-					frontSidedFace, backSidedFace ) ) {
+					frontSidedFace, backSidedFace, false ) ) {
 				interPass.volumeSkipCount++;
 				complete = false;
 			}

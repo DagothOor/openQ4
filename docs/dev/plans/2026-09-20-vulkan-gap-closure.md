@@ -4,6 +4,11 @@ Status: in progress. Objective: resolve all remaining Vulkan implementation,
 compatibility, recovery, and qualification gaps. This does not change the
 default renderer or declare Vulkan release-supported before the evidence exists.
 
+2026-10-04: the implementation gaps are closed (see the work record), and the
+user signed off Vulkan as a **preview renderer on Windows x64** on the NVIDIA
+and Intel real-hardware evidence below. It stays experimental on Linux and
+macOS, OpenGL stays the default, and `best` still resolves to `gl`.
+
 The current source and `engine-capability-matrix.md` take precedence over the
 older Phase A-J progress notes. Gamma/brightness, classic post processing,
 light grids, soft particles, alpha-to-coverage, player outlines, cel shading,
@@ -23,7 +28,7 @@ underwater effects, and debug views have already landed.
 | Render targets and tools | Cubemap faces, depth-only targets and multiple color attachments are implemented; finish capture/debug parity qualification, documenting intentional asynchronous diagnostic latency. | Every cube face/aspect, nested capture, resolve, resize and resource-lifetime tests; engine-generated screenshot comparisons. |
 | Optimization | Audit the planned indirect/culling, command recording, upload overlap, pipeline warm-up, descriptors, and barriers; implement the remaining applicable Vulkan paths. | Measured CPU/GPU pass times and memory use, performance validation, and correctness comparisons for each enabled path. |
 | Release qualification | Windows physical coverage now spans two vendors (NVIDIA RTX 4060, Intel Iris Xe): all 29 stock SP maps load and 20 stock MP maps host bot matches validation-clean on both; a 25-minute 16-load soak with `vid_restart` stays validation-clean and plateaus like OpenGL; a five-run synchronous comparison of four scenes is recorded. Remaining: the harness's per-scene/preset budget runs, Linux/MoltenVK and AMD hardware coverage, and user visual/soak sign-off. | Retained provenance-bound reports, engine captures, user visual/soak sign-off, and Windows/Linux/MoltenVK hardware records. No synthetic claim for unavailable hardware. |
-| Promotion | Implement the Vulkan-specific evidence/sign-off gate and reconcile all status/usage/release documentation. | Gate negative tests, exact evidence provenance, explicit sign-off, and a requirement-by-requirement completion audit before changing `best` or support status. |
+| Promotion | Windows x64 preview signed off by the user on 2026-10-04, with status, usage and release documentation reconciled; `best` stays `gl`. Remaining before supported status or any default change: the Vulkan-specific evidence/sign-off gate and AMD, Linux and MoltenVK hardware evidence. | Gate negative tests, exact evidence provenance, explicit sign-off, and a requirement-by-requirement completion audit before changing `best` or support status. |
 
 ## Work record
 

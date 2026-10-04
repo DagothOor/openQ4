@@ -4897,11 +4897,13 @@ def validate_packed_shadow_geometry() -> None:
             "VK_Exec_BindShadowGeometry( cmd, interPass.slot, tri )",
             "if ( packedPrimBatches )",
             """VK_Inter_DrawPackedShadowSurface( surf, packedCapInclusive, external,
-                frontSidedFace, backSidedFace )""",
+                frontSidedFace, backSidedFace, true )""",
+            """VK_Inter_DrawPackedShadowSurface( surf, packedCapInclusive, external,
+                frontSidedFace, backSidedFace, false )""",
             "interPass.volumeSkipCount++;",
             "continue;",
         ),
-        "packed/classic stencil geometry dispatch",
+        "packed/classic stencil geometry dispatch (r_showShadows colors packed volumes too)",
     )
 
     executor = read("src/renderer/Vulkan/vk_GuiExecutor.cpp")

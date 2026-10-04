@@ -50,7 +50,7 @@ openQ4/
 ├── openQ4-ded_<arch>        # Dedicated server (.exe on Windows)
 ├── openQ4-steamdeck         # Steam Deck launcher (Linux)
 ├── renderer-gl_<arch>       # OpenGL renderer (.dll / .so)
-├── renderer-vk_<arch>       # Experimental Vulkan renderer (.dll / .so / .dylib)
+├── renderer-vk_<arch>       # Vulkan renderer (.dll / .so / .dylib): preview on Windows, experimental elsewhere
 └── baseoq4/                 # The single openQ4 game directory
     ├── pak0.pk4             # openQ4 runtime content
     ├── pak1.pk4             # openQ4 level content
@@ -102,7 +102,7 @@ See [Display Settings](docs/user/display-settings.md).
 
 ### Renderer
 
-- `r_renderApi best|gl|vulkan|gl-module|gles` — `gl` (OpenGL) is the default on desktop. `vulkan` selects the experimental Vulkan renderer and falls back to OpenGL if it cannot start. `gles` is the OpenGL ES 3.0 renderer used on Android. Changes apply after restarting the game. See [Renderer Backend](docs/user/display-settings.md#renderer-backend-opengl-default-vulkan-is-experimental).
+- `r_renderApi best|gl|vulkan|gl-module|gles` — `gl` (OpenGL) is the default on desktop. `vulkan` selects the Vulkan renderer (a preview on Windows, experimental on Linux and macOS) and falls back to OpenGL if it cannot start. `gles` is the OpenGL ES 3.0 renderer used on Android. Changes apply after restarting the game. See [Renderer Backend](docs/user/display-settings.md#renderer-backend-opengl-default-vulkan-preview-on-windows).
 - `g_presentationInterpolation 0|1` — draw the camera, weapons and moving objects smoothly between the game's 60 Hz ticks on high-refresh displays (default `1`). `0` returns everything to the simulation clock.
 
 ### Post-Processing and Materials
