@@ -153,8 +153,8 @@ server info). The [multiplayer Escape card](../ui/multiplayer-menus.md) now
 covers the game's in-match menu behind `ui_retainedMultiplayer`: the card,
 its header, the eight-tab strip, the prompt bar, the Disconnect confirmation
 and the softening, with the Team, Players, Vote, Settings, Voice and Server
-pages built and the Match page's Status section, Match's other sections and
-Admin still handing off to their stock pages; the
+pages built and the Match page's Status and Teams sections, Match's other
+sections and Admin still handing off to their stock pages; the
 Welcome card covers the connect-time join offer, by default now that all its
 pages are built, and a join's loading screen hands over to it.
 Event programs can move focus, and Q, E and the shoulders page a document's

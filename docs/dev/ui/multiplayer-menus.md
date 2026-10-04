@@ -7,13 +7,13 @@ Escape card's shell came first: the card, its header, the eight-tab strip, the
 prompt bar, the Disconnect confirmation, the softening and its release, and the
 session and game plumbing that let the card cover the game's own menu. The
 Team, Players, Vote, Settings, Voice and Server pages are built on it, and the
-Match page's Status section; Match's other sections and Admin still hand off
-to their stock pages, so the Escape card stays opt-in. The Welcome card covers
-the connect-time join offer with its Join, Server, Players and Settings pages,
-all built, so it presents by default. The loading screen hands a join over to
-the Welcome card (B8). The Match page's other sections follow (the plan's
-B9b to B9f); Admin waits for text fields, and its stock page's password check
-now works (B7).
+Match page's Status and Teams sections; Match's other sections and Admin still
+hand off to their stock pages, so the Escape card stays opt-in. The Welcome
+card covers the connect-time join offer with its Join, Server, Players and
+Settings pages, all built, so it presents by default. The loading screen hands
+a join over to the Welcome card (B8). The Match page's other sections follow
+(the plan's B9c to B9f); Admin waits for text fields, and its stock page's
+password check now works (B7).
 
 ## The gate
 
@@ -232,10 +232,36 @@ Status is built:
 - **A spectator's camera.** Previous, Next and Free camera, for a human
   spectator.
 
+Teams is built:
+
+- **The rows.** Match Control's team and roster rows: each side's own row,
+  in its team's color, with its readiness and lock, then the players with
+  their side and roles, the roster seats, the invitations and the queue, each
+  in the columns Match Control writes; the row chosen is lit in olive. Below
+  them, the participants a substitution can bring in, and the latest result,
+  so an action's outcome shows where it was taken. Choosing a row tells the
+  game, which checks every action against it. The card holds 32 team rows
+  and 16 participants; past them a list ends with the way to the stock page,
+  which shows them all.
+- **The role.** The role an invitation or an assignment gives (Player,
+  Captain, Coach or Substitute), a list that keeps its value on the game's
+  menu as the stock choice does. Where a Duel side can be bound, the two
+  sides take its place and Bind side shows.
+- **The actions.** Join Marines, Join Strogg, Spectate, Join queue, Defer,
+  Leave queue, Accept invite and Leave roster, then the actions a captain, a
+  referee or the operator takes on the row chosen: Invite, Remove,
+  Substitute, Assign role, Lock (or Unlock) team, Grant (or Revoke)
+  broadcaster, for the operator, and Expel. Each says why it is unavailable,
+  as on Status, in a column that scrolls as focus moves down it. Remove,
+  Substitute and Expel ask first in the stock confirmation.
+
 The page asks for each action by its index in the session's
-`RETAINED_MP_MATCH_TOKENS`, which holds the stock page's own fixed tokens:
-the card never sends text of its own, and the game checks every action again
-against its accepted view. The other sections still open the stock page.
+`RETAINED_MP_MATCH_TOKENS`, which holds the stock page's own fixed tokens,
+and for a list's row by the list's index in `RETAINED_MP_MATCH_LISTS` and
+the row's: the session sets the stock list's own selection on the game's
+menu and sends its token, as the stock list does. The card never sends text
+of its own, and the game checks every action again against its accepted
+view. The other sections still open the stock page.
 
 ### The Settings page
 
@@ -381,8 +407,16 @@ only when it changes and moving `mp.revision` when anything did:
   `mp.match.status<0-5>`, `mp.match.side.{shown,label}` with
   `mp.match.side<0-1>.{label,available,selected}`, and for each action
   `mp.match.op.<name>.{shown,available,label,reason,detail}`
-  (`RETAINED_MATCH_OPERATIONS`). The game projects its menu again whenever
-  the accepted view has moved since it last did.
+  (`RETAINED_MATCH_OPERATIONS`); the team and roster rows as
+  `mp.match.team.{count,more,selected}` with
+  `mp.match.team<row>.{c0,c1,c2,kind,side}`, the participants a substitution
+  can bring in as `mp.match.replacement.{count,more,selected}` with
+  `mp.match.replacement<row>.c0` (each list's columns as the projection
+  writes them, split at its tabs; up to `RETAINED_MATCH_TEAM_ROWS` and
+  `RETAINED_MATCH_REPLACEMENT_ROWS`), and the role choice's value as
+  `mp.match.role`. Players' names reach the card as plain text, which never
+  translates. The game projects its menu again whenever the accepted view
+  has moved since it last did.
 
 The session writes the names of the keys bound to the ballots and to push to
 talk, `mp.keys.vote_yes`, `mp.keys.vote_no` and `mp.keys.voice_chat` with
@@ -441,6 +475,8 @@ The card's verbs are the stock menu's own commands with its selection sound:
 | `mpRail` | `play main_menu_selection ; retained rail <row>`, by `card.rail` |
 | `mpSettingsControls`, `mpSettingsGame`, `mpSettingsSystem` | `play main_menu_selection ; mainMenu fromMp_toControls\|fromMp_toGameoptions\|fromMp_toSystem` |
 | `mpMatch` | `play main_menu_selection ; matchControl <token>`, by `card.match_op` (the refresh without the sound) |
+| `mpMatchSelect` | the stock list's `<list>_sel_0` on the game's menu set to `card.match_row`, then `play main_menu_selection ; matchControl <select token>`, by `card.match_list` |
+| `mpMatchRole <role>` | the game's menu's `match_role_choice` set to the role, 1 to 4, quietly; nothing reaches the game |
 
 The Vote page's rows are value controls. Their actions use the adapter's
 `session.menuValue` operation, which carries the control's new value with a
@@ -500,7 +536,10 @@ without affecting players:
 - **Match actions.** Rows with their reasons beside them rather than the
   stock page's buttons and shared Action line: the labels run too long for
   plates in French and German, and a reason beside its action needs no
-  pointing.
+  pointing. Teams' sixteen actions share one column that scrolls.
+- **Match lists.** Match Control's lists as the scoreboard's rows in a
+  scrolling column, up to a set number of rows each (32 team and roster rows,
+  16 participants), after which the stock page shows the rest.
 - **Tab labels (D7).** Marine 14 dp, short labels written for the strip; the
   active label is white.
 - **Softening (D1).** `modal.softfocus` values, with a centred scrim and
@@ -748,14 +787,50 @@ The Match page adds:
 Evidence: `.tmp/ui/retained-mp-match/validation-evidence.json`, SHA-256
 `861b55c1226ee7c57e37954faefacfa38824f5f33b7f2b85fc422f38e6bc89b7`.
 
+The Match page's Teams section adds:
+
+- gate cases: a list's row reaching the game's menu as the stock list's own
+  selection, sent with the list's token, for the team, participant and series
+  map lists, and a list or a row outside the tables refused without a
+  selection; the role waiting on the game's menu quietly, and a role outside
+  1 to 4 refused; the Teams actions by index; pins that the session's lists
+  are the game's own selection commands in the card's order, that a row index
+  spans the longest list, that the game mirrors as many rows as the page has,
+  that the roles are the protocol's with the projection's names for them,
+  that the mirrored operations follow each section's actions with the
+  projection's alternative labels, that players' names reach the page as
+  plain text, and that every confirmation matches Match Control's
+  descriptors and the stock modal's text;
+- native checks of the section: the rows and their columns, each side's own
+  row in its team's color, the row chosen lit, the latest result under the
+  lists, choosing a team row or a participant naming it to the game, the
+  lists beside the actions, the actions flowing in their column with a
+  hidden one taking no room, a refused action's reason and its choice asking
+  nothing, Join Strogg and Spectate asking the game, Remove asking first and
+  No cancelling, the role list's new value reaching the session, the Duel
+  sides taking the role's place with Bind side, the stock page past the
+  card's rows, and Proposals still handing off;
+- live probes on listen servers with bots in a warm-up and the opt-in, in
+  English on OpenGL and German on Vulkan: the Teams section, choosing a bot's
+  row, the role through its list, Join Strogg reaching the game as its token
+  with Match Control's committed result under the lists (the stock page
+  commits it alike in the same warm-up, where the player also stays on their
+  team), and the action column scrolling to Expel as focus reaches it.
+
+Evidence: `.tmp/ui/retained-mp-match-teams/validation-evidence.json`, SHA-256
+`39a117a008411b46d33444719522c720b0a498a66cc15e190feaa9add95e76df`.
+
 The card's acceptance continues under `FLOW-046`.
 
 ## Known limitations
 
-- Admin, the Match page's sections other than Status and its referee sign-in
-  hand off to their stock pages, and the stock menu then keeps the menu until
-  it closes; the card does not come back over it. So do the Settings pages'
-  name and clan.
+- Admin, the Match page's sections other than Status and Teams and its
+  referee sign-in hand off to their stock pages, and the stock menu then keeps
+  the menu until it closes; the card does not come back over it. So do the
+  Settings pages' name and clan.
+- Joining a team through Match Control commits but leaves a listen server's
+  player on their team, on the stock page as on the card (seen in B9b's
+  probes; a separate game fix).
 - Choosing an unavailable action does not announce its reason to the
   accessibility text backing yet, and a controller gives no rumble.
 - The Team page has no Tourney queue or arena controls; Tourney offers what

@@ -1896,27 +1896,62 @@ def welcome_settings_page(doc: Document, index: int, ident: str, width: float, h
 # move along the strip and accept chooses.
 MATCH_SECTIONS = ("status", "teams", "proposals", "rules", "series", "evidence")
 MATCH_SECTION_KEYS = ("#str_41701", "#str_41702", "#str_41703", "#str_41704", "#str_41705", "#str_41706")
-MATCH_BUILT = ("status",)               # the others hand off to the stock page
+MATCH_BUILT = ("status", "teams")       # the others hand off to the stock page
 # The card's Match Control actions by index (card.match_op): the session's
 # RETAINED_MP_MATCH_TOKENS lists the same stock tokens in the same order.
 MATCH_TOKENS = ("refresh", "ready_toggle", "team_ready_toggle", "arm_force_ready", "timeout", "tech_pause", "resume",
                 "arm_forfeit", "arm_abort", "referee_logout", "action_side_a", "action_side_b",
-                "follow_prev", "follow_next", "follow_free", "confirm", "cancel_confirm")
+                "follow_prev", "follow_next", "follow_free", "confirm", "cancel_confirm",
+                "team_join_marine", "team_join_strogg", "team_spectate", "queue_join", "queue_defer", "queue_leave",
+                "roster_accept", "roster_leave", "roster_invite", "arm_roster_remove", "arm_roster_substitute", "role_assign",
+                "team_lock_toggle", "broadcaster_set", "arm_participant_remove", "series_contestant_bind")
 MATCH_STATUS_LINES = 6                  # RETAINED_MATCH_STATUS_LINES in the game
 # The Status section's actions by the game's operation name (mp.match.op.*),
 # with the token each sends, its accessible name and, for those Match Control
 # confirms first, the stock confirmation's text.
-MATCH_ACTIONS = (("ready", "ready_toggle", "#str_41713", None),
-                 ("team_ready", "team_ready_toggle", "#str_41715", None),
-                 ("timeout", "timeout", "#str_41716", None),
-                 ("tech_pause", "tech_pause", "#str_41717", None),
-                 ("resume", "resume", "#str_41718", None),
-                 ("force_ready", "arm_force_ready", "#str_41719", "#str_41900"),
-                 ("forfeit", "arm_forfeit", "#str_41783", "#str_41798"),
-                 ("abort", "arm_abort", "#str_41784", "#str_41799"))
-# Every label an action row can show: Set ready reads Set not ready once ready.
-MATCH_ACTION_LABELS = ("#str_41713", "#str_41714", "#str_41715", "#str_41716", "#str_41717", "#str_41718", "#str_41719",
+MATCH_STATUS_ACTIONS = (("ready", "ready_toggle", "#str_41713", None),
+                        ("team_ready", "team_ready_toggle", "#str_41715", None),
+                        ("timeout", "timeout", "#str_41716", None),
+                        ("tech_pause", "tech_pause", "#str_41717", None),
+                        ("resume", "resume", "#str_41718", None),
+                        ("force_ready", "arm_force_ready", "#str_41719", "#str_41900"),
+                        ("forfeit", "arm_forfeit", "#str_41783", "#str_41798"),
+                        ("abort", "arm_abort", "#str_41784", "#str_41799"))
+# The Teams section's: the player's own team and queue place first, then the
+# roster actions on the row chosen, as the stock page orders them.
+MATCH_TEAM_ACTIONS = (("join_marine", "team_join_marine", "#str_41723", None),
+                      ("join_strogg", "team_join_strogg", "#str_41724", None),
+                      ("spectate", "team_spectate", "#str_41725", None),
+                      ("queue_join", "queue_join", "#str_41726", None),
+                      ("queue_defer", "queue_defer", "#str_41728", None),
+                      ("queue_leave", "queue_leave", "#str_41727", None),
+                      ("roster_accept", "roster_accept", "#str_41729", None),
+                      ("roster_leave", "roster_leave", "#str_42343", None),
+                      ("roster_invite", "roster_invite", "#str_41730", None),
+                      ("roster_remove", "arm_roster_remove", "#str_41731", "#str_41902"),
+                      ("roster_substitute", "arm_roster_substitute", "#str_41732", "#str_41903"),
+                      ("role_assign", "role_assign", "#str_41733", None),
+                      ("team_lock", "team_lock_toggle", "#str_41734", None),
+                      ("broadcaster", "broadcaster_set", "#str_41795", None),
+                      ("participant_remove", "arm_participant_remove", "#str_41908", "#str_42349"),
+                      ("contestant_bind", "series_contestant_bind", "#str_41909", None))
+MATCH_ACTIONS = MATCH_STATUS_ACTIONS + MATCH_TEAM_ACTIONS
+# Every label a section's action row can show: Set ready reads Set not ready
+# once ready, Lock team Unlock team once locked, and Grant broadcaster Revoke
+# broadcaster for a broadcaster.
+MATCH_STATUS_LABELS = ("#str_41713", "#str_41714", "#str_41715", "#str_41716", "#str_41717", "#str_41718", "#str_41719",
                        "#str_41783", "#str_41784")
+MATCH_TEAM_LABELS = tuple(key for _name, _token, key, _body in MATCH_TEAM_ACTIONS) + ("#str_41735", "#str_41796")
+# The Match Control lists the card can select a row of, by the card's index
+# (card.match_list): the session's RETAINED_MP_MATCH_LISTS in the same order.
+MATCH_LISTS = ("team", "replacement", "proposal", "profile", "rule", "series_map")
+MATCH_TEAM_ROWS, MATCH_REPLACEMENT_ROWS = 32, 16   # RETAINED_MATCH_TEAM_ROWS and _REPLACEMENT_ROWS in the game
+MATCH_LIST_ROW_H = 22.0
+MATCH_TEAMS_W = 450.0                   # the Teams section's lists; the role and the actions take the rest
+MATCH_TEAMS_HEAD, MATCH_REPLACEMENTS_HEAD, MATCH_ROLE = "#str_41736", "#str_41785", "#str_41787"
+# The roles an invitation or an assignment gives: the protocol's roster
+# roles, 1 to 4 (the stock choice's values).
+MATCH_ROLES = (("#str_42470", 1), ("#str_42471", 2), ("#str_42472", 3), ("#str_42473", 4))
 MATCH_CONFIRM_TITLE = "#str_41797"
 MATCH_WAITING, MATCH_REFEREE, MATCH_SIGN_IN, MATCH_SIGN_OUT = "#str_41774", "#str_41779", "#str_41781", "#str_41782"
 MATCH_FOLLOW = (("previous", "follow_prev", "#str_42885"), ("next", "follow_next", "#str_42886"), ("free", "follow_free", "#str_42887"))
@@ -1949,24 +1984,32 @@ def match_modals(doc: Document) -> list:
     return modals
 
 
-def check_match_labels(width: float) -> float:
+def check_match_labels(width: float, keys: tuple) -> float:
     """Where the action rows' reason column starts: after a label column that
-    holds every label in two lines at 14 dp, in every language, and its
-    padlock. The reason keeps at least 160 dp."""
-    need = max(wrapped_width(text) for key in MATCH_ACTION_LABELS for text in table_text(key).values())
+    holds every label in `keys` in two lines at 14 dp, in every language, and
+    its padlock. The reason keeps at least 160 dp."""
+    need = max(wrapped_width(text) for key in keys for text in table_text(key).values())
     value_x = math.ceil(21 + need + 20 + 8)
     if width - value_x - 8 < 160:
         raise SystemExit(f"the Match actions' labels need {need:.0f} dp, leaving their reasons {width - value_x - 8:.0f} dp")
     return value_x
 
 
-def match_action_row(doc: Document, name: str, accessible: str, width: float, value_x: float, top: float, steps: list) -> tuple[dict, str]:
+def match_action_steps(name: str, token: str, body: str | None) -> list:
+    """What choosing an available action does: ask the game for its token
+    and, where Match Control confirms first, show the stock confirmation."""
+    return match_op(token) + ([{"op": "call", "event": f"{match_modal_id(name)}Show"}] if body else [])
+
+
+def match_action_row(doc: Document, name: str, accessible: str, width: float, value_x: float, top: float | None,
+                     steps: list) -> tuple[dict, str]:
     """A Match Control action as a row (section 7): the game publishes its
     label, availability and reason (mp.match.op.<name>.*). The label and, on
     an unavailable action, the padlock fill the label column and the reason
     the rest in the error color; choosing an unavailable action shakes the row
     and pulses its reason, and asks nothing. An available one runs `steps`,
-    and the game checks the action again."""
+    and the game checks the action again. Without `top` the row flows in its
+    column at the rows' pitch, and a hidden row takes no room."""
     key = f"mp.match.op.{name}"
     for field, kind in (("shown", "boolean"), ("available", "boolean"), ("label", "string"), ("reason", "string"), ("detail", "string")):
         doc.state[f"{key}.{field}"] = {"type": kind, "initial": False if kind == "boolean" else ""}
@@ -1995,8 +2038,11 @@ def match_action_row(doc: Document, name: str, accessible: str, width: float, va
     doc.bind(f"{ident}-reason.text", f"{ident}-reason", "text", {"state": f"{key}.reason"})
     doc.bind(f"{ident}-reason.display", f"{ident}-reason", "display", {"op": "select", "args": [unavailable, "block", "none"]})
     spec = {"role": "button", "label": accessible, "event": event, "states": row_states(doc, ident)}
-    row = group(ident, {**absolute(left=0, top=top, width=width, height=VOTE_ROW_H), "display": keyword("none"), "opacity": number(1),
-                        "transform": transform()}, [plate, wash, rail, head, reason], control=spec)
+    place = absolute(left=0, top=top, width=width, height=VOTE_ROW_H) if top is not None else {
+        "position": keyword("relative"), "width": length(width), "height": length(VOTE_ROW_H),
+        "margin-bottom": length(MATCH_ROW_PITCH - VOTE_ROW_H), "flex-shrink": number(0)}
+    row = group(ident, {**place, "display": keyword("none"), "opacity": number(1), "transform": transform()},
+                [plate, wash, rail, head, reason], control=spec)
     doc.bind(f"{ident}.display", ident, "display", {"op": "select", "args": [{"state": f"{key}.shown"}, "block", "none"]})
     doc.bind(f"{ident}.opacity", ident, "opacity", {"op": "select", "args": [{"state": f"{key}.available"}, 1, 0.6]})
     shake = f"shake-{ident}"
@@ -2037,16 +2083,184 @@ def match_tab(doc: Document, position: int, section: str, key: str) -> tuple[dic
     return tab_node, ident
 
 
+def match_side_chip(doc: Document, ident: str, side: int, left: float, top: float, width: float) -> dict:
+    """One side of the action target as a chip: its name, underlined while it
+    is the side chosen, dimmed where the player may not choose it. Choosing
+    it asks the game (action_side_a or _b)."""
+    caption = label(f"{ident}-label", PLACEHOLDER, {**absolute(left=10, top=0, width=width - 16, height=24),
+                    **typeface("lowpixel", 15, 24, [1, 1, 1, 0.8]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+    doc.bind(f"{ident}-label.text", f"{ident}-label", "text", {"state": f"mp.match.side{side}.label"})
+    mark = vector(f"{ident}-mark", {**absolute(left=0, top=21, width=width, height=3), "display": keyword("none")},
+                  [path("mark", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, 3), (0, 3)], fill=solid(rgb(VALUE)))])
+    doc.bind(f"{ident}-mark.display", f"{ident}-mark", "display",
+             {"op": "select", "args": [{"state": f"mp.match.side{side}.selected"}, "block", "none"]})
+    states = doc.states(ident, {
+        "default": [(f"{ident}-label", "color", colour([1, 1, 1, 0.8]))], "hover": [(f"{ident}-label", "color", colour([1, 1, 1, 1]))],
+        "focus": [(f"{ident}-label", "color", colour(rgb(ORANGE)))], "pressed": [(f"{ident}-label", "color", colour(rgb(ORANGE)))],
+        "disabled": [(f"{ident}-label", "color", colour([1, 1, 1, 0.8]))],
+    })
+    event = f"match_side_{side}"
+    doc.events[event] = [{"op": "if", "condition": {"state": f"mp.match.side{side}.available"},
+                          "then": match_op("action_side_a" if side == 0 else "action_side_b")}]
+    node = group(ident, {**absolute(left=left, top=top, width=width, height=24), "opacity": number(1)}, [caption, mark],
+                 control={"role": "button", "label": "#str_41720" if side == 0 else "#str_41721", "event": event, "states": states})
+    doc.bind(f"{ident}.opacity", ident, "opacity", {"op": "select", "args": [{"state": f"mp.match.side{side}.available"}, 1, 0.4]})
+    return node
+
+
+def match_list_row(doc: Document, key: str, row: int, width: float, columns: tuple) -> tuple[dict, str]:
+    """A row of one of Match Control's lists, the scoreboard's row (section
+    14.14) at 22 dp: its columns as the game publishes them
+    (mp.match.<key><row>.c<n>, `columns` giving each fixed column's width
+    after the first, which takes the rest), the row chosen lit in olive and
+    the focus rail at its leading edge. The team list tints a side's own row
+    in its team's color. Choosing a row names it by its list's and its own
+    index (card.match_list, card.match_row) and runs mpMatchSelect; the game
+    checks the row against its model again."""
+    ident, state = f"match-{key.replace('_', '-')}-{row}", f"mp.match.{key}{row}"
+    for column in range(1 + len(columns)):
+        doc.state[f"{state}.c{column}"] = {"type": "string", "initial": ""}
+    band = group(f"{ident}-band", {**FULL, "background-color": colour([1, 1, 1, 0.06])})
+    if key == "team":
+        doc.state.update({f"{state}.kind": {"type": "number", "initial": -1}, f"{state}.side": {"type": "number", "initial": -1}})
+        side_row = {"op": "==", "args": [{"state": f"{state}.kind"}, 0]}
+
+        def tint(component: int) -> dict:
+            marine, strogg, other = rgb(MP_MARINE)[component], rgb(MP_STROGG)[component], rgb(MP_NEUTRAL)[component]
+            return {"op": "select", "args": [side_row, {"op": "select", "args": [
+                {"op": "==", "args": [{"state": f"{state}.side"}, 0]}, marine,
+                {"op": "select", "args": [{"op": "==", "args": [{"state": f"{state}.side"}, 1]}, strogg, other]}]}, 1]}
+        doc.bind(f"{ident}-band.background-color", f"{ident}-band", "background-color",
+                 [tint(0), tint(1), tint(2), {"op": "select", "args": [side_row, 0.35, 0.06]}])
+    chosen = group(f"{ident}-chosen", {**FULL, "display": keyword("none"), "background-color": colour(rgb(OLIVE, 0.45))})
+    doc.bind(f"{ident}-chosen.display", f"{ident}-chosen", "display",
+             {"op": "select", "args": [{"op": "==", "args": [{"state": f"mp.match.{key}.selected"}, row]}, "block", "none"]})
+    rail = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=4, height=MATCH_LIST_ROW_H), "opacity": number(0)},
+                  [path("rail", [(0, 0), (3, 0), (3, MATCH_LIST_ROW_H), (0, MATCH_LIST_ROW_H)], fill=solid(rgb(ORANGE)))])
+    cell = {"position": keyword("relative"), "display": keyword("block"), "white-space": keyword("nowrap"), "overflow": keyword("hidden"),
+            "flex-shrink": number(0), **typeface("lowpixel", 14, MATCH_LIST_ROW_H, [1, 1, 1, 0.85])}
+    cells = [label(f"{ident}-c0", PLACEHOLDER, {**cell, "flex-grow": number(1), "flex-shrink": number(1), "min-width": length(0)})]
+    for column, column_width in enumerate(columns, 1):
+        cells.append(label(f"{ident}-c{column}", PLACEHOLDER, {**cell, "width": length(column_width), "margin-left": length(6),
+                                                                **typeface("lowpixel", 14, MATCH_LIST_ROW_H, [1, 1, 1, 0.6])}))
+    for column in range(1 + len(columns)):
+        doc.bind(f"{ident}-c{column}.text", f"{ident}-c{column}", "text", {"state": f"{state}.c{column}"})
+    content = group(f"{ident}-content", {**absolute(left=10, top=0, width=width - 14, height=MATCH_LIST_ROW_H), "display": keyword("flex"),
+                                         "flex-direction": keyword("row"), "align-items": keyword("center"), "pointer-events": keyword("none")},
+                    cells)
+    states = doc.states(ident, {
+        "default": [(f"{ident}-focus", "opacity", number(0)), (f"{ident}-c0", "color", colour([1, 1, 1, 0.85]))],
+        "hover": [(f"{ident}-focus", "opacity", number(0.5)), (f"{ident}-c0", "color", colour([1, 1, 1, 1]))],
+        "focus": [(f"{ident}-focus", "opacity", number(1)), (f"{ident}-c0", "color", colour(rgb(ORANGE)))],
+        "pressed": [(f"{ident}-focus", "opacity", number(1)), (f"{ident}-c0", "color", colour(rgb(ORANGE)))],
+        "disabled": [(f"{ident}-focus", "opacity", number(0)), (f"{ident}-c0", "color", colour([1, 1, 1, 0.85]))],
+    })
+    event = f"match_{key}_{row}"
+    doc.events[event] = [{"op": "setState", "values": {"card.match_list": MATCH_LISTS.index(key), "card.match_row": row}},
+                         {"op": "action", "action": "mpMatchSelect"}]
+    node = group(ident, {"position": keyword("relative"), "display": keyword("none"), "width": length(width),
+                         "height": length(MATCH_LIST_ROW_H), "margin-bottom": length(1), "flex-shrink": number(0)},
+                 [band, chosen, rail, content], control={"role": "button", "label": PLACEHOLDER, "event": event, "states": states})
+    doc.bind(f"{ident}.display", ident, "display",
+             {"op": "select", "args": [{"op": "<", "args": [row, {"state": f"mp.match.{key}.count"}]}, "block", "none"]})
+    return node, ident
+
+
+def match_list(doc: Document, key: str, rows: int, left: float, top: float, width: float, height: float,
+               columns: tuple) -> tuple[dict, list]:
+    """One of Match Control's lists as a scrolling column of rows (focus
+    scrolls a row into view, as the wheel does). Past the card's rows the
+    list ends with a link to the stock page, which shows them all."""
+    doc.state.update({f"mp.match.{key}.count": {"type": "number", "initial": 0},
+                      f"mp.match.{key}.more": {"type": "boolean", "initial": False},
+                      f"mp.match.{key}.selected": {"type": "number", "initial": -1}})
+    children, controls = [], []
+    for row in range(rows):
+        node, control = match_list_row(doc, key, row, width, columns)
+        children.append(node)
+        controls.append(control)
+    more = link(doc, f"match-{key.replace('_', '-')}-more", HANDOFF_ACTION, event="stock_match")
+    more["properties"]["display"] = keyword("none")
+    more["properties"]["margin-top"] = length(4)
+    doc.bind(f"{more['id']}.display", more["id"], "display", {"op": "select", "args": [{"state": f"mp.match.{key}.more"}, "block", "none"]})
+    children.append(more)
+    controls.append(more["id"])
+    viewport = group(f"match-{key.replace('_', '-')}-list", {**absolute(left=left, top=top, width=width, height=height),
+                                                             "overflow": keyword("auto")}, children)
+    return viewport, controls
+
+
+def match_teams_section(doc: Document, width: float, height: float) -> tuple[list, list]:
+    """The Teams section (the stock page's Teams): the team and roster rows,
+    each side's own row in its team's color, and the participants a
+    substitution can bring in, beside the role an invitation or an assignment
+    gives (or, where a Duel side can be bound, the two sides) and the team
+    actions: joining a team or spectating, the queue, the roster invitation,
+    leaving the roster, and a captain's or referee's actions on the row
+    chosen. Remove, Substitute and Expel ask first, as the stock page does.
+    Choosing a row tells the game, which checks every action against it; the
+    latest result shows under the lists."""
+    doc.state.update({"card.match_list": {"type": "number", "initial": -1}, "card.match_row": {"type": "number", "initial": -1},
+                      "mp.match.role": {"type": "number", "initial": 1}})
+    doc.session("mpMatchSelect", "mpMatchSelect")
+    doc.actions["mpMatchRole"] = {"operation": "session.menuValue", "input": "number",
+                                  "arguments": {"command": "mpMatchRole", "value": {"input": "value"}}}
+    head = {**typeface("lowpixel", 14, 18, rgb(OLIVE)), "white-space": keyword("nowrap")}
+    list_w = MATCH_TEAMS_W
+    team_h = 6 * (MATCH_LIST_ROW_H + 1)
+    result_h = 36.0
+    # The side and the state or role columns hold their longest values in
+    # every language; the name takes the rest.
+    team_list, team_controls = match_list(doc, "team", MATCH_TEAM_ROWS, 0, 20, list_w, team_h, (130.0, 150.0))
+    replacement_top = 20 + team_h + 8
+    replacement_list, replacement_controls = match_list(doc, "replacement", MATCH_REPLACEMENT_ROWS, 0, replacement_top + 20, list_w,
+                                                        height - replacement_top - 20 - result_h - 6, ())
+    # The latest result, as the stock page keeps it under every section, so an
+    # action's outcome shows where it was taken.
+    result = label("match-teams-result", PLACEHOLDER, {**absolute(left=0, top=height - result_h, width=list_w, height=result_h),
+                   **typeface("lowpixel", 15, 17, [1, 1, 1, 0.85]), "white-space": keyword("normal"), "overflow": keyword("hidden")})
+    doc.bind("match-teams-result.text", "match-teams-result", "text", {"state": "mp.match.result"})
+    children = [label("match-teams-head", MATCH_TEAMS_HEAD, {**absolute(left=0, top=0, width=list_w, height=18), **head}), team_list,
+                label("match-replacements-head", MATCH_REPLACEMENTS_HEAD,
+                      {**absolute(left=0, top=replacement_top, width=list_w, height=18), **head}), replacement_list, result]
+    controls = team_controls + replacement_controls
+    # The role, or where a Duel side can be bound, the side.
+    right_x = list_w + 16
+    right_w = width - right_x
+    value_x = check_match_labels(right_w, MATCH_TEAM_LABELS)
+    binding = {"state": "mp.match.op.contestant_bind.shown"}
+    role = value_row(doc, "match-role", MATCH_ROLE, "choice", right_w, value_x, value={"state": "mp.match.role"}, action="mpMatchRole",
+                     entries=list(MATCH_ROLES), shown={"op": "!", "args": [binding]})
+    children.append(group("match-role-slot", absolute(left=right_x, top=0, width=right_w, height=VOTE_ROW_H), [role]))
+    controls.append(role["id"])
+    chips = group("match-bind-side", {**absolute(left=right_x, top=0, width=right_w, height=VOTE_ROW_H), "display": keyword("none")},
+                  [match_side_chip(doc, f"match-bind-side-{side}", side, side * right_w / 2, 0, right_w / 2 - 12) for side in range(2)])
+    doc.bind("match-bind-side.display", "match-bind-side", "display", {"op": "select", "args": [binding, "block", "none"]})
+    children.append(chips)
+    controls += ["match-bind-side-0", "match-bind-side-1"]
+    # The actions, in a column that scrolls as focus moves down it.
+    rows = []
+    for name, token, accessible, body in MATCH_TEAM_ACTIONS:
+        row, row_id = match_action_row(doc, name, accessible, right_w, value_x, None, match_action_steps(name, token, body))
+        rows.append(row)
+        controls.append(row_id)
+    actions_top = VOTE_ROW_H + 8
+    children.append(group("match-team-actions", {**absolute(left=right_x, top=actions_top, width=right_w, height=height - actions_top),
+                                                 "overflow": keyword("auto")}, rows))
+    return children, controls
+
+
 def match_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, list]:
     """The Match page (section 14.18): Match Control's six sections as a second,
     smaller strip. Status shows the match's phase and state lines, the side an
     action applies to where the player chooses one, the referee's sign-in, a
     spectator's camera, the last result, and the readiness, pause and match
     actions, each saying why it is unavailable; Force ready, Forfeit and Abort
-    ask first, as the stock page does. The other sections, and signing in,
-    which needs the credential, still open the stock page. The page asks the
-    game to project its view again as it opens; the game mirrors Match
-    Control's own states into mp.match.*."""
+    ask first, as the stock page does. Teams shows the team and roster rows
+    beside the role and the team actions (match_teams_section). The other
+    sections, and signing in, which needs the credential, still open the
+    stock page. The page asks the game to project its view again as it
+    opens; the game mirrors Match Control's own states into mp.match.*."""
     doc.session("mpMatch", "mpMatch")
     doc.state.update({
         "card.match_section": {"type": "number", "initial": 0},
@@ -2096,7 +2310,7 @@ def match_page(doc: Document, index: int, ident: str, width: float, height: floa
     left_w = MATCH_LEFT_W
     right_x = left_w + 16
     right_w = page_width - right_x
-    value_x = check_match_labels(right_w)
+    value_x = check_match_labels(right_w, MATCH_STATUS_LABELS)
     # The leading column flows: the phase, the state lines that are set (each
     # wraps), then the action target, the referee and a spectator's camera.
     flow = {"position": keyword("relative"), "display": keyword("block")}
@@ -2114,28 +2328,9 @@ def match_page(doc: Document, index: int, ident: str, width: float, height: floa
     side_children = [label("match-side-label", PLACEHOLDER, {**absolute(left=0, top=0, width=left_w, height=18),
                                                              **typeface("lowpixel", 14, 18, rgb(OLIVE)), "white-space": keyword("nowrap")})]
     doc.bind("match-side-label.text", "match-side-label", "text", {"state": "mp.match.side.label"})
-    for side, token in ((0, "action_side_a"), (1, "action_side_b")):
-        chip = f"match-side-{side}"
-        caption = label(f"{chip}-label", PLACEHOLDER, {**absolute(left=10, top=0, width=left_w / 2 - 28, height=24),
-                        **typeface("lowpixel", 15, 24, [1, 1, 1, 0.8]), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
-        doc.bind(f"{chip}-label.text", f"{chip}-label", "text", {"state": f"mp.match.side{side}.label"})
-        mark = vector(f"{chip}-mark", {**absolute(left=0, top=21, width=left_w / 2 - 12, height=3), "display": keyword("none")},
-                      [path("mark", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, 3), (0, 3)], fill=solid(rgb(VALUE)))])
-        doc.bind(f"{chip}-mark.display", f"{chip}-mark", "display",
-                 {"op": "select", "args": [{"state": f"mp.match.side{side}.selected"}, "block", "none"]})
-        states = doc.states(chip, {
-            "default": [(f"{chip}-label", "color", colour([1, 1, 1, 0.8]))], "hover": [(f"{chip}-label", "color", colour([1, 1, 1, 1]))],
-            "focus": [(f"{chip}-label", "color", colour(rgb(ORANGE)))], "pressed": [(f"{chip}-label", "color", colour(rgb(ORANGE)))],
-            "disabled": [(f"{chip}-label", "color", colour([1, 1, 1, 0.8]))],
-        })
-        event = f"match_side_{side}"
-        doc.events[event] = [{"op": "if", "condition": {"state": f"mp.match.side{side}.available"}, "then": match_op(token)}]
-        node = group(chip, {**absolute(left=side * left_w / 2, top=20, width=left_w / 2 - 12, height=24), "opacity": number(1)},
-                     [caption, mark], control={"role": "button", "label": "#str_41720" if side == 0 else "#str_41721", "event": event,
-                                               "states": states})
-        doc.bind(f"{chip}.opacity", chip, "opacity", {"op": "select", "args": [{"state": f"mp.match.side{side}.available"}, 1, 0.4]})
-        side_children.append(node)
-        controls.append(chip)
+    for side in range(2):
+        side_children.append(match_side_chip(doc, f"match-side-{side}", side, side * left_w / 2, 20, left_w / 2 - 12))
+        controls.append(f"match-side-{side}")
     side_row = group("match-side", {**flow, "height": length(46), "margin-top": length(10), "display": keyword("none")}, side_children)
     doc.bind("match-side.display", "match-side", "display", {"op": "select", "args": [{"state": "mp.match.side.shown"}, "block", "none"]})
     column.append(side_row)
@@ -2182,14 +2377,14 @@ def match_page(doc: Document, index: int, ident: str, width: float, height: floa
     column.append(follow)
     # The actions, each a row.
     rows = []
-    for row_index, (name, token, accessible, body) in enumerate(MATCH_ACTIONS):
-        steps = match_op(token) + ([{"op": "call", "event": f"{match_modal_id(name)}Show"}] if body else [])
-        row, row_id = match_action_row(doc, name, accessible, right_w, value_x, row_index * MATCH_ROW_PITCH, steps)
+    for row_index, (name, token, accessible, body) in enumerate(MATCH_STATUS_ACTIONS):
+        row, row_id = match_action_row(doc, name, accessible, right_w, value_x, row_index * MATCH_ROW_PITCH,
+                                       match_action_steps(name, token, body))
         rows.append(row)
         controls.append(row_id)
-    actions = group("match-actions", absolute(left=right_x, top=0, width=right_w, height=len(MATCH_ACTIONS) * MATCH_ROW_PITCH), rows)
-    result = label("match-result", PLACEHOLDER, {**absolute(left=right_x, top=len(MATCH_ACTIONS) * MATCH_ROW_PITCH + 4, width=right_w,
-                                                            height=section_height - len(MATCH_ACTIONS) * MATCH_ROW_PITCH - 4),
+    stacked = len(MATCH_STATUS_ACTIONS) * MATCH_ROW_PITCH
+    actions = group("match-actions", absolute(left=right_x, top=0, width=right_w, height=stacked), rows)
+    result = label("match-result", PLACEHOLDER, {**absolute(left=right_x, top=stacked + 4, width=right_w, height=section_height - stacked - 4),
                    **typeface("lowpixel", 15, 17, [1, 1, 1, 0.85]), "white-space": keyword("normal"), "overflow": keyword("hidden")})
     doc.bind("match-result.text", "match-result", "text", {"state": "mp.match.result"})
     live = group("match-status-live", {**absolute(left=0, top=0, width=page_width, height=section_height), "display": keyword("none")},
@@ -2201,6 +2396,17 @@ def match_page(doc: Document, index: int, ident: str, width: float, height: floa
                     **typeface("lowpixel", 17, 24, [1, 1, 1, 0.8]), "white-space": keyword("nowrap"), "display": keyword("none")})
     doc.bind("match-waiting.display", "match-waiting", "display", {"op": "select", "args": [{"state": "mp.match.available"}, "none", "block"]})
     sections = [section_group("status", 0, [waiting, live])]
+    # Teams, which waits for a view as Status does.
+    teams_children, teams_controls = match_teams_section(doc, page_width, section_height)
+    teams_live = group("match-teams-live", {**absolute(left=0, top=0, width=page_width, height=section_height), "display": keyword("none")},
+                       teams_children)
+    doc.bind("match-teams-live.display", "match-teams-live", "display", {"op": "select", "args": [{"state": "mp.match.available"}, "block", "none"]})
+    teams_waiting = label("match-teams-waiting", MATCH_WAITING, {**absolute(left=0, top=0, width=page_width, height=24),
+                          **typeface("lowpixel", 17, 24, [1, 1, 1, 0.8]), "white-space": keyword("nowrap"), "display": keyword("none")})
+    doc.bind("match-teams-waiting.display", "match-teams-waiting", "display",
+             {"op": "select", "args": [{"state": "mp.match.available"}, "none", "block"]})
+    sections.append(section_group("teams", MATCH_SECTIONS.index("teams"), [teams_waiting, teams_live]))
+    controls += teams_controls
     # The sections not built yet open the stock page.
     plate_width = max(300.0, max(b.text_width("marine", text, 20) for text in table_text(HANDOFF_ACTION).values()) + 46)
     for position, section in enumerate(MATCH_SECTIONS):

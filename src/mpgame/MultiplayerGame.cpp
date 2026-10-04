@@ -16865,24 +16865,43 @@ void idMultiplayerGame::PublishRetainedSettings( idUserInterface *card, bool &ch
 }
 
 // The Match page's actions: the card's mp.match.op.<name>, the projection's
-// match_op_<prefix>_available and _reason, and the label, which for Set ready
-// the projection names (match_ready_action).
+// match_op_<prefix>_available and _reason, and the label, which for Set ready,
+// the team lock and the broadcaster the projection names (`labelState`, the
+// stock label until it does). Joining either team and spectating share one
+// operation.
 struct retainedMatchOperation_t {
 	const char *	name;
 	const char *	prefix;
 	const char *	label;
+	const char *	labelState;
 };
 static const retainedMatchOperation_t RETAINED_MATCH_OPERATIONS[] = {
-	{ "ready", "ready_set", NULL },
-	{ "team_ready", "team_ready_set", "#str_41715" },
-	{ "timeout", "timeout_request", "#str_41716" },
-	{ "tech_pause", "tech_pause_request", "#str_41717" },
-	{ "resume", "resume_request", "#str_41718" },
-	{ "force_ready", "force_ready", "#str_41719" },
-	{ "forfeit", "forfeit", "#str_41783" },
-	{ "abort", "abort", "#str_41784" },
-	{ "referee_login", "ref_authenticate", "#str_41781" },
-	{ "referee_logout", "ref_logout", "#str_41782" },
+	{ "ready", "ready_set", "#str_41713", "match_ready_action" },
+	{ "team_ready", "team_ready_set", "#str_41715", NULL },
+	{ "timeout", "timeout_request", "#str_41716", NULL },
+	{ "tech_pause", "tech_pause_request", "#str_41717", NULL },
+	{ "resume", "resume_request", "#str_41718", NULL },
+	{ "force_ready", "force_ready", "#str_41719", NULL },
+	{ "forfeit", "forfeit", "#str_41783", NULL },
+	{ "abort", "abort", "#str_41784", NULL },
+	{ "referee_login", "ref_authenticate", "#str_41781", NULL },
+	{ "referee_logout", "ref_logout", "#str_41782", NULL },
+	{ "join_marine", "team_join", "#str_41723", NULL },
+	{ "join_strogg", "team_join", "#str_41724", NULL },
+	{ "spectate", "team_join", "#str_41725", NULL },
+	{ "queue_join", "queue_join", "#str_41726", NULL },
+	{ "queue_defer", "queue_defer", "#str_41728", NULL },
+	{ "queue_leave", "queue_leave", "#str_41727", NULL },
+	{ "roster_accept", "roster_accept", "#str_41729", NULL },
+	{ "roster_leave", "roster_leave", "#str_42343", NULL },
+	{ "roster_invite", "roster_invite", "#str_41730", NULL },
+	{ "roster_remove", "roster_remove", "#str_41731", NULL },
+	{ "roster_substitute", "roster_substitute", "#str_41732", NULL },
+	{ "role_assign", "role_assign", "#str_41733", NULL },
+	{ "team_lock", "team_lock_set", "#str_41734", "match_team_lock_action" },
+	{ "broadcaster", "broadcaster_set", "#str_41795", "match_broadcaster_action" },
+	{ "participant_remove", "participant_remove", "#str_41908", NULL },
+	{ "contestant_bind", "series_contestant_bind", "#str_41909", NULL },
 };
 
 /*
@@ -16914,12 +16933,14 @@ void idMultiplayerGame::PublishRetainedMatch( idUserInterface *card, bool &chang
 	// The heading: the short phase, which the first state line spells out.
 	const char *phase = state.GetString( "match_phase_short" );
 	publish( "mp.match.phase", phase[ 0 ] != '\0' ? phase : state.GetString( "match_phase" ) );
+	// The lines and the result can carry players' names: plain text, which
+	// never translates.
 	idStrList lines;
 	MPRetainedSplitList( state.GetString( "match_status_lines" ), lines, '\n' );
 	for ( int i = 0; i < RETAINED_MATCH_STATUS_LINES; i++ ) {
-		publish( va( "mp.match.status%d", i ), i < lines.Num() ? lines[ i ].c_str() : "" );
+		publish( va( "mp.match.status%d", i ), i < lines.Num() ? MPRetainedPlainText( lines[ i ].c_str(), 1024, 1 ).c_str() : "" );
 	}
-	publish( "mp.match.result", state.GetString( "match_result_message" ) );
+	publish( "mp.match.result", MPRetainedPlainText( state.GetString( "match_result_message" ), 1024, 4 ).c_str() );
 	// The side an action applies to, where the player may choose one.
 	publish( "mp.match.side.shown", state.GetBool( "match_action_side_visible" ) ? "1" : "0" );
 	publish( "mp.match.side.label", state.GetString( "match_action_side_label" ) );
@@ -16928,25 +16949,72 @@ void idMultiplayerGame::PublishRetainedMatch( idUserInterface *card, bool &chang
 		publish( va( "mp.match.side%d.available", side ), state.GetBool( va( "match_action_side_%d_enabled", side ) ) ? "1" : "0" );
 		publish( va( "mp.match.side%d.selected", side ), state.GetBool( va( "match_action_side_%d_selected", side ) ) ? "1" : "0" );
 	}
-	// Sign in while the player is not a referee, Sign out while they are.
+	// Sign in while the player is not a referee, Sign out while they are; the
+	// broadcaster's action for the server's operator; binding a Duel side only
+	// where it can be bound, as on the stock page.
 	const bool referee = state.GetBool( "match_referee_authenticated" );
 	for ( const retainedMatchOperation_t &operation : RETAINED_MATCH_OPERATIONS ) {
+		const bool operationAvailable = state.GetInt( va( "match_op_%s_available", operation.prefix ) ) == 1;
 		bool shown = available;
 		if ( !idStr::Cmp( operation.name, "referee_login" ) ) {
 			shown = available && !referee;
 		} else if ( !idStr::Cmp( operation.name, "referee_logout" ) ) {
 			shown = available && referee;
+		} else if ( !idStr::Cmp( operation.name, "broadcaster" ) ) {
+			shown = available && state.GetBool( "match_broadcaster_control_visible" );
+		} else if ( !idStr::Cmp( operation.name, "contestant_bind" ) ) {
+			shown = available && operationAvailable;
 		}
-		const char *label = operation.label != NULL ? operation.label : state.GetString( "match_ready_action", "#str_41713" );
+		const char *named = operation.labelState != NULL ? state.GetString( operation.labelState ) : "";
 		publish( va( "mp.match.op.%s.shown", operation.name ), shown ? "1" : "0" );
-		publish( va( "mp.match.op.%s.available", operation.name ),
-			state.GetInt( va( "match_op_%s_available", operation.prefix ) ) == 1 ? "1" : "0" );
-		publish( va( "mp.match.op.%s.label", operation.name ), common->GetLocalizedString( label ) );
+		publish( va( "mp.match.op.%s.available", operation.name ), operationAvailable ? "1" : "0" );
+		publish( va( "mp.match.op.%s.label", operation.name ), named[ 0 ] != '\0' ? named : common->GetLocalizedString( operation.label ) );
 		publish( va( "mp.match.op.%s.reason", operation.name ), state.GetString( va( "match_op_%s_reason", operation.prefix ) ) );
 		publish( va( "mp.match.op.%s.detail", operation.name ), "" );
 	}
 	// A spectator's camera follows players from the page.
 	publish( "mp.match.follow", MatchControlFollowPlayer() != NULL ? "1" : "0" );
+	// Teams: the team and roster rows, with each row's kind and side, the
+	// participants a substitution can bring in, and the role an invitation or
+	// an assignment gives.
+	const int teamRows = available ? clientMatchControlModel.TeamRowCount() : 0;
+	PublishRetainedMatchList( card, changed, "match_team_rows", "team", teamRows, RETAINED_MATCH_TEAM_ROWS, 3 );
+	for ( int row = 0; row < Min( teamRows, RETAINED_MATCH_TEAM_ROWS ); row++ ) {
+		const mpMatchControlTeamRow_t *teamRow = clientMatchControlModel.TeamRow( row );
+		publish( va( "mp.match.team%d.kind", row ), va( "%d", teamRow != NULL ? static_cast<int>( teamRow->kind ) : -1 ) );
+		publish( va( "mp.match.team%d.side", row ), va( "%d", teamRow != NULL ? teamRow->side : -1 ) );
+	}
+	PublishRetainedMatchList( card, changed, "match_replacement_rows", "replacement",
+		available ? clientMatchControlModel.ReplacementRowCount() : 0, RETAINED_MATCH_REPLACEMENT_ROWS, 1 );
+	publish( "mp.match.role", va( "%d", state.GetInt( "match_role_choice", "1" ) ) );
+}
+
+/*
+================
+idMultiplayerGame::PublishRetainedMatchList
+
+One of Match Control's lists for the card: as many of its rows as the card
+has (mp.match.<key>.count, with .more where there are others), each row's
+columns as the projection writes them, tab-separated, in plain text that
+never translates, and the model's selection. The card shows the text only and
+names a row by its index.
+================
+*/
+void idMultiplayerGame::PublishRetainedMatchList( idUserInterface *card, bool &changed, const char *list, const char *key, int count, int rows,
+	int columns ) {
+	const auto publish = [&]( const char *name, const char *value ) { changed |= PublishRetainedValue( card, name, value ); };
+	const idDict &state = mainGui->State();
+	const int shown = Min( count, rows );
+	publish( va( "mp.match.%s.count", key ), va( "%d", shown ) );
+	publish( va( "mp.match.%s.more", key ), count > rows ? "1" : "0" );
+	publish( va( "mp.match.%s.selected", key ), va( "%d", count > 0 ? state.GetInt( va( "%s_sel_0", list ), "-1" ) : -1 ) );
+	idStrList cells;
+	for ( int row = 0; row < shown; row++ ) {
+		MPRetainedSplitList( state.GetString( va( "%s_item_%d", list, row ) ), cells, '\t' );
+		for ( int column = 0; column < columns; column++ ) {
+			publish( va( "mp.match.%s%d.c%d", key, row, column ), column < cells.Num() ? MPRetainedPlainText( cells[ column ].c_str(), 128, 1 ).c_str() : "" );
+		}
+	}
 }
 
 bool idMultiplayerGame::PublishRetainedValue( idUserInterface *card, const char *key, const char *value ) {

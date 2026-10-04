@@ -1239,9 +1239,14 @@ private:
 	void			PublishRetainedSettings( idUserInterface *card, bool &changed );
 	// The Escape card's Match page (section 14.18): Match Control, mirrored
 	// from the game's own projection of it on the menu (the match_* states),
-	// the status lines one key each.
+	// the status lines one key each and the lists' rows up to the card's
+	// rows for each (past them the page offers the stock page).
 	static const int RETAINED_MATCH_STATUS_LINES = 6;
+	static const int RETAINED_MATCH_TEAM_ROWS = 32;
+	static const int RETAINED_MATCH_REPLACEMENT_ROWS = 16;
 	void			PublishRetainedMatch( idUserInterface *card, bool &changed );
+	void			PublishRetainedMatchList( idUserInterface *card, bool &changed, const char *list, const char *key, int count, int rows,
+						int columns );
 	bool			arenaEntranceCameraResolved;
 	// Which presentation the latched camera belongs to.  The entrance and the
 	// final tableau both latch a collision-safe anchor, but they resolve it

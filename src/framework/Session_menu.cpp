@@ -139,9 +139,30 @@ static const int RETAINED_MP_CLIENTS = MAX_ASYNC_CLIENTS;
 static const char *const RETAINED_MP_MATCH_TOKENS[] = {
 	"refresh", "ready_toggle", "team_ready_toggle", "arm_force_ready", "timeout", "tech_pause", "resume",
 	"arm_forfeit", "arm_abort", "referee_logout", "action_side_a", "action_side_b",
-	"follow_prev", "follow_next", "follow_free", "confirm", "cancel_confirm"
+	"follow_prev", "follow_next", "follow_free", "confirm", "cancel_confirm",
+	"team_join_marine", "team_join_strogg", "team_spectate", "queue_join", "queue_defer", "queue_leave",
+	"roster_accept", "roster_leave", "roster_invite", "arm_roster_remove", "arm_roster_substitute", "role_assign",
+	"team_lock_toggle", "broadcaster_set", "arm_participant_remove", "series_contestant_bind"
 };
 static const int RETAINED_MP_MATCH_ACTIONS = static_cast<int>( sizeof( RETAINED_MP_MATCH_TOKENS ) / sizeof( RETAINED_MP_MATCH_TOKENS[0] ) );
+// The Match page's lists, by the card's index (card.match_list): the stock
+// list on the game's menu and the fixed token that selects its row. The card
+// names a row by its index (card.match_row); the session sets the stock list's
+// own selection to it, and the game reads it back and checks it against its
+// model again, as for the stock list.
+static const char *const RETAINED_MP_MATCH_LISTS[][2] = {
+	{ "match_team_rows", "select_team_row" }, { "match_replacement_rows", "select_replacement_row" },
+	{ "match_proposal_rows", "select_proposal_row" }, { "match_profile_rows", "select_profile_row" },
+	{ "match_rule_rows", "select_rule_row" }, { "match_series_map_rows", "select_series_map" }
+};
+static const int RETAINED_MP_MATCH_LIST_COUNT = static_cast<int>( sizeof( RETAINED_MP_MATCH_LISTS ) / sizeof( RETAINED_MP_MATCH_LISTS[0] ) );
+// The most rows a Match Control list holds (MP_MATCH_CONTROL_MAX_TEAM_ROWS).
+static const int RETAINED_MP_MATCH_ROWS = 128;
+// The Match page's choices, "<verb> <value>": the role an invitation or an
+// assignment gives, 1 to 4 (the protocol's roster roles), which the stock
+// choice keeps on the game's menu and the game reads as it sends either.
+static const char *const RETAINED_MP_MATCH_CHOICES[] = { "mpMatchRole" };
+static const int RETAINED_MP_MATCH_ROLES = 4;
 // The stock menu buttons the card's hand-offs press, by the card's page
 // index (card.stock_page), in the generator's order.
 static const char *const RETAINED_MP_STOCK_PAGES[] = {
@@ -5897,8 +5918,10 @@ sound: Resume closes the menu, Main Menu leaves for the main menu with the
 match running, Disconnect (after the card's own confirmation) leaves the
 server, the Team page's and the Welcome card's Join page actions, the
 Players page's selection, Mute and Friend, the Vote page's ballots, call
-and drafted fields, and the Settings pages' models, rail color and
-crosshair go to the game; Controls, Game Options and System leave for the
+and drafted fields, the Match page's actions and list rows, and the
+Settings pages' models, rail color and crosshair go to the game (the Match
+page's role choice waits on the game's menu, as the stock choice's does);
+Controls, Game Options and System leave for the
 main menu's pages; and a page still in development, or one the card cannot
 edit yet (name and clan), hands off to its stock page. Every other request
 is refused, as the card's own verbs are anywhere else.
@@ -5943,6 +5966,27 @@ void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, con
 		// the page asks as it opens, makes no sound.
 		gameCommand = va( "%smatchControl %s", action == 0 ? "" : "play main_menu_selection ; ", RETAINED_MP_MATCH_TOKENS[ action ] );
 		command = gameCommand.c_str();
+	} else if ( !idStr::Icmp( request, "mpMatchSelect" ) ) {
+		const int list = gui->State().GetInt( "card.match_list", "-1" ), row = gui->State().GetInt( "card.match_row", "-1" );
+		if ( list < 0 || list >= RETAINED_MP_MATCH_LIST_COUNT || row < 0 || row >= RETAINED_MP_MATCH_ROWS ) {
+			common->Warning( "retained UI: the multiplayer card asked for row %d of match list %d", row, list );
+			return;
+		}
+		// The stock list's own selection on the game's menu, then its token;
+		// the menu stays open.
+		guiActive->SetStateInt( va( "%s_sel_0", RETAINED_MP_MATCH_LISTS[ list ][ 0 ] ), row );
+		gameCommand = va( "play main_menu_selection ; matchControl %s", RETAINED_MP_MATCH_LISTS[ list ][ 1 ] );
+		command = gameCommand.c_str();
+	} else if ( Session_RetainedValueRequest( request, RETAINED_MP_MATCH_CHOICES,
+		static_cast<int>( sizeof( RETAINED_MP_MATCH_CHOICES ) / sizeof( RETAINED_MP_MATCH_CHOICES[0] ) ), voteField, voteValue ) ) {
+		if ( voteValue < 1 || voteValue > RETAINED_MP_MATCH_ROLES ) {
+			common->Warning( "retained UI: the multiplayer card chose match role %d", voteValue );
+			return;
+		}
+		// The stock choice's own value on the game's menu, quietly; the game
+		// reads it as it sends an invitation or an assignment.
+		guiActive->SetStateInt( "match_role_choice", voteValue );
+		return;
 	} else if ( !idStr::Icmp( request, "mpTeamAction" ) ) {
 		const int slot = gui->State().GetInt( "card.team_action", "-1" );
 		if ( slot < 0 || slot >= RETAINED_MP_TEAM_SLOTS ) {

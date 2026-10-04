@@ -850,12 +850,48 @@ int main() {
         CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl confirm");
         card->state["card.match_op"] = "16"; s.HandleRetainedSessionRequest(card, "mpMatch");
         CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl cancel_confirm" && s.guiRetainedMultiplayer == card);
+        card->state["card.match_op"] = "17"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl team_join_marine");
+        card->state["card.match_op"] = "26"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl arm_roster_remove");
+        card->state["card.match_op"] = "32"; s.HandleRetainedSessionRequest(card, "mpMatch");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; matchControl series_contestant_bind" && s.guiRetainedMultiplayer == card);
         const size_t matched = gameObject.guiCommands.size();
-        for (const char* action : {"-1", "17", "99"}) {
+        for (const char* action : {"-1", "33", "99"}) {
             card->state["card.match_op"] = action; s.HandleRetainedSessionRequest(card, "mpMatch");
             CHECK(gameObject.guiCommands.size() == matched && s.guiRetainedMultiplayer == card &&
                   commonObject.warnings.back().find("match action") != std::string::npos);
         }
+        // A Match Control list's row: the session sets the stock list's own
+        // selection on the game's menu to it and sends the list's token, as the
+        // stock list does, and the menu stays open. A list or a row outside
+        // the tables is refused and selects nothing.
+        card->state["card.match_list"] = "0"; card->state["card.match_row"] = "3"; s.HandleRetainedSessionRequest(card, "mpMatchSelect");
+        CHECK(mpMenu.state["match_team_rows_sel_0"] == "3" &&
+              gameObject.guiCommands.back() == "play main_menu_selection ; matchControl select_team_row" && s.guiRetainedMultiplayer == card);
+        card->state["card.match_list"] = "1"; card->state["card.match_row"] = "0"; s.HandleRetainedSessionRequest(card, "mpMatchSelect");
+        CHECK(mpMenu.state["match_replacement_rows_sel_0"] == "0" &&
+              gameObject.guiCommands.back() == "play main_menu_selection ; matchControl select_replacement_row");
+        card->state["card.match_list"] = "5"; card->state["card.match_row"] = "127"; s.HandleRetainedSessionRequest(card, "mpMatchSelect");
+        CHECK(mpMenu.state["match_series_map_rows_sel_0"] == "127" &&
+              gameObject.guiCommands.back() == "play main_menu_selection ; matchControl select_series_map");
+        const size_t selected = gameObject.guiCommands.size();
+        for (const auto& [list, row] : std::vector<std::pair<const char*, const char*>>{{"-1", "0"}, {"6", "0"}, {"0", "-1"}, {"0", "128"}}) {
+            card->state["card.match_list"] = list; card->state["card.match_row"] = row; s.HandleRetainedSessionRequest(card, "mpMatchSelect");
+            CHECK(gameObject.guiCommands.size() == selected && mpMenu.state["match_team_rows_sel_0"] == "3" && s.guiRetainedMultiplayer == card &&
+                  commonObject.warnings.back().find("of match list") != std::string::npos);
+        }
+        // The role an invitation or an assignment gives waits on the game's
+        // menu, as the stock choice's value does: nothing reaches the game.
+        s.HandleRetainedSessionRequest(card, "mpMatchRole 3");
+        CHECK(mpMenu.state["match_role_choice"] == "3" && gameObject.guiCommands.size() == selected && s.guiRetainedMultiplayer == card);
+        for (const char* bad : {"mpMatchRole 0", "mpMatchRole 5", "mpMatchRole -1"}) {
+            s.HandleRetainedSessionRequest(card, bad);
+            CHECK(mpMenu.state["match_role_choice"] == "3" && gameObject.guiCommands.size() == selected &&
+                  commonObject.warnings.back().find("match role") != std::string::npos);
+        }
+        s.HandleRetainedSessionRequest(card, "mpMatchRole x");
+        CHECK(mpMenu.state["match_role_choice"] == "3" && commonObject.warnings.back().find("unhandled multiplayer request") != std::string::npos);
         // The Players page: the client a row or the statistics name reaches the
         // game as "retained select|mute|friend <client>", none of which closes
         // the menu; a client outside the server's slots is refused.
@@ -1904,8 +1940,10 @@ def check_retained_match(menu: str) -> None:
     """The Match page's contracts that the compiled cases cannot see: the card's
     action indices, the session's tokens and the game's own Match Control
     commands agree; the game mirrors the operations the page shows, with the
-    page's status lines; the page asks first exactly where Match Control
-    confirms, with the stock modal's text; the triggers page its sections."""
+    page's status lines, labels and list rows; the session's lists are the
+    game's own selection commands and its roles the protocol's; the page asks
+    first exactly where Match Control confirms, with the stock modal's text;
+    the triggers page its sections."""
     sys.path.insert(0, str(ROOT / 'tools/ui'))
     import retained_mp_menus as cards
     tokens = tuple(re.findall(r'"([a-z_]+)"', re.search(r'RETAINED_MP_MATCH_TOKENS\[\] = \{([^}]*)\};', menu).group(1)))
@@ -1916,24 +1954,66 @@ def check_retained_match(menu: str) -> None:
     for token in tokens:
         assert f'"{token}"' in mp_game or f'"{token}"' in model, f'Match Control has no "{token}" command'
     assert '"refresh"' in handler and '"confirm"' in handler and '"cancel_confirm"' in handler
-    # The game's mirrored operations, by name, prefix and label.
-    operations = re.findall(r'\{ "(\w+)", "(\w+)", (NULL|"#str_\d+") \},',
-                            mp_game[mp_game.index('static const retainedMatchOperation_t RETAINED_MATCH_OPERATIONS[] = {'):])
-    operations = operations[:len(cards.MATCH_ACTIONS) + 2]
-    names = [name for name, _prefix, _label in operations]
-    assert names == [name for name, *_ in cards.MATCH_ACTIONS] + ['referee_login', 'referee_logout'], names
-    prefixes = {name: prefix for name, prefix, _label in operations}
+    # The game's mirrored operations, by name, prefix and label: each section's
+    # actions in the page's order, the referee's between them. Where the
+    # projection names an action, it names it with the page's alternatives.
+    table = mp_game[mp_game.index('static const retainedMatchOperation_t RETAINED_MATCH_OPERATIONS[] = {'):]
+    operations = re.findall(r'\{ "(\w+)", "(\w+)", "(#str_\d+)", (NULL|"\w+") \},', table[:table.index('};')])
+    names = [name for name, _prefix, _label, _state in operations]
+    assert names == [name for name, *_ in cards.MATCH_STATUS_ACTIONS] + ['referee_login', 'referee_logout'] + \
+        [name for name, *_ in cards.MATCH_TEAM_ACTIONS], names
+    prefixes = {name: prefix for name, prefix, _label, _state in operations}
+    projection = (ROOT / 'src/mpgame/mp/match/MatchControlProjection.cpp').read_text(encoding='utf-8')
+    named = {'ready': ('match_ready_action', '#str_41714'), 'team_lock': ('match_team_lock_action', '#str_41735'),
+             'broadcaster': ('match_broadcaster_action', '#str_41796')}
     for name, _token, accessible, _body in cards.MATCH_ACTIONS:
-        label = dict((n, l) for n, _p, l in operations)[name]
-        assert label == 'NULL' if name == 'ready' else label == f'"{accessible}"', (name, label)
+        _prefix, label, state = next(entry[1:] for entry in operations if entry[0] == name)
+        assert label == accessible, (name, label)
+        assert state == (f'"{named[name][0]}"' if name in named else 'NULL'), (name, state)
+        if name in named:
+            # The projection writes the stock label or its alternative, both of
+            # which the page's label column fits.
+            assert f'"{named[name][1]}" : "{accessible}"' in projection, name
+            assert {accessible, named[name][1]} <= set(cards.MATCH_STATUS_LABELS + cards.MATCH_TEAM_LABELS), name
+            assert f'gui.SetStateString( "{named[name][0]}"' in projection, name
     header = (ROOT / 'src/mpgame/MultiplayerGame.h').read_text(encoding='utf-8')
     assert int(re.search(r'RETAINED_MATCH_STATUS_LINES = (\d+);', header).group(1)) == cards.MATCH_STATUS_LINES
+    # The lists: the session's stock lists and tokens are the game's own
+    # selection commands, in the card's order; a row index spans the longest
+    # list; the game mirrors as many rows as the page has.
+    lists = re.findall(r'\{ "(match_\w+_rows)", "(select_\w+)" \}',
+                       menu[menu.index('RETAINED_MP_MATCH_LISTS[][2] = {'):menu.index('RETAINED_MP_MATCH_LIST_COUNT')])
+    assert [list_name for list_name, _token in lists] == [f'match_{key}_rows' for key in cards.MATCH_LISTS], lists
+    for list_name, token in lists:
+        assert f'{{ "{token}", "{list_name}_sel_0",' in handler, (list_name, token)
+    model_header = (ROOT / 'src/mpgame/mp/match/MatchControlModel.h').read_text(encoding='utf-8')
+    longest = max(int(value) for value in re.findall(r'MP_MATCH_CONTROL_MAX_\w+_ROWS = (\d+);', model_header))
+    assert int(re.search(r'RETAINED_MP_MATCH_ROWS = (\d+);', menu).group(1)) == longest == 128
+    assert int(re.search(r'RETAINED_MATCH_TEAM_ROWS = (\d+);', header).group(1)) == cards.MATCH_TEAM_ROWS
+    assert int(re.search(r'RETAINED_MATCH_REPLACEMENT_ROWS = (\d+);', header).group(1)) == cards.MATCH_REPLACEMENT_ROWS
+    # The role choice: the protocol's roster roles, 1 to 4, by the projection's
+    # own names for them; the game reads the stock choice's value.
+    assert int(re.search(r'RETAINED_MP_MATCH_ROLES = (\d+);', menu).group(1)) == len(cards.MATCH_ROLES)
+    protocol_header = (ROOT / 'src/mpgame/mp/match/MatchProtocol.h').read_text(encoding='utf-8')
+    localization = (ROOT / 'src/mpgame/mp/match/MatchControlLocalization.cpp').read_text(encoding='utf-8')
+    role_keys = function_body(localization, 'const char *MPMatchControlProtocolRosterRoleKey(')
+    for key, value in cards.MATCH_ROLES:
+        role = re.search(rf'MP_MATCH_PROTOCOL_ROSTER_ROLE_(\w+) = {value}', protocol_header).group(1)
+        assert f'case MP_MATCH_PROTOCOL_ROSTER_ROLE_{role}: return "{key}";' in role_keys, (key, value)
+    assert 'parseStateInteger( "match_role_choice",' in handler
+    # Players' names reach the page only as plain text, which never translates.
+    lister = function_body(mp_game, 'void idMultiplayerGame::PublishRetainedMatchList(')
+    matcher = function_body(mp_game, 'void idMultiplayerGame::PublishRetainedMatch(')
+    assert 'MPRetainedPlainText( cells[ column ].c_str(), 128, 1 )' in lister, 'list cells are plain text'
+    assert 'MPRetainedPlainText( lines[ i ].c_str(), 1024, 1 )' in matcher and \
+        'MPRetainedPlainText( state.GetString( "match_result_message" ), 1024, 4 )' in matcher, 'state lines and the result are plain text'
     publisher = function_body(mp_game, 'void idMultiplayerGame::PublishRetainedMenu(').replace('\r\n', '\n')
     assert '\tif ( !RetainedMenuWelcome() ) {\n\t\tPublishRetainedMatch( card, changed );' in publisher, 'only the Escape card has a Match page'
     # Each prefix is a protocol operation the projection decides; the page asks
     # first exactly where its descriptor carries a confirmation.
     protocol = (ROOT / 'src/mpgame/mp/match/MatchProtocol.cpp').read_text(encoding='utf-8')
-    descriptors = dict(re.findall(r'\{ MP_MATCH_OP_\w+, "(\w+)", MP_MATCH_LOCALIZATION_OPERATION_\w+, (MP_MATCH_LOCALIZATION_\w+),', protocol))
+    descriptors = dict(re.findall(r'\{ MP_MATCH_OP_\w+, "(\w+)",\s+MP_MATCH_LOCALIZATION_OPERATION_\w+,\s+(MP_MATCH_LOCALIZATION_\w+),', protocol))
+    assert len(descriptors) == protocol.count('{ MP_MATCH_OP_'), 'every protocol descriptor reads'
     stock = (ROOT / 'content/baseoq4/pak0/guis/matchcontrol.gui').read_text(encoding='utf-8')
     for name, token, _accessible, body in cards.MATCH_ACTIONS:
         confirmed = descriptors[prefixes[name]] != 'MP_MATCH_LOCALIZATION_NONE'
@@ -1946,7 +2026,8 @@ def check_retained_match(menu: str) -> None:
         assert descriptors[prefixes[name]] == 'MP_MATCH_LOCALIZATION_NONE'
     adapter = (ROOT / 'src/ui/UserInterfaceRetained.cpp').read_text(encoding='utf-8')
     assert 'key == K_JOY16 ? "onSectionPrevious" : key == K_JOY15 ? "onSectionNext"' in adapter, 'the triggers page sections'
-    assert 'mpMatch' in cpp_allowlist(adapter)
+    assert {'mpMatch', 'mpMatchSelect'} <= cpp_allowlist(adapter)
+    assert 'mpMatchRole' in cpp_allowlist(adapter, 'bool SessionMenuValueCommand(')
 
 
 def prompt_bar_fits(document: dict, name: str) -> None:
@@ -2125,8 +2206,10 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
     value_verbs = cpp_allowlist(adapter, 'bool SessionMenuValueCommand(')
     fields = re.findall(r'"(mpVote[A-Za-z]+)"', re.search(r'RETAINED_MP_VOTE_FIELDS\[\] = \{([^}]*)\};', menu).group(1))
     appearance = re.findall(r'"(mp[A-Za-z]+)"', re.search(r'RETAINED_MP_APPEARANCE_VALUES\[\] = \{([^}]*)\};', menu).group(1))
-    assert set(fields) | set(appearance) == value_verbs and len(fields) + len(appearance) == len(value_verbs), (fields, appearance, value_verbs)
-    assert appearance == [*retained_mp_menus.MODEL_VERBS, 'mpCrosshair']
+    choices = re.findall(r'"(mp[A-Za-z]+)"', re.search(r'RETAINED_MP_MATCH_CHOICES\[\] = \{([^}]*)\};', menu).group(1))
+    assert set(fields) | set(appearance) | set(choices) == value_verbs and \
+        len(fields) + len(appearance) + len(choices) == len(value_verbs), (fields, appearance, choices, value_verbs)
+    assert appearance == [*retained_mp_menus.MODEL_VERBS, 'mpCrosshair'] and choices == ['mpMatchRole']
     enum = [name.strip() for name in re.search(r'enum retainedVoteField_t \{([^}]*)\};', header).group(1).split(',') if name.strip()]
     assert enum[-1] == 'RVF_COUNT'
     keys = [name[len('RVF_'):].lower() for name in enum[:-1]]

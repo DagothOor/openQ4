@@ -150,11 +150,11 @@ static void CheckSchema() {
 static const std::set<std::string> SessionCommands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
 	"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
 	"mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction","mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction",
-	"mpVoteYes","mpVoteNo","mpCallVote","mpRail","mpSettingsControls","mpSettingsGame","mpSettingsSystem","mpMatch"};
+	"mpVoteYes","mpVoteNo","mpCallVote","mpRail","mpSettingsControls","mpSettingsGame","mpSettingsSystem","mpMatch","mpMatchSelect"};
 // The value controls' verbs, which carry the control's new value.
 static const std::set<std::string> SessionValueCommands = {"mpVoteMap","mpVoteGameType","mpVoteTimeLimit","mpVoteFragLimit",
 	"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart","mpVoteBuying","mpVoteKick",
-	"mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair"};
+	"mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair","mpMatchRole"};
 // The player settings the multiplayer card's Settings and Voice pages change.
 static const std::set<std::string> PlayerSettings = {"ui_handicap","cl_player_outline_enemy","cl_player_outline_team",
 	"cl_player_rimlight_enemy","cl_player_rimlight_team","cl_player_visibility_enemy_color","cl_player_visibility_team_color",
@@ -641,7 +641,8 @@ static void CheckMatch(ScreenHost& host, const char* path) {
 	std::string error;
 	Runtime::EventEffects effects;
 	const auto text = [&](const std::string& node, const char* property) {
-		const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented keyword"); return value->text;
+		const auto value = runtime.PresentedValue(node,property);
+		Check(value.has_value(),("a presented keyword: "+node+"."+property).c_str()); return value->text;
 	};
 	const auto number = [&](const std::string& node, const char* property) {
 		const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented value"); return static_cast<float>(value->data[0]);
@@ -650,7 +651,10 @@ static void CheckMatch(ScreenHost& host, const char* path) {
 	const auto section = [&]() { return std::get<double>(runtime.GetState().at("card.match_section")); };
 	// The session's RETAINED_MP_MATCH_TOKENS, by index.
 	enum { REFRESH, READY, TEAM_READY, ARM_FORCE_READY, TIMEOUT, TECH_PAUSE, RESUME, ARM_FORFEIT, ARM_ABORT, REFEREE_LOGOUT,
-		SIDE_A, SIDE_B, FOLLOW_PREV, FOLLOW_NEXT, FOLLOW_FREE, CONFIRM, CANCEL_CONFIRM };
+		SIDE_A, SIDE_B, FOLLOW_PREV, FOLLOW_NEXT, FOLLOW_FREE, CONFIRM, CANCEL_CONFIRM, JOIN_MARINE, JOIN_STROGG, SPECTATE,
+		QUEUE_JOIN, QUEUE_DEFER, QUEUE_LEAVE, ROSTER_ACCEPT, ROSTER_LEAVE, ROSTER_INVITE, ARM_ROSTER_REMOVE, ARM_ROSTER_SUBSTITUTE,
+		ROLE_ASSIGN, TEAM_LOCK, BROADCASTER, ARM_PARTICIPANT_REMOVE, CONTESTANT_BIND };
+	const auto press = [&](MenuInput input, double at) { runtime.MenuAction(input,true,at); runtime.MenuAction(input,false,at+.01); };
 	const auto asked = [&](int token) {
 		return effects.actions.size() == 1 && std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpMatch" &&
 			std::get<double>(runtime.GetState().at("card.match_op")) == token;
@@ -759,19 +763,114 @@ static void CheckMatch(ScreenHost& host, const char* path) {
 	Check(runtime.RunEvent("match_follow_previous",5.6,effects,error) && asked(FOLLOW_PREV) &&
 		runtime.RunEvent("match_follow_next",5.61,effects,error) && asked(FOLLOW_NEXT) &&
 		runtime.RunEvent("match_follow_free",5.62,effects,error) && asked(FOLLOW_FREE),"through the players or free");
-	// The triggers page the sections, around the strip; the others still open the stock page.
+	// The triggers page the sections, around the strip.
 	Check(runtime.RunEvent("onSectionNext",6,effects,error) && section() == 1 && runtime.FocusedControl() == "match-tab-teams","a trigger pages on");
 	runtime.Frame(viewport,6.1);
 	Check(text("match-section-teams","display") == "block" && text("match-section-status","display") == "none","to the Teams section");
-	Check(runtime.RunEvent("stock_match",6.2,effects,error) && effects.actions.size() == 1 &&
-		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpStockPage","which opens the stock page");
-	Check(runtime.RunEvent("match_section_status",6.3,effects,error) && section() == 0 &&
-		runtime.RunEvent("onSectionPrevious",6.4,effects,error) && section() == 5 && runtime.FocusedControl() == "match-tab-evidence",
+	// Teams: each side's own row and its players, the player's own row chosen;
+	// the participants a substitution can bring in; the role; the actions.
+	StateValues teams = {{"mp.match.team.count",4.0},{"mp.match.team.more",false},{"mp.match.team.selected",1.0},
+		{"mp.match.replacement.count",1.0},{"mp.match.replacement.selected",-1.0},{"mp.match.replacement0.c0",std::string("Player")},
+		{"mp.match.role",2.0}};
+	const char* const teamRows[][5] = {{"0","0","Marine","Ready","Lock team"},{"1","0","Player","Marine","Player"},
+		{"0","1","Strogg","Not ready","Unlock team"},{"1","1","Bot","Strogg","Player"}};
+	for (int row = 0; row < 4; ++row) {
+		const std::string key = "mp.match.team"+std::to_string(row);
+		teams[key+".kind"] = std::stod(teamRows[row][0]); teams[key+".side"] = std::stod(teamRows[row][1]);
+		for (int column = 0; column < 3; ++column) teams[key+".c"+std::to_string(column)] = std::string(teamRows[row][2+column]);
+	}
+	const char* const teamOperations[] = {"join_marine","join_strogg","spectate","queue_join","queue_defer","queue_leave","roster_accept",
+		"roster_leave","roster_invite","roster_remove","roster_substitute","role_assign","team_lock","broadcaster","participant_remove",
+		"contestant_bind"};
+	for (const char* name : teamOperations) {
+		const std::string key = std::string("mp.match.op.")+name, id = name;
+		teams[key+".shown"] = id != "broadcaster" && id != "contestant_bind";
+		teams[key+".available"] = id == "join_strogg" || id == "spectate" || id == "roster_remove";
+		teams[key+".label"] = id;
+		teams[key+".reason"] = id == "join_marine" ? std::string("You are on that team.") : std::string("Captains only.");
+	}
+	Check(runtime.SetState(teams,error,6.15),"publish the Teams section");
+	runtime.Frame(viewport,6.2);
+	Check(text("match-teams-live","display") == "block" && text("match-teams-waiting","display") == "none","the Teams section shows the match");
+	for (int row = 0; row < 4; ++row)
+		Check(text("match-team-"+std::to_string(row),"display") == "block","each team row shows");
+	Check(text("match-team-4","display") == "none" && text("match-team-more","display") == "none","and no others");
+	Check(text("match-team-1-c0","text") == "Player" && text("match-team-1-c1","text") == "Marine" &&
+		text("match-team-2-c2","text") == "Unlock team","each row's columns");
+	const auto band = [&](const char* node) { const auto value = runtime.PresentedValue(node,"background-color");
+		Check(value.has_value(),"a row's band"); return *value; };
+	const auto marine = band("match-team-0-band"), strogg = band("match-team-2-band"), player = band("match-team-1-band");
+	Check(Near(static_cast<float>(marine.data[3]),.35f,.01f) && Near(static_cast<float>(marine.data[0]),0x6A/255.f,.01f) &&
+		Near(static_cast<float>(strogg.data[0]),1,.01f) && Near(static_cast<float>(strogg.data[1]),0x7B/255.f,.01f) &&
+		Near(static_cast<float>(player.data[3]),.06f,.01f),"a side's own row takes its team's color, a player's row the plain band");
+	Check(text("match-team-1-chosen","display") == "block" && text("match-team-0-chosen","display") == "none","the row chosen is lit");
+	Check(text("match-replacement-0","display") == "block" && text("match-replacement-0-c0","text") == "Player" &&
+		text("match-replacement-1","display") == "none","the participants a substitution can bring in");
+	const auto selected = [&](int list, int row) {
+		return effects.actions.size() == 1 && std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpMatchSelect" &&
+			std::get<double>(runtime.GetState().at("card.match_list")) == list && std::get<double>(runtime.GetState().at("card.match_row")) == row;
+	};
+	Check(text("match-teams-result","text") == "Ready accepted." &&
+		bounds("match-teams-result").y >= bounds("match-replacement-list").y+bounds("match-replacement-list").height,
+		"the latest result shows under the lists");
+	Check(runtime.RunEvent("match_team_3",6.25,effects,error) && selected(0,3),"choosing a team row names it to the game");
+	Check(runtime.RunEvent("match_replacement_0",6.26,effects,error) && selected(1,0),"as does choosing a participant");
+	// The lists and the actions share the section, inside the page.
+	const auto list = bounds("match-team-list"), actions = bounds("match-team-actions"), section_box = bounds("match-section-teams");
+	Check(list.x+list.width <= actions.x && actions.x+actions.width <= section_box.x+section_box.width+.5f &&
+		bounds("match-replacement-list").y >= list.y+list.height,"the lists lead, the actions beside them");
+	// The actions flow in their column; a hidden one takes no room.
+	Check(Near(bounds("match-join-strogg").y,bounds("match-join-marine").y+32,.5f) &&
+		Near(bounds("match-participant-remove").y,bounds("match-team-lock").y+32,.5f) &&
+		text("match-broadcaster","display") == "none" && text("match-contestant-bind","display") == "none",
+		"the team actions stack, the broadcaster's and the Duel binding only where they apply");
+	Check(text("match-join-marine-lock","display") == "block" && text("match-join-marine-reason","text") == "You are on that team.",
+		"an unavailable team action says why");
+	Check(runtime.RunEvent("match_join_marine",6.3,effects,error) && effects.actions.empty(),"and asks nothing");
+	Check(runtime.RunEvent("match_join_strogg",6.31,effects,error) && asked(JOIN_STROGG) &&
+		runtime.RunEvent("match_spectate",6.32,effects,error) && asked(SPECTATE),"Join Strogg and Spectate ask the game");
+	Check(runtime.RunEvent("match_roster_remove",6.35,effects,error) && asked(ARM_ROSTER_REMOVE),"Remove arms its confirmation");
+	runtime.Frame(viewport,6.6);
+	Check(text("matchRosterRemoveModal","display") == "block" && text("matchRosterRemoveModal-body","text") == "#str_41902","and asks first");
+	Check(runtime.RunEvent("matchRosterRemoveModalNo",6.65,effects,error) && asked(CANCEL_CONFIRM),"No cancels it");
+	runtime.Frame(viewport,7);
+	Check(text("matchRosterRemoveModal","display") == "none" && text("matchRosterSubstituteModal","display") == "none" &&
+		text("matchParticipantRemoveModal","display") == "none","no confirmation stays open");
+	// The role: a choice whose new value reaches the session.
+	Check(text("match-role","display") == "block" && text("match-bind-side","display") == "none","the role, not the Duel sides");
+	Check(runtime.FocusControl("match-role",7.05) && runtime.OpenChoicePopup("match-role",7.05),"the role unfolds");
+	runtime.Frame(viewport,7.1);
+	press(MenuInput::Down,7.15);
+	press(MenuInput::Accept,7.2);
+	const auto roleActions = runtime.TakeActions();
+	Check(roleActions.size() == 1 && roleActions[0].action == "mpMatchRole" && roleActions[0].proposal &&
+		std::get<double>(*roleActions[0].proposal) == 3,"choosing Coach asks for role 3");
+	if (roleActions.size() == 1 && roleActions[0].proposalToken) runtime.AcknowledgeControlProposal(roleActions[0].node,roleActions[0].proposalToken,true);
+	// Where a Duel side can be bound, its sides take the role's place.
+	Check(runtime.SetState({{"mp.match.op.contestant_bind.shown",true},{"mp.match.op.contestant_bind.available",true}},error,7.3),
+		"a Duel side can be bound");
+	runtime.Frame(viewport,7.4);
+	Check(text("match-role","display") == "none" && text("match-bind-side","display") == "block" &&
+		text("match-contestant-bind","display") == "block","the sides take the role's place, and Bind side shows");
+	Check(runtime.RunEvent("match_contestant_bind",7.45,effects,error) && asked(CONTESTANT_BIND),"Bind side asks the game");
+	// Past the card's rows the list offers the stock page.
+	Check(runtime.SetState({{"mp.match.team.more",true}},error,7.5),"more rows than the card has");
+	runtime.Frame(viewport,7.6);
+	Check(text("match-team-more","display") == "block","the list offers the stock page");
+	// The sections not built yet still open the stock page.
+	Check(runtime.RunEvent("onSectionNext",7.7,effects,error) && section() == 2,"on to Proposals");
+	runtime.Frame(viewport,7.8);
+	Check(text("match-section-proposals","display") == "block" && runtime.CanActivateControl("match-proposals-open",7.8),"which hands off");
+	Check(runtime.RunEvent("stock_match",7.9,effects,error) && effects.actions.size() == 1 &&
+		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpStockPage","to the stock page");
+	Check(runtime.RunEvent("match_section_status",8,effects,error) && section() == 0 &&
+		runtime.RunEvent("onSectionPrevious",8.1,effects,error) && section() == 5 && runtime.FocusedControl() == "match-tab-evidence",
 		"back around the strip from Status to Evidence");
-	Check(runtime.RunEvent("tab_vote",6.5,effects,error) && runtime.RunEvent("onSectionNext",6.6,effects,error) && section() == 5,
+	Check(runtime.RunEvent("tab_vote",8.2,effects,error) && runtime.RunEvent("onSectionNext",8.3,effects,error) && section() == 5,
 		"the triggers page sections only on the Match page");
-	runtime.Frame(viewport,6.9);
-	Check(!runtime.CanActivateControl("match-tab-status",6.9) && !runtime.CanActivateControl("match-evidence-open",6.9),
+	runtime.Frame(viewport,8.6);
+	Check(!runtime.CanActivateControl("match-tab-status",8.6) && !runtime.CanActivateControl("match-evidence-open",8.6) &&
+		!runtime.CanActivateControl("match-team-0",8.6) && !runtime.CanActivateControl("match-role",8.6),
 		"the Match page takes no input from another tab");
 }
 
