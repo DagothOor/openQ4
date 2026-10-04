@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -38,8 +39,19 @@ struct ScreenHost final : Host {
 	struct Softened { float sigma = 0, saturation = 1; Bounds region; };
 	std::vector<Softened> softened;
 	std::string language = "english";
+	// The player settings the multiplayer card's Settings and Voice pages read back.
+	std::map<std::string,StateValue> cvars = {{"ui_handicap",100.0},{"s_voiceVolume",1.0},{"s_micInputLevel",5.0},
+		{"s_voiceChatSend",true},{"s_voiceChatReceive",true},{"s_voiceChatEcho",false},{"cl_player_outline_width",std::string("2.0")},
+		{"cl_player_outline_enemy",std::string("0")},{"cl_player_outline_team",std::string("0")},{"cl_player_rimlight_enemy",std::string("0")},
+		{"cl_player_rimlight_team",std::string("0")},{"cl_player_brightskin_enemy",std::string("0")},{"cl_player_brightskin_team",std::string("0")},
+		{"cl_player_visibility_enemy_color",std::string("1 0.12 0.05")},{"cl_player_visibility_team_color",std::string("1 0.12 0.05")},
+		{"cl_player_brightskin_enemy_color",std::string("1 0.05 0.02")},{"cl_player_brightskin_team_color",std::string("1 0.05 0.02")}};
 	bool ReadCVar(const std::string& name, size_t type, StateValue& value) override {
 		if (type == 2 && name == "sys_lang") { value = language; return true; }
+		if (const auto found = cvars.find(name); found != cvars.end()) {
+			if (found->second.index() != type) return false;
+			value = found->second; return true;
+		}
 		if (type != 1) return false;
 		if (name == "ui_retainedReducedMotion") { value = reducedMotion; return true; }
 		if (name == "ui_retainedSoftFocus") { value = softFocus; return true; }
@@ -138,13 +150,25 @@ static void CheckSchema() {
 static const std::set<std::string> SessionCommands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
 	"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
 	"mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction","mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction",
-	"mpVoteYes","mpVoteNo","mpCallVote"};
+	"mpVoteYes","mpVoteNo","mpCallVote","mpRail","mpSettingsControls","mpSettingsGame","mpSettingsSystem"};
 // The value controls' verbs, which carry the control's new value.
 static const std::set<std::string> SessionValueCommands = {"mpVoteMap","mpVoteGameType","mpVoteTimeLimit","mpVoteFragLimit",
-	"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart","mpVoteBuying","mpVoteKick"};
+	"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart","mpVoteBuying","mpVoteKick",
+	"mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair"};
+// The player settings the multiplayer card's Settings and Voice pages change.
+static const std::set<std::string> PlayerSettings = {"ui_handicap","cl_player_outline_enemy","cl_player_outline_team",
+	"cl_player_rimlight_enemy","cl_player_rimlight_team","cl_player_visibility_enemy_color","cl_player_visibility_team_color",
+	"cl_player_brightskin_enemy","cl_player_brightskin_team","cl_player_brightskin_enemy_color","cl_player_brightskin_team_color",
+	"cl_player_outline_width","s_voiceChatSend","s_voiceChatReceive","s_voiceChatEcho","s_voiceVolume","s_micInputLevel"};
 
 static void CheckSessionActions(const Document& document) {
 	for (const auto& [id,action] : document.Model().actions) {
+		if (action.operation == "settings.player.set") {
+			const auto cvar = action.arguments.find("cvar");
+			Check(cvar != action.arguments.end() && action.arguments.size() == 2 && PlayerSettings.contains(std::get<std::string>(cvar->second.literal)) &&
+				action.arguments.at("value").inputValue && action.inputType,"a setting control sets an allowlisted player setting");
+			continue;
+		}
 		const bool value = action.operation == "session.menuValue";
 		Check(action.operation == "session.menu" || value,"production screens request only session operations");
 		const auto command = action.arguments.find("command");
@@ -604,6 +628,136 @@ static void CheckVote(ScreenHost& host, const char* path) {
 	Check(!runtime.CanActivateControl("vote-row-map",4.1) && !runtime.CanActivateControl("vote-call",4.1),"the Vote page takes no input");
 }
 
+// The multiplayer cards' Settings pages and the Escape card's Voice page
+// (section 14.18): the player's rows, the rail color swatches, the
+// appearance table with the teammates' column only in team modes, the hand-
+// offs, and each control requesting its verb or player setting.
+static void CheckSettings(ScreenHost& host, const char* escapePath, const char* welcomePath) {
+	std::string error;
+	Runtime::EventEffects effects;
+	Viewport viewport; viewport.canvasHeight = 720; viewport.width = 1280; viewport.height = 720;
+	const auto press = [](Runtime& runtime, MenuInput input, double at) { runtime.MenuAction(input,true,at); runtime.MenuAction(input,false,at+.01); };
+	// The one action a control queued, resolved through its descriptor.
+	const auto taken = [&](Runtime& runtime, const char* action) {
+		const auto actions = runtime.TakeActions();
+		Check(actions.size() == 1 && actions[0].action == action,"a control requests its action");
+		ActionInvocation invocation;
+		const StateValue* input = actions[0].proposal ? &*actions[0].proposal : nullptr;
+		Check(runtime.ResolveAction(actions[0].action,invocation,error,input),"the action resolves");
+		if (actions[0].proposalToken) runtime.AcknowledgeControlProposal(actions[0].node,actions[0].proposalToken,true);
+		return invocation;
+	};
+	{
+		Runtime runtime(host);
+		std::vector<Diagnostic> diagnostics;
+		Check(runtime.Initialize() && runtime.LoadDocument(Read(escapePath),"guis/menu/mp_escape.q4ui",diagnostics),"the Escape card loads for its Settings page");
+		const auto bounds = [&](const std::string& id) { Bounds b; Check(runtime.GetBounds(id,b),"a settings node is laid out"); return b; };
+		const auto text = [&](const std::string& node, const char* property) {
+			const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented keyword"); return value->text;
+		};
+		StateValues page = {{"mp.settings.name",std::string("Anderson")},{"mp.settings.clan",std::string("Q4")},{"mp.settings.rail",3.0},
+			{"mp.model0_count",3.0},{"mp.model0.0",std::string("Marine")},{"mp.model0.1",std::string("Kane")},{"mp.model0.2",std::string("Rhodes")},
+			{"mp.model0",1.0},{"mp.model0.row_shown",true},{"mp.model1_count",2.0},{"mp.model1.0",std::string("Off")},
+			{"mp.model1.1",std::string("Kane")},{"mp.model1",0.0},{"mp.model1.row_shown",true},{"mp.model2_count",2.0},
+			{"mp.model2.0",std::string("Off")},{"mp.model2.1",std::string("Kane")},{"mp.model2",0.0},{"mp.model2.row_shown",true}};
+		Check(runtime.SetState(page,error,1),"publish the Settings page");
+		Check(runtime.RunEvent("open",1,effects,error) && runtime.RunEvent("tab_settings",1.01,effects,error),"open on the Settings tab");
+		runtime.Frame(viewport,1.4);
+		Check(runtime.FocusedControl() == "settings-name","the page opens on the player's name");
+		// The player's rows stack, the hand-off plates below them inside the page.
+		float previous = bounds("settings-name").y;
+		for (const char* row : {"settings-clan","settings-model","settings-rail","settings-handicap"}) {
+			const auto box = bounds(row);
+			Check(Near(box.y,previous+26,.01f) && Near(box.height,26,.01f),"the player's rows stack");
+			previous = box.y;
+		}
+		const auto system = bounds("settings-mpSettingsSystem"), pageBox = bounds("page-settings");
+		Check(bounds("settings-mpSettingsControls").y >= previous+26 && system.y+system.height <= pageBox.y+pageBox.height+.5f,
+			"Controls, Game Options and System follow inside the page");
+		// Name and clan hand off to the classic Settings page, which edits them.
+		Check(runtime.RunEvent("classic_settings",1.5,effects,error) && effects.actions.size() == 1 &&
+			std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpStockPage" &&
+			std::get<double>(runtime.GetState().at("card.stock_page")) == 4,"name and clan hand off to the classic Settings page");
+		// The swatch the player's tint matches stands taller; each asks the game for its color.
+		const auto chosen = runtime.PresentedValue("settings-rail-3-chip","transform"), other = runtime.PresentedValue("settings-rail-0-chip","transform");
+		Check(chosen && other && chosen->data[1] < -1 && Near(static_cast<float>(other->data[1]),0,.01f),"the player's rail color stands taller");
+		Check(runtime.RunEvent("rail_5",1.6,effects,error) && effects.actions.size() == 1 &&
+			std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpRail" &&
+			std::get<double>(runtime.GetState().at("card.rail")) == 5,"a swatch asks for its color");
+		// The handicap slider and the appearance lists set their player settings.
+		Check(runtime.FocusControl("settings-handicap",1.7),"focus the handicap");
+		press(runtime,MenuInput::Left,1.71);
+		auto invocation = taken(runtime,"set.ui_handicap");
+		Check(invocation.operation == "settings.player.set" && std::get<std::string>(invocation.arguments.at("cvar")) == "ui_handicap" &&
+			std::get<double>(invocation.arguments.at("value")) == 99,"Left lowers the handicap");
+		Check(runtime.FocusControl("settings-row-1-opponents",1.8) && runtime.OpenChoicePopup("settings-row-1-opponents",1.8),"the opponents' outline unfolds");
+		runtime.Frame(viewport,1.85);
+		press(runtime,MenuInput::Down,1.9);
+		press(runtime,MenuInput::Accept,1.95);
+		invocation = taken(runtime,"set.cl_player_outline_enemy");
+		Check(std::get<std::string>(invocation.arguments.at("value")) == "0.35","a level takes its stock value");
+		Check(runtime.FocusControl("settings-row-0-teammates",2) && runtime.OpenChoicePopup("settings-row-0-teammates",2),"the teammates' model unfolds");
+		runtime.Frame(viewport,2.05);
+		press(runtime,MenuInput::Down,2.1);
+		press(runtime,MenuInput::Accept,2.15);
+		Check(std::get<double>(taken(runtime,"mpModelTeam").arguments.at("value")) == 1,"a model asks the game for its row");
+		const auto opponents = bounds("settings-row-1-opponents"), teammates = bounds("settings-row-1-teammates");
+		Check(opponents.x+opponents.width <= teammates.x && Near(opponents.y,teammates.y,.01f),"the teammates' cell stands beside the opponents'");
+		Check(text("settings-team-note","display") == "none","no team-mode note in a team mode");
+		// Outside team modes the teammates' column goes and the note says why.
+		Check(runtime.SetState({{"mp.model2.row_shown",false}},error,2.2),"a deathmatch");
+		runtime.Frame(viewport,2.3);
+		Check(text("settings-row-1-teammates","display") == "none" && text("settings-heading-teammates","display") == "none" &&
+			text("settings-team-note","display") == "block" && !runtime.FocusControl("settings-row-0-teammates",2.31),
+			"outside team modes only the opponents' column shows");
+		// System leaves for the main menu's page.
+		Check(runtime.FocusControl("settings-mpSettingsSystem",2.4),"focus System");
+		press(runtime,MenuInput::Accept,2.41);
+		Check(taken(runtime,"mpSettingsSystem").operation == "session.menu","System leaves for the main menu's page");
+		// The Voice page: its toggles and sliders set their settings; the
+		// push-to-talk key shows when bound; the test waits for voice chat.
+		Check(runtime.RunEvent("tab_voice",3,effects,error),"to the Voice tab");
+		runtime.Frame(viewport,3.3);
+		Check(runtime.FocusedControl() == "voice-send","the Voice page opens on sending voice");
+		press(runtime,MenuInput::Accept,3.31);
+		invocation = taken(runtime,"set.s_voiceChatSend");
+		Check(std::get<std::string>(invocation.arguments.at("cvar")) == "s_voiceChatSend" && !std::get<bool>(invocation.arguments.at("value")),
+			"accept stops sending voice");
+		Check(runtime.FocusControl("voice-volume",3.4),"focus the receive volume");
+		press(runtime,MenuInput::Left,3.41);
+		Check(std::abs(std::get<double>(taken(runtime,"set.s_voiceVolume").arguments.at("value"))-.95) < 1e-6,"Left lowers the volume a step");
+		Check(text("voice-unbound","display") == "block" && text("voice-key","display") == "none","an unbound key says so");
+		Check(runtime.SetState({{"mp.keys.voice_chat",std::string("V")},{"mp.keys.voice_chat_bound",true}},error,3.5),"bind push to talk");
+		runtime.Frame(viewport,3.6);
+		Check(text("voice-unbound","display") == "none" && text("voice-key","display") == "block","the bound key shows");
+		Check(text("voice-test-lock","display") == "block" && text("voice-test-reason","display") == "block","the test is unavailable and says why");
+		Check(runtime.RunEvent("voice_test",3.7,effects,error) && effects.actions.empty(),"and asks nothing");
+	}
+	{
+		Runtime runtime(host);
+		std::vector<Diagnostic> diagnostics;
+		Check(runtime.Initialize() && runtime.LoadDocument(Read(welcomePath),"guis/menu/mp_welcome.q4ui",diagnostics),"the Welcome card loads for its Settings page");
+		const auto text = [&](const std::string& node, const char* property) {
+			const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented keyword"); return value->text;
+		};
+		Check(runtime.SetState({{"mp.crosshair",0.0},{"mp.model0_count",1.0},{"mp.model0.0",std::string("Marine")},{"mp.model0",0.0}},error,1),
+			"publish Welcome's Settings page");
+		Check(runtime.RunEvent("open",1,effects,error) && runtime.RunEvent("tab_settings",1.01,effects,error),"open on Welcome's Settings tab");
+		runtime.Frame(viewport,1.4);
+		Check(runtime.FocusedControl() == "settings-name","Welcome's Settings opens on the player's name");
+		Check(text("settings-crosshair-weapon","display") == "block" && text("settings-crosshair-image","display") == "none",
+			"each weapon's own crosshair, said in words");
+		Check(runtime.SetState({{"mp.crosshair",3.0},{"mp.crosshair_image",std::string("gfx/guis/crosshairs/crosshair_lightninggun")}},error,1.5),
+			"a custom crosshair");
+		runtime.Frame(viewport,1.6);
+		Check(text("settings-crosshair-weapon","display") == "none" && text("settings-crosshair-image","display") == "block","the custom one shows");
+		Check(runtime.FocusControl("settings-crosshair",1.7),"focus the crosshair");
+		press(runtime,MenuInput::Right,1.71);
+		const auto invocation = taken(runtime,"mpCrosshair");
+		Check(invocation.operation == "session.menuValue" && std::get<double>(invocation.arguments.at("value")) == 4,"Right asks for the next crosshair");
+	}
+}
+
 // The multiplayer Welcome card (section 14.18): centered, each mode's join
 // choices, a refused team card, the Players page without choices, the hand-off
 // to the join panel's settings, Spectate on Back and Leave Server asking first.
@@ -695,9 +849,9 @@ static void CheckWelcome(ScreenHost& host, const char* path) {
 	Check(runtime.FocusedControl() == "tab-players" && !runtime.CanActivateControl("players-a-0",4.2),"rows are not choices on Welcome");
 	Check(text("players-a-1","display") == "block" && text("players-a-2","display") == "none" &&
 		text("players-a-1-marker","display") == "block","the lists show their players and the player's own row");
-	// Settings hands off to the join panel's settings for now.
-	Check(runtime.RunEvent("stock_settings",4.3,effects,error) && asked("mpStockPage") &&
-		std::get<double>(runtime.GetState().at("card.stock_page")) == 3,"Settings hands off to the join panel's settings");
+	// Settings' name and clan hand off to the classic Settings page, which edits them.
+	Check(runtime.RunEvent("classic_settings",4.3,effects,error) && asked("mpStockPage") &&
+		std::get<double>(runtime.GetState().at("card.stock_page")) == 3,"name and clan hand off to the classic Settings page");
 	// Back spectates for now; Leave Server asks first.
 	Check(runtime.RunEvent("onBack",4.4,effects,error) && asked("mpClose"),"Back closes the card and the player spectates");
 	Check(runtime.RunEvent("leaveModalShow",4.5,effects,error),"Leave Server asks first");
@@ -1761,6 +1915,7 @@ int main(int argc, char** argv) {
 	}
 	CheckEscape(host,argv[7]);
 	CheckVote(host,argv[7]);
+	CheckSettings(host,argv[7],argv[8]);
 	CheckWelcome(host,argv[8]);
 	Check(host.errors == 0,"no retained diagnostics");
 	std::printf("retained screens: %d checks passed\n",checks);

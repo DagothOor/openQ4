@@ -421,9 +421,11 @@ int main() {
         auto s = Session(true); s.PreloadRetainedScreens();
         CHECK((managerObject.loads == std::vector<std::string>{"guis/menu/title.q4ui", "guis/menu/pause.q4ui"}) && s.guiRetainedHome == nullptr);
         s.UpdateRetainedHome(); CHECK(managerObject.loads.size() == 2 && s.guiRetainedHome == s.guiRetainedTitle);
-        s.PrepareRetainedLevel("mp/q4dm1", true); CHECK(precached.empty());
+        // A multiplayer level loads each card whose pages are all built.
+        const size_t cards = (RETAINED_MP_ESCAPE_MISSING_PAGES[0] == NULL ? 1 : 0) + (RETAINED_MP_WELCOME_MISSING_PAGES[0] == NULL ? 1 : 0);
+        s.PrepareRetainedLevel("mp/q4dm1", true); CHECK(precached.empty() && managerObject.loads.size() == 2 + cards);
         s.PrepareRetainedLevel("game/airdefense1", false);
-        CHECK((precached == std::vector<std::string>{"gfx/guis/loadscreens/generic"}) && managerObject.loads.size() == 3);
+        CHECK((precached == std::vector<std::string>{"gfx/guis/loadscreens/generic"}) && managerObject.loads.size() == 3 + cards);
         CHECK(managerObject.loads.back() == "guis/menu/pause_strogg.q4ui");  // either family may pause the level
         auto late = Session(true); late.PrepareRetainedLevel("game/airdefense1", false); // the gate switched on after startup
         CHECK((managerObject.loads == std::vector<std::string>{"guis/menu/pause.q4ui", "guis/menu/pause_strogg.q4ui"}) && precached.size() == 1);
@@ -767,7 +769,8 @@ int main() {
         // The Vote page's ballots show their keys by name: one bound to a key the
         // engine names, one to a key it does not, and none unbound.
         CHECK(card->state["mp.keys.vote_yes"] == "F1" && card->state["mp.keys.vote_yes_bound"] == "1" &&
-              card->state["mp.keys.vote_no"].empty() && card->state["mp.keys.vote_no_bound"] == "0");
+              card->state["mp.keys.vote_no"].empty() && card->state["mp.keys.vote_no_bound"] == "0" &&
+              card->state["mp.keys.voice_chat"].empty() && card->state["mp.keys.voice_chat_bound"] == "0");
         s.ReportRetainedScreens(); CHECK(commonObject.output.find("multiplayer=1 ") != std::string::npos && commonObject.output.find(" mp=escape ") != std::string::npos);
         // Each frame asks the game for what changed; only a new revision publishes.
         s.UpdateRetainedMultiplayer(); CHECK(gameObject.commands.back() == "retainedMultiplayerState" && card->stateChanges == 2);
@@ -873,6 +876,33 @@ int main() {
         s.HandleRetainedSessionRequest(card, "mpVoteNo");
         CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; retained vote no" && s.guiActive == nullptr &&
               s.guiRetainedMultiplayer == nullptr && card->named.back() == "release");
+        s.guiActive = &mpMenu; s.guiRetainedReleasing = nullptr; s.UpdateRetainedMultiplayer(); CHECK(s.guiRetainedMultiplayer == card);
+        // The Settings pages: a model list's row and the crosshair reach the game
+        // quietly as "retained appearance <slot> <row>" and "retained crosshair
+        // <index>"; a swatch as "retained rail <row>"; Controls, Game Options and
+        // System leave for the main menu's pages. A row below 0, and a swatch
+        // outside the seven, are refused.
+        gameObject.answer = [](const char*) -> const char* { return "continue"; };
+        s.HandleRetainedSessionRequest(card, "mpModelSelf 3"); CHECK(gameObject.guiCommands.back() == "retained appearance 0 3");
+        s.HandleRetainedSessionRequest(card, "mpModelTeam 0"); CHECK(gameObject.guiCommands.back() == "retained appearance 2 0");
+        s.HandleRetainedSessionRequest(card, "mpCrosshair 20"); CHECK(gameObject.guiCommands.back() == "retained crosshair 20");
+        card->state["card.rail"] = "6"; s.HandleRetainedSessionRequest(card, "mpRail");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; retained rail 6" && s.guiRetainedMultiplayer == card);
+        const size_t styled = gameObject.guiCommands.size();
+        s.HandleRetainedSessionRequest(card, "mpModelEnemy -1"); s.HandleRetainedSessionRequest(card, "mpCrosshair x");
+        for (const char* rail : {"-1", "7"}) { card->state["card.rail"] = rail; s.HandleRetainedSessionRequest(card, "mpRail"); }
+        CHECK(gameObject.guiCommands.size() == styled && s.guiRetainedMultiplayer == card);
+        gameObject.answer = [](const char* command) -> const char* {
+            static std::string menu; menu = std::string("main ") + (std::strrchr(command, ' ') + 1); return menu.c_str();
+        };
+        for (const auto& [verb, page] : std::vector<std::pair<const char*, const char*>>{{"mpSettingsControls", "fromMp_toControls"},
+                                                                                         {"mpSettingsGame", "fromMp_toGameoptions"},
+                                                                                         {"mpSettingsSystem", "fromMp_toSystem"}}) {
+            s.guiActive = &mpMenu; s.guiRetainedReleasing = nullptr; s.UpdateRetainedMultiplayer(); CHECK(s.guiRetainedMultiplayer == card);
+            s.HandleRetainedSessionRequest(card, verb);
+            CHECK(gameObject.guiCommands.back() == std::string("play main_menu_selection ; mainMenu ") + page && s.guiActive == s.guiMainMenu &&
+                  s.guiRetainedMultiplayer == nullptr);
+        }
         s.guiActive = &mpMenu; s.guiRetainedReleasing = nullptr; s.UpdateRetainedMultiplayer(); CHECK(s.guiRetainedMultiplayer == card);
         gameObject.answer = nullptr;
         for (const char* page : {"-1", "8"}) {
@@ -1210,6 +1240,19 @@ def retained_system_incomplete(adapter: str) -> dict[str, str]:
     # page keeps its own.
     assert any(action['operation'] == 'settings.system.autodetect' for action in document['actions'].values()), 'the retained SYSTEM page lost Auto-Detect'
     return reasons
+
+
+def player_setting_rules(adapter: str) -> dict:
+    """The adapter's player settings (FindPlayerSetting): each setting's list
+    of values, by the name its rule gives (empty for a range or a Boolean)."""
+    body = function_body(adapter, 'const PlayerSetting* FindPlayerSetting(')
+    lists = {name: re.findall(r'"([^"]*)"', items) for name, items in re.findall(r'static const std::vector<std::string> (\w+) = \{([^}]*)\};', body)}
+    rules = {}
+    for cvar, rule in re.findall(r'\{"(\w+)",\{([^{}]*(?:\{[^}]*\})?)\}\}', body):
+        named = re.search(r',(\w+)$', rule.strip())
+        inline = re.search(r'\{([^}]*)\}', rule)
+        rules[cvar] = lists[named.group(1)] if named and named.group(1) in lists else re.findall(r'"([^"]*)"', inline.group(1)) if inline else []
+    return rules
 
 
 def cpp_allowlist(text: str, function: str = 'bool SessionMenuCommand(') -> set[str]:
@@ -1664,8 +1707,12 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
     for index, (ident, _key, window) in enumerate(retained_mp_menus.WELCOME_TABS):
         if window is not None:
             assert f'windowDef {window}\n' in stock_menu.replace('\r\n', '\n'), f'the stock menu has no {window}'
-            assert welcome_document['events'][f'stock_{ident}'] == [{'op': 'setState', 'values': {'card.stock_page': index}},
-                                                                   {'op': 'action', 'action': 'mpStockPage'}], ident
+            # A built page hands off only what it cannot edit yet (name and clan).
+            handoff = welcome_document['events'].get(f'stock_{ident}', welcome_document['events'].get(f'classic_{ident}'))
+            assert handoff == [{'op': 'setState', 'values': {'card.stock_page': index}}, {'op': 'action', 'action': 'mpStockPage'}], ident
+    escape_settings = [index for index, (ident, _key, _window) in enumerate(retained_mp_menus.ESCAPE_TABS) if ident == 'settings'][0]
+    assert document['events']['classic_settings'] == [{'op': 'setState', 'values': {'card.stock_page': escape_settings}},
+                                                      {'op': 'action', 'action': 'mpStockPage'}]
     assert welcome_document['events']['onBack'] == [{'op': 'action', 'action': 'mpClose'}]
     prompt_bar_fits(document, 'mp_escape')
     prompt_bar_fits(welcome_document, 'mp_welcome')
@@ -1679,8 +1726,8 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
     # The join offer is the Welcome card's; the card's softening replaces the join panel's blur.
     assert 'const bool allowed = currentMenu == 1 && mainGui != NULL && !IsArenaCampaignMatch();' in cover
     assert cover.index('retainedMenuCovered = true;') < cover.index('SetJoinScreenSoftFocus( false );')
-    assert ('return joinScreenPending || ( player != NULL && player->spectating && !cvarSystem->GetCVarBool( "ui_joined" ) );'
-            in function_body(mp_game, 'bool idMultiplayerGame::RetainedMenuWelcome('))
+    assert ('return joinScreenPending || ( player != NULL && player->spectating && !cvarSystem->GetCVarBool( "ui_joined" ) &&\n'
+            '\t\t!cvarSystem->GetCVarBool( "ui_autoJoin" ) );' in function_body(mp_game, 'bool idMultiplayerGame::RetainedMenuWelcome(').replace('\r\n', '\n'))
     draw = function_body(mp_game, 'bool idMultiplayerGame::Draw(')
     assert 'if ( !retainedMenuCovered ) {\n\t\t\t\tmainGui->Redraw( gameLocal.time );' in draw.replace('\r\n', '\n')
     assert 'retainedMenuCovered = false;' in function_body(mp_game, 'void idMultiplayerGame::DisableMenu(')
@@ -1749,7 +1796,9 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
     adapter = (ROOT / 'src/ui/UserInterfaceRetained.cpp').read_text(encoding='utf-8', errors='replace')
     value_verbs = cpp_allowlist(adapter, 'bool SessionMenuValueCommand(')
     fields = re.findall(r'"(mpVote[A-Za-z]+)"', re.search(r'RETAINED_MP_VOTE_FIELDS\[\] = \{([^}]*)\};', menu).group(1))
-    assert set(fields) == value_verbs and len(fields) == len(value_verbs), (fields, value_verbs)
+    appearance = re.findall(r'"(mp[A-Za-z]+)"', re.search(r'RETAINED_MP_APPEARANCE_VALUES\[\] = \{([^}]*)\};', menu).group(1))
+    assert set(fields) | set(appearance) == value_verbs and len(fields) + len(appearance) == len(value_verbs), (fields, appearance, value_verbs)
+    assert appearance == [*retained_mp_menus.MODEL_VERBS, 'mpCrosshair']
     enum = [name.strip() for name in re.search(r'enum retainedVoteField_t \{([^}]*)\};', header).group(1).split(',') if name.strip()]
     assert enum[-1] == 'RVF_COUNT'
     keys = [name[len('RVF_'):].lower() for name in enum[:-1]]
@@ -1762,8 +1811,28 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
                                              'arguments': {'command': verb, 'value': {'input': 'value'}}}, verb
     assert f'static const int RETAINED_VOTE_LINES = {retained_mp_menus.VOTE_LINES};' in header
     request = function_body(menu, 'void idSessionLocal::HandleRetainedMultiplayerRequest(')
-    assert request.index('} else if ( Session_RetainedVoteField( request, voteField, voteValue ) ) {') < \
-        request.index('gameCommand = va( "retained voteSet %d %d", voteField, voteValue );')
+    assert request.index('} else if ( Session_RetainedValueRequest( request, RETAINED_MP_VOTE_FIELDS,') < \
+        request.index('gameCommand = va( "retained voteSet %d %d", voteField, voteValue );') < \
+        request.index('} else if ( Session_RetainedValueRequest( request, RETAINED_MP_APPEARANCE_VALUES,') < \
+        request.index('gameCommand = voteField < 3 ? va( "retained appearance %d %d", voteField, voteValue ) : va( "retained crosshair %d", voteValue );')
+    # The Settings pages: the game, the session and the document agree on the
+    # model lists and the swatches; the adapter allows the document's
+    # settings with the lists' own values; the appearance commands keep the
+    # menu open.
+    assert f'static const int RETAINED_MODEL_SLOTS = {retained_mp_menus.MODEL_SLOTS};' in header
+    assert f'static const int RETAINED_MODEL_ROWS = {retained_mp_menus.MODEL_ROWS};' in header
+    rails = len(retained_mp_menus.RAIL_SWATCHES)
+    assert f'static const int RETAINED_RAIL_COLORS = {rails};' in header and f'static const int RETAINED_MP_RAIL_COLORS = {rails};' in menu
+    assert len(re.findall(r'"\d+ [\d.]+ 1"', function_body(mp_game, 'const char *idMultiplayerGame::RetainedRailColor('))) == rails
+    adapter_rules = player_setting_rules(adapter)
+    for _label, enemy, team, _key, values in retained_mp_menus.APPEARANCE_ROWS:
+        assert adapter_rules[enemy] == list(values) and adapter_rules[team] == list(values), enemy
+        assert document['actions'][f'set.{enemy}']['operation'] == 'settings.player.set'
+    assert adapter_rules['cl_player_outline_width'] == list(retained_mp_menus.OUTLINE_WIDTHS)
+    for verb in ('appearance', 'rail', 'crosshair'):
+        branch = command[command.index(f'if ( !sub.Icmp( "{verb}" )'):]
+        branch = branch[:branch.index('return false;')]
+        assert 'retainedMenuCovered' in branch and 'DisableMenu' not in branch, verb
     # The game: a ballot only while the player can cast one, a drafted field
     # checked against its rules without closing the menu, and a call only of
     # the fields that differ from the server's, closing the menu.
@@ -1986,6 +2055,7 @@ def main() -> int:
     assert generator.returncode == 0, generator.stderr
     allowlist = cpp_allowlist(adapter)
     value_allowlist = cpp_allowlist(adapter, 'bool SessionMenuValueCommand(')
+    player_settings = player_setting_rules(adapter)
     handled = set(re.findall(r'\{ "([A-Za-z][A-Za-z0-9]*)",\s+"main_b_', menu)) | set(re.findall(r'!idStr::Icmp\( request, "([A-Za-z][A-Za-z0-9]*)" \)', menu))
     assert allowlist == handled, f'allowlist {sorted(allowlist)} differs from session handlers {sorted(handled)}'
     for relative in ('content/baseoq4/pak0/guis/menu/title.q4ui', 'content/baseoq4/pak0/guis/menu/pause.q4ui',
@@ -2001,7 +2071,9 @@ def main() -> int:
             layers = [child['id'] for child in document['root']['children'][2]['children']]
             assert layers.index('objectives-bar') < layers.index('band-top') < layers.index('objectives'), relative
         for action in document.get('actions', {}).values():
-            if action['operation'] == 'session.menuValue':
+            if action['operation'] == 'settings.player.set':
+                assert action['arguments']['cvar'] in player_settings and action['arguments']['value'] == {'input': 'value'}, relative
+            elif action['operation'] == 'session.menuValue':
                 assert action['arguments']['command'] in value_allowlist and action['arguments']['value'] == {'input': 'value'}, relative
             else:
                 assert action['operation'] == 'session.menu' and action['arguments']['command'] in allowlist, relative

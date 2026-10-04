@@ -16132,12 +16132,14 @@ idMultiplayerGame::RetainedMenuWelcome
 Welcome while the player has not answered the join offer: the offer stands,
 or ui_joined is still 0 while the player spectates (closing the offer with
 Esc leaves it so, and the menu key opens Welcome again). An explicit join or
-Spectate answers it, and the menu key opens Escape from then on.
+Spectate answers it, and the menu key opens Escape from then on. A player
+with ui_autoJoin never sees the offer, so never Welcome either.
 ================
 */
 bool idMultiplayerGame::RetainedMenuWelcome( void ) {
 	const idPlayer *player = gameLocal.GetLocalPlayer();
-	return joinScreenPending || ( player != NULL && player->spectating && !cvarSystem->GetCVarBool( "ui_joined" ) );
+	return joinScreenPending || ( player != NULL && player->spectating && !cvarSystem->GetCVarBool( "ui_joined" ) &&
+		!cvarSystem->GetCVarBool( "ui_autoJoin" ) );
 }
 
 /*
@@ -16735,6 +16737,133 @@ void idMultiplayerGame::PublishRetainedVote( idUserInterface *card, bool &change
 	publish( "mp.vote.kick", va( "%d", retainedVoteKick.FindIndex( retainedVoteDraft[ RVF_KICK ] ) ) );
 }
 
+// A stock menu list ("a;b;c") as its items.
+static void MPRetainedSplitList( const idStr &text, idStrList &items ) {
+	items.Clear();
+	for ( int start = 0, i = 0; text.Length() > 0 && i <= text.Length(); i++ ) {
+		if ( i == text.Length() || text[ i ] == ';' ) {
+			items.Append( text.Mid( start, i - start ) );
+			start = i + 1;
+		}
+	}
+}
+
+/*
+================
+idMultiplayerGame::RetainedModelChoice
+
+One of the Settings pages' model lists, as the stock appearance tabs build
+them: 0 the player's own model for the mode and team, 1 the model forced on
+enemies, 2 the model forced on teammates (team modes only, false
+elsewhere). Gives the setting it changes, its values and names by row, and
+the row it holds now (the def's default for an unset own model, Disabled for
+an unset forced one), or -1.
+================
+*/
+bool idMultiplayerGame::RetainedModelChoice( int slot, idStr &cvar, idStrList &values, idStrList &names, int &current ) {
+	values.Clear();
+	names.Clear();
+	current = -1;
+	const bool isTeamGame = gameLocal.IsTeamGame();
+	if ( slot < 0 || slot >= RETAINED_MODEL_SLOTS || ( slot == 2 && !isTeamGame ) ) {
+		return false;
+	}
+	const int tab = slot == 0 ? MP_MENU_APPEARANCE_SELF : slot == 1 ? MP_MENU_APPEARANCE_ENEMY : MP_MENU_APPEARANCE_TEAM;
+	const int modelTeam = ResolveMPMenuAppearanceTeam( tab, isTeamGame, ResolveMPMenuModelTeam() );
+	const bool force = MPMenuAppearanceForcesModel( tab );
+	const idDeclEntityDef *def = FindMPMenuModelDef();
+	cvar = GetMPMenuAppearanceModelCVar( tab, modelTeam );
+	idStr buildValues, buildNames;
+	BuildMPMenuModelList( def, isTeamGame, modelTeam, buildValues, buildNames, force );
+	MPRetainedSplitList( buildValues, values );
+	MPRetainedSplitList( buildNames, names );
+	if ( names.Num() != values.Num() ) {
+		names = values;
+	}
+	if ( values.Num() > RETAINED_MODEL_ROWS ) {
+		values.SetNum( RETAINED_MODEL_ROWS );
+		names.SetNum( RETAINED_MODEL_ROWS );
+	}
+	idStr selected = cvarSystem->GetCVarString( cvar.c_str() );
+	if ( MPMenuModelSelectionDisabled( selected ) ) {
+		selected = force ? "_disabled" : "";
+	}
+	if ( !selected.Length() && def != NULL ) {
+		selected = def->dict.GetString( modelTeam >= 0 && modelTeam < TEAM_MAX ? va( "def_default_model_%s", mpMenuModelTeamSuffix[ modelTeam ] ) :
+			"def_default_model" );
+	}
+	for ( int i = 0; i < values.Num() && current < 0; i++ ) {
+		if ( !values[ i ].Icmp( selected ) ) {
+			current = i;
+		}
+	}
+	return true;
+}
+
+// The stock rail color swatches' settings, by row.
+const char *idMultiplayerGame::RetainedRailColor( int row ) {
+	static const char *const colors[ RETAINED_RAIL_COLORS ] = {
+		"0 1 1", "30 1 1", "60 1 1", "120 0.6 1", "180 1 1", "240 0.6 1", "300 1 1"
+	};
+	return row >= 0 && row < RETAINED_RAIL_COLORS ? colors[ row ] : NULL;
+}
+
+// The custom crosshairs, as the stock picker steps through them.
+void idMultiplayerGame::RetainedCrosshairs( idStrList &crosshairs ) {
+	crosshairs.Clear();
+	const idDeclEntityDef *def = static_cast<const idDeclEntityDef *>( declManager->FindType( DECL_ENTITYDEF, "player_marine_mp", false, true ) );
+	for ( const idKeyValue *kv = def != NULL ? def->dict.MatchPrefix( "mtr_crosshair", NULL ) : NULL; kv != NULL;
+		kv = def->dict.MatchPrefix( "mtr_crosshair", kv ) ) {
+		crosshairs.Append( kv->GetValue() );
+	}
+}
+
+/*
+================
+idMultiplayerGame::PublishRetainedSettings
+
+The Settings pages (section 14.18): the player's name and clan, each model
+list with the row it holds, the rail color swatch the player's tint matches
+by hue (-1 for another tint), and the crosshair: 0 for each weapon's own,
+or the custom one's place in the stock picker's list, with its image.
+================
+*/
+void idMultiplayerGame::PublishRetainedSettings( idUserInterface *card, bool &changed ) {
+	const auto publish = [&]( const char *key, const char *value ) { changed |= PublishRetainedValue( card, key, value ); };
+	publish( "mp.settings.name", MPRetainedPlainText( cvarSystem->GetCVarString( "ui_name" ), 64, 1 ).c_str() );
+	publish( "mp.settings.clan", MPRetainedPlainText( cvarSystem->GetCVarString( "ui_clan" ), 64, 1 ).c_str() );
+	for ( int slot = 0; slot < RETAINED_MODEL_SLOTS; slot++ ) {
+		idStr cvar;
+		idStrList values, names;
+		int current = -1;
+		const bool shown = RetainedModelChoice( slot, cvar, values, names, current );
+		publish( va( "mp.model%d.row_shown", slot ), shown ? "1" : "0" );
+		for ( int row = 0; row < RETAINED_MODEL_ROWS; row++ ) {
+			publish( va( "mp.model%d.%d", slot, row ), row < names.Num() ? MPRetainedPlainText( names[ row ].c_str(), 64, 1 ).c_str() : "" );
+		}
+		publish( va( "mp.model%d_count", slot ), va( "%d", values.Num() ) );
+		publish( va( "mp.model%d", slot ), va( "%d", current ) );
+	}
+	const float hue = atof( cvarSystem->GetCVarString( "ui_hitscanTint" ) );
+	int rail = -1;
+	for ( int i = 0; i < RETAINED_RAIL_COLORS && rail < 0; i++ ) {
+		if ( idMath::Fabs( hue - static_cast<float>( atof( RetainedRailColor( i ) ) ) ) < 0.5f ) {
+			rail = i;
+		}
+	}
+	publish( "mp.settings.rail", va( "%d", rail ) );
+	idStrList crosshairs;
+	RetainedCrosshairs( crosshairs );
+	int crosshair = 0;
+	if ( cvarSystem->GetCVarBool( "g_crosshairCustom" ) ) {
+		const int found = crosshairs.FindIndex( cvarSystem->GetCVarString( "g_crosshairCustomFile" ) );
+		crosshair = found >= 0 ? found + 1 : 0;
+	}
+	publish( "mp.crosshair", va( "%d", crosshair ) );
+	publish( "mp.crosshair_count", va( "%d", crosshairs.Num() ) );
+	publish( "mp.crosshair_image", crosshair > 0 ? crosshairs[ crosshair - 1 ].c_str() : "" );
+}
+
 bool idMultiplayerGame::PublishRetainedValue( idUserInterface *card, const char *key, const char *value ) {
 	if ( retainedMenuPublished.FindKey( key ) != NULL && !idStr::Cmp( retainedMenuPublished.GetString( key ), value ) ) {
 		return false;
@@ -16885,6 +17014,7 @@ void idMultiplayerGame::PublishRetainedMenu( idUserInterface *card ) {
 	PublishRetainedPlayers( card, changed );
 	PublishRetainedWelcome( card, changed );
 	PublishRetainedVote( card, changed );
+	PublishRetainedSettings( card, changed );
 	if ( changed ) {
 		card->SetStateInt( "mp.revision", ++retainedMenuRevision );
 	}
@@ -16900,6 +17030,9 @@ an action that is unavailable now does nothing and keeps the menu open.
 Joining, spectating and readying close the menu, as the stock buttons do.
 "retained welcome <slot>" chooses one of the Welcome card's Join page
 actions in the same way.
+"retained appearance <slot> <row>", "retained rail <row>" and "retained
+crosshair <index>" set the Settings pages' model, rail color and crosshair,
+each checked against its list, and keep the menu open.
 "retained vote yes|no" votes in the running vote and closes the menu, as the
 stock buttons do; "retained voteSet <field> <value>" changes one field of the
 call being drafted, checked against the field's rules, and "retained
@@ -16940,6 +17073,50 @@ bool idMultiplayerGame::HandleRetainedMenuCommand( const idCmdArgs &args, int &i
 			return false;
 		}
 		return RunRetainedAction( slot.action );
+	}
+	const auto smallNumber = []( const idStr &text, int &value ) {
+		bool digits = text.Length() >= 1 && text.Length() <= 2;
+		for ( int i = 0; digits && i < text.Length(); i++ ) {
+			digits = text[ i ] >= '0' && text[ i ] <= '9';
+		}
+		value = digits ? atoi( text.c_str() ) : -1;
+		return digits;
+	};
+	if ( !sub.Icmp( "appearance" ) && args.Argc() - icmd >= 2 && retainedMenuCovered ) {
+		const idStr slotText = args.Argv( icmd++ ), rowText = args.Argv( icmd++ );
+		int slot = -1, row = -1;
+		idStr cvar;
+		idStrList values, names;
+		int current = -1;
+		if ( smallNumber( slotText, slot ) && smallNumber( rowText, row ) && slot < RETAINED_MODEL_SLOTS &&
+			RetainedModelChoice( slot, cvar, values, names, current ) && row < values.Num() ) {
+			cvarSystem->SetCVarString( cvar.c_str(), values[ row ].c_str() );
+		}
+		return false;
+	}
+	if ( !sub.Icmp( "rail" ) && args.Argc() - icmd >= 1 && retainedMenuCovered ) {
+		int row = -1;
+		if ( smallNumber( args.Argv( icmd++ ), row ) && row < RETAINED_RAIL_COLORS ) {
+			cvarSystem->SetCVarString( "ui_hitscanTint", RetainedRailColor( row ) );
+		}
+		return false;
+	}
+	if ( !sub.Icmp( "crosshair" ) && args.Argc() - icmd >= 1 && retainedMenuCovered ) {
+		int index = -1;
+		idStrList crosshairs;
+		RetainedCrosshairs( crosshairs );
+		if ( smallNumber( args.Argv( icmd++ ), index ) && index <= crosshairs.Num() ) {
+			// 0 is each weapon's own crosshair; the others are the stock picker's.
+			cvarSystem->SetCVarBool( "g_crosshairCustom", index > 0 );
+			if ( index > 0 ) {
+				const idMaterial *material = declManager->FindMaterial( crosshairs[ index - 1 ].c_str() );
+				if ( material != NULL ) {
+					material->SetSort( SS_GUI );
+				}
+				cvarSystem->SetCVarString( "g_crosshairCustomFile", crosshairs[ index - 1 ].c_str() );
+			}
+		}
+		return false;
 	}
 	if ( !sub.Icmp( "vote" ) && args.Argc() - icmd >= 1 ) {
 		const idStr ballot = args.Argv( icmd++ );

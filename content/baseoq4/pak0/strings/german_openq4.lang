@@ -1211,4 +1211,9 @@
 	"#str_231051"	"Ändere eine Einstellung zum Abstimmen."
 	"#str_231052"	"Vom Server gesperrt."
 	"#str_231053"	"Niemand"
+	"#str_231054"	"PUSH-TO-TALK"
+	"#str_231055"	"Nicht belegt"
+	"#str_231056"	"MIKROFON TESTEN"
+	"#str_231057"	"Sprachchat ist nicht verfügbar."
+	"#str_231058"	"Je nach Waffe"
 }

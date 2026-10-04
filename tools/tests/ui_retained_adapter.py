@@ -124,6 +124,12 @@ struct CVars {
     float GetCVarFloat(const char*) const { return brightness; }
     void SetCVarFloat(const char* name,float value) { assert(!std::strcmp(name,"r_brightness")); brightness=value; ++writes; history.emplace_back(name,value); }
     void SetCVarBool(const char* name,bool value) { assert(!std::strcmp(name,"r_shadows")); shadows=value; ++writes; history.emplace_back(name,value?1:0); }
+    // The player settings' text and integer forms.
+    std::map<std::string,std::string> strings;
+    const char* GetCVarString(const char* name) { return strings[name].c_str(); }
+    void SetCVarString(const char* name,const char* value) { strings[name]=value; ++writes; }
+    int GetCVarInteger(const char* name) { return std::atoi(strings[name].c_str()); }
+    void SetCVarInteger(const char* name,int value) { strings[name]=std::to_string(value); ++writes; }
 } cvars,*cvarSystem=&cvars;
 struct Console { bool open=false; bool Active() const { return open; } } consoleObject,*console=&consoleObject;
 static bool windowFocused=true;
@@ -1095,6 +1101,30 @@ static void CheckEventBridge() {
     auto unlisted=valueAction; unlisted.arguments.at("command").literal=std::string("mpClose"); assert(!ValidOperation(unlisted));
     auto fixed=valueAction; fixed.arguments.at("value").inputValue=false; assert(!ValidOperation(fixed));
     auto computed=valueAction; computed.arguments.at("command").state="card.verb"; assert(!ValidOperation(computed));
+    // A player setting takes its stock control's values: a slider's range
+    // (whole numbers for an integer setting), a Boolean, or one of a list's
+    // values as its text; nothing else may be set.
+    const auto setting=[](const char* cvar,StateValue value) {
+        return ActionInvocation{"x","settings.player.set",{{"cvar",std::string(cvar)},{"value",value}}};
+    };
+    for (const auto& good : {setting("ui_handicap",1.0),setting("ui_handicap",100.0),setting("s_voiceVolume",.35),setting("s_micInputLevel",10.0),
+                             setting("s_voiceChatEcho",true),setting("cl_player_outline_enemy",std::string("0.35")),
+                             setting("cl_player_visibility_team_color",std::string("1 1 1")),setting("cl_player_outline_width",std::string("6.0"))})
+        assert(ValidInvocation(good,error));
+    for (const auto& bad : {setting("ui_handicap",0.0),setting("ui_handicap",50.5),setting("s_voiceVolume",1.5),setting("s_voiceChatEcho",1.0),
+                            setting("cl_player_outline_enemy",std::string("0.4")),setting("cl_player_outline_enemy",.35),
+                            setting("cl_player_outline_width",std::string("2")),setting("rcon_password",std::string("x")),
+                            setting("r_brightness",1.0),ActionInvocation{"x","settings.player.set",{{"cvar",std::string("ui_handicap")}}}})
+        assert(!ValidInvocation(bad,error));
+    Action settingAction; settingAction.operation="settings.player.set"; settingAction.inputType=0;
+    Expression handicap; handicap.type=2; handicap.literal=std::string("ui_handicap");
+    settingAction.arguments={{"cvar",handicap},{"value",operand}};
+    assert(ValidOperation(settingAction));
+    auto stringInput=settingAction; stringInput.arguments.at("value").type=2; assert(!ValidOperation(stringInput));
+    auto literalValue=settingAction; literalValue.arguments.at("value").inputValue=false; literalValue.arguments.at("value").literal=50.0;
+    assert(ValidOperation(literalValue));
+    literalValue.arguments.at("value").literal=0.0; assert(!ValidOperation(literalValue));
+    auto unknown=settingAction; unknown.arguments.at("cvar").literal=std::string("g_password"); assert(!ValidOperation(unknown));
     auto eventControl=modelTemplate; eventControl.events["selected"]={"selected",{}};
     eventControl.root.control->action.clear(); eventControl.root.control->event="SELECTED";
     assert(ValidateApplication(eventControl,error)); eventControl.events.clear(); assert(!ValidateApplication(eventControl,error));

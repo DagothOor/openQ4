@@ -107,10 +107,10 @@ static const int RETAINED_MP_PROTOCOL = 1;
 // ui_retainedMultiplayer opts into it. ui_retained_gate.py keeps each list
 // equal to its card's hand-off pages.
 static const char *const RETAINED_MP_ESCAPE_MISSING_PAGES[] = {
-	"match", "settings", "voice", "admin", NULL
+	"match", "admin", NULL
 };
 static const char *const RETAINED_MP_WELCOME_MISSING_PAGES[] = {
-	"settings", NULL
+	NULL
 };
 // The Team page's action slots (card.team_action); the game derives each
 // slot's action again from the player's state when it is chosen.
@@ -122,6 +122,13 @@ static const char *const RETAINED_MP_VOTE_FIELDS[] = {
 	"mpVoteMap", "mpVoteGameType", "mpVoteTimeLimit", "mpVoteFragLimit", "mpVoteCaptureLimit", "mpVoteTourneyLimit",
 	"mpVoteControlTime", "mpVoteBalance", "mpVoteShuffle", "mpVoteRestart", "mpVoteBuying", "mpVoteKick"
 };
+// The Settings pages' value controls, "<verb> <row>": the three model lists
+// (the game's slots 0 to 2) and the crosshair.
+static const char *const RETAINED_MP_APPEARANCE_VALUES[] = {
+	"mpModelSelf", "mpModelEnemy", "mpModelTeam", "mpCrosshair"
+};
+// The stock rail color swatches (card.rail); the game holds their settings.
+static const int RETAINED_MP_RAIL_COLORS = 7;
 // The Players page names players by client number (card.client), which the
 // game checks against its lists again.
 static const int RETAINED_MP_CLIENTS = MAX_ASYNC_CLIENTS;
@@ -162,17 +169,17 @@ static const char *Session_RetainedMultiplayerStockPage( bool welcome, int page,
 	return page >= 0 && page < count ? pages[ page ] : NULL;
 }
 
-// A Vote page field's request, "<verb> <value>": the field's index in
-// RETAINED_MP_VOTE_FIELDS and a whole number from -1 to 999.
-static bool Session_RetainedVoteField( const char *request, int &field, int &value ) {
+// A value control's request, "<verb> <value>": the verb's index in `verbs`
+// and a whole number from -1 to 999.
+static bool Session_RetainedValueRequest( const char *request, const char *const *verbs, int count, int &field, int &value ) {
 	const char *space = strchr( request, ' ' );
 	if ( space == NULL || space == request ) {
 		return false;
 	}
 	const int verbLength = static_cast<int>( space - request );
 	field = -1;
-	for ( int i = 0; i < static_cast<int>( sizeof( RETAINED_MP_VOTE_FIELDS ) / sizeof( RETAINED_MP_VOTE_FIELDS[0] ) ); i++ ) {
-		if ( static_cast<int>( strlen( RETAINED_MP_VOTE_FIELDS[ i ] ) ) == verbLength && !idStr::Icmpn( request, RETAINED_MP_VOTE_FIELDS[ i ], verbLength ) ) {
+	for ( int i = 0; i < count; i++ ) {
+		if ( static_cast<int>( strlen( verbs[ i ] ) ) == verbLength && !idStr::Icmpn( request, verbs[ i ], verbLength ) ) {
 			field = i;
 		}
 	}
@@ -5662,6 +5669,10 @@ void idSessionLocal::UpdateRetainedMultiplayer() {
 		card->SetStateBool( "mp.keys.vote_yes_bound", yesKey.Length() > 0 );
 		card->SetStateString( "mp.keys.vote_no", noKey.c_str() );
 		card->SetStateBool( "mp.keys.vote_no_bound", noKey.Length() > 0 );
+		// And the push-to-talk key, for the Voice page.
+		const idStr talkKey = Session_RetainedBoundKey( "_voiceChat" );
+		card->SetStateString( "mp.keys.voice_chat", talkKey.c_str() );
+		card->SetStateBool( "mp.keys.voice_chat_bound", talkKey.Length() > 0 );
 		card->StateChanged( now );
 		card->Activate( true, now );
 		card->HandleNamedEvent( "open" );
@@ -5749,10 +5760,12 @@ The card's verbs, each the stock menu's own command with its selection
 sound: Resume closes the menu, Main Menu leaves for the main menu with the
 match running, Disconnect (after the card's own confirmation) leaves the
 server, the Team page's and the Welcome card's Join page actions, the
-Players page's selection, Mute and Friend, and the Vote page's ballots, call
-and drafted fields go to the game, and a page still in development hands off
-to its stock page. Every other request is refused, as the card's own verbs
-are anywhere else.
+Players page's selection, Mute and Friend, the Vote page's ballots, call
+and drafted fields, and the Settings pages' models, rail color and
+crosshair go to the game; Controls, Game Options and System leave for the
+main menu's pages; and a page still in development, or one the card cannot
+edit yet (name and clan), hands off to its stock page. Every other request
+is refused, as the card's own verbs are anywhere else.
 ===============
 */
 void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, const char *request ) {
@@ -5799,10 +5812,31 @@ void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, con
 			"play main_menu_selection ; retained vote no";
 	} else if ( !idStr::Icmp( request, "mpCallVote" ) ) {
 		command = "play main_menu_selection ; retained callVote";
-	} else if ( Session_RetainedVoteField( request, voteField, voteValue ) ) {
+	} else if ( Session_RetainedValueRequest( request, RETAINED_MP_VOTE_FIELDS,
+		static_cast<int>( sizeof( RETAINED_MP_VOTE_FIELDS ) / sizeof( RETAINED_MP_VOTE_FIELDS[0] ) ), voteField, voteValue ) ) {
 		// A drafted field changes quietly, and the menu stays open.
 		gameCommand = va( "retained voteSet %d %d", voteField, voteValue );
 		command = gameCommand.c_str();
+	} else if ( Session_RetainedValueRequest( request, RETAINED_MP_APPEARANCE_VALUES,
+		static_cast<int>( sizeof( RETAINED_MP_APPEARANCE_VALUES ) / sizeof( RETAINED_MP_APPEARANCE_VALUES[0] ) ), voteField, voteValue ) &&
+		voteValue >= 0 ) {
+		// A model or the crosshair changes quietly, and the menu stays open.
+		gameCommand = voteField < 3 ? va( "retained appearance %d %d", voteField, voteValue ) : va( "retained crosshair %d", voteValue );
+		command = gameCommand.c_str();
+	} else if ( !idStr::Icmp( request, "mpRail" ) ) {
+		const int rail = gui->State().GetInt( "card.rail", "-1" );
+		if ( rail < 0 || rail >= RETAINED_MP_RAIL_COLORS ) {
+			common->Warning( "retained UI: the multiplayer card asked for rail color %d", rail );
+			return;
+		}
+		gameCommand = va( "play main_menu_selection ; retained rail %d", rail );
+		command = gameCommand.c_str();
+	} else if ( !idStr::Icmp( request, "mpSettingsControls" ) ) {
+		command = "play main_menu_selection ; mainMenu fromMp_toControls";
+	} else if ( !idStr::Icmp( request, "mpSettingsGame" ) ) {
+		command = "play main_menu_selection ; mainMenu fromMp_toGameoptions";
+	} else if ( !idStr::Icmp( request, "mpSettingsSystem" ) ) {
+		command = "play main_menu_selection ; mainMenu fromMp_toSystem";
 	} else if ( !idStr::Icmp( request, "mpClose" ) ) {
 		command = "play main_menu_selection ; close";
 	} else if ( !idStr::Icmp( request, "mpMainMenu" ) ) {

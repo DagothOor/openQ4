@@ -6,21 +6,25 @@ with one card over the live, softened match (section 14.18 of the
 Escape card's shell came first: the card, its header, the eight-tab strip, the
 prompt bar, the Disconnect confirmation, the softening and its release, and the
 session and game plumbing that let the card cover the game's own menu. The
-Team, Players, Vote and Server pages are built on it; the other four pages
-still hand off to their stock pages, so the card stays opt-in. The Welcome
-card covers the connect-time join offer with its Join, Server, Players and
-Settings pages; its Settings page hands off too. The other pages follow in
-later increments (the plan's B6 to B9).
+Team, Players, Vote, Settings, Voice and Server pages are built on it; Match
+and Admin still hand off to their stock pages, so the Escape card stays
+opt-in. The Welcome card covers the connect-time join offer with its Join,
+Server, Players and Settings pages, all built, so it presents by default.
+The other pages follow in later increments (the plan's B7 to B9).
 
 ## The gate
 
 `ui_retainedMultiplayer` (default 0) opts into both cards. `ui_retained` alone
 includes a card only once none of its pages hands off any more: the session
 lists the pages that still do in `RETAINED_MP_ESCAPE_MISSING_PAGES`, today
-Match, Settings, Voice and Admin, and `RETAINED_MP_WELCOME_MISSING_PAGES`,
-today Settings, and `tools/tests/ui_retained_gate.py` keeps each list equal to
-its document's hand-off pages (its `stock_<page>` programs). Players never see
-a mix of card and stock pages unless they opt in.
+Match and Admin, and `RETAINED_MP_WELCOME_MISSING_PAGES`, now empty, and
+`tools/tests/ui_retained_gate.py` keeps each list equal to its document's
+hand-off pages (its `stock_<page>` programs). The Welcome card therefore
+presents with `ui_retained` alone, which is on by default; `ui_retained 0`
+keeps the classic join panel. A page that is built may still hand off what it
+cannot edit yet (`classic_<page>`, the Settings page's name and clan) without
+counting as missing. Players never see a mix of card and stock pages unless
+they opt in.
 
 ## The cover
 
@@ -36,7 +40,8 @@ over it while all of these hold (`idSessionLocal::UpdateRetainedMultiplayer`):
   opening over (below);
 - the game names the card (`retainedMultiplayerVariant`): Welcome while the
   player has not answered the join offer (the offer stands, or `ui_joined` is
-  still 0 while the player spectates), Escape otherwise; and that card's gate
+  still 0 while a player without `ui_autoJoin` spectates; a player with
+  `ui_autoJoin` never sees the offer), Escape otherwise; and that card's gate
   is on;
 - the game answers `retainedMultiplayerCover` with the protocol the session
   expects (`mp.protocol` 1) and allows the cover now (`mp.cover_allowed`). It
@@ -194,6 +199,38 @@ differ from the server's, since the server refuses a whole vote for one
 unchanged field. The page opens on Vote Yes while the player can vote, and on
 its first row otherwise.
 
+### The Settings page
+
+The player's appearance, the other players' and the way to the rest of the
+settings:
+
+- **Player.** The name and the clan tag, each a row that hands off to the
+  classic Settings page, since the card has no text fields yet; the model, a
+  list of the models the mode and the player's team allow; the rail color,
+  the seven stock swatches, the one the player's tint matches by hue standing
+  taller; and the handicap, a slider from 1 to 100.
+- **Controls, Game Options and System.** Plates that leave for the main
+  menu's pages, as the classic page's buttons do (decision D13).
+- **Opponents and teammates.** A table: the model forced on them (Off or a
+  model), their outline, rim light and brightskin (Off, Low, Medium or High),
+  the effect and brightskin colors (eight each), then the outline's width for
+  both. The teammates' column shows only in team modes; elsewhere a note says
+  why. Each list holds the classic page's own values.
+
+The model lists and the swatches belong to the game, which builds the lists as
+the classic page does and sets the model for a row (`retained appearance
+<slot> <row>`) or the tint for a swatch (`retained rail <row>`). The other
+rows set their settings through the adapter's `settings.player.set` and read
+them back from the settings themselves. The page opens on the name.
+
+### The Voice page
+
+Send Voice, Receive Voice and Voice Echo as check boxes, the receive volume
+(0 to 1) and the microphone's input volume (0 to 10) as sliders; then the key
+bound to push to talk ("Not bound" when there is none) with Controls to
+rebind it, and the microphone's level and Test Microphone, unavailable with
+the reason "Voice chat is not available." while voice chat does not work.
+
 ### The Welcome card
 
 The Welcome card covers the menu the game opens when a player joins without
@@ -217,7 +254,11 @@ which asks first in the stock confirmation.
 - **Server.** The Escape card's Server page.
 - **Players.** The Escape card's lists, the speaker and friend symbols, score
   and ping, spectators below, with nothing to choose: its tab keeps the focus.
-- **Settings.** Hands off to the join panel's settings for now.
+- **Settings.** The name, clan, model and rail color rows of the Escape
+  card's Settings page, then the crosshair: a slider through the stock
+  picker's twenty crosshairs, 0 for each weapon's own ("By weapon"), the
+  chosen one shown beside it (`retained crosshair <index>`). Controls, Game
+  Options and System follow, standing for All settings.
 
 The game publishes the Welcome card's keys with the rest: `mp.welcome.title`,
 `mp.welcome.players`, `mp.welcome.match`, `mp.welcome.state`,
@@ -261,10 +302,18 @@ only when it changes and moving `mp.revision` when anything did:
   `mp.vote.{map,gametype,kick}_count` (the kick count includes "No one"),
   and `mp.vote.locked`.
 
-The session writes the names of the keys bound to the ballots,
-`mp.keys.vote_yes` and `mp.keys.vote_no` with `mp.keys.vote_{yes,no}_bound`,
-when the card opens: the engine's key lists name keys by number, which only
-the stock GUIs draw.
+- the Settings pages: `mp.settings.{name,clan,rail}`, each model list as
+  `mp.model<slot>.<row>` with `mp.model<slot>_count`, the row it holds as
+  `mp.model<slot>` and `mp.model<slot>.row_shown` (slot 2, the teammates', in
+  team modes only), and the crosshair as `mp.crosshair`,
+  `mp.crosshair_count` and `mp.crosshair_image`.
+
+The session writes the names of the keys bound to the ballots and to push to
+talk, `mp.keys.vote_yes`, `mp.keys.vote_no` and `mp.keys.voice_chat` with
+their `_bound` flags, when the card opens: the engine's key lists name keys by
+number, which only the stock GUIs draw. The pages read the player settings
+they change from the settings themselves (`cvar.<name>` state, the lists' as
+text).
 
 Player and server text (player names, the server's name and message, the
 chat) is cleaned as the loading screen's server card cleans it: colour codes,
@@ -313,6 +362,8 @@ The card's verbs are the stock menu's own commands with its selection sound:
 | `mpWelcomeAction` | `play main_menu_selection ; retained welcome <slot>`, by `card.welcome_action` |
 | `mpVoteYes`, `mpVoteNo` | `play main_menu_selection ; retained vote yes\|no` |
 | `mpCallVote` | `play main_menu_selection ; retained callVote` |
+| `mpRail` | `play main_menu_selection ; retained rail <row>`, by `card.rail` |
+| `mpSettingsControls`, `mpSettingsGame`, `mpSettingsSystem` | `play main_menu_selection ; mainMenu fromMp_toControls\|fromMp_toGameoptions\|fromMp_toSystem` |
 
 The Vote page's rows are value controls. Their actions use the adapter's
 `session.menuValue` operation, which carries the control's new value with a
@@ -324,7 +375,19 @@ verb: `mpVoteMap`, `mpVoteGameType`, `mpVoteTimeLimit`, `mpVoteFragLimit`,
 verb to its field (`RETAINED_MP_VOTE_FIELDS`, in the game's field order) and
 sends `retained voteSet <field> <value>` without a sound, keeping the menu
 open. A list sends its row (the kick list's "No one" is -1), a check box 1 or
-0, a slider its value.
+0, a slider its value. The Settings pages' model lists and crosshair use the
+same operation with `mpModelSelf`, `mpModelEnemy`, `mpModelTeam` and
+`mpCrosshair` (`RETAINED_MP_APPEARANCE_VALUES`): the session sends `retained
+appearance <slot> <row>` or `retained crosshair <index>` for a value of 0 or
+more.
+
+The other settings rows use the adapter's `settings.player.set` operation, a
+literal setting with the control's value. The adapter allows only the
+player settings these pages change, each with what its classic control
+offers: the handicap's whole numbers from 1 to 100, the voice volumes' ranges,
+the voice switches' Booleans, and each appearance list's own values (`0`,
+`0.35`, `0.7` and `1` for the strengths, the eight stock colors, `1.0` to
+`6.0` for the outline's width), which it compares as text.
 
 A row records its player's client number before it asks, and Mute and Friend
 record the selected player's. The session refuses a client outside the
@@ -368,6 +431,13 @@ without affecting players:
   join card did.
 - **Card sizes.** Each card fits its widest prompt bar; Welcome takes
   Escape's height (above).
+- **Settings pages.** Opponents and teammates share one table rather than
+  the classic page's tabs; labels take two lines at 14 dp, so the values
+  keep their room in every language; the model lists hold 24 rows (the stock
+  game has 18 models); the crosshair is a slider, not a picker with arrows;
+  Welcome's All settings is Controls, Game Options and System, since the
+  main menu has no settings landing to open; and name, clan and push to
+  talk hand off until text and key binding fields exist.
 - **Vote page.** The rows are the runtime's value controls: lists for the
   map, game type and kick, check boxes for balance, shuffle, restart and
   buying, sliders for the limits (time 0 to 60 minutes, frags 0 to 100,
@@ -530,12 +600,49 @@ The Vote page adds:
 Evidence: `.tmp/ui/retained-mp-vote/validation-evidence.json`, SHA-256
 `c43517ab3160ddb9ff865380dc2a83374597aa5b0bb5d4f0daf575d3b0d08aa2`.
 
+The Settings and Voice pages add:
+
+- gate cases: a model list's row and the crosshair reaching the game quietly
+  as `retained appearance <slot> <row>` and `retained crosshair <index>`, a
+  swatch as `retained rail <row>`, a negative row and a swatch outside the
+  seven refused, Controls, Game Options and System opening the main menu's
+  pages, the push-to-talk key reaching the card by name, and a multiplayer
+  level loading each card whose pages are all built; pins for the Welcome
+  card's empty missing pages, Welcome only for players without
+  `ui_autoJoin`, the Settings hand-off for name and clan, the model lists,
+  swatches and appearance values agreeing between the game, the session, the
+  adapter and the document, and the appearance commands keeping the menu
+  open;
+- adapter checks that a player setting takes only its classic control's
+  values (whole numbers, ranges, Booleans, the lists' own text) and that no
+  other setting may be set;
+- native checks of the pages: the Escape card's Settings page opening on the
+  name, its rows stacking above the plates, name and clan handing off, the
+  chosen swatch standing taller and a swatch asking for its color, the
+  handicap and an outline setting their settings, a teammate model asking for
+  its row, the teammates' column only in team modes with the note otherwise,
+  and System leaving for the main menu; the Voice page's switch and volume,
+  its push-to-talk key or "Not bound", and its unavailable test; Welcome's
+  Settings page and its crosshair slider and preview;
+- generator checks that every label fits in two lines and every list value
+  in its cell, in every language;
+- live probes on listen servers with bots and `ui_autoJoin 0`: in English on
+  OpenGL without the opt-in, the Welcome card presenting by default (its
+  crosshair, swatch and model list), then the stock in-match menu; and in
+  German on Vulkan with the opt-in, Welcome's Settings, then the Escape
+  card's Settings page setting an outline and the handicap, and its Voice
+  page.
+
+Evidence: `.tmp/ui/retained-mp-settings/validation-evidence.json`, SHA-256
+`ef740505998f2b64c757928e2c62e08fd34dda5a735a1645c369e9d817e83f8a`.
+
 The card's acceptance continues under `FLOW-046`.
 
 ## Known limitations
 
-- Four pages hand off to their stock pages, and the stock menu then keeps the
-  menu until it closes; the card does not come back over it.
+- Match and Admin hand off to their stock pages, and the stock menu then
+  keeps the menu until it closes; the card does not come back over it. So do
+  the Settings pages' name and clan.
 - Choosing an unavailable action does not announce its reason to the
   accessibility text backing yet, and a controller gives no rumble.
 - The Team page has no Tourney queue or arena controls; Tourney offers what
@@ -555,7 +662,12 @@ The card's acceptance continues under `FLOW-046`.
 - The Welcome card's Join page has no Watch for Tourney's arenas and no
   place in the queue (neither has a model yet), and its team cards carry no
   faction mark.
-- The Welcome card's Settings page hands off to the join panel's settings.
+- The Settings pages have no model preview (retained documents have no 3D
+  view) and no text fields: name and clan open the classic page.
+- The Voice page's settings take effect, but voice chat itself does not work
+  yet, so its meter and test are unavailable.
+- The crosshair slider runs to twenty, the stock list; a mod's longer list
+  is reached only by the classic picker.
 - On a remote client a running vote's time left counts from when the vote
   reached it, so it can read a little long; no message carries the server's.
 - The kick list names its rows, and the game reads the row at the moment of
@@ -571,5 +683,6 @@ The card's acceptance continues under `FLOW-046`.
   glyph families (`INP-011`).
 - Narrower views than 4:3 (5:4, portrait) do not scale the card down yet
   (`LAY-021`).
-- The multiplayer smokes that capture stock pages do not pin `ui_retained 0`;
-  they need to once the card joins the default.
+- The multiplayer smokes join with `ui_autoJoin 1`, so they never see the
+  Welcome card; the smokes that capture stock in-match pages need to pin
+  `ui_retained 0` once the Escape card joins the default.

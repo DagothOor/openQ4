@@ -1226,6 +1226,17 @@ private:
 	bool			SetRetainedVoteField( int field, int value );
 	void			RetainedVoteLines( const voteStruct_t &data, idStrList &lines );
 	void			PublishRetainedVote( idUserInterface *card, bool &changed );
+	// The Settings pages (section 14.18): the player's name and clan, three
+	// model lists (the player's own model for the mode and team, the model
+	// forced on enemies and, in team modes, the one forced on teammates) by
+	// row, the stock rail color swatches and the custom crosshairs.
+	static const int RETAINED_MODEL_SLOTS = 3;
+	static const int RETAINED_MODEL_ROWS = 24;
+	static const int RETAINED_RAIL_COLORS = 7;
+	static const char *	RetainedRailColor( int row );
+	bool			RetainedModelChoice( int slot, idStr &cvar, idStrList &values, idStrList &names, int &current );
+	void			RetainedCrosshairs( idStrList &crosshairs );
+	void			PublishRetainedSettings( idUserInterface *card, bool &changed );
 	bool			arenaEntranceCameraResolved;
 	// Which presentation the latched camera belongs to.  The entrance and the
 	// final tableau both latch a collision-safe anchor, but they resolve it

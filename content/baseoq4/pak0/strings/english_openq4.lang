@@ -1211,4 +1211,9 @@
 	"#str_231051"	"Change a setting to call a vote."
 	"#str_231052"	"Locked by the server."
 	"#str_231053"	"No one"
+	"#str_231054"	"PUSH TO TALK"
+	"#str_231055"	"Not bound"
+	"#str_231056"	"TEST MICROPHONE"
+	"#str_231057"	"Voice chat is not available."
+	"#str_231058"	"By weapon"
 }

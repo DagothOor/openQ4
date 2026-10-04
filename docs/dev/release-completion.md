@@ -796,13 +796,20 @@
   map, game type, limits, team options and a player to kick, sending only
   what you changed (the classic page also sends the current map, which makes
   the server refuse the vote); its Server page shows the server's message,
-  rules and map rotation. Its other pages still open the classic pages for
-  now. With the same setting, joining a server opens a matching
-  Welcome card: team cards that join each team (and say why when the balance
-  rule refuses one), Auto join naming the team it picks, Spectate, the
-  server's rules and the players; Esc spectates for now, and the menu key
-  brings it back until you join. The prompt bars' Select now reads correctly
-  in Spanish and Italian.
+  rules and map rotation; its Settings page sets your model, rail color and
+  handicap and how opponents and teammates look (forced models, outlines,
+  rim light, brightskin and their colors), with Controls, Game Options and
+  System a step away; and its Voice page sets voice chat's switches and
+  volumes. Its Match and Admin pages still open the classic pages for now.
+  The prompt bars' Select now reads correctly in Spanish and Italian.
+
+- Joining a server without automatic joining now opens the new Welcome card
+  over the softened match instead of the classic join panel: team cards that
+  join each team (and say why when the balance rule refuses one), Auto join
+  naming the team it picks, Spectate, the server's rules, the players, and
+  your name, model, rail color and crosshair. Esc spectates for now, and the
+  menu key brings it back until you join. Set `ui_retained 0` to keep the
+  classic menus.
 
 - The classic multiplayer Players page's Add Friend button now marks the
   player as your friend in the lists and on the scoreboard. It did nothing on

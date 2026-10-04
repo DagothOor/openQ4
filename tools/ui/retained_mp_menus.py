@@ -19,6 +19,7 @@ retained-screens.md, Multiplayer menus).
 """
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 
@@ -1185,42 +1186,71 @@ VOTE_LINES = 6                     # RETAINED_VOTE_LINES in the game
 VOTE_LEFT_W = 360.0                # the running vote's column; the call takes the rest
 VOTE_ROW_H, VOTE_OPTION_H, VOTE_VISIBLE_ROWS = 26.0, 22.0, 8
 VOTE_HEAD_H = 24.0
+LABEL_LINE = 13.0                  # a two-line setting label's line pitch
 
 
-def vote_states(doc: Document, ident: str) -> dict:
-    """A row's feedback: its focus rail and wash come up on hover and focus."""
+def row_face(wrap: bool) -> dict:
+    """A setting row's label: one line at 15 dp, or two at 14 dp."""
+    if wrap:
+        return {**typeface("lowpixel", 14, LABEL_LINE, [1, 1, 1, 0.85]), "white-space": keyword("normal")}
+    return {**typeface("lowpixel", 15, VOTE_ROW_H, [1, 1, 1, 0.85]), "white-space": keyword("nowrap")}
+
+
+def wrapped_width(text: str, size: float = 14) -> float:
+    """The narrowest width that holds `text` in two lines at `size` dp."""
+    words = text.split()
+    width = max(b.text_width("lowpixel", word, size) for word in words)
+    while True:
+        lines, line = 1, ""
+        for word in words:
+            trial = f"{line} {word}".strip()
+            if line and b.text_width("lowpixel", trial, size) > width:
+                lines, line = lines + 1, word
+            else:
+                line = trial
+        if lines <= 2:
+            return width
+        width += 2
+
+
+def row_states(doc: Document, ident: str, labelled: bool = True) -> dict:
+    """A setting row's feedback: its focus rail and wash come up on hover and
+    focus, and its label (a table cell has none) turns orange with focus."""
     def state(rail, wash, tint):
-        return [(f"{ident}-focus", "opacity", number(rail)), (f"{ident}-wash", "opacity", number(wash)),
-                (f"{ident}-label", "color", colour(tint))]
+        tracks = [(f"{ident}-focus", "opacity", number(rail)), (f"{ident}-wash", "opacity", number(wash))]
+        return tracks + ([(f"{ident}-label", "color", colour(tint))] if labelled else [])
     return doc.states(ident, {
         "default": state(0, 0, [1, 1, 1, 0.85]), "hover": state(0, 0.6, [1, 1, 1, 1]),
         "focus": state(1, 1, rgb(ORANGE)), "pressed": state(1, 1, rgb(ORANGE)), "disabled": state(0, 0, [1, 1, 1, 0.85]),
     })
 
 
-def vote_choice_popup(ident: str, key: str, slots: int, width: float, leading: str | None) -> tuple[dict, list]:
-    """A choice's list (section 7: it unfolds under the value column into a
-    constrained scrollable popup with the stock dropdown's black body, its
-    #B2CD43 1 dp border at 20 % and 22 dp rows). Its rows take the game's
-    labels by state; `leading` is a first row with a label of its own."""
+def choice_popup(ident: str, entries: list, width: float) -> tuple[dict, list]:
+    """A choice's list (section 7: it unfolds under its row into a constrained
+    scrollable popup with the stock dropdown's black body, its #B2CD43 1 dp
+    border at 20 % and 22 dp rows). `entries` hold each row's label (a
+    string key, a key with the index into its stock list, or {"state": key}
+    for a label the game publishes) and value."""
     options, rows = [], []
-    entries = ([(leading, -1)] if leading else []) + [({"state": f"mp.vote.{key}{row}"}, row) for row in range(slots)]
     for index, (text, value) in enumerate(entries):
         option = f"{ident}-option-{index}"
-        ink = lambda node, tint: vector(f"{node}-ink", FULL, [path("band", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}),
-                                                                             (0, {"fraction": 1})], fill=solid(tint))])
-        selected = group(f"{option}-selected", {**FULL, "display": keyword("none")}, [ink(f"{option}-selected", rgb(OLIVE, 0.35))])
-        highlight = group(f"{option}-highlight", {**FULL, "display": keyword("none")}, [ink(f"{option}-highlight", rgb(ORANGE, 0.3))])
-        caption = label(f"{option}-label", text if isinstance(text, str) else PLACEHOLDER,
+        band = lambda node, tint: vector(node, {**FULL, "display": keyword("none")}, [
+            path("band", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})], fill=solid(tint))])
+        selected = band(f"{option}-selected", rgb(OLIVE, 0.35))
+        highlight = band(f"{option}-highlight", rgb(ORANGE, 0.3))
+        key = text[0] if isinstance(text, tuple) else text
+        caption = label(f"{option}-label", key if isinstance(key, str) else PLACEHOLDER,
                         {"position": keyword("relative"), "display": keyword("block"), "padding-left": length(8),
                          **typeface("lowpixel", 15, VOTE_OPTION_H, [1, 1, 1, 0.9]), "white-space": keyword("nowrap"),
                          "overflow": keyword("hidden")})
         rows.append(group(option, {"position": keyword("relative"), "display": keyword("block"), "width": length(100, "%"),
                                    "height": length(VOTE_OPTION_H)}, [selected, highlight, caption]))
-        entry = {"id": option, "node": option, "label": text, "value": value,
+        entry = {"id": option, "node": option, "label": key, "value": value,
                  "parts": {"label": f"{option}-label", "selected": f"{option}-selected", "highlight": f"{option}-highlight"}}
+        if isinstance(text, tuple):
+            entry["labelIndex"] = text[1]
         options.append(entry)
-    view_h = VOTE_VISIBLE_ROWS * VOTE_OPTION_H
+    view_h = min(VOTE_VISIBLE_ROWS, len(entries)) * VOTE_OPTION_H
     frame = vector(f"{ident}-popup-frame", FULL, [
         path("body", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})], fill=solid([0, 0, 0, 0.96]),
              stroke=stroke(solid(b.rgb("#B2CD43", 0.2)), 1)),
@@ -1239,25 +1269,17 @@ def vote_choice_popup(ident: str, key: str, slots: int, width: float, leading: s
     return popup, options
 
 
-def vote_row(doc: Document, key: str, verb: str, label_key: str, control: tuple, width: float, value_x: float) -> dict:
-    """One field of the drafted call, a setting row (section 7): a light plate
-    with the label 21 dp in and the value at the value column in
-    marine.value, the whole row one control. A choice unfolds its list under
-    the value column; a yes or no is the stock check box; a limit slides along
-    a tick track with its number after it. The row shows where the drafted
-    game type uses its field (mp.vote.<key>.row_shown) and dims with the
-    padlock after its label where the server forbids it (row_allowed)."""
-    ident = f"vote-row-{key}"
-    kind = control[0]
-    state_key = f"mp.vote.{key}"
-    boolean = kind == "toggle"
-    doc.state.update({
-        f"{state_key}.row_shown": {"type": "boolean", "initial": False},
-        f"{state_key}.row_allowed": {"type": "boolean", "initial": True},
-        state_key: {"type": "boolean", "initial": False} if boolean else {"type": "number", "initial": -1 if kind == "choice" else 0},
-    })
-    doc.actions[verb] = {"operation": "session.menuValue", "input": "boolean" if boolean else "number",
-                         "arguments": {"command": verb, "value": {"input": "value"}}}
+def value_row(doc: Document, ident: str, label_key: str | None, kind: str, width: float, value_x: float, *, value: dict, action: str,
+              entries: list | None = None, count: dict | None = None, slider: tuple | None = None, allowed: dict | None = None,
+              shown: dict | None = None, accessible: str | None = None, wrap: bool = False) -> dict:
+    """A setting row (section 7): a light plate with the label 21 dp in and
+    the value at the value column in marine.value, the whole row one control
+    (a table cell has no label: its row's text names it). A choice unfolds
+    its list under the row; a yes or no is the stock check box; a slider runs
+    along a tick track with its number after it. `value` reads the setting
+    back and `action` takes the new value. With `allowed` the row dims with
+    the padlock after its label where it is false; with `shown` it shows only
+    where that is true. A `wrap` label takes two lines at 14 dp."""
     value_w = width - value_x - 12
     plate = vector(f"{ident}-plate", FULL, [
         path("plate", [(6, 1), ({"fraction": 1}, 1), ({"fraction": 1}, {"fraction": 1, "dp": -1}), (0, {"fraction": 1, "dp": -1}), (0, 7)],
@@ -1269,38 +1291,37 @@ def vote_row(doc: Document, key: str, verb: str, label_key: str, control: tuple,
     ])
     rail = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=4, height=VOTE_ROW_H), "opacity": number(0)}, [
         path("rail", [(0, 7), (6, 1), (6, VOTE_ROW_H - 1), (0, VOTE_ROW_H - 1)], fill=solid(rgb(ORANGE)))])
-    # The label and, on a locked row, the padlock after it share the label
-    # column; a locked row's label gives way to its lock.
-    caption = label(f"{ident}-label", label_key, {"position": keyword("relative"), "display": keyword("block"), "flex-shrink": number(1),
-                    "min-width": length(0), **typeface("lowpixel", 15, VOTE_ROW_H, [1, 1, 1, 0.85]), "white-space": keyword("nowrap"),
-                    "overflow": keyword("hidden")})
-    lock = padlock(f"{ident}-lock", rgb(ERROR))
-    allowed = {"state": f"{state_key}.row_allowed"}
-    doc.bind(f"{ident}-lock.display", f"{ident}-lock", "display", {"op": "select", "args": [allowed, "none", "block"]})
-    head = group(f"{ident}-head", {**absolute(left=21, top=0, width=value_x - 29, height=VOTE_ROW_H), "display": keyword("flex"),
-                                   "flex-direction": keyword("row"), "align-items": keyword("center")}, [caption, lock])
-    children = [plate, wash, rail, head]
-    spec = {"role": kind, "label": label_key, "action": verb, "value": {"state": state_key}, "states": vote_states(doc, ident)}
+    children = [plate, wash, rail]
+    if label_key is not None:
+        # The label and, on a locked row, the padlock after it share the label
+        # column; a locked row's label gives way to its lock.
+        caption = label(f"{ident}-label", label_key, {"position": keyword("relative"), "display": keyword("block"), "flex-shrink": number(1),
+                        "min-width": length(0), **row_face(wrap), "overflow": keyword("hidden")})
+        head_children = [caption]
+        if allowed is not None:
+            lock = padlock(f"{ident}-lock", rgb(ERROR))
+            doc.bind(f"{ident}-lock.display", f"{ident}-lock", "display", {"op": "select", "args": [allowed, "none", "block"]})
+            head_children.append(lock)
+        children.append(group(f"{ident}-head", {**absolute(left=21, top=0, width=value_x - 29, height=VOTE_ROW_H), "display": keyword("flex"),
+                                                "flex-direction": keyword("row"), "align-items": keyword("center")}, head_children))
+    spec = {"role": kind, "label": accessible or label_key, "action": action, "value": value,
+            "states": row_states(doc, ident, label_key is not None)}
     if kind == "choice":
-        slots = control[1]
-        leading = VOTE_NO_ONE if key == "kick" else None
-        for row in range(slots):
-            doc.state[f"{state_key}{row}"] = {"type": "string", "initial": ""}
-        doc.state[f"{state_key}_count"] = {"type": "number", "initial": 0}
         # Lists take the 14 dp face: the stock maps' names run long, in capitals.
-        value = label(f"{ident}-value", PLACEHOLDER, {**absolute(left=value_x, top=0, width=value_w - 14, height=VOTE_ROW_H),
-                      **typeface("lowpixel", 14, VOTE_ROW_H, rgb(VALUE)), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+        value_node = label(f"{ident}-value", PLACEHOLDER, {**absolute(left=value_x, top=0, width=value_w - 14, height=VOTE_ROW_H),
+                           **typeface("lowpixel", 14, VOTE_ROW_H, rgb(VALUE)), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
         chevron = vector(f"{ident}-chevron", absolute(left=width - 24, top=10, width=12, height=6), [
             path("chevron", [(0, 0), (6, 6), (12, 0)], closed=False, stroke=stroke(solid(rgb(VALUE)), 1.5))])
-        popup, options = vote_choice_popup(ident, key, slots, value_w + 8, leading)
+        popup, options = choice_popup(ident, entries, value_w + 8)
         popup["properties"]["left"] = length(value_x - 8)
-        children += [value, chevron, popup]
-        count = {"state": f"{state_key}_count"}
+        children += [value_node, chevron, popup]
         spec.update({"parts": {"popup": f"{ident}-popup", "viewport": f"{ident}-viewport", "content": f"{ident}-content",
                                "value": f"{ident}-value"},
-                     "visibleRows": VOTE_VISIBLE_ROWS, "options": options, "optionCount": count, "placementBounds": "card",
-                     "scrollbar": {"track": f"{ident}-scroll-track", "thumb": f"{ident}-scroll-thumb", "lineStep": VOTE_OPTION_H,
-                                   "minimumThumb": 24}})
+                     "visibleRows": min(VOTE_VISIBLE_ROWS, len(entries)), "options": options})
+        if count is not None:
+            spec["optionCount"] = count
+        spec.update({"placementBounds": "card", "scrollbar": {"track": f"{ident}-scroll-track", "thumb": f"{ident}-scroll-thumb",
+                                                              "lineStep": VOTE_OPTION_H, "minimumThumb": 24}})
     elif kind == "toggle":
         box = vector(f"{ident}-box", absolute(left=value_x, top=6, width=14, height=14), [
             path("box", [(0.75, 0.75), (13.25, 0.75), (13.25, 13.25), (0.75, 13.25)], stroke=stroke(solid(rgb(VALUE)), 1.5))])
@@ -1309,7 +1330,7 @@ def vote_row(doc: Document, key: str, verb: str, label_key: str, control: tuple,
         children += [box, checked]
         spec["parts"] = {"checked": f"{ident}-checked"}
     else:
-        minimum, maximum, step = control[1:]
+        minimum, maximum, step, decimals = slider
         track_w = value_w - 56
         ticks = []
         steps = 20
@@ -1328,14 +1349,46 @@ def vote_row(doc: Document, key: str, verb: str, label_key: str, control: tuple,
         number_node = label(f"{ident}-value", PLACEHOLDER, {**absolute(left=value_x + track_w + 8, top=0, width=48, height=VOTE_ROW_H),
                             **typeface("lowpixel", 15, VOTE_ROW_H, rgb(VALUE)), "text-align": keyword("right"), "white-space": keyword("nowrap")})
         children += [track_node, number_node]
-        spec.update({"minimum": minimum, "maximum": maximum, "step": step, "decimals": 0, "orientation": "horizontal",
+        spec.update({"minimum": minimum, "maximum": maximum, "step": step, "decimals": decimals, "orientation": "horizontal",
                      "parts": {"track": f"{ident}-track", "fill": f"{ident}-fill", "thumb": f"{ident}-thumb", "value": f"{ident}-value"}})
-    row = group(ident, {"position": keyword("relative"), "display": keyword("none"), "width": length(width), "height": length(VOTE_ROW_H),
-                        "opacity": number(1), "flex-shrink": number(0)}, children, control=spec)
-    shown = {"state": f"{state_key}.row_shown"}
-    doc.bind(f"{ident}.display", ident, "display", {"op": "select", "args": [shown, "block", "none"]})
-    doc.bind(f"{ident}.opacity", ident, "opacity", {"op": "select", "args": [allowed, 1, 0.38]})
+    row = group(ident, {"position": keyword("relative"), "display": keyword("none" if shown is not None else "block"), "width": length(width),
+                        "height": length(VOTE_ROW_H), "opacity": number(1), "flex-shrink": number(0)}, children, control=spec)
+    if shown is not None:
+        doc.bind(f"{ident}.display", ident, "display", {"op": "select", "args": [shown, "block", "none"]})
+    if allowed is not None:
+        doc.bind(f"{ident}.opacity", ident, "opacity", {"op": "select", "args": [allowed, 1, 0.38]})
     return row
+
+
+def vote_row(doc: Document, key: str, verb: str, label_key: str, control: tuple, width: float, value_x: float) -> dict:
+    """One field of the drafted call, a setting row. A list's rows come from
+    the game (the kick list leads with no one); the row shows where the
+    drafted game type uses its field (mp.vote.<key>.row_shown) and dims with
+    the padlock after its label where the server forbids it (row_allowed)."""
+    kind = control[0]
+    state_key = f"mp.vote.{key}"
+    boolean = kind == "toggle"
+    doc.state.update({
+        f"{state_key}.row_shown": {"type": "boolean", "initial": False},
+        f"{state_key}.row_allowed": {"type": "boolean", "initial": True},
+        state_key: {"type": "boolean", "initial": False} if boolean else {"type": "number", "initial": -1 if kind == "choice" else 0},
+    })
+    doc.actions[verb] = {"operation": "session.menuValue", "input": "boolean" if boolean else "number",
+                         "arguments": {"command": verb, "value": {"input": "value"}}}
+    entries, count, slider = None, None, None
+    if kind == "choice":
+        slots = control[1]
+        for row in range(slots):
+            doc.state[f"{state_key}{row}"] = {"type": "string", "initial": ""}
+        doc.state[f"{state_key}_count"] = {"type": "number", "initial": 0}
+        leading = [(VOTE_NO_ONE, -1)] if key == "kick" else []
+        entries = leading + [({"state": f"{state_key}{row}"}, row) for row in range(slots)]
+        count = {"state": f"{state_key}_count"}
+    elif kind == "slider":
+        slider = (*control[1:], 0)
+    return value_row(doc, f"vote-row-{key}", label_key, kind, width, value_x, value={"state": state_key}, action=verb,
+                     entries=entries, count=count, slider=slider, allowed={"state": f"{state_key}.row_allowed"},
+                     shown={"state": f"{state_key}.row_shown"})
 
 
 def vote_keycap(ident: str, key_state: str, available: str, doc: Document) -> dict:
@@ -1488,7 +1541,356 @@ def vote_page(doc: Document, index: int, ident: str, width: float, height: float
     return page, focus
 
 
-PAGE_BUILDERS = {"team": team_page, "players": players_page, "vote": vote_page, "server": server_page}
+# ------------------------------------------------------ Settings and Voice
+
+# The appearance lists' stock values, which the adapter's settings.player.set
+# allowlists (FindPlayerSetting in src/ui/UserInterfaceRetained.cpp) and the
+# pages read back as each setting's text.
+LEVELS = ("0", "0.35", "0.7", "1")                        # #str_41207: Off, Low, Medium, High
+EFFECT_COLORS = ("1 0.12 0.05", "1 0.45 0.05", "1 0.9 0.15", "0.1 0.85 0.25", "0.1 0.9 0.95", "0.3 0.45 1", "1 0.15 0.85", "1 1 1")
+BRIGHT_COLORS = ("1 0.05 0.02", "1 0.4 0.02", "1 0.88 0.1", "0.05 1 0.22", "0.05 0.9 1", "0.25 0.4 1", "1 0.1 0.85", "1 1 1")
+OUTLINE_WIDTHS = ("1.0", "1.5", "2.0", "3.0", "4.0", "6.0")   # #str_41214
+# The stock rail color swatches' colors, in their order (RetainedRailColor in the game).
+RAIL_SWATCHES = ((1, 0, 0), (1, 0.501, 0), (1, 1, 0), (0, 1, 0), (0, 1, 1), (0, 0, 1), (1, 0, 0.501))
+# The appearance table's rows: label, the enemy and teammate settings, and
+# their stock list (#str key, values).
+APPEARANCE_ROWS = (
+    ("#str_41205", "cl_player_outline_enemy", "cl_player_outline_team", "#str_41207", LEVELS),
+    ("#str_41206", "cl_player_rimlight_enemy", "cl_player_rimlight_team", "#str_41207", LEVELS),
+    ("#str_41208", "cl_player_visibility_enemy_color", "cl_player_visibility_team_color", "#str_41213", EFFECT_COLORS),
+    ("#str_41209", "cl_player_brightskin_enemy", "cl_player_brightskin_team", "#str_41207", LEVELS),
+    ("#str_41210", "cl_player_brightskin_enemy_color", "cl_player_brightskin_team_color", "#str_41213", BRIGHT_COLORS),
+)
+MODEL_SLOTS, MODEL_ROWS = 3, 24       # RETAINED_MODEL_SLOTS and RETAINED_MODEL_ROWS in the game
+MODEL_VERBS = ("mpModelSelf", "mpModelEnemy", "mpModelTeam")
+CROSSHAIRS = 20                       # the stock picker's crosshairs (mtr_crosshair1-20)
+SETTINGS_PLATES = (("mpSettingsControls", "#str_200083"), ("mpSettingsGame", "#str_200084"), ("mpSettingsSystem", "#str_200085"))
+CLASSIC_EDIT = "#str_231012"          # the hand-off note: the page opens in the classic menu
+
+
+def heading_text(ident: str, key: str, left: float, top: float, width: float) -> dict:
+    return label(ident, key, {**absolute(left=left, top=top, width=width, height=20), **typeface("lowpixel", 14, 20, HEADING),
+                              "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+
+
+def label_column(keys) -> float:
+    """The label column that holds every language's label in two lines."""
+    return math.ceil((max(wrapped_width(text) for key in keys for text in any_text(key).values()) + 29) * 1000) / 1000
+
+
+def cvar_state(doc: Document, cvar: str, kind: str) -> dict:
+    """A setting the page reads back from its CVar, as its text for a list."""
+    key = f"cvar.{cvar}"
+    initial = {"string": "", "number": 0, "boolean": False}[kind]
+    doc.state[key] = {"type": kind, "initial": initial, "cvar": cvar}
+    return {"state": key}
+
+
+def setting_action(doc: Document, cvar: str, kind: str) -> str:
+    action = f"set.{cvar}"
+    doc.actions[action] = {"operation": "settings.player.set", "input": kind, "arguments": {"cvar": cvar, "value": {"input": "value"}}}
+    return action
+
+
+def model_entries(doc: Document, slot: int) -> tuple[list, dict]:
+    """A model list's rows, as the game publishes them (mp.model<slot>.<row>)."""
+    for row in range(MODEL_ROWS):
+        doc.state[f"mp.model{slot}.{row}"] = {"type": "string", "initial": ""}
+    doc.state.update({f"mp.model{slot}": {"type": "number", "initial": -1}, f"mp.model{slot}_count": {"type": "number", "initial": 0},
+                      f"mp.model{slot}.row_shown": {"type": "boolean", "initial": False}})
+    doc.actions[MODEL_VERBS[slot]] = {"operation": "session.menuValue", "input": "number",
+                                      "arguments": {"command": MODEL_VERBS[slot], "value": {"input": "value"}}}
+    return [({"state": f"mp.model{slot}.{row}"}, row) for row in range(MODEL_ROWS)], {"state": f"mp.model{slot}_count"}
+
+
+def row_label(ident: str, key: str, left: float, top: float, width: float) -> dict:
+    """A setting row's two-line label, centered in its row."""
+    caption = label(f"{ident}-label", key, {"position": keyword("relative"), "display": keyword("block"), "min-width": length(0),
+                    **row_face(True), "overflow": keyword("hidden")})
+    return group(f"{ident}-head", {**absolute(left=left, top=top, width=width, height=VOTE_ROW_H), "display": keyword("flex"),
+                                   "flex-direction": keyword("row"), "align-items": keyword("center")}, [caption])
+
+
+def text_row(doc: Document, ident: str, label_key: str, state: str, width: float, value_x: float, event: str) -> dict:
+    """A setting the card cannot edit yet (name and clan): its value, and the
+    row hands off to the classic page that edits it, the arrow after the
+    value saying so."""
+    doc.state[state] = {"type": "string", "initial": ""}
+    plate = vector(f"{ident}-plate", FULL, [
+        path("plate", [(6, 1), ({"fraction": 1}, 1), ({"fraction": 1}, {"fraction": 1, "dp": -1}), (0, {"fraction": 1, "dp": -1}), (0, 7)],
+             fill=solid(rgb(OLIVE, 0.12)), stroke=stroke(solid(rgb(OLIVE, 0.32)), 1)),
+    ])
+    wash = vector(f"{ident}-wash", {**FULL, "opacity": number(0)}, [
+        path("wash", [(6, 1), ({"fraction": 1}, 1), ({"fraction": 1}, {"fraction": 1, "dp": -1}), (0, {"fraction": 1, "dp": -1}), (0, 7)],
+             fill=linear((0, 0), ({"fraction": 1}, 0), [(0, rgb(OLIVE, 0.45)), (1, rgb(OLIVE, 0.1))])),
+    ])
+    rail = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=4, height=VOTE_ROW_H), "opacity": number(0)}, [
+        path("rail", [(0, 7), (6, 1), (6, VOTE_ROW_H - 1), (0, VOTE_ROW_H - 1)], fill=solid(rgb(ORANGE)))])
+    caption = row_label(ident, label_key, 21, 0, value_x - 29)
+    value = label(f"{ident}-value", PLACEHOLDER, {**absolute(left=value_x, top=0, width=width - value_x - 30, height=VOTE_ROW_H),
+                  **typeface("lowpixel", 15, VOTE_ROW_H, rgb(VALUE)), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+    doc.bind(f"{ident}-value.text", f"{ident}-value", "text", {"state": state})
+    arrow = vector(f"{ident}-arrow", absolute(left=width - 21, top=9, width=6, height=9), [
+        path("arrow", [(0, 0), (5, 4.5), (0, 9)], closed=False, stroke=stroke(solid(rgb(VALUE)), 1.5))])
+    return group(ident, {"position": keyword("relative"), "display": keyword("block"), "width": length(width), "height": length(VOTE_ROW_H),
+                         "flex-shrink": number(0)}, [plate, wash, rail, caption, value, arrow],
+                 control={"role": "button", "label": label_key, "event": event, "states": row_states(doc, ident)})
+
+
+def rail_row(doc: Document, ident: str, width: float, value_x: float) -> tuple[dict, list]:
+    """The rail color: the stock swatches, each a button that asks the game
+    for its color; the one the player's tint matches stands taller."""
+    doc.state.update({"card.rail": {"type": "number", "initial": -1}, "mp.settings.rail": {"type": "number", "initial": -1}})
+    doc.session("mpRail", "mpRail")
+    plate = vector(f"{ident}-plate", FULL, [
+        path("plate", [(6, 1), ({"fraction": 1}, 1), ({"fraction": 1}, {"fraction": 1, "dp": -1}), (0, {"fraction": 1, "dp": -1}), (0, 7)],
+             fill=solid(rgb(OLIVE, 0.12)), stroke=stroke(solid(rgb(OLIVE, 0.32)), 1)),
+    ])
+    caption = row_label(ident, "#str_200981", 21, 0, value_x - 29)
+    swatches, controls = [], []
+    for row, tint in enumerate(RAIL_SWATCHES):
+        node = f"{ident}-{row}"
+        chosen = {"op": "==", "args": [{"state": "mp.settings.rail"}, row]}
+        ring = vector(f"{node}-ring", {**absolute(left=0, top=0, width=18, height=22), "opacity": number(0)}, [
+            path("ring", [(0.75, 0.75), (17.25, 0.75), (17.25, 21.25), (0.75, 21.25)], stroke=stroke(solid(rgb(ORANGE)), 1.5))])
+        chip = vector(f"{node}-chip", {**absolute(left=3, top=6, width=12, height=10), "transform": transform()}, [
+            path("chip", [(0, 0), (12, 0), (12, 10), (0, 10)], fill=solid([*tint, 1]))])
+        doc.bind(f"{node}-chip.transform", f"{node}-chip", "transform",
+                 [0, {"op": "select", "args": [chosen, -3, 0]}, 1, {"op": "select", "args": [chosen, 1.6, 1]}, 0])
+        ids = doc.states(node, {
+            "default": [(f"{node}-ring", "opacity", number(0))], "hover": [(f"{node}-ring", "opacity", number(0.6))],
+            "focus": [(f"{node}-ring", "opacity", number(1))], "pressed": [(f"{node}-ring", "opacity", number(1))],
+            "disabled": [(f"{node}-ring", "opacity", number(0))],
+        })
+        event = f"rail_{row}"
+        doc.events[event] = [{"op": "setState", "values": {"card.rail": row}}, {"op": "action", "action": "mpRail"}]
+        swatches.append(group(node, absolute(left=value_x + 20 * row, top=2, width=18, height=22), [ring, chip],
+                              control={"role": "button", "label": "#str_200981", "event": event, "states": ids}))
+        controls.append(node)
+    return group(ident, {"position": keyword("relative"), "display": keyword("block"), "width": length(width), "height": length(VOTE_ROW_H),
+                         "flex-shrink": number(0)}, [plate, caption, *swatches]), controls
+
+
+def settings_plates(doc: Document, ident: str, left: float, top: float, width: float) -> tuple[list, list]:
+    """Controls, Game Options and System: each leaves for the main menu's
+    page (decision D13)."""
+    plates, controls = [], []
+    for index, (verb, key) in enumerate(SETTINGS_PLATES):
+        doc.session(verb, verb)
+        node = f"{ident}-{verb}"
+        plates.append(in_game_plate(doc, node, key, left, top + 50 * index, width=width, action=verb))
+        controls.append(node)
+    return plates, controls
+
+
+def classic_settings(doc: Document, index: int) -> str:
+    """Name and clan hand off to the classic Settings page, which edits them."""
+    event = "classic_settings"
+    doc.events[event] = [{"op": "setState", "values": {"card.stock_page": index}}, {"op": "action", "action": "mpStockPage"}]
+    return event
+
+
+def player_rows(doc: Document, index: int, width: float, value_x: float, last: tuple) -> tuple[list, list]:
+    """The player's rows: name and clan (handing off), the model, the rail
+    color swatches, then `last` (the handicap on Escape, the crosshair on
+    Welcome)."""
+    event = classic_settings(doc, index)
+    rows = [text_row(doc, "settings-name", "#str_200219", "mp.settings.name", width, value_x, event),
+            text_row(doc, "settings-clan", "#str_200220", "mp.settings.clan", width, value_x, event)]
+    entries, count = model_entries(doc, 0)
+    rows.append(value_row(doc, "settings-model", "#str_200221", "choice", width, value_x, value={"state": "mp.model0"},
+                          action=MODEL_VERBS[0], entries=entries, count=count, wrap=True))
+    rail, swatches = rail_row(doc, "settings-rail", width, value_x)
+    rows.append(rail)
+    rows.append(last[0])
+    return rows, ["settings-name", "settings-clan", "settings-model", *swatches, last[1]]
+
+
+def check_settings_labels(width: float, value_x: float, right_w: float, cell_w: float) -> None:
+    """Fail generation when a label, a list's value or a plate's label would
+    not fit in any language."""
+    over = {}
+    for key in ("#str_200219", "#str_200220", "#str_200221", "#str_200981", "#str_223001", "#str_200307"):
+        for language, text in any_text(key).items():
+            if wrapped_width(text) > value_x - 29:
+                over[(key, language)] = round(wrapped_width(text))
+    for key, items in (("#str_41207", 4), ("#str_41213", 8), ("#str_41214", 6)):
+        for language, text in any_text(key).items():
+            for item in text.split(";")[:items]:
+                if b.text_width("lowpixel", item, 14) > cell_w - 34:
+                    over[(key, language, item)] = round(b.text_width("lowpixel", item, 14))
+    for _verb, key in SETTINGS_PLATES:
+        for language, text in any_text(key).items():
+            if b.text_width("marine", text, 20) > width - 30:
+                over[(key, language)] = round(b.text_width("marine", text, 20))
+    if over:
+        raise SystemExit(f"Settings page labels past their room: {over}")
+
+
+def settings_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, list]:
+    """The Settings page (section 14.18): the player's name, clan, model, rail
+    color and handicap, then Controls, Game Options and System, which leave
+    for the main menu's pages; beside them the appearance of opponents and
+    teammates: the model forced on them, their outline, rim light, effect
+    color, brightskin and its color, and the outline's width, the teammates'
+    column only in team modes. Name and clan hand off to the classic page,
+    since the card has no text fields yet."""
+    page_width = width - 2 * INSET
+    page_height = height - PAGE_TOP - PROMPT_BOTTOM - PROMPT_H - 16
+    left_w = 380.0
+    right_x = left_w + 24
+    right_w = page_width - right_x
+    value_x = label_column(("#str_200219", "#str_200220", "#str_200221", "#str_200981", "#str_223001"))
+    table_x = label_column(("#str_41204", *(row[0] for row in APPEARANCE_ROWS), "#str_41211"))
+    cell_w = round((right_w - table_x - 6) / 2, 3)
+    check_settings_labels(left_w, value_x, right_w, cell_w)
+    doc.state["card.stock_page"] = {"type": "number", "initial": -1}
+    handicap = value_row(doc, "settings-handicap", "#str_223001", "slider", left_w, value_x, value=cvar_state(doc, "ui_handicap", "number"),
+                         action=setting_action(doc, "ui_handicap", "number"), slider=(1, 100, 1, 0), wrap=True)
+    rows, controls = player_rows(doc, index, left_w, value_x, (handicap, "settings-handicap"))
+    left = [heading_text("settings-heading-player", "#str_200255", 0, 0, left_w),
+            group("settings-player", {**absolute(left=0, top=VOTE_HEAD_H, width=left_w, height=len(rows) * VOTE_ROW_H),
+                                      "display": keyword("flex"), "flex-direction": keyword("column")}, rows)]
+    plates, plate_controls = settings_plates(doc, "settings", 0, VOTE_HEAD_H + len(rows) * VOTE_ROW_H + 12, left_w)
+    left += plates
+    controls += plate_controls
+    # The appearance table: a row's label, then the opponents' and the
+    # teammates' cells, the teammates' only in team modes.
+    team_mode = {"state": "mp.model2.row_shown"}
+    right = [heading_text("settings-heading-opponents", "#str_42037", right_x + table_x, 0, cell_w),
+             heading_text("settings-heading-teammates", "#str_42038", right_x + table_x + cell_w + 6, 0, cell_w)]
+    doc.bind("settings-heading-teammates.display", "settings-heading-teammates", "display",
+             {"op": "select", "args": [team_mode, "block", "none"]})
+    right[1]["properties"]["display"] = keyword("none")
+    table_rows = [("#str_41204", None)] + [(row[0], row) for row in APPEARANCE_ROWS]
+    for row_index, (label_key, row) in enumerate(table_rows):
+        top = VOTE_HEAD_H + row_index * VOTE_ROW_H
+        right.append(row_label(f"settings-row-{row_index}", label_key, right_x + 21, top, table_x - 29))
+        for side in range(2):
+            node = f"settings-row-{row_index}-{'opponents' if side == 0 else 'teammates'}"
+            if row is None:
+                entries, count = model_entries(doc, 1 + side)
+                cell = value_row(doc, node, None, "choice", cell_w, 8, value={"state": f"mp.model{1 + side}"}, action=MODEL_VERBS[1 + side],
+                                 entries=entries, count=count, accessible=label_key, shown=team_mode if side == 1 else None)
+            else:
+                cvar = row[1 + side]
+                entries = [((row[3], option), value) for option, value in enumerate(row[4])]
+                cell = value_row(doc, node, None, "choice", cell_w, 8, value=cvar_state(doc, cvar, "string"),
+                                 action=setting_action(doc, cvar, "string"), entries=entries, accessible=label_key,
+                                 shown=team_mode if side == 1 else None)
+            cell["properties"].update(absolute(left=right_x + table_x + side * (cell_w + 6), top=top))
+            right.append(cell)
+            controls.append(node)
+    width_top = VOTE_HEAD_H + len(table_rows) * VOTE_ROW_H + 8
+    outline_width = value_row(doc, "settings-outline-width", "#str_41211", "choice", right_w, table_x,
+                              value=cvar_state(doc, "cl_player_outline_width", "string"),
+                              action=setting_action(doc, "cl_player_outline_width", "string"),
+                              entries=[(("#str_41214", option), value) for option, value in enumerate(OUTLINE_WIDTHS)], wrap=True)
+    outline_width["properties"].update(absolute(left=right_x, top=width_top))
+    right.append(outline_width)
+    controls.append("settings-outline-width")
+    note = label("settings-team-note", "#str_41212", {**absolute(left=right_x, top=width_top + VOTE_ROW_H + 12, width=right_w, height=36),
+                 **typeface("lowpixel", 14, 18, [1, 1, 1, 0.6]), "white-space": keyword("normal"), "overflow": keyword("hidden"),
+                 "display": keyword("block")})
+    doc.bind("settings-team-note.display", "settings-team-note", "display", {"op": "select", "args": [team_mode, "none", "block"]})
+    right.append(note)
+    page = page_group(doc, index, ident, width, height, [*left, *right], controls)
+    return page, "settings-name"
+
+
+def voice_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, str]:
+    """The Voice page (section 14.18): sending and receiving voice, their
+    volumes and voice echo; the key that pushes to talk, which Controls
+    rebinds; and the microphone's level and test, unavailable while voice
+    chat is not."""
+    page_width = width - 2 * INSET
+    left_w = 420.0
+    right_x = left_w + 24
+    right_w = page_width - right_x
+    value_x = label_column(("#str_201017", "#str_201018", "#str_201019", "#str_201030", "#str_201020"))
+    rows = [
+        value_row(doc, "voice-send", "#str_201017", "toggle", left_w, value_x, value=cvar_state(doc, "s_voiceChatSend", "boolean"),
+                  action=setting_action(doc, "s_voiceChatSend", "boolean"), wrap=True),
+        value_row(doc, "voice-receive", "#str_201018", "toggle", left_w, value_x, value=cvar_state(doc, "s_voiceChatReceive", "boolean"),
+                  action=setting_action(doc, "s_voiceChatReceive", "boolean"), wrap=True),
+        value_row(doc, "voice-volume", "#str_201019", "slider", left_w, value_x, value=cvar_state(doc, "s_voiceVolume", "number"),
+                  action=setting_action(doc, "s_voiceVolume", "number"), slider=(0, 1, 0.05, 2), wrap=True),
+        value_row(doc, "voice-mic", "#str_201030", "slider", left_w, value_x, value=cvar_state(doc, "s_micInputLevel", "number"),
+                  action=setting_action(doc, "s_micInputLevel", "number"), slider=(0, 10, 0.5, 1), wrap=True),
+        value_row(doc, "voice-echo", "#str_201020", "toggle", left_w, value_x, value=cvar_state(doc, "s_voiceChatEcho", "boolean"),
+                  action=setting_action(doc, "s_voiceChatEcho", "boolean"), wrap=True),
+    ]
+    left = [heading_text("voice-heading", "#str_231006", 0, 0, left_w),
+            group("voice-rows", {**absolute(left=0, top=VOTE_HEAD_H, width=left_w, height=len(rows) * VOTE_ROW_H),
+                                 "display": keyword("flex"), "flex-direction": keyword("column")}, rows)]
+    controls = ["voice-send", "voice-receive", "voice-volume", "voice-mic", "voice-echo"]
+    # The push-to-talk key, as the session names it, and Controls to rebind it.
+    doc.state.update({"mp.keys.voice_chat": {"type": "string", "initial": ""}, "mp.keys.voice_chat_bound": {"type": "boolean", "initial": False}})
+    bound = {"state": "mp.keys.voice_chat_bound"}
+    key = vote_keycap("voice-key", "mp.keys.voice_chat", "mp.keys.voice_chat_bound", doc)
+    key["properties"].update(absolute(left=right_x, top=VOTE_HEAD_H + 2))
+    key["properties"]["margin-left"] = length(0)
+    unbound = label("voice-unbound", "#str_231055", {**absolute(left=right_x, top=VOTE_HEAD_H, width=right_w, height=VOTE_ROW_H),
+                    **typeface("lowpixel", 15, VOTE_ROW_H, [1, 1, 1, 0.6]), "white-space": keyword("nowrap"), "display": keyword("block")})
+    doc.bind("voice-unbound.display", "voice-unbound", "display", {"op": "select", "args": [bound, "none", "block"]})
+    doc.session("mpSettingsControls", "mpSettingsControls")
+    rebind = in_game_plate(doc, "voice-controls", "#str_200083", right_x, VOTE_HEAD_H + VOTE_ROW_H + 6, width=min(right_w, 320),
+                           action="mpSettingsControls")
+    controls.append("voice-controls")
+    # The microphone: its level and the test wait for voice chat.
+    meter_top = VOTE_HEAD_H + VOTE_ROW_H + 64
+    meter_label = label("voice-meter-label", "#str_201027", {**absolute(left=right_x, top=meter_top, width=right_w, height=20),
+                        **typeface("lowpixel", 14, 20, HEADING), "white-space": keyword("nowrap")})
+    meter = vector("voice-meter", {**absolute(left=right_x, top=meter_top + 22, width=min(right_w, 320), height=10), "opacity": number(0.38)}, [
+        path("trough", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, 10), (0, 10)], stroke=stroke(solid(rgb(OLIVE, 0.6)), 1))])
+    test = action_plate(doc, "voice-test", "card.voicetest", min(right_w, SLOT_W), meter_top + 44, "voice_test", [])
+    # The test is the document's own action, unavailable for now.
+    doc.state.update({"card.voicetest.shown": {"type": "boolean", "initial": True},
+                      "card.voicetest.label": {"type": "string", "initial": "#str_231056"},
+                      "card.voicetest.reason": {"type": "string", "initial": "#str_231057"}})
+    test["properties"]["left"] = length(right_x)
+    controls.append("voice-test")
+    right = [heading_text("voice-heading-talk", "#str_231054", right_x, 0, right_w), key, unbound, rebind, meter_label, meter, test]
+    return page_group(doc, index, ident, width, height, [*left, *right], controls), "voice-send"
+
+
+def welcome_settings_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, str]:
+    """The Welcome card's Settings page (section 14.18): name and clan
+    (handing off to the classic page), the model, the rail color swatches
+    and the crosshair, a slider through the stock picker's crosshairs (0 for
+    each weapon's own) with the chosen one beside it; then Controls, Game
+    Options and System, which stand for All settings."""
+    page_width = width - 2 * INSET
+    left_w = 400.0
+    value_x = label_column(("#str_200219", "#str_200220", "#str_200221", "#str_200981", "#str_200307"))
+    check_settings_labels(left_w, value_x, page_width - left_w, 200)
+    doc.state["card.stock_page"] = {"type": "number", "initial": -1}
+    doc.state.update({"mp.crosshair": {"type": "number", "initial": 0}, "mp.crosshair_image": {"type": "string", "initial": ""}})
+    doc.actions["mpCrosshair"] = {"operation": "session.menuValue", "input": "number",
+                                  "arguments": {"command": "mpCrosshair", "value": {"input": "value"}}}
+    crosshair = value_row(doc, "settings-crosshair", "#str_200307", "slider", left_w, value_x, value={"state": "mp.crosshair"},
+                          action="mpCrosshair", slider=(0, CROSSHAIRS, 1, 0), wrap=True)
+    rows, controls = player_rows(doc, index, left_w, value_x, (crosshair, "settings-crosshair"))
+    preview_top = VOTE_HEAD_H + 4 * VOTE_ROW_H
+    custom = {"op": ">", "args": [{"state": "mp.crosshair"}, 0]}
+    preview = picture("settings-crosshair-image", "", {**absolute(left=left_w + 16, top=preview_top - 4, width=32, height=32),
+                      "display": keyword("none")}, fit="contain")
+    doc.bind("settings-crosshair-image.image", "settings-crosshair-image", "image", {"state": "mp.crosshair_image"})
+    doc.bind("settings-crosshair-image.display", "settings-crosshair-image", "display", {"op": "select", "args": [custom, "block", "none"]})
+    by_weapon = label("settings-crosshair-weapon", "#str_231058", {**absolute(left=left_w + 16, top=preview_top, width=page_width - left_w - 16,
+                      height=VOTE_ROW_H), **typeface("lowpixel", 15, VOTE_ROW_H, [1, 1, 1, 0.6]), "white-space": keyword("nowrap"),
+                      "display": keyword("block")})
+    doc.bind("settings-crosshair-weapon.display", "settings-crosshair-weapon", "display", {"op": "select", "args": [custom, "none", "block"]})
+    plates, plate_controls = settings_plates(doc, "settings", 0, VOTE_HEAD_H + len(rows) * VOTE_ROW_H + 12, left_w)
+    children = [heading_text("settings-heading-player", "#str_200255", 0, 0, left_w),
+                group("settings-player", {**absolute(left=0, top=VOTE_HEAD_H, width=left_w, height=len(rows) * VOTE_ROW_H),
+                                          "display": keyword("flex"), "flex-direction": keyword("column")}, rows),
+                preview, by_weapon, *plates]
+    return page_group(doc, index, ident, width, height, children, controls + plate_controls), "settings-name"
+
+
+PAGE_BUILDERS = {"team": team_page, "players": players_page, "vote": vote_page, "settings": settings_page,
+                 "voice": voice_page, "server": server_page}
 
 
 def prompt_row(width: float, height: float, back_verb: str, trailing: list) -> dict:
@@ -1620,7 +2022,7 @@ def card_motion(doc: Document, tabs: list, focus: list) -> None:
     doc.events["onBack"] = [{"op": "action", "action": "mpClose"}]
 
 
-WELCOME_BUILDERS = {"join": join_page, "server": server_page, "players": welcome_players_page}
+WELCOME_BUILDERS = {"join": join_page, "server": server_page, "players": welcome_players_page, "settings": welcome_settings_page}
 
 
 def welcome_document() -> dict:
