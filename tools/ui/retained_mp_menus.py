@@ -1157,7 +1157,338 @@ def server_page(doc: Document, index: int, ident: str, width: float, height: flo
     return page_group(doc, index, ident, width, height, children, []), f"tab-{ident}"
 
 
-PAGE_BUILDERS = {"team": team_page, "players": players_page, "server": server_page}
+# --------------------------------------------------------------- Vote page
+
+# The drafted call's rows in the game's retainedVoteField_t order, which the
+# session's RETAINED_MP_VOTE_FIELDS follows with each row's verb: the game's
+# key, the verb, the label and the control: a choice of a list the game
+# publishes (its option slots), a yes or no, or a limit's slider (minimum,
+# maximum, step). A list's rows are mp.vote.<key><row> with their count in
+# mp.vote.<key>_count; the kick choice leads with no one (-1).
+VOTE_ROWS = (
+    ("map", "mpVoteMap", "#str_200209", ("choice", 48)),
+    ("gametype", "mpVoteGameType", "#str_200210", ("choice", 16)),
+    ("timelimit", "mpVoteTimeLimit", "#str_200211", ("slider", 0, 60, 1)),
+    ("fraglimit", "mpVoteFragLimit", "#str_200060", ("slider", 0, 100, 1)),
+    ("capturelimit", "mpVoteCaptureLimit", "#str_200215", ("slider", 1, 50, 1)),
+    ("tourneylimit", "mpVoteTourneyLimit", "#str_200214", ("slider", 1, 20, 1)),
+    ("controltime", "mpVoteControlTime", "#str_222013", ("slider", 10, 600, 10)),
+    ("balance", "mpVoteBalance", "#str_200212", ("toggle",)),
+    ("shuffle", "mpVoteShuffle", "#str_201044", ("toggle",)),
+    ("restart", "mpVoteRestart", "#str_200208", ("toggle",)),
+    ("buying", "mpVoteBuying", "#str_222000", ("toggle",)),
+    ("kick", "mpVoteKick", "#str_200207", ("choice", 16)),
+)
+VOTE_RUNNING, VOTE_CALL, VOTE_NONE_RUNNING = "#str_231043", "#str_231044", "#str_231047"
+VOTE_LOCKED, VOTE_NO_ONE = "#str_231052", "#str_231053"
+VOTE_LINES = 6                     # RETAINED_VOTE_LINES in the game
+VOTE_LEFT_W = 360.0                # the running vote's column; the call takes the rest
+VOTE_ROW_H, VOTE_OPTION_H, VOTE_VISIBLE_ROWS = 26.0, 22.0, 8
+VOTE_HEAD_H = 24.0
+
+
+def vote_states(doc: Document, ident: str) -> dict:
+    """A row's feedback: its focus rail and wash come up on hover and focus."""
+    def state(rail, wash, tint):
+        return [(f"{ident}-focus", "opacity", number(rail)), (f"{ident}-wash", "opacity", number(wash)),
+                (f"{ident}-label", "color", colour(tint))]
+    return doc.states(ident, {
+        "default": state(0, 0, [1, 1, 1, 0.85]), "hover": state(0, 0.6, [1, 1, 1, 1]),
+        "focus": state(1, 1, rgb(ORANGE)), "pressed": state(1, 1, rgb(ORANGE)), "disabled": state(0, 0, [1, 1, 1, 0.85]),
+    })
+
+
+def vote_choice_popup(ident: str, key: str, slots: int, width: float, leading: str | None) -> tuple[dict, list]:
+    """A choice's list (section 7: it unfolds under the value column into a
+    constrained scrollable popup with the stock dropdown's black body, its
+    #B2CD43 1 dp border at 20 % and 22 dp rows). Its rows take the game's
+    labels by state; `leading` is a first row with a label of its own."""
+    options, rows = [], []
+    entries = ([(leading, -1)] if leading else []) + [({"state": f"mp.vote.{key}{row}"}, row) for row in range(slots)]
+    for index, (text, value) in enumerate(entries):
+        option = f"{ident}-option-{index}"
+        ink = lambda node, tint: vector(f"{node}-ink", FULL, [path("band", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}),
+                                                                             (0, {"fraction": 1})], fill=solid(tint))])
+        selected = group(f"{option}-selected", {**FULL, "display": keyword("none")}, [ink(f"{option}-selected", rgb(OLIVE, 0.35))])
+        highlight = group(f"{option}-highlight", {**FULL, "display": keyword("none")}, [ink(f"{option}-highlight", rgb(ORANGE, 0.3))])
+        caption = label(f"{option}-label", text if isinstance(text, str) else PLACEHOLDER,
+                        {"position": keyword("relative"), "display": keyword("block"), "padding-left": length(8),
+                         **typeface("lowpixel", 15, VOTE_OPTION_H, [1, 1, 1, 0.9]), "white-space": keyword("nowrap"),
+                         "overflow": keyword("hidden")})
+        rows.append(group(option, {"position": keyword("relative"), "display": keyword("block"), "width": length(100, "%"),
+                                   "height": length(VOTE_OPTION_H)}, [selected, highlight, caption]))
+        entry = {"id": option, "node": option, "label": text, "value": value,
+                 "parts": {"label": f"{option}-label", "selected": f"{option}-selected", "highlight": f"{option}-highlight"}}
+        options.append(entry)
+    view_h = VOTE_VISIBLE_ROWS * VOTE_OPTION_H
+    frame = vector(f"{ident}-popup-frame", FULL, [
+        path("body", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (0, {"fraction": 1})], fill=solid([0, 0, 0, 0.96]),
+             stroke=stroke(solid(b.rgb("#B2CD43", 0.2)), 1)),
+    ])
+    content = group(f"{ident}-content", {**absolute(left=0, top=0), "width": length(100, "%")}, rows)
+    viewport = group(f"{ident}-viewport", {"position": keyword("relative"), "display": keyword("block"), "width": length(width - 18),
+                                           "height": length(view_h), "margin-left": length(2), "margin-top": length(2)}, [content])
+    thumb = group(f"{ident}-scroll-thumb", {**absolute(left=0, top=0, width=8, height=24)}, [
+        vector(f"{ident}-scroll-ink", FULL, [path("thumb", [(1, 0), (7, 0), (7, {"fraction": 1}), (1, {"fraction": 1})],
+                                                  fill=solid(rgb(OLIVE, 0.9)))])])
+    track_node = group(f"{ident}-scroll-track", {**absolute(left=width - 12, top=2, width=8, height=view_h)}, [
+        vector(f"{ident}-scroll-trough", FULL, [path("trough", [(3, 0), (5, 0), (5, {"fraction": 1}), (3, {"fraction": 1})],
+                                                     fill=solid([1, 1, 1, 0.12]))]), thumb])
+    popup = group(f"{ident}-popup", {**absolute(left=0, top=VOTE_ROW_H, width=width, height=view_h + 4), "display": keyword("none")},
+                  [frame, viewport, track_node])
+    return popup, options
+
+
+def vote_row(doc: Document, key: str, verb: str, label_key: str, control: tuple, width: float, value_x: float) -> dict:
+    """One field of the drafted call, a setting row (section 7): a light plate
+    with the label 21 dp in and the value at the value column in
+    marine.value, the whole row one control. A choice unfolds its list under
+    the value column; a yes or no is the stock check box; a limit slides along
+    a tick track with its number after it. The row shows where the drafted
+    game type uses its field (mp.vote.<key>.row_shown) and dims with the
+    padlock after its label where the server forbids it (row_allowed)."""
+    ident = f"vote-row-{key}"
+    kind = control[0]
+    state_key = f"mp.vote.{key}"
+    boolean = kind == "toggle"
+    doc.state.update({
+        f"{state_key}.row_shown": {"type": "boolean", "initial": False},
+        f"{state_key}.row_allowed": {"type": "boolean", "initial": True},
+        state_key: {"type": "boolean", "initial": False} if boolean else {"type": "number", "initial": -1 if kind == "choice" else 0},
+    })
+    doc.actions[verb] = {"operation": "session.menuValue", "input": "boolean" if boolean else "number",
+                         "arguments": {"command": verb, "value": {"input": "value"}}}
+    value_w = width - value_x - 12
+    plate = vector(f"{ident}-plate", FULL, [
+        path("plate", [(6, 1), ({"fraction": 1}, 1), ({"fraction": 1}, {"fraction": 1, "dp": -1}), (0, {"fraction": 1, "dp": -1}), (0, 7)],
+             fill=solid(rgb(OLIVE, 0.12)), stroke=stroke(solid(rgb(OLIVE, 0.32)), 1)),
+    ])
+    wash = vector(f"{ident}-wash", {**FULL, "opacity": number(0)}, [
+        path("wash", [(6, 1), ({"fraction": 1}, 1), ({"fraction": 1}, {"fraction": 1, "dp": -1}), (0, {"fraction": 1, "dp": -1}), (0, 7)],
+             fill=linear((0, 0), ({"fraction": 1}, 0), [(0, rgb(OLIVE, 0.45)), (1, rgb(OLIVE, 0.1))])),
+    ])
+    rail = vector(f"{ident}-focus", {**absolute(left=0, top=0, width=4, height=VOTE_ROW_H), "opacity": number(0)}, [
+        path("rail", [(0, 7), (6, 1), (6, VOTE_ROW_H - 1), (0, VOTE_ROW_H - 1)], fill=solid(rgb(ORANGE)))])
+    # The label and, on a locked row, the padlock after it share the label
+    # column; a locked row's label gives way to its lock.
+    caption = label(f"{ident}-label", label_key, {"position": keyword("relative"), "display": keyword("block"), "flex-shrink": number(1),
+                    "min-width": length(0), **typeface("lowpixel", 15, VOTE_ROW_H, [1, 1, 1, 0.85]), "white-space": keyword("nowrap"),
+                    "overflow": keyword("hidden")})
+    lock = padlock(f"{ident}-lock", rgb(ERROR))
+    allowed = {"state": f"{state_key}.row_allowed"}
+    doc.bind(f"{ident}-lock.display", f"{ident}-lock", "display", {"op": "select", "args": [allowed, "none", "block"]})
+    head = group(f"{ident}-head", {**absolute(left=21, top=0, width=value_x - 29, height=VOTE_ROW_H), "display": keyword("flex"),
+                                   "flex-direction": keyword("row"), "align-items": keyword("center")}, [caption, lock])
+    children = [plate, wash, rail, head]
+    spec = {"role": kind, "label": label_key, "action": verb, "value": {"state": state_key}, "states": vote_states(doc, ident)}
+    if kind == "choice":
+        slots = control[1]
+        leading = VOTE_NO_ONE if key == "kick" else None
+        for row in range(slots):
+            doc.state[f"{state_key}{row}"] = {"type": "string", "initial": ""}
+        doc.state[f"{state_key}_count"] = {"type": "number", "initial": 0}
+        # Lists take the 14 dp face: the stock maps' names run long, in capitals.
+        value = label(f"{ident}-value", PLACEHOLDER, {**absolute(left=value_x, top=0, width=value_w - 14, height=VOTE_ROW_H),
+                      **typeface("lowpixel", 14, VOTE_ROW_H, rgb(VALUE)), "white-space": keyword("nowrap"), "overflow": keyword("hidden")})
+        chevron = vector(f"{ident}-chevron", absolute(left=width - 24, top=10, width=12, height=6), [
+            path("chevron", [(0, 0), (6, 6), (12, 0)], closed=False, stroke=stroke(solid(rgb(VALUE)), 1.5))])
+        popup, options = vote_choice_popup(ident, key, slots, value_w + 8, leading)
+        popup["properties"]["left"] = length(value_x - 8)
+        children += [value, chevron, popup]
+        count = {"state": f"{state_key}_count"}
+        spec.update({"parts": {"popup": f"{ident}-popup", "viewport": f"{ident}-viewport", "content": f"{ident}-content",
+                               "value": f"{ident}-value"},
+                     "visibleRows": VOTE_VISIBLE_ROWS, "options": options, "optionCount": count, "placementBounds": "card",
+                     "scrollbar": {"track": f"{ident}-scroll-track", "thumb": f"{ident}-scroll-thumb", "lineStep": VOTE_OPTION_H,
+                                   "minimumThumb": 24}})
+    elif kind == "toggle":
+        box = vector(f"{ident}-box", absolute(left=value_x, top=6, width=14, height=14), [
+            path("box", [(0.75, 0.75), (13.25, 0.75), (13.25, 13.25), (0.75, 13.25)], stroke=stroke(solid(rgb(VALUE)), 1.5))])
+        checked = group(f"{ident}-checked", {**absolute(left=value_x, top=6, width=14, height=14), "display": keyword("none")}, [
+            vector(f"{ident}-mark", FULL, [path("mark", [(3.5, 3.5), (10.5, 3.5), (10.5, 10.5), (3.5, 10.5)], fill=solid(rgb(VALUE)))])])
+        children += [box, checked]
+        spec["parts"] = {"checked": f"{ident}-checked"}
+    else:
+        minimum, maximum, step = control[1:]
+        track_w = value_w - 56
+        ticks = []
+        steps = 20
+        for tick in range(steps + 1):
+            x = round(track_w * tick / steps, 3)
+            ticks.append(path(f"tick{tick}", [(x, 13 - 3 - 5 * tick / steps), (x, 13 + 3 + 5 * tick / steps)], closed=False,
+                              stroke=stroke(solid([1, 1, 1, 0.45]), 1)))
+        track_node = group(f"{ident}-track", absolute(left=value_x, top=0, width=track_w, height=VOTE_ROW_H), [
+            vector(f"{ident}-ramp", FULL, ticks),
+            group(f"{ident}-fill", {**absolute(left=0, top=11, width=0, height=4)}, [
+                vector(f"{ident}-fill-ink", FULL, [path("fill", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, 4), (0, 4)],
+                                                        fill=solid(rgb(VALUE, 0.8)))])]),
+            group(f"{ident}-thumb", absolute(left=0, top=5, width=4, height=16), [
+                vector(f"{ident}-thumb-ink", FULL, [path("thumb", [(0, 0), (4, 0), (4, 16), (0, 16)], fill=solid(rgb(VALUE)))])]),
+        ])
+        number_node = label(f"{ident}-value", PLACEHOLDER, {**absolute(left=value_x + track_w + 8, top=0, width=48, height=VOTE_ROW_H),
+                            **typeface("lowpixel", 15, VOTE_ROW_H, rgb(VALUE)), "text-align": keyword("right"), "white-space": keyword("nowrap")})
+        children += [track_node, number_node]
+        spec.update({"minimum": minimum, "maximum": maximum, "step": step, "decimals": 0, "orientation": "horizontal",
+                     "parts": {"track": f"{ident}-track", "fill": f"{ident}-fill", "thumb": f"{ident}-thumb", "value": f"{ident}-value"}})
+    row = group(ident, {"position": keyword("relative"), "display": keyword("none"), "width": length(width), "height": length(VOTE_ROW_H),
+                        "opacity": number(1), "flex-shrink": number(0)}, children, control=spec)
+    shown = {"state": f"{state_key}.row_shown"}
+    doc.bind(f"{ident}.display", ident, "display", {"op": "select", "args": [shown, "block", "none"]})
+    doc.bind(f"{ident}.opacity", ident, "opacity", {"op": "select", "args": [allowed, 1, 0.38]})
+    return row
+
+
+def vote_keycap(ident: str, key_state: str, available: str, doc: Document) -> dict:
+    """The key bound to a ballot (F1 and F2 by default; the session names it
+    in `key_state`), as the prompt bar's keycaps draw it, after the plate's
+    label while the player can vote; the lock takes its place otherwise."""
+    shape = path("cap", [(0, 0), ({"fraction": 1}, 0), ({"fraction": 1}, {"fraction": 1}), (6, {"fraction": 1}),
+                         (0, {"fraction": 1, "dp": -6})], fill=solid([1, 1, 1, 1]))
+    name = label(f"{ident}-key", PLACEHOLDER, {"position": keyword("relative"), "display": keyword("block"),
+                 **typeface("lowpixel", 13, PROMPT_H, [0.04, 0.05, 0.035, 1]), "white-space": keyword("nowrap")})
+    doc.bind(f"{ident}-key.text", f"{ident}-key", "text", {"state": key_state})
+    cap = vector(f"{ident}-cap", {"position": keyword("relative"), "display": keyword("block"), "height": length(PROMPT_H),
+                                  "padding-left": length(7), "padding-right": length(7), "opacity": number(0.85)}, [shape], [name])
+    node = group(ident, {"position": keyword("relative"), "display": keyword("none"), "height": length(PROMPT_H),
+                         "margin-left": length(10), "flex-shrink": number(0)}, [cap])
+    keyed = {"op": "&&", "args": [{"state": f"{key_state}_bound"}, {"state": available}]}
+    doc.bind(f"{ident}.display", ident, "display", {"op": "select", "args": [keyed, "block", "none"]})
+    return node
+
+
+def check_vote_labels(width: float, value_x: float) -> None:
+    """Fail generation when a row's label would run under its lock, or a
+    ballot's label and keycap past its plate, in any language."""
+    room = value_x - 29
+    over = {}
+    for _key, _verb, label_key, _control in VOTE_ROWS:
+        for language, text in any_text(label_key).items():
+            if b.text_width("lowpixel", text, 15) > room:
+                over[(label_key, language)] = round(b.text_width("lowpixel", text, 15))
+    # A ballot's label leaves room for its keycap (or, unavailable, its lock);
+    # Call Vote's for its lock.
+    for key, room in (("#str_200906", VOTE_LEFT_W - 46 - 50), ("#str_200907", VOTE_LEFT_W - 46 - 50),
+                      ("#str_200218", min(width, SLOT_W) - 46 - 20)):
+        for language, text in any_text(key).items():
+            if b.text_width("marine", text, 20) > room:
+                over[(key, language)] = round(b.text_width("marine", text, 20))
+    # The reasons on the ballots' and Call Vote's plates, the headings, and
+    # the running vote's texts with short values in their formats.
+    texts = [(key, "lowpixel", 14, VOTE_LEFT_W - 26) for key in ("#str_231048", "#str_231049", "#str_231050")]
+    texts += [(key, "lowpixel", 14, min(width, SLOT_W) - 26) for key in ("#str_231050", "#str_108023", "#str_231049", "#str_104273",
+                                                                          "#str_231051")]
+    texts += [(VOTE_RUNNING, "lowpixel", 14, VOTE_LEFT_W), (VOTE_NONE_RUNNING, "lowpixel", 15, VOTE_LEFT_W),
+              (VOTE_CALL, "lowpixel", 14, width * 0.5), (VOTE_LOCKED, "lowpixel", 14, width * 0.5)]
+    texts += [(key, "lowpixel", 15, VOTE_LEFT_W) for key in ("#str_231045", "#str_231046", "#str_104435", "#str_104422", "#str_104423",
+                                                             "#str_122011", "#str_104427", "#str_122009", "#str_110010", "#str_104429",
+                                                             "#str_104430", "#str_104431", "#str_104432", "#str_104433", "#str_104434")]
+    for key, face, size, room in texts:
+        for language, text in any_text(key).items():
+            sample = text.replace("%s", "Anderson").replace("%d", "20")
+            if b.text_width(face, sample, size) > room:
+                over[(key, language)] = round(b.text_width(face, sample, size))
+    for name in ("DEATH BEFORE DISHONOR", "THE FRAGGING YARD 1V1", "CAMPGROUNDS REDUX"):
+        if b.text_width("lowpixel", name, 14) > width - value_x - 26:
+            over[(name, "maps")] = round(b.text_width("lowpixel", name, 14))
+    if over:
+        raise SystemExit(f"Vote page labels past their room: {over}")
+
+
+def vote_page(doc: Document, index: int, ident: str, width: float, height: float) -> tuple[dict, list]:
+    """The Vote page (section 14.18): the running vote first, with who called
+    it, what it changes, the time left, the yes and no tally, and Yes and No
+    with the keys bound to them; then the call-a-vote rows (map, game type,
+    the limits the drafted game type uses, balance, shuffle, restart, buying
+    and kick) and Call Vote, unavailable with its reason while a vote runs or
+    nothing would change. The page opens on Yes while the player can vote,
+    and on its first row otherwise."""
+    page_width = width - 2 * INSET
+    page_height = height - PAGE_TOP - PROMPT_BOTTOM - PROMPT_H - 16
+    right_x = VOTE_LEFT_W + 24
+    right_w = page_width - right_x
+    # The value column takes 48 % of the row: the stock maps' names are long,
+    # in capitals ("DEATH BEFORE DISHONOR", "THE FRAGGING YARD 1V1").
+    value_x = round(right_w * 0.52, 3)
+    check_vote_labels(right_w, value_x)
+    doc.state.update({
+        "mp.vote.running": {"type": "boolean", "initial": False},
+        "mp.vote.caller": {"type": "string", "initial": ""},
+        "mp.vote.time": {"type": "string", "initial": ""},
+        "mp.vote.tally": {"type": "string", "initial": ""},
+        "mp.vote.line_count": {"type": "number", "initial": 0},
+        **{f"mp.vote.line{line}": {"type": "string", "initial": ""} for line in range(VOTE_LINES)},
+        "mp.vote.locked": {"type": "boolean", "initial": False},
+        **{f"mp.keys.vote_{ballot}": {"type": "string", "initial": ""} for ballot in ("yes", "no")},
+        **{f"mp.keys.vote_{ballot}_bound": {"type": "boolean", "initial": False} for ballot in ("yes", "no")},
+    })
+    running = {"state": "mp.vote.running"}
+    heading = lambda node, key, left, w: label(node, key, {**absolute(left=left, top=0, width=w, height=20),
+                                                           **typeface("lowpixel", 14, 20, HEADING), "white-space": keyword("nowrap")})
+    # The running vote.
+    left = [heading("vote-heading-running", VOTE_RUNNING, 0, VOTE_LEFT_W)]
+    none = label("vote-none", VOTE_NONE_RUNNING, {**absolute(left=0, top=VOTE_HEAD_H, width=VOTE_LEFT_W, height=20),
+                 **typeface("lowpixel", 15, 20, [1, 1, 1, 0.55]), "white-space": keyword("nowrap"), "display": keyword("block")})
+    doc.bind("vote-none.display", "vote-none", "display", {"op": "select", "args": [running, "none", "block"]})
+    left.append(none)
+    texts = [("vote-caller", "mp.vote.caller", 0, [1, 1, 1, 0.75])]
+    texts += [(f"vote-line-{line}", f"mp.vote.line{line}", 4 if line == 0 else 0, [1, 1, 1, 0.92]) for line in range(VOTE_LINES)]
+    texts += [("vote-time", "mp.vote.time", 6, rgb(VALUE)), ("vote-tally", "mp.vote.tally", 2, [1, 1, 1, 0.8])]
+    column = []
+    for node, state, gap, tint in texts:
+        column.append(label(node, PLACEHOLDER, {"position": keyword("relative"), "width": length(VOTE_LEFT_W), "height": length(18),
+                            "margin-top": length(gap), "flex-shrink": number(0), **typeface("lowpixel", 15, 18, tint),
+                            "white-space": keyword("nowrap"), "overflow": keyword("hidden"), "display": keyword("none")}))
+        doc.bind(f"{node}.text", node, "text", {"state": state})
+        shown = running
+        if node.startswith("vote-line-"):
+            shown = {"op": "&&", "args": [running, {"op": "<", "args": [int(node.rsplit("-", 1)[1]), {"state": "mp.vote.line_count"}]}]}
+        doc.bind(f"{node}.display", node, "display", {"op": "select", "args": [shown, "block", "none"]})
+    left.append(group("vote-running", {**absolute(left=0, top=VOTE_HEAD_H, width=VOTE_LEFT_W, height=18 * (VOTE_LINES + 3) + 12),
+                                       "display": keyword("flex"), "flex-direction": keyword("column")}, column))
+    ballots_top = VOTE_HEAD_H + 22 + 18 * (VOTE_LINES + 3)
+    controls = []
+    for ballot, verb, offset in (("yes", "mpVoteYes", 0), ("no", "mpVoteNo", SLOT_PITCH)):
+        node = f"vote-{ballot}"
+        doc.session(verb, verb)
+        holder = action_plate(doc, node, f"mp.vote.{ballot}", VOTE_LEFT_W, ballots_top + offset, f"vote_{ballot}",
+                              [{"op": "action", "action": verb}], primary=ballot == "yes")
+        row = next(child for child in holder["children"][0]["children"] if child["id"] == f"{node}-row")
+        row["children"].insert(1, vote_keycap(f"{node}-keycap", f"mp.keys.vote_{ballot}", f"mp.vote.{ballot}.available", doc))
+        left.append(holder)
+        controls.append(node)
+    # The call being drafted.
+    right = [heading("vote-heading-call", VOTE_CALL, 0, right_w * 0.5)]
+    locked = label("vote-locked", VOTE_LOCKED, {**absolute(left=right_w * 0.5, top=0, width=right_w * 0.5, height=20),
+                   **typeface("lowpixel", 14, 20, rgb(ERROR)), "text-align": keyword("right"), "white-space": keyword("nowrap"),
+                   "display": keyword("none")})
+    doc.bind("vote-locked.display", "vote-locked", "display", {"op": "select", "args": [{"state": "mp.vote.locked"}, "block", "none"]})
+    right.append(locked)
+    rows = [vote_row(doc, key, verb, label_key, control, right_w, value_x) for key, verb, label_key, control in VOTE_ROWS]
+    # At most nine rows show at once (team modes with a buy menu).
+    right.append(group("vote-rows", {**absolute(left=0, top=VOTE_HEAD_H, width=right_w, height=9 * VOTE_ROW_H),
+                                     "display": keyword("flex"), "flex-direction": keyword("column")}, rows))
+    doc.session("mpCallVote", "mpCallVote")
+    call_top = page_height - SLOT_PITCH + 4
+    right.append(action_plate(doc, "vote-call", "mp.vote.call", min(right_w, SLOT_W), call_top, "vote_call",
+                              [{"op": "action", "action": "mpCallVote"}]))
+    controls.append("vote-call")
+    column = group("vote-call-column", absolute(left=right_x, top=0, width=right_w, height=page_height), right)
+    current = {"op": "==", "args": [{"state": "card.tab"}, index]}
+    for key, _verb, _label, control in VOTE_ROWS:
+        enabled = {"op": "&&", "args": [current, {"state": f"mp.vote.{key}.row_allowed"}]}
+        if control[0] == "choice" and key != "kick":
+            enabled = {"op": "&&", "args": [enabled, {"op": ">", "args": [{"state": f"mp.vote.{key}_count"}, 0]}]}
+        doc.bind(f"vote-row-{key}.enabled", f"vote-row-{key}", "enabled", enabled)
+    page = page_group(doc, index, ident, width, height, [*left, column], controls)
+    # Yes while the player can vote, else the map row, else Call Vote.
+    focus = [{"op": "if", "condition": {"state": "mp.vote.yes.available"}, "then": [{"op": "focus", "control": "vote-yes"}],
+              "else": [{"op": "if", "condition": {"op": "&&", "args": [{"state": "mp.vote.map.row_allowed"},
+                                                                       {"op": ">", "args": [{"state": "mp.vote.map_count"}, 0]}]},
+                        "then": [{"op": "focus", "control": "vote-row-map"}], "else": [{"op": "focus", "control": "vote-call"}]}]}]
+    return page, focus
+
+
+PAGE_BUILDERS = {"team": team_page, "players": players_page, "vote": vote_page, "server": server_page}
 
 
 def prompt_row(width: float, height: float, back_verb: str, trailing: list) -> dict:
@@ -1340,8 +1671,8 @@ def welcome_document() -> dict:
 
 def escape_document() -> dict:
     """The Escape card (section 14.18), opened with the menu key during a
-    match, Resume leading its prompt bar. The Team, Players and Server pages
-    are built; the others hand off to their stock pages for now."""
+    match, Resume leading its prompt bar. The Team, Players, Vote and Server
+    pages are built; the others hand off to their stock pages for now."""
     doc = Document("openq4.mp_escape")
     width, height = fitted_card_width([key for _, key, _ in ESCAPE_TABS], (VERB_RESUME, [MAIN_MENU, DISCONNECT])), ESCAPE_H
     doc.state.update({

@@ -40,6 +40,15 @@ struct idStr : std::string {
         while(*a && *b && std::tolower(*a)==std::tolower(*b)){++a;++b;}
         return std::tolower(*a)-std::tolower(*b);
     }
+    static int Icmpn(const char* a,const char* b,int n) {
+        for(int i=0;i<n;++i,++a,++b){if(std::tolower(*a)!=std::tolower(*b)||!*a)return std::tolower(*a)-std::tolower(*b);}
+        return 0;
+    }
+};
+// The multiplayer card names the keys bound to its Vote page's ballots.
+struct idKeyInput {
+    static const char* KeysFromBinding(const char*) {return "";}
+    static const char* KeyNumToString(int,bool) {return "";}
 };
 struct idCmdArgs {
     std::vector<std::string> values;

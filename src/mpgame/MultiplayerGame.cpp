@@ -313,6 +313,11 @@ create a vote or enter its frozen electorate; spectators and bots cannot skew
 the threshold.
 ================
 */
+// How long a packed (menu) vote and a legacy (console) vote run. Clients
+// keep the same lengths to show the time left.
+static const int PACKED_VOTE_MSEC = 30000;
+static const int LEGACY_VOTE_MSEC = 20000;
+
 static bool IsEligibleVotePlayerSlot( int clientNum ) {
 	if ( !IsValidVotePlayerSlot( clientNum ) || !gameLocal.mpGame.IsInGame( clientNum ) ) {
 		return false;
@@ -1238,6 +1243,13 @@ idMultiplayerGame::idMultiplayerGame() {
 	retainedMenuCovered = false;
 	retainedMenuRevision = 0;
 	retainedStatClient = -1;
+	memset( retainedVoteDraft, 0, sizeof( retainedVoteDraft ) );
+	retainedVoteDraft[ RVF_KICK ] = -1;
+	retainedVoteMapsRequested = false;
+	voteCaller = -1;
+	voteStartTime = 0;
+	voteLength = 0;
+	votePacked = false;
 	arenaEntranceCameraResolved = false;
 	arenaEntranceCameraIsEntrance = false;
 	arenaVictorLookLatched = false;
@@ -9761,6 +9773,10 @@ void idMultiplayerGame::Clear() {
 	voteTimeOut = 0;
 	voteExecTime = 0;
 	voteEligibleCount = 0;
+	voteCaller = -1;
+	voteStartTime = 0;
+	voteLength = 0;
+	votePacked = false;
 	memset( nextVoteAllowedTime, 0, sizeof( nextVoteAllowedTime ) );
 	memset( nextVoteRejectNoticeTime, 0, sizeof( nextVoteRejectNoticeTime ) );
 	clientMatchView.Clear();
@@ -12450,6 +12466,10 @@ void idMultiplayerGame::ClientStartPackedVote( int clientNum, const voteStruct_t
 		common->Warning( "Ignoring packed vote notification with invalid kick slot %d", voteData.m_kick );
 		return;
 	}
+	voteCaller = clientNum;
+	voteStartTime = gameLocal.time;
+	voteLength = PACKED_VOTE_MSEC;
+	votePacked = true;
 
 	// "%s has called a vote!"
 	AddChatLine( "%s", va( common->GetLocalizedString( "#str_104279" ), gameLocal.userInfo[ clientNum ].GetString( "ui_name" ) ) );
@@ -12707,7 +12727,7 @@ void idMultiplayerGame::ServerStartPackedVote( int clientNum, const voteStruct_t
 	noVotes = 0;
 	vote = VOTE_MULTIFIELD;
 	currentVoteData = voteData;
-	voteTimeOut = gameLocal.time + 30000;	// 30 seconds?  might need to be longer because it requires fiddling with the GUI
+	voteTimeOut = gameLocal.time + PACKED_VOTE_MSEC;	// 30 seconds?  might need to be longer because it requires fiddling with the GUI
 	voteEligibleCount = 0;
 	// openQ4: a vote has actually started, so the caller now owes a cool-off
 	StampVoteRateLimit( clientNum );
@@ -15657,6 +15677,7 @@ void idMultiplayerGame::SetRetainedMenuCover( bool covered, idUserInterface *car
 	retainedMenuCovered = true;
 	retainedMenuPublished.Clear();
 	SetJoinScreenSoftFocus( false );
+	ResetRetainedVoteDraft();
 	// The Players page opens on the player's own statistics, its lists sorted
 	// by score again.
 	idPlayer *local = gameLocal.GetLocalPlayer();
@@ -16291,6 +16312,429 @@ void idMultiplayerGame::PublishRetainedWelcome( idUserInterface *card, bool &cha
 	}
 }
 
+/*
+================
+idMultiplayerGame::ResetRetainedVoteDraft
+
+The Vote page's call starts from the server's values: its map, game type
+and limits, team balance and buying, with no shuffle, restart or kick.
+================
+*/
+void idMultiplayerGame::ResetRetainedVoteDraft( void ) {
+	const idDict &si = gameLocal.serverInfo;
+	// The map is drafted by its path.
+	NormalizeMapDeclPath( si.GetString( "si_map" ), retainedVoteMap );
+	retainedVoteDraft[ RVF_MAP ] = 0;
+	retainedVoteDraft[ RVF_GAMETYPE ] = GameTypeToVote( si.GetString( "si_gameType" ) );
+	retainedVoteDraft[ RVF_TIMELIMIT ] = si.GetInt( "si_timeLimit" );
+	retainedVoteDraft[ RVF_FRAGLIMIT ] = si.GetInt( "si_fragLimit" );
+	retainedVoteDraft[ RVF_CAPTURELIMIT ] = si.GetInt( "si_captureLimit" );
+	retainedVoteDraft[ RVF_TOURNEYLIMIT ] = si.GetInt( "si_tourneyLimit" );
+	retainedVoteDraft[ RVF_CONTROLTIME ] = si.GetInt( "si_controlTime" );
+	retainedVoteDraft[ RVF_BALANCE ] = si.GetBool( "si_autobalance" ) ? 1 : 0;
+	retainedVoteDraft[ RVF_SHUFFLE ] = 0;
+	retainedVoteDraft[ RVF_RESTART ] = 0;
+	retainedVoteDraft[ RVF_BUYING ] = si.GetBool( "si_isBuyingEnabled" ) ? 1 : 0;
+	retainedVoteDraft[ RVF_KICK ] = -1;
+	retainedVoteMapsRequested = false;
+}
+
+/*
+================
+idMultiplayerGame::RetainedVoteChoices
+
+The maps the drafted game type plays, in the server's order, and the other
+players the call could kick, by client number. A drafted map the game type
+cannot play gives way to the first one that can, and a drafted kick to no
+one once its player leaves.
+================
+*/
+void idMultiplayerGame::RetainedVoteChoices( void ) {
+	retainedVoteMaps.Clear();
+	if ( voteMapDecls.Num() == 0 && !retainedVoteMapsRequested ) {
+		// A client asks the server once each time the card covers the menu.
+		retainedVoteMapsRequested = true;
+		RequestVoteMaps( VOTEMAPS_WAITING_RETAINED );
+	}
+	const char *gameType = VoteGameTypeToString( retainedVoteDraft[ RVF_GAMETYPE ] );
+	bool drafted = false;
+	for ( int i = 0; i < voteMapDecls.Num() && retainedVoteMaps.Num() < RETAINED_VOTE_MAPS; i++ ) {
+		const idDict *dict = fileSystem->GetMapDecl( voteMapDecls[ i ] );
+		if ( dict == NULL || !MPMapSupportsGameTypeName( dict, gameType ) ) {
+			continue;
+		}
+		idStr path;
+		NormalizeMapDeclPath( dict->GetString( "path" ), path );
+		drafted |= path.Icmp( retainedVoteMap ) == 0;
+		retainedVoteMaps.Append( voteMapDecls[ i ] );
+	}
+	if ( !drafted && retainedVoteMaps.Num() > 0 ) {
+		NormalizeMapDeclPath( fileSystem->GetMapDecl( retainedVoteMaps[ 0 ] )->GetString( "path" ), retainedVoteMap );
+	}
+	retainedVoteKick.Clear();
+	for ( int i = 0; i < gameLocal.numClients && i < MAX_CLIENTS && retainedVoteKick.Num() < RETAINED_PLAYER_ROWS; i++ ) {
+		if ( IsValidVotePlayerSlot( i ) && i != gameLocal.localClientNum ) {
+			retainedVoteKick.Append( i );
+		}
+	}
+	if ( retainedVoteKick.FindIndex( retainedVoteDraft[ RVF_KICK ] ) < 0 ) {
+		retainedVoteDraft[ RVF_KICK ] = -1;
+	}
+}
+
+// The vote flag each drafted field changes, in retainedVoteField_t order.
+static const int retainedVoteFlags[] = {
+	VOTEFLAG_MAP, VOTEFLAG_GAMETYPE, VOTEFLAG_TIMELIMIT, VOTEFLAG_FRAGLIMIT, VOTEFLAG_CAPTURELIMIT, VOTEFLAG_TOURNEYLIMIT,
+	VOTEFLAG_CONTROLTIME, VOTEFLAG_TEAMBALANCE, VOTEFLAG_SHUFFLE, VOTEFLAG_RESTART, VOTEFLAG_BUYING, VOTEFLAG_KICK
+};
+
+/*
+================
+idMultiplayerGame::RetainedVoteFieldShown
+
+The rows the drafted game type uses: its own limit (frags, captures, the
+tournament's rounds or the Dead Zone's control time), team balance and
+shuffle in team modes, and buying where the mode has a buy menu.
+================
+*/
+bool idMultiplayerGame::RetainedVoteFieldShown( int field ) const {
+	const int type = MPVoteGameTypeToGameType( retainedVoteDraft[ RVF_GAMETYPE ] );
+	switch ( field ) {
+		case RVF_FRAGLIMIT: return MPGameTypeHasAny( type, GTF_FRAGLIMIT );
+		case RVF_CAPTURELIMIT: return MPGameTypeHasAny( type, GTF_CAPTURELIMIT );
+		case RVF_TOURNEYLIMIT: return MPGameTypeHasAny( type, GTF_BRACKET );
+		case RVF_CONTROLTIME: return MPGameTypeHasAny( type, GTF_DEADZONE );
+		case RVF_BALANCE:
+		case RVF_SHUFFLE: return MPGameTypeHasAny( type, GTF_TEAM );
+		case RVF_BUYING: return MPGameTypeHasAny( type, GTF_BUYING );
+		default: return field >= 0 && field < RVF_COUNT;
+	}
+}
+
+// A field the server's si_voteFlags forbids stays on the page, locked.
+bool idMultiplayerGame::RetainedVoteFieldAllowed( int field ) const {
+	return field >= 0 && field < RVF_COUNT && ( gameLocal.serverInfo.GetInt( "si_voteFlags" ) & retainedVoteFlags[ field ] ) == 0;
+}
+
+/*
+================
+idMultiplayerGame::RetainedVoteChanges
+
+The vote the drafted call makes: each shown, allowed field that differs from
+the server's value (shuffle, restart and kick when chosen). The server
+refuses a whole vote for one unchanged field, so nothing else is sent.
+================
+*/
+int idMultiplayerGame::RetainedVoteChanges( voteStruct_t &data ) {
+	data.m_fieldFlags = 0;
+	data.m_kick = data.m_gameType = data.m_timeLimit = data.m_fragLimit = data.m_tourneyLimit = 0;
+	data.m_captureLimit = data.m_buying = data.m_teamBalance = data.m_controlTime = 0;
+	data.m_map.Clear();
+	RetainedVoteChoices();
+	const idDict &si = gameLocal.serverInfo;
+	const auto changes = [&]( int field ) { return RetainedVoteFieldShown( field ) && RetainedVoteFieldAllowed( field ); };
+	idStr current;
+	NormalizeMapDeclPath( si.GetString( "si_map" ), current );
+	if ( changes( RVF_MAP ) && retainedVoteMap.Length() > 0 && retainedVoteMap.Icmp( current ) != 0 ) {
+		const idDict *dict = MultiplayerResolveMapDecl( retainedVoteMap.c_str() );
+		if ( dict != NULL ) {
+			data.m_map = dict->GetString( "path" );
+			data.m_fieldFlags |= VOTEFLAG_MAP;
+		}
+	}
+	if ( changes( RVF_GAMETYPE ) && retainedVoteDraft[ RVF_GAMETYPE ] != GameTypeToVote( si.GetString( "si_gameType" ) ) ) {
+		data.m_gameType = retainedVoteDraft[ RVF_GAMETYPE ];
+		data.m_fieldFlags |= VOTEFLAG_GAMETYPE;
+	}
+	struct limit_t { int field; const char *key; int flag; int voteStruct_t::*member; };
+	static const limit_t limits[] = {
+		{ RVF_TIMELIMIT, "si_timeLimit", VOTEFLAG_TIMELIMIT, &voteStruct_t::m_timeLimit },
+		{ RVF_FRAGLIMIT, "si_fragLimit", VOTEFLAG_FRAGLIMIT, &voteStruct_t::m_fragLimit },
+		{ RVF_CAPTURELIMIT, "si_captureLimit", VOTEFLAG_CAPTURELIMIT, &voteStruct_t::m_captureLimit },
+		{ RVF_TOURNEYLIMIT, "si_tourneyLimit", VOTEFLAG_TOURNEYLIMIT, &voteStruct_t::m_tourneyLimit },
+		{ RVF_CONTROLTIME, "si_controlTime", VOTEFLAG_CONTROLTIME, &voteStruct_t::m_controlTime },
+		{ RVF_BALANCE, "si_autobalance", VOTEFLAG_TEAMBALANCE, &voteStruct_t::m_teamBalance },
+		{ RVF_BUYING, "si_isBuyingEnabled", VOTEFLAG_BUYING, &voteStruct_t::m_buying },
+	};
+	for ( const limit_t &limit : limits ) {
+		if ( changes( limit.field ) && retainedVoteDraft[ limit.field ] != si.GetInt( limit.key ) ) {
+			data.*limit.member = retainedVoteDraft[ limit.field ];
+			data.m_fieldFlags |= limit.flag;
+		}
+	}
+	if ( changes( RVF_SHUFFLE ) && retainedVoteDraft[ RVF_SHUFFLE ] ) {
+		data.m_fieldFlags |= VOTEFLAG_SHUFFLE;
+	}
+	if ( changes( RVF_RESTART ) && retainedVoteDraft[ RVF_RESTART ] ) {
+		data.m_fieldFlags |= VOTEFLAG_RESTART;
+	}
+	if ( changes( RVF_KICK ) && retainedVoteDraft[ RVF_KICK ] >= 0 ) {
+		data.m_kick = retainedVoteDraft[ RVF_KICK ];
+		data.m_fieldFlags |= VOTEFLAG_KICK;
+	}
+	return data.m_fieldFlags;
+}
+
+/*
+================
+idMultiplayerGame::RetainedVoteRefusal
+
+Why the drafted call cannot be made now, or NULL: a managed match takes
+votes as Match Control proposals, the server may not allow voting,
+spectators cannot vote, one vote runs at a time, and a call has to change
+something.
+================
+*/
+const char *idMultiplayerGame::RetainedVoteRefusal( void ) {
+	if ( IsManagedMatch() ) {
+		return "#str_231050";
+	}
+	if ( !gameLocal.serverInfo.GetBool( "si_allowVoting" ) ) {
+		return "#str_108023";
+	}
+	const idPlayer *local = gameLocal.GetLocalPlayer();
+	if ( local == NULL || local->spectating || local->wantSpectate ) {
+		return "#str_231049";
+	}
+	if ( vote != VOTE_NONE ) {
+		return "#str_104273";
+	}
+	voteStruct_t data;
+	if ( RetainedVoteChanges( data ) == 0 ) {
+		return "#str_231051";
+	}
+	return NULL;
+}
+
+// Why the player cannot vote in the running vote, or NULL.
+const char *idMultiplayerGame::RetainedBallotRefusal( void ) const {
+	if ( IsManagedMatch() ) {
+		return "#str_231050";
+	}
+	const idPlayer *local = gameLocal.GetLocalPlayer();
+	if ( local == NULL || local->spectating || local->wantSpectate ) {
+		return "#str_231049";
+	}
+	if ( voted ) {
+		return "#str_231048";
+	}
+	return NULL;
+}
+
+/*
+================
+idMultiplayerGame::SetRetainedVoteField
+
+One field of the drafted call: a map by its row in the map choice, a game
+type the vote can choose, a limit inside its setting's range, a yes or no,
+or a player by their row in the kick choice (-1 for no one). Anything else,
+and a field the page does not show or the server forbids, changes nothing.
+================
+*/
+bool idMultiplayerGame::SetRetainedVoteField( int field, int value ) {
+	if ( !RetainedVoteFieldShown( field ) || !RetainedVoteFieldAllowed( field ) ) {
+		return false;
+	}
+	RetainedVoteChoices();
+	const idCVar *ranges[ RVF_COUNT ] = { NULL, NULL, &si_timeLimit, &si_fragLimit, &si_captureLimit, &si_tourneyLimit, &si_controlTime };
+	switch ( field ) {
+		case RVF_MAP:
+			if ( value < 0 || value >= retainedVoteMaps.Num() ) {
+				return false;
+			}
+			NormalizeMapDeclPath( fileSystem->GetMapDecl( retainedVoteMaps[ value ] )->GetString( "path" ), retainedVoteMap );
+			return true;
+		case RVF_GAMETYPE:
+			if ( value < 0 || value >= MPVoteGameTypeCount() || !MPGameTypeIsSelectable( MPVoteGameTypeToGameType( value ) ) ) {
+				return false;
+			}
+			retainedVoteDraft[ field ] = value;
+			RetainedVoteChoices();
+			return true;
+		case RVF_TIMELIMIT:
+		case RVF_FRAGLIMIT:
+		case RVF_CAPTURELIMIT:
+		case RVF_TOURNEYLIMIT:
+		case RVF_CONTROLTIME:
+			if ( value < ranges[ field ]->GetMinValue() || value > ranges[ field ]->GetMaxValue() ) {
+				return false;
+			}
+			retainedVoteDraft[ field ] = value;
+			return true;
+		case RVF_BALANCE:
+		case RVF_SHUFFLE:
+		case RVF_RESTART:
+		case RVF_BUYING:
+			if ( value != 0 && value != 1 ) {
+				return false;
+			}
+			retainedVoteDraft[ field ] = value;
+			return true;
+		case RVF_KICK:
+			if ( value < -1 || value >= retainedVoteKick.Num() ) {
+				return false;
+			}
+			retainedVoteDraft[ field ] = value < 0 ? -1 : retainedVoteKick[ value ];
+			return true;
+		default:
+			return false;
+	}
+}
+
+/*
+================
+idMultiplayerGame::RetainedVoteLines
+
+The running packed vote's changes, one line each, in the order and words of
+the stock vote menu (ClientStartPackedVote).
+================
+*/
+void idMultiplayerGame::RetainedVoteLines( const voteStruct_t &data, idStrList &lines ) {
+	const char *yes = common->GetLocalizedString( "#str_104341" ), *no = common->GetLocalizedString( "#str_104342" );
+	if ( ( data.m_fieldFlags & VOTEFLAG_KICK ) && data.m_kick >= 0 && data.m_kick < MAX_CLIENTS ) {
+		lines.Append( va( common->GetLocalizedString( "#str_104422" ),
+			MPRetainedPlainText( gameLocal.userInfo[ data.m_kick ].GetString( "ui_name" ), 64, 1 ).c_str() ) );
+	}
+	if ( data.m_fieldFlags & VOTEFLAG_RESTART ) {
+		lines.Append( common->GetLocalizedString( "#str_104423" ) );
+	}
+	if ( data.m_fieldFlags & VOTEFLAG_BUYING ) {
+		lines.Append( va( common->GetLocalizedString( "#str_122011" ), data.m_buying ? yes : no ) );
+	}
+	if ( data.m_fieldFlags & VOTEFLAG_TEAMBALANCE ) {
+		lines.Append( va( common->GetLocalizedString( "#str_104427" ), data.m_teamBalance ? yes : no ) );
+	}
+	if ( data.m_fieldFlags & VOTEFLAG_CONTROLTIME ) {
+		lines.Append( va( common->GetLocalizedString( "#str_122009" ), data.m_controlTime ) );
+	}
+	if ( data.m_fieldFlags & VOTEFLAG_SHUFFLE ) {
+		lines.Append( common->GetLocalizedString( "#str_110010" ) );
+	}
+	if ( data.m_fieldFlags & VOTEFLAG_MAP ) {
+		idStr mapName;
+		lines.Append( va( common->GetLocalizedString( "#str_104429" ), ResolveScoreboardMapName( data.m_map.c_str(), mapName ) ) );
+	}
+	if ( data.m_fieldFlags & VOTEFLAG_GAMETYPE ) {
+		lines.Append( va( common->GetLocalizedString( "#str_104430" ),
+			MPGameTypeLocalizedName( MPVoteGameTypeToGameType( data.m_gameType ) ) ) );
+	}
+	if ( data.m_fieldFlags & VOTEFLAG_TIMELIMIT ) {
+		lines.Append( va( common->GetLocalizedString( "#str_104431" ), data.m_timeLimit ) );
+	}
+	if ( data.m_fieldFlags & VOTEFLAG_TOURNEYLIMIT ) {
+		lines.Append( va( common->GetLocalizedString( "#str_104432" ), data.m_tourneyLimit ) );
+	}
+	if ( data.m_fieldFlags & VOTEFLAG_CAPTURELIMIT ) {
+		lines.Append( va( common->GetLocalizedString( "#str_104433" ), data.m_captureLimit ) );
+	}
+	if ( data.m_fieldFlags & VOTEFLAG_FRAGLIMIT ) {
+		lines.Append( va( common->GetLocalizedString( "#str_104434" ), data.m_fragLimit ) );
+	}
+}
+
+/*
+================
+idMultiplayerGame::PublishRetainedVote
+
+The Vote page (section 14.18): the running vote first, with who called it,
+what it changes, the time left (on clients counted from when the vote
+reached them), the tally, and Yes and No (the session names their keys); then
+the call being drafted, each field's row shown where the drafted game type
+uses it and locked where the server forbids it, and Call Vote with why it
+cannot be made now.
+================
+*/
+void idMultiplayerGame::PublishRetainedVote( idUserInterface *card, bool &changed ) {
+	const auto publish = [&]( const char *key, const char *value ) { changed |= PublishRetainedValue( card, key, value ); };
+	const bool running = vote != VOTE_NONE;
+	idStrList lines;
+	idStr caller, timeLeft, tally;
+	if ( running ) {
+		if ( votePacked ) {
+			RetainedVoteLines( currentVoteData, lines );
+		} else {
+			lines.Append( MPRetainedPlainText( voteString.c_str(), 128, 1 ) );
+		}
+		if ( IsValidVotePlayerSlot( voteCaller ) ) {
+			caller = va( common->GetLocalizedString( "#str_231045" ),
+				MPRetainedPlainText( gameLocal.userInfo[ voteCaller ].GetString( "ui_name" ), 64, 1 ).c_str() );
+		}
+		const int seconds = ( Max( 0, voteStartTime + voteLength - gameLocal.time ) + 999 ) / 1000;
+		timeLeft = va( common->GetLocalizedString( "#str_231046" ), va( "%d:%02d", seconds / 60, seconds % 60 ) );
+		tally = va( common->GetLocalizedString( "#str_104435" ), yesVotes, noVotes );
+	}
+	publish( "mp.vote.running", running ? "1" : "0" );
+	publish( "mp.vote.caller", caller.c_str() );
+	publish( "mp.vote.time", timeLeft.c_str() );
+	publish( "mp.vote.tally", tally.c_str() );
+	for ( int i = 0; i < RETAINED_VOTE_LINES; i++ ) {
+		publish( va( "mp.vote.line%d", i ), i < lines.Num() ? lines[ i ].c_str() : "" );
+	}
+	publish( "mp.vote.line_count", va( "%d", Min( lines.Num(), RETAINED_VOTE_LINES ) ) );
+	const char *ballot = running ? RetainedBallotRefusal() : NULL;
+	static const char *const ballots[ 2 ][ 2 ] = { { "yes", "#str_200906" }, { "no", "#str_200907" } };
+	for ( int i = 0; i < 2; i++ ) {
+		const char *name = ballots[ i ][ 0 ];
+		publish( va( "mp.vote.%s.shown", name ), running ? "1" : "0" );
+		publish( va( "mp.vote.%s.available", name ), running && ballot == NULL ? "1" : "0" );
+		publish( va( "mp.vote.%s.label", name ), common->GetLocalizedString( ballots[ i ][ 1 ] ) );
+		publish( va( "mp.vote.%s.reason", name ), ballot != NULL ? common->GetLocalizedString( ballot ) : "" );
+		publish( va( "mp.vote.%s.detail", name ), "" );
+	}
+
+	// The call being drafted.
+	RetainedVoteChoices();
+	const char *refusal = RetainedVoteRefusal();
+	publish( "mp.vote.call.shown", "1" );
+	publish( "mp.vote.call.available", refusal == NULL ? "1" : "0" );
+	publish( "mp.vote.call.label", common->GetLocalizedString( "#str_200218" ) );
+	publish( "mp.vote.call.reason", refusal != NULL ? common->GetLocalizedString( refusal ) : "" );
+	publish( "mp.vote.call.detail", "" );
+	static const char *const fields[ RVF_COUNT ] = { "map", "gametype", "timelimit", "fraglimit", "capturelimit", "tourneylimit",
+		"controltime", "balance", "shuffle", "restart", "buying", "kick" };
+	bool locked = false;
+	for ( int field = 0; field < RVF_COUNT; field++ ) {
+		const bool shown = RetainedVoteFieldShown( field ), allowed = RetainedVoteFieldAllowed( field );
+		locked |= shown && !allowed;
+		publish( va( "mp.vote.%s.row_shown", fields[ field ] ), shown ? "1" : "0" );
+		publish( va( "mp.vote.%s.row_allowed", fields[ field ] ), allowed ? "1" : "0" );
+		if ( field >= RVF_TIMELIMIT && field <= RVF_BUYING ) {
+			publish( va( "mp.vote.%s", fields[ field ] ), va( "%d", retainedVoteDraft[ field ] ) );
+		}
+	}
+	publish( "mp.vote.locked", locked ? "1" : "0" );
+	// The map choice: the maps the drafted game type plays, by row.
+	int mapRow = -1;
+	for ( int i = 0; i < RETAINED_VOTE_MAPS; i++ ) {
+		idStr name, path, resolved;
+		if ( i < retainedVoteMaps.Num() ) {
+			const idDict *dict = fileSystem->GetMapDecl( retainedVoteMaps[ i ] );
+			NormalizeMapDeclPath( dict->GetString( "path" ), path );
+			name = MPRetainedPlainText( ResolveScoreboardMapName( dict->GetString( "path" ), resolved ), 64, 1 );
+			if ( path.Icmp( retainedVoteMap ) == 0 ) {
+				mapRow = i;
+			}
+		}
+		publish( va( "mp.vote.map%d", i ), name.c_str() );
+	}
+	publish( "mp.vote.map_count", va( "%d", retainedVoteMaps.Num() ) );
+	publish( "mp.vote.map", va( "%d", mapRow ) );
+	// The game type choice, in the vote's order.
+	for ( int i = 0; i < 16; i++ ) {
+		publish( va( "mp.vote.gametype%d", i ), i < MPVoteGameTypeCount() ? MPGameTypeLocalizedName( MPVoteGameTypeToGameType( i ) ) : "" );
+	}
+	publish( "mp.vote.gametype_count", va( "%d", Min( MPVoteGameTypeCount(), 16 ) ) );
+	publish( "mp.vote.gametype", va( "%d", retainedVoteDraft[ RVF_GAMETYPE ] ) );
+	// The kick choice: no one, then the other players by client number.
+	for ( int i = 0; i < RETAINED_PLAYER_ROWS; i++ ) {
+		const idStr name = i < retainedVoteKick.Num() ?
+			MPRetainedPlainText( gameLocal.userInfo[ retainedVoteKick[ i ] ].GetString( "ui_name" ), 64, 1 ) : idStr();
+		publish( va( "mp.vote.kick%d", i ), name.c_str() );
+	}
+	publish( "mp.vote.kick_count", va( "%d", 1 + retainedVoteKick.Num() ) );
+	publish( "mp.vote.kick", va( "%d", retainedVoteKick.FindIndex( retainedVoteDraft[ RVF_KICK ] ) ) );
+}
+
 bool idMultiplayerGame::PublishRetainedValue( idUserInterface *card, const char *key, const char *value ) {
 	if ( retainedMenuPublished.FindKey( key ) != NULL && !idStr::Cmp( retainedMenuPublished.GetString( key ), value ) ) {
 		return false;
@@ -16311,7 +16755,8 @@ first in team modes, the player's place and score in the others. The Team
 page holds the player's band, three actions with what they would do or why
 they cannot, and the last three chat lines; the Server page the server's
 name, address and message, seven rules and the map rotation; the Players
-page its lists and the selected player's statistics.
+page its lists and the selected player's statistics; the Vote page the
+running vote and the call being drafted.
 ================
 */
 void idMultiplayerGame::PublishRetainedMenu( idUserInterface *card ) {
@@ -16439,6 +16884,7 @@ void idMultiplayerGame::PublishRetainedMenu( idUserInterface *card ) {
 	publish( "mp.rotation_current", va( "%d", current ) );
 	PublishRetainedPlayers( card, changed );
 	PublishRetainedWelcome( card, changed );
+	PublishRetainedVote( card, changed );
 	if ( changed ) {
 		card->SetStateInt( "mp.revision", ++retainedMenuRevision );
 	}
@@ -16454,6 +16900,11 @@ an action that is unavailable now does nothing and keeps the menu open.
 Joining, spectating and readying close the menu, as the stock buttons do.
 "retained welcome <slot>" chooses one of the Welcome card's Join page
 actions in the same way.
+"retained vote yes|no" votes in the running vote and closes the menu, as the
+stock buttons do; "retained voteSet <field> <value>" changes one field of the
+call being drafted, checked against the field's rules, and "retained
+callVote" calls a vote with the fields that differ from the server's and
+closes the menu. A vote the player cannot cast or call keeps the menu open.
 "retained select|mute|friend <client>" shows a player's statistics, or mutes
 or befriends them, for a client with a row on the Players page now; neither
 of the last two applies to the player's own row, and none closes the menu.
@@ -16489,6 +16940,40 @@ bool idMultiplayerGame::HandleRetainedMenuCommand( const idCmdArgs &args, int &i
 			return false;
 		}
 		return RunRetainedAction( slot.action );
+	}
+	if ( !sub.Icmp( "vote" ) && args.Argc() - icmd >= 1 ) {
+		const idStr ballot = args.Argv( icmd++ );
+		const bool yes = !ballot.Icmp( "yes" );
+		if ( ( !yes && ballot.Icmp( "no" ) ) || vote == VOTE_NONE || RetainedBallotRefusal() != NULL ) {
+			return false;
+		}
+		CastVote( gameLocal.localClientNum, yes );
+		DisableMenu();
+		return true;
+	}
+	if ( !sub.Icmp( "voteSet" ) && args.Argc() - icmd >= 2 && retainedMenuCovered ) {
+		const idStr fieldText = args.Argv( icmd++ );
+		const idStr valueText = args.Argv( icmd++ );
+		bool digits = valueText.Length() >= 1 && valueText.Length() <= 3;
+		for ( int i = 0; digits && i < valueText.Length(); i++ ) {
+			digits = ( valueText[ i ] >= '0' && valueText[ i ] <= '9' ) || ( i == 0 && valueText[ i ] == '-' && valueText.Length() > 1 );
+		}
+		const bool fieldDigits = fieldText.Length() >= 1 && fieldText.Length() <= 2 && fieldText[ 0 ] >= '0' && fieldText[ 0 ] <= '9' &&
+			( fieldText.Length() == 1 || ( fieldText[ 1 ] >= '0' && fieldText[ 1 ] <= '9' ) );
+		if ( digits && fieldDigits ) {
+			SetRetainedVoteField( atoi( fieldText.c_str() ), atoi( valueText.c_str() ) );
+		}
+		return false;
+	}
+	if ( !sub.Icmp( "callVote" ) && retainedMenuCovered ) {
+		voteStruct_t data;
+		if ( RetainedVoteRefusal() != NULL || RetainedVoteChanges( data ) == 0 ) {
+			return false;
+		}
+		ClientCallPackedVote( data );
+		ResetRetainedVoteDraft();
+		DisableMenu();
+		return true;
 	}
 	if ( ( !sub.Icmp( "select" ) || !sub.Icmp( "mute" ) || !sub.Icmp( "friend" ) ) && args.Argc() - icmd >= 1 ) {
 		const idStr clientText = args.Argv( icmd++ );
@@ -20002,7 +20487,7 @@ void idMultiplayerGame::ServerStartVote( int clientNum, vote_flags_t voteIndex, 
 	noVotes = 0;
 	vote = voteIndex;
 	voteValue = value;
-	voteTimeOut = gameLocal.time + 20000;
+	voteTimeOut = gameLocal.time + LEGACY_VOTE_MSEC;
 	voteEligibleCount = 0;
 	// openQ4: a vote has actually started, so the caller now owes a cool-off
 	StampVoteRateLimit( clientNum );
@@ -20039,6 +20524,10 @@ void idMultiplayerGame::ClientStartVote( int clientNum, const char *_voteString 
 	}
 
 	voteString = _voteString;
+	voteCaller = clientNum;
+	voteStartTime = gameLocal.time;
+	voteLength = LEGACY_VOTE_MSEC;
+	votePacked = false;
 	AddChatLine( "%s", va( common->GetLocalizedString( "#str_104279" ), gameLocal.userInfo[ clientNum ].GetString( "ui_name" ) ) );
 // RAVEN BEGIN
 // shouchard:  better info when a vote called in the chat buffer

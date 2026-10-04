@@ -149,6 +149,13 @@ struct Game {
     const char* HandleGuiCommands(const char* command) { guiCommands.push_back(command); return answer ? answer(command) : "continue"; }
 } gameObject, *game = &gameObject;
 struct CVar { bool value = false; bool GetBool() const { return value; } } ui_retained, ui_retainedSystem, ui_retainedMultiplayer;
+// Key bindings: a bound command's key as the key lists name it ("^ikHH"),
+// and a key's name by number.
+struct idKeyInput {
+    static std::map<std::string, std::string>& Bound() { static std::map<std::string, std::string> bound; return bound; }
+    static const char* KeysFromBinding(const char* bind) { const auto found = Bound().find(bind); return found != Bound().end() ? found->second.c_str() : "Unbound"; }
+    static const char* KeyNumToString(int key, bool) { static std::string name; name = key == 0x8b ? "F1" : "#str_07133"; return name.c_str(); }
+};
 enum { SE_NONE = 0, CMD_EXEC_APPEND = 1, SE_KEY = 2, SE_MOUSE = 3 };
 enum { K_ESCAPE = 27, K_ENTER = 13, K_JOY4 = 200, K_JOY7 = 203, K_JOY8 = 204 };
 struct sysEvent_t { int evType = SE_NONE, evValue = 0, evValue2 = 0; };
@@ -746,6 +753,7 @@ int main() {
             CHECK(off.guiRetainedMultiplayer == nullptr && managerObject.loads.empty() && gameObject.commands.empty());
         }
         auto s = Mp(true, true);
+        idKeyInput::Bound()["_impulse28"] = "^iK8b"; idKeyInput::Bound()["_impulse29"] = "^ik8c";
         s.PrepareRetainedLevel("mp/q4dm1", true);  // loaded inside the level load
         CHECK((managerObject.loads == std::vector<std::string>{"guis/menu/mp_escape.q4ui", "guis/menu/mp_welcome.q4ui"}) &&
               s.guiRetainedEscape && s.guiRetainedEscape->state["card.tab"] == "0" && s.guiRetainedWelcome &&
@@ -756,6 +764,10 @@ int main() {
         CHECK(card == s.guiRetainedEscape && s.RetainedMultiplayerCovers() && card->active && card->named.back() == "open");
         CHECK((gameObject.commands == std::vector<std::string>{"retainedMultiplayerVariant", "retainedMultiplayerCover"}) &&
               card->stateChanges == 1 && s.drains == 1 && !s.retainedMultiplayerWelcome);
+        // The Vote page's ballots show their keys by name: one bound to a key the
+        // engine names, one to a key it does not, and none unbound.
+        CHECK(card->state["mp.keys.vote_yes"] == "F1" && card->state["mp.keys.vote_yes_bound"] == "1" &&
+              card->state["mp.keys.vote_no"].empty() && card->state["mp.keys.vote_no_bound"] == "0");
         s.ReportRetainedScreens(); CHECK(commonObject.output.find("multiplayer=1 ") != std::string::npos && commonObject.output.find(" mp=escape ") != std::string::npos);
         // Each frame asks the game for what changed; only a new revision publishes.
         s.UpdateRetainedMultiplayer(); CHECK(gameObject.commands.back() == "retainedMultiplayerState" && card->stateChanges == 2);
@@ -835,6 +847,33 @@ int main() {
             CHECK(gameObject.guiCommands.size() == named && s.guiRetainedMultiplayer == card &&
                   commonObject.warnings.back().find("named client") != std::string::npos);
         }
+        // The Vote page: a drafted field's value control requests "<verb> <value>",
+        // which reaches the game quietly as "retained voteSet <field> <value>" and
+        // keeps the menu open; a ballot reaches it as "retained vote yes|no" and
+        // Call Vote as "retained callVote", each closing the menu when the game
+        // acts. A malformed or unknown request is refused.
+        gameObject.answer = [](const char*) -> const char* { return "continue"; };
+        s.HandleRetainedSessionRequest(card, "mpVoteMap 3");
+        CHECK(gameObject.guiCommands.back() == "retained voteSet 0 3" && s.guiRetainedMultiplayer == card);
+        s.HandleRetainedSessionRequest(card, "mpVoteKick -1"); CHECK(gameObject.guiCommands.back() == "retained voteSet 11 -1");
+        s.HandleRetainedSessionRequest(card, "mpVoteControlTime 600"); CHECK(gameObject.guiCommands.back() == "retained voteSet 6 600");
+        s.HandleRetainedSessionRequest(card, "mpVoteBalance 0"); CHECK(gameObject.guiCommands.back() == "retained voteSet 7 0");
+        const size_t drafted = gameObject.guiCommands.size();
+        for (const char* bad : {"mpVoteMap", "mpVoteMap 3.5", "mpVoteMap x", "mpVoteMap 1000", "mpVoteMap -2", "mpVoteNope 1",
+                                "mpVoteMap  3", "mpVoteMap -", "mpVoteMap 3 4", "mpvotemap", "mpVote 3", "mpVoteMapX 3"}) {
+            s.HandleRetainedSessionRequest(card, bad);
+            CHECK(gameObject.guiCommands.size() == drafted && s.guiRetainedMultiplayer == card &&
+                  commonObject.warnings.back().find("unhandled multiplayer request") != std::string::npos);
+        }
+        s.HandleRetainedSessionRequest(card, "mpVoteYes");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; retained vote yes" && s.guiRetainedMultiplayer == card);
+        s.HandleRetainedSessionRequest(card, "mpCallVote");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; retained callVote" && s.guiRetainedMultiplayer == card);
+        gameObject.answer = [](const char*) -> const char* { return nullptr; };
+        s.HandleRetainedSessionRequest(card, "mpVoteNo");
+        CHECK(gameObject.guiCommands.back() == "play main_menu_selection ; retained vote no" && s.guiActive == nullptr &&
+              s.guiRetainedMultiplayer == nullptr && card->named.back() == "release");
+        s.guiActive = &mpMenu; s.guiRetainedReleasing = nullptr; s.UpdateRetainedMultiplayer(); CHECK(s.guiRetainedMultiplayer == card);
         gameObject.answer = nullptr;
         for (const char* page : {"-1", "8"}) {
             card->state["card.stock_page"] = page; s.HandleRetainedSessionRequest(card, "mpStockPage");
@@ -1173,8 +1212,8 @@ def retained_system_incomplete(adapter: str) -> dict[str, str]:
     return reasons
 
 
-def cpp_allowlist(text: str) -> set[str]:
-    block = function_body(text, 'bool SessionMenuCommand(')
+def cpp_allowlist(text: str, function: str = 'bool SessionMenuCommand(') -> set[str]:
+    block = function_body(text, function)
     return set(re.findall(r'"([A-Za-z][A-Za-z0-9]*)"', block.split('{', 2)[2]))
 
 
@@ -1702,6 +1741,44 @@ def check_retained_multiplayer(menu: str, session: str) -> None:
     assert f'static const int RETAINED_WELCOME_SLOTS = {welcome_slots};' in header
     assert welcome_slots == retained_mp_menus.WELCOME_SLOTS and all(f'join_slot_{slot}' in welcome_document['events'] for slot in range(welcome_slots))
     assert 'if ( slot < 0 || slot >= RETAINED_MP_WELCOME_SLOTS ) {' in function_body(menu, 'void idSessionLocal::HandleRetainedMultiplayerRequest(')
+    # The Vote page is built, so it no longer hands off. The adapter's value
+    # verbs are the session's field table, in the game's field order, which the
+    # document's rows and the game's publisher follow; each row requests its
+    # verb with its control's value.
+    assert 'vote' not in handoffs
+    adapter = (ROOT / 'src/ui/UserInterfaceRetained.cpp').read_text(encoding='utf-8', errors='replace')
+    value_verbs = cpp_allowlist(adapter, 'bool SessionMenuValueCommand(')
+    fields = re.findall(r'"(mpVote[A-Za-z]+)"', re.search(r'RETAINED_MP_VOTE_FIELDS\[\] = \{([^}]*)\};', menu).group(1))
+    assert set(fields) == value_verbs and len(fields) == len(value_verbs), (fields, value_verbs)
+    enum = [name.strip() for name in re.search(r'enum retainedVoteField_t \{([^}]*)\};', header).group(1).split(',') if name.strip()]
+    assert enum[-1] == 'RVF_COUNT'
+    keys = [name[len('RVF_'):].lower() for name in enum[:-1]]
+    assert keys == [verb[len('mpVote'):].lower() for verb in fields]
+    assert [(key, verb) for key, verb, _label, _control in retained_mp_menus.VOTE_ROWS] == list(zip(keys, fields))
+    publisher = function_body(mp_game, 'void idMultiplayerGame::PublishRetainedVote(')
+    assert re.findall(r'"([a-z]+)"', re.search(r'static const char \*const fields\[ RVF_COUNT \] = \{([^}]*)\};', publisher).group(1)) == keys
+    for key, verb, _label, control in retained_mp_menus.VOTE_ROWS:
+        assert document['actions'][verb] == {'operation': 'session.menuValue', 'input': 'boolean' if control[0] == 'toggle' else 'number',
+                                             'arguments': {'command': verb, 'value': {'input': 'value'}}}, verb
+    assert f'static const int RETAINED_VOTE_LINES = {retained_mp_menus.VOTE_LINES};' in header
+    request = function_body(menu, 'void idSessionLocal::HandleRetainedMultiplayerRequest(')
+    assert request.index('} else if ( Session_RetainedVoteField( request, voteField, voteValue ) ) {') < \
+        request.index('gameCommand = va( "retained voteSet %d %d", voteField, voteValue );')
+    # The game: a ballot only while the player can cast one, a drafted field
+    # checked against its rules without closing the menu, and a call only of
+    # the fields that differ from the server's, closing the menu.
+    vote_branch = command[command.index('if ( !sub.Icmp( "vote" )'):command.index('if ( !sub.Icmp( "voteSet" )')]
+    assert vote_branch.index('vote == VOTE_NONE || RetainedBallotRefusal() != NULL') < \
+        vote_branch.index('CastVote( gameLocal.localClientNum, yes );') < vote_branch.index('DisableMenu();')
+    set_branch = command[command.index('if ( !sub.Icmp( "voteSet" )'):command.index('if ( !sub.Icmp( "callVote" )')]
+    assert 'retainedMenuCovered' in set_branch and 'SetRetainedVoteField( atoi( fieldText.c_str() ), atoi( valueText.c_str() ) );' in set_branch
+    assert 'DisableMenu' not in set_branch and 'return true' not in set_branch
+    call_branch = command[command.index('if ( !sub.Icmp( "callVote" )'):command.index('if ( ( !sub.Icmp( "select" )')]
+    assert call_branch.index('RetainedVoteRefusal() != NULL || RetainedVoteChanges( data ) == 0') < \
+        call_branch.index('ClientCallPackedVote( data );') < call_branch.index('DisableMenu();')
+    changes = function_body(mp_game, 'int idMultiplayerGame::RetainedVoteChanges(')
+    assert 'retainedVoteDraft[ limit.field ] != si.GetInt( limit.key )' in changes and 'retainedVoteMap.Icmp( current ) != 0' in changes
+    assert cover.index('retainedMenuCovered = true;') < cover.index('ResetRetainedVoteDraft();') < cover.index('PublishRetainedMenu( card );')
     # HandleGuiCommands' _XENON branches defeat a brace count; pin the statement.
     assert mp_game.replace('\r\n', '\n').count('if ( HandleRetainedMenuCommand( args, icmd ) ) {\n\t\t\t\treturn NULL;') == 1
     # The Players page: the session bounds the client to the server's slots,
@@ -1908,6 +1985,7 @@ def main() -> int:
     generator = subprocess.run([sys.executable, str(ROOT / 'tools/ui/build_retained_screens.py'), '--check'], capture_output=True, text=True)
     assert generator.returncode == 0, generator.stderr
     allowlist = cpp_allowlist(adapter)
+    value_allowlist = cpp_allowlist(adapter, 'bool SessionMenuValueCommand(')
     handled = set(re.findall(r'\{ "([A-Za-z][A-Za-z0-9]*)",\s+"main_b_', menu)) | set(re.findall(r'!idStr::Icmp\( request, "([A-Za-z][A-Za-z0-9]*)" \)', menu))
     assert allowlist == handled, f'allowlist {sorted(allowlist)} differs from session handlers {sorted(handled)}'
     for relative in ('content/baseoq4/pak0/guis/menu/title.q4ui', 'content/baseoq4/pak0/guis/menu/pause.q4ui',
@@ -1923,7 +2001,10 @@ def main() -> int:
             layers = [child['id'] for child in document['root']['children'][2]['children']]
             assert layers.index('objectives-bar') < layers.index('band-top') < layers.index('objectives'), relative
         for action in document.get('actions', {}).values():
-            assert action['operation'] == 'session.menu' and action['arguments']['command'] in allowlist, relative
+            if action['operation'] == 'session.menuValue':
+                assert action['arguments']['command'] in value_allowlist and action['arguments']['value'] == {'input': 'value'}, relative
+            else:
+                assert action['operation'] == 'session.menu' and action['arguments']['command'] in allowlist, relative
     # No game or legacy content names a retained document.
     for folder in (ROOT / 'content', ROOT / 'src/game', ROOT / 'src/mpgame'):
         if not folder.exists():

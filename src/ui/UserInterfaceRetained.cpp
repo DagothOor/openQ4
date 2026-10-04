@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <set>
 
 #if defined(USE_SDL3)
@@ -73,8 +74,28 @@ bool SessionMenuCommand(const std::string& command) {
 		"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
         "campaigns","campaignQuake4","campaignAwakening","campaignArena","campaignBack","campaignHome",
         "mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction",
-        "mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction"};
+        "mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction","mpVoteYes","mpVoteNo","mpCallVote"};
 	return commands.contains(command);
+}
+
+// Session verbs a value control may request with its new value: the
+// multiplayer card's Vote page fields. The session maps each verb to its
+// field and the game checks the value against the field's rules.
+bool SessionMenuValueCommand(const std::string& command) {
+	static const std::set<std::string> commands = {"mpVoteMap","mpVoteGameType","mpVoteTimeLimit","mpVoteFragLimit",
+		"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart",
+		"mpVoteBuying","mpVoteKick"};
+	return commands.contains(command);
+}
+
+// A value a session verb carries: a whole number from -1 to 999, or a
+// Boolean as 1 or 0.
+std::optional<int> SessionMenuValue(const StateValue& value) {
+	if (std::holds_alternative<bool>(value)) return std::get<bool>(value) ? 1 : 0;
+	if (!std::holds_alternative<double>(value)) return {};
+	const double number = std::get<double>(value);
+	if (!std::isfinite(number) || number != std::floor(number) || number < -1 || number > 999) return {};
+	return static_cast<int>(number);
 }
 
 bool ValidOperation(const Action& action) {
@@ -86,6 +107,15 @@ bool ValidOperation(const Action& action) {
 		const auto& expression = command->second;
 		const bool literal = expression.op.empty() && expression.state.empty() && expression.presentation.empty() && !expression.inputValue;
 		return !literal || SessionMenuCommand(std::get<std::string>(expression.literal));
+	}
+	if (action.operation == "session.menuValue") {
+		// A literal value verb, and the control's own value as its operand.
+		const auto command = action.arguments.find("command"), value = action.arguments.find("value");
+		if (action.arguments.size() != 2 || command == action.arguments.end() || value == action.arguments.end() ||
+			command->second.type != 2 || !value->second.inputValue || (value->second.type != 0 && value->second.type != 1)) return false;
+		const auto& expression = command->second;
+		return expression.op.empty() && expression.state.empty() && expression.presentation.empty() && !expression.inputValue &&
+			SessionMenuValueCommand(std::get<std::string>(expression.literal));
 	}
 	const auto value = action.arguments.find("value");
 	if (action.arguments.size() != 1 || value == action.arguments.end()) return false;
@@ -101,6 +131,13 @@ bool ValidInvocation(const ActionInvocation& invocation, std::string& error) {
 		if (invocation.arguments.size() == 1 && command != invocation.arguments.end() &&
 			std::holds_alternative<std::string>(command->second) && SessionMenuCommand(std::get<std::string>(command->second))) return true;
 		error = "Unsupported session menu request: "+invocation.action; return false;
+	}
+	if (invocation.operation == "session.menuValue") {
+		const auto command = invocation.arguments.find("command"), value = invocation.arguments.find("value");
+		if (invocation.arguments.size() == 2 && command != invocation.arguments.end() && value != invocation.arguments.end() &&
+			std::holds_alternative<std::string>(command->second) && SessionMenuValueCommand(std::get<std::string>(command->second)) &&
+			SessionMenuValue(value->second)) return true;
+		error = "Unsupported session value request: "+invocation.action; return false;
 	}
 	const auto value = invocation.arguments.find("value");
 	if (invocation.arguments.size() == 1 && value != invocation.arguments.end() && ValidStateValue(value->second)) {
@@ -922,6 +959,18 @@ bool idUserInterfaceRetained::DispatchApplicationActions(const char* command, bo
 			if (pending.proposalToken) impl->RuntimeView()->AcknowledgeControlProposal(pending.control,pending.proposalToken,accepted);
 			if (cvarSystem->GetCVarBool("ui_retainedTrace")) common->Printf("RETAINED_GUI_SESSION path=%s command=%s accepted=%d\n",
 				Name(),command.c_str(),accepted ? 1 : 0);
+			continue;
+		}
+		if (invocation.operation == "session.menuValue") {
+			// Validated again at resolution; the session reads "<verb> <value>".
+			const auto value = SessionMenuValue(invocation.arguments.at("value"));
+			const auto request = std::get<std::string>(invocation.arguments.at("command"))+" "+std::to_string(value.value_or(0));
+			const bool accepted = value && impl->sessionRequests.size() < 64;
+			if (accepted) impl->sessionRequests.push_back(request);
+			else impl->Error(value ? "Session menu request queue exceeded 64 requests" : "Session value request out of range");
+			if (pending.proposalToken) impl->RuntimeView()->AcknowledgeControlProposal(pending.control,pending.proposalToken,accepted);
+			if (cvarSystem->GetCVarBool("ui_retainedTrace")) common->Printf("RETAINED_GUI_SESSION path=%s command=%s accepted=%d\n",
+				Name(),request.c_str(),accepted ? 1 : 0);
 			continue;
 		}
 		if (invocation.operation.starts_with("settings.system.")) {

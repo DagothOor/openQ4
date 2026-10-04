@@ -221,6 +221,8 @@ const char *	MPTeamColor( int team );
 const int VOTEMAPS_WAITING_MAPLIST		= (1<<0);
 const int VOTEMAPS_WAITING_SAMAPLIST	= (1<<1);
 const int VOTEMAPS_WAITING_LISTMAPS		= (1<<2);
+// openQ4: the multiplayer card's Vote page asked for the server's maps
+const int VOTEMAPS_WAITING_RETAINED		= (1<<3);
 
 typedef struct mpPlayerState_s {
 	int				ping;			// player ping
@@ -1196,6 +1198,34 @@ private:
 	// Marks or unmarks a friend: the platform's friends service where there is
 	// one, and the player's own mark, which the lists and scoreboard show.
 	void			ToggleFriend( int client );
+	// The Vote page (section 14.18). The call being drafted is reset to the
+	// server's values each time the card covers the menu; "retained voteSet"
+	// changes one field and "retained callVote" calls a vote with the fields
+	// that differ from the server's. The map is drafted by its path; its
+	// choice lists the maps the drafted game type plays, and the kick choice
+	// the other players. The session's RETAINED_MP_VOTE_FIELDS and the
+	// document's rows follow this order.
+	enum retainedVoteField_t {
+		RVF_MAP, RVF_GAMETYPE, RVF_TIMELIMIT, RVF_FRAGLIMIT, RVF_CAPTURELIMIT, RVF_TOURNEYLIMIT, RVF_CONTROLTIME,
+		RVF_BALANCE, RVF_SHUFFLE, RVF_RESTART, RVF_BUYING, RVF_KICK, RVF_COUNT
+	};
+	static const int RETAINED_VOTE_MAPS = 48;
+	static const int RETAINED_VOTE_LINES = 6;
+	int				retainedVoteDraft[ RVF_COUNT ];
+	idStr			retainedVoteMap;
+	idList<int>		retainedVoteMaps;
+	idList<int>		retainedVoteKick;
+	bool			retainedVoteMapsRequested;
+	void			ResetRetainedVoteDraft( void );
+	void			RetainedVoteChoices( void );
+	bool			RetainedVoteFieldShown( int field ) const;
+	bool			RetainedVoteFieldAllowed( int field ) const;
+	int				RetainedVoteChanges( voteStruct_t &data );
+	const char *	RetainedVoteRefusal( void );
+	const char *	RetainedBallotRefusal( void ) const;
+	bool			SetRetainedVoteField( int field, int value );
+	void			RetainedVoteLines( const voteStruct_t &data, idStrList &lines );
+	void			PublishRetainedVote( idUserInterface *card, bool &changed );
 	bool			arenaEntranceCameraResolved;
 	// Which presentation the latched camera belongs to.  The entrance and the
 	// final tableau both latch a collision-safe anchor, but they resolve it
@@ -1245,6 +1275,12 @@ private:
 	idStr			kickVoteMapNames[ MAX_CLIENTS ];
 	voteStruct_t	currentVoteData;		// used for multi-field votes
 // RAVEN END
+	// openQ4: who called the running vote, when it started and how long it
+	// runs, kept on clients too for the multiplayer card's Vote page
+	int				voteCaller;
+	int				voteStartTime;
+	int				voteLength;
+	bool			votePacked;
 	// openQ4: per-caller cool-off so one client cannot own the vote channel by
 	// re-issuing on the frame after its own vote resolves
 	int				nextVoteAllowedTime[ MAX_CLIENTS ];

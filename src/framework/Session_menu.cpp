@@ -107,7 +107,7 @@ static const int RETAINED_MP_PROTOCOL = 1;
 // ui_retainedMultiplayer opts into it. ui_retained_gate.py keeps each list
 // equal to its card's hand-off pages.
 static const char *const RETAINED_MP_ESCAPE_MISSING_PAGES[] = {
-	"vote", "match", "settings", "voice", "admin", NULL
+	"match", "settings", "voice", "admin", NULL
 };
 static const char *const RETAINED_MP_WELCOME_MISSING_PAGES[] = {
 	"settings", NULL
@@ -115,6 +115,13 @@ static const char *const RETAINED_MP_WELCOME_MISSING_PAGES[] = {
 // The Team page's action slots (card.team_action); the game derives each
 // slot's action again from the player's state when it is chosen.
 static const int RETAINED_MP_TEAM_SLOTS = 3;
+// The Vote page's drafted fields, whose controls request "<verb> <value>",
+// in the order of the game's retainedVoteField_t; the game checks each value
+// against its field's rules.
+static const char *const RETAINED_MP_VOTE_FIELDS[] = {
+	"mpVoteMap", "mpVoteGameType", "mpVoteTimeLimit", "mpVoteFragLimit", "mpVoteCaptureLimit", "mpVoteTourneyLimit",
+	"mpVoteControlTime", "mpVoteBalance", "mpVoteShuffle", "mpVoteRestart", "mpVoteBuying", "mpVoteKick"
+};
 // The Players page names players by client number (card.client), which the
 // game checks against its lists again.
 static const int RETAINED_MP_CLIENTS = MAX_ASYNC_CLIENTS;
@@ -153,6 +160,51 @@ static const char *Session_RetainedMultiplayerStockPage( bool welcome, int page,
 	const int count = welcome ? static_cast<int>( sizeof( RETAINED_MP_WELCOME_STOCK_PAGES ) / sizeof( RETAINED_MP_WELCOME_STOCK_PAGES[0] ) )
 		: static_cast<int>( sizeof( RETAINED_MP_STOCK_PAGES ) / sizeof( RETAINED_MP_STOCK_PAGES[0] ) );
 	return page >= 0 && page < count ? pages[ page ] : NULL;
+}
+
+// A Vote page field's request, "<verb> <value>": the field's index in
+// RETAINED_MP_VOTE_FIELDS and a whole number from -1 to 999.
+static bool Session_RetainedVoteField( const char *request, int &field, int &value ) {
+	const char *space = strchr( request, ' ' );
+	if ( space == NULL || space == request ) {
+		return false;
+	}
+	const int verbLength = static_cast<int>( space - request );
+	field = -1;
+	for ( int i = 0; i < static_cast<int>( sizeof( RETAINED_MP_VOTE_FIELDS ) / sizeof( RETAINED_MP_VOTE_FIELDS[0] ) ); i++ ) {
+		if ( static_cast<int>( strlen( RETAINED_MP_VOTE_FIELDS[ i ] ) ) == verbLength && !idStr::Icmpn( request, RETAINED_MP_VOTE_FIELDS[ i ], verbLength ) ) {
+			field = i;
+		}
+	}
+	const char *number = space + 1;
+	const int length = static_cast<int>( strlen( number ) );
+	bool digits = field >= 0 && length >= 1 && length <= 3;
+	for ( int i = 0; digits && i < length; i++ ) {
+		digits = ( number[ i ] >= '0' && number[ i ] <= '9' ) || ( i == 0 && number[ i ] == '-' && length > 1 );
+	}
+	value = digits ? atoi( number ) : 0;
+	return digits && value >= -1 && value <= 999;
+}
+
+// The name of the key a prompt would show for `binding` (from the device
+// family the player used last), or "" when none is bound. The key lists name
+// a key by number ("^ikHH"), which only the stock GUIs draw.
+static idStr Session_RetainedBoundKey( const char *binding ) {
+	const char *keys = idKeyInput::KeysFromBinding( binding );
+	if ( keys == NULL || keys[0] != '^' || keys[1] != 'i' || ( keys[2] != 'k' && keys[2] != 'K' ) ) {
+		return "";
+	}
+	int keynum = 0;
+	for ( int i = 3; i < 5; i++ ) {
+		const char c = keys[ i ];
+		const int digit = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+		if ( digit < 0 ) {
+			return "";
+		}
+		keynum = keynum * 16 + digit;
+	}
+	const char *name = idKeyInput::KeyNumToString( keynum, true );
+	return name != NULL && idStr::Icmpn( name, "#str_", 5 ) != 0 ? name : "";
 }
 #endif
 
@@ -5603,6 +5655,13 @@ void idSessionLocal::UpdateRetainedMultiplayer() {
 		guiRetainedMultiplayer = card;
 		retainedMultiplayerWelcome = welcome;
 		retainedMultiplayerRevision = card->State().GetInt( "mp.revision" );
+		// The keys bound to the Vote page's ballots (F1 and F2 by default), by
+		// name, for the card to show beside Yes and No.
+		const idStr yesKey = Session_RetainedBoundKey( "_impulse28" ), noKey = Session_RetainedBoundKey( "_impulse29" );
+		card->SetStateString( "mp.keys.vote_yes", yesKey.c_str() );
+		card->SetStateBool( "mp.keys.vote_yes_bound", yesKey.Length() > 0 );
+		card->SetStateString( "mp.keys.vote_no", noKey.c_str() );
+		card->SetStateBool( "mp.keys.vote_no_bound", noKey.Length() > 0 );
 		card->StateChanged( now );
 		card->Activate( true, now );
 		card->HandleNamedEvent( "open" );
@@ -5689,10 +5748,11 @@ idSessionLocal::HandleRetainedMultiplayerRequest
 The card's verbs, each the stock menu's own command with its selection
 sound: Resume closes the menu, Main Menu leaves for the main menu with the
 match running, Disconnect (after the card's own confirmation) leaves the
-server, the Team page's and the Welcome card's Join page actions and the
-Players page's selection, Mute and Friend go to the game, and a page still in
-development hands off to its stock page. Every other request is refused, as
-the card's own verbs are anywhere else.
+server, the Team page's and the Welcome card's Join page actions, the
+Players page's selection, Mute and Friend, and the Vote page's ballots, call
+and drafted fields go to the game, and a page still in development hands off
+to its stock page. Every other request is refused, as the card's own verbs
+are anywhere else.
 ===============
 */
 void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, const char *request ) {
@@ -5702,6 +5762,7 @@ void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, con
 	}
 	const char *command = NULL;
 	idStr gameCommand;
+	int voteField = -1, voteValue = 0;
 	const bool select = !idStr::Icmp( request, "mpSelectPlayer" ), mute = !idStr::Icmp( request, "mpMute" ),
 		befriend = !idStr::Icmp( request, "mpFriend" );
 	if ( select || mute || befriend ) {
@@ -5730,6 +5791,17 @@ void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, con
 		}
 		// An action that is unavailable now keeps the menu open.
 		gameCommand = va( "play main_menu_selection ; retained team %d", slot );
+		command = gameCommand.c_str();
+	} else if ( !idStr::Icmp( request, "mpVoteYes" ) || !idStr::Icmp( request, "mpVoteNo" ) ) {
+		// A ballot closes the menu, as the stock buttons do; one the player
+		// cannot cast keeps it open.
+		command = !idStr::Icmp( request, "mpVoteYes" ) ? "play main_menu_selection ; retained vote yes" :
+			"play main_menu_selection ; retained vote no";
+	} else if ( !idStr::Icmp( request, "mpCallVote" ) ) {
+		command = "play main_menu_selection ; retained callVote";
+	} else if ( Session_RetainedVoteField( request, voteField, voteValue ) ) {
+		// A drafted field changes quietly, and the menu stays open.
+		gameCommand = va( "retained voteSet %d %d", voteField, voteValue );
 		command = gameCommand.c_str();
 	} else if ( !idStr::Icmp( request, "mpClose" ) ) {
 		command = "play main_menu_selection ; close";

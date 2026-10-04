@@ -750,9 +750,14 @@
   and Disconnect, which asks first. Its Team page switches team, spectates or
   readies up, and says why when it cannot; its Players page lists the teams
   beside the chosen player's kills, deaths, score, accuracy per weapon and
-  awards, and mutes or befriends them; its Server page shows the server's
-  message, rules and map rotation. Its other pages still open the classic
-  pages for now. With the same setting, joining a server opens a matching
+  awards, and mutes or befriends them; its Vote page shows the running vote
+  (who called it, what it changes, the time left and the tally) with Vote Yes
+  and Vote No beside their keys, and lets you call a vote from rows for the
+  map, game type, limits, team options and a player to kick, sending only
+  what you changed (the classic page also sends the current map, which makes
+  the server refuse the vote); its Server page shows the server's message,
+  rules and map rotation. Its other pages still open the classic pages for
+  now. With the same setting, joining a server opens a matching
   Welcome card: team cards that join each team (and say why when the balance
   rule refuses one), Auto join naming the team it picks, Spectate, the
   server's rules and the players; Esc spectates for now, and the menu key

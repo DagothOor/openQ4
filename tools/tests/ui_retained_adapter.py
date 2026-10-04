@@ -1075,6 +1075,26 @@ static void CheckEventBridge() {
     assert(!ValidInvocation({"x","settings.brightness.set",{{"value",true}}},error));
     assert(!ValidInvocation({"x","ui.dismiss",{{"value",1.0}}},error));
     assert(!ValidInvocation({"x","exec",{}},error));
+    // A value verb carries a whole number from -1 to 999, or a Boolean, and
+    // only the multiplayer card's Vote page verbs may carry one.
+    const auto valued=[](const char* command,StateValue value) {
+        return ActionInvocation{"x","session.menuValue",{{"command",std::string(command)},{"value",value}}};
+    };
+    assert(ValidInvocation(valued("mpVoteMap",3.0),error) && ValidInvocation(valued("mpVoteKick",-1.0),error));
+    assert(ValidInvocation(valued("mpVoteControlTime",999.0),error) && ValidInvocation(valued("mpVoteBalance",true),error));
+    for (const auto& bad : {valued("mpVoteMap",3.5),valued("mpVoteMap",1000.0),valued("mpVoteMap",-2.0),valued("mpClose",1.0),
+                            valued("mpVoteMap",std::string("3")),valued("mpVoteMap",std::numeric_limits<double>::infinity()),
+                            ActionInvocation{"x","session.menuValue",{{"command",std::string("mpVoteMap")}}},
+                            ActionInvocation{"x","session.menu",{{"command",std::string("mpVoteMap")}}}})
+        assert(!ValidInvocation(bad,error));
+    Action valueAction; valueAction.operation="session.menuValue"; valueAction.inputType=0;
+    Expression verb; verb.type=2; verb.literal=std::string("mpVoteMap");
+    Expression operand; operand.type=0; operand.inputValue=true;
+    valueAction.arguments={{"command",verb},{"value",operand}};
+    assert(ValidOperation(valueAction));
+    auto unlisted=valueAction; unlisted.arguments.at("command").literal=std::string("mpClose"); assert(!ValidOperation(unlisted));
+    auto fixed=valueAction; fixed.arguments.at("value").inputValue=false; assert(!ValidOperation(fixed));
+    auto computed=valueAction; computed.arguments.at("command").state="card.verb"; assert(!ValidOperation(computed));
     auto eventControl=modelTemplate; eventControl.events["selected"]={"selected",{}};
     eventControl.root.control->action.clear(); eventControl.root.control->event="SELECTED";
     assert(ValidateApplication(eventControl,error)); eventControl.events.clear(); assert(!ValidateApplication(eventControl,error));

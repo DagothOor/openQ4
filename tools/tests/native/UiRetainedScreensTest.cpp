@@ -137,14 +137,21 @@ static void CheckSchema() {
 
 static const std::set<std::string> SessionCommands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
 	"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
-	"mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction","mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction"};
+	"mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction","mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction",
+	"mpVoteYes","mpVoteNo","mpCallVote"};
+// The value controls' verbs, which carry the control's new value.
+static const std::set<std::string> SessionValueCommands = {"mpVoteMap","mpVoteGameType","mpVoteTimeLimit","mpVoteFragLimit",
+	"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart","mpVoteBuying","mpVoteKick"};
 
 static void CheckSessionActions(const Document& document) {
 	for (const auto& [id,action] : document.Model().actions) {
-		Check(action.operation == "session.menu","production screens request only session operations");
+		const bool value = action.operation == "session.menuValue";
+		Check(action.operation == "session.menu" || value,"production screens request only session operations");
 		const auto command = action.arguments.find("command");
-		Check(command != action.arguments.end() && action.arguments.size() == 1,"one command argument");
-		Check(SessionCommands.contains(std::get<std::string>(command->second.literal)),"every command is in the session allowlist");
+		Check(command != action.arguments.end() && action.arguments.size() == (value ? 2u : 1u),"one command argument, and a value");
+		Check((value ? SessionValueCommands : SessionCommands).contains(std::get<std::string>(command->second.literal)),
+			"every command is in the session allowlist");
+		Check(!value || (action.arguments.at("value").inputValue && action.inputType),"a value verb carries its control's value");
 	}
 }
 
@@ -458,6 +465,143 @@ static void CheckEscape(ScreenHost& host, const char* path) {
 	host.reducedMotion = false;
 	runtime.SetReducedMotion(false,11);
 	host.softFocus = false;
+}
+
+// The Escape card's Vote page (section 14.18): the running vote first, then
+// the rows of the call the drafted game type uses, a locked one dimmed, each
+// row's control requesting its verb with its new value, and Call Vote.
+static void CheckVote(ScreenHost& host, const char* path) {
+	const auto source = Read(path);
+	Runtime runtime(host);
+	std::vector<Diagnostic> diagnostics;
+	Check(runtime.Initialize() && runtime.LoadDocument(source,"guis/menu/mp_escape.q4ui",diagnostics),"the Escape card loads for its Vote page");
+	Viewport viewport; viewport.canvasHeight = 720; viewport.width = 1280; viewport.height = 720;
+	std::string error;
+	Runtime::EventEffects effects;
+	const auto bounds = [&](const std::string& id) { Bounds b; Check(runtime.GetBounds(id,b),"a vote node is laid out"); return b; };
+	const auto text = [&](const std::string& node, const char* property) {
+		const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented keyword"); return value->text;
+	};
+	const auto number = [&](const std::string& node, const char* property) {
+		const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented value"); return static_cast<float>(value->data[0]);
+	};
+	// The value a control's request carries, resolved through its action.
+	const auto request = [&](const char* verb) {
+		const auto actions = runtime.TakeActions();
+		Check(actions.size() == 1 && actions[0].action == verb && actions[0].proposal.has_value(),"a row requests its verb");
+		ActionInvocation invocation;
+		Check(runtime.ResolveAction(actions[0].action,invocation,error,&*actions[0].proposal) &&
+			invocation.operation == "session.menuValue" && std::get<std::string>(invocation.arguments.at("command")) == verb,
+			"with the value verb");
+		runtime.AcknowledgeControlProposal(actions[0].node,actions[0].proposalToken,true);
+		return invocation.arguments.at("value");
+	};
+	const auto press = [&](MenuInput input, double at) { runtime.MenuAction(input,true,at); runtime.MenuAction(input,false,at+.01); };
+	// An open list lays out the rows it shows; a row past its count takes no room.
+	const auto Listed = [&](const char* option) { Bounds b; return runtime.GetBounds(option,b) && b.height > 0; };
+	// No vote runs. The game publishes Team DM's rows (no capture, tournament
+	// or control time limit), buying locked by the server, and Call Vote
+	// unavailable until something changes.
+	StateValues page = {{"mp.vote.running",false},{"mp.vote.call.shown",true},{"mp.vote.call.available",false},
+		{"mp.vote.call.label",std::string("CALL VOTE")},{"mp.vote.call.reason",std::string("Change a setting to call a vote.")},
+		{"mp.vote.map_count",3.0},{"mp.vote.map0",std::string("The Fragging Yard")},{"mp.vote.map1",std::string("Lost Fleet")},
+		{"mp.vote.map2",std::string("Bloodwork")},{"mp.vote.map",1.0},{"mp.vote.gametype_count",12.0},
+		{"mp.vote.gametype2",std::string("Team DM")},{"mp.vote.gametype",2.0},{"mp.vote.timelimit",10.0},{"mp.vote.fraglimit",20.0},
+		{"mp.vote.balance",true},{"mp.vote.shuffle",false},{"mp.vote.restart",false},{"mp.vote.buying",false},
+		{"mp.vote.kick_count",3.0},{"mp.vote.kick0",std::string("Anderson")},{"mp.vote.kick1",std::string("Rhodes")},{"mp.vote.kick",-1.0},
+		{"mp.vote.locked",true}};
+	const char* const keys[] = {"map","gametype","timelimit","fraglimit","capturelimit","tourneylimit","controltime","balance","shuffle",
+		"restart","buying","kick"};
+	for (const char* key : keys) {
+		const std::string field = key;
+		page["mp.vote."+field+".row_shown"] = field != "capturelimit" && field != "tourneylimit" && field != "controltime";
+		page["mp.vote."+field+".row_allowed"] = field != "buying";
+	}
+	Check(runtime.SetState(page,error,1),"publish the Vote page");
+	Check(runtime.RunEvent("open",1,effects,error) && runtime.RunEvent("tab_vote",1.01,effects,error),"open on the Vote tab");
+	runtime.Frame(viewport,1.4);
+	Check(text("vote-none","display") == "block" && text("vote-caller","display") == "none" && text("vote-yes-slot","display") == "none" &&
+		text("vote-no-slot","display") == "none","with no vote running, the page says so and offers no ballot");
+	Check(runtime.FocusedControl() == "vote-row-map","and opens on its first row");
+	// The rows the drafted game type uses stack in order without gaps above
+	// Call Vote; the locked one dims with its lock, and the heading says why.
+	float previous = 0;
+	int shown = 0;
+	for (const char* key : keys) {
+		const std::string row = std::string("vote-row-")+key;
+		if (!std::get<bool>(page.at("mp.vote."+std::string(key)+".row_shown"))) {
+			Check(text(row,"display") == "none","a row the drafted game type does not use is hidden");
+			continue;
+		}
+		const auto box = bounds(row);
+		Check(text(row,"display") == "block" && Near(box.height,26,.01f) && (!shown || Near(box.y,previous,.01f)),"shown rows stack");
+		previous = box.y+box.height; ++shown;
+	}
+	Check(shown == 9 && previous <= bounds("vote-call-slot").y+.5f,"nine rows fit above Call Vote");
+	Check(Near(number("vote-row-buying","opacity"),.38f,.001f) && text("vote-row-buying-lock","display") == "block" &&
+		Near(number("vote-row-map","opacity"),1,.001f) && text("vote-row-map-lock","display") == "none","a locked row dims with its lock");
+	Check(text("vote-locked","display") == "block" && !runtime.FocusControl("vote-row-buying",1.41),"it says why and takes no focus");
+	const auto left = bounds("vote-heading-running"), right = bounds("vote-heading-call");
+	Check(left.x+left.width <= right.x && bounds("vote-row-map").x >= right.x-.5f,"the running vote stands beside the call");
+	// Call Vote has nothing to call yet: it shakes and asks nothing.
+	Check(text("vote-call-reason","display") == "block" && text("vote-call-lock","display") == "block","Call Vote says why it waits");
+	Check(runtime.RunEvent("vote_call",1.5,effects,error) && effects.actions.empty(),"and asks nothing");
+	// Each row's control requests its verb with its new value: Right steps a
+	// limit, accept checks a box, and a list unfolds its game's rows.
+	Check(runtime.FocusControl("vote-row-timelimit",1.6),"focus the time limit");
+	press(MenuInput::Right,1.61);
+	Check(std::get<double>(request("mpVoteTimeLimit")) == 11,"Right asks for one more minute");
+	Check(runtime.FocusControl("vote-row-shuffle",1.7),"focus shuffle");
+	press(MenuInput::Accept,1.71);
+	Check(std::get<bool>(request("mpVoteShuffle")),"accept asks to shuffle");
+	Check(runtime.FocusControl("vote-row-map",1.8) && runtime.OpenChoicePopup("vote-row-map",1.8),"the map list unfolds");
+	runtime.Frame(viewport,1.85);
+	Check(Listed("vote-row-map-option-2") && !Listed("vote-row-map-option-3"),"it lists the game's maps");
+	const auto popup = bounds("vote-row-map-popup"), card = bounds("card");
+	Check(popup.y >= bounds("vote-row-map").y && popup.y+popup.height <= card.y+card.height,"under its row, inside the card");
+	press(MenuInput::Down,1.9);
+	press(MenuInput::Accept,1.95);
+	Check(std::get<double>(request("mpVoteMap")) == 2,"choosing a map asks for its row");
+	Check(runtime.FocusControl("vote-row-kick",2) && runtime.OpenChoicePopup("vote-row-kick",2),"the kick list unfolds");
+	runtime.Frame(viewport,2.05);
+	Check(Listed("vote-row-kick-option-0") && Listed("vote-row-kick-option-2") && !Listed("vote-row-kick-option-3"),
+		"no one, then the other players");
+	press(MenuInput::Down,2.1);
+	press(MenuInput::Accept,2.15);
+	Check(std::get<double>(request("mpVoteKick")) == 0,"choosing a player asks for their row");
+	// A vote runs: who called it, its lines, the time left and the tally, and
+	// Yes and No with the keys bound to them; the page opens on Yes.
+	Check(runtime.SetState({{"mp.vote.running",true},{"mp.vote.caller",std::string("CALLED BY Anderson")},
+		{"mp.vote.line0",std::string("MAP Lost Fleet")},{"mp.vote.line1",std::string("TIME LIMIT 15")},{"mp.vote.line_count",2.0},
+		{"mp.vote.time",std::string("TIME LEFT 0:27")},{"mp.vote.tally",std::string("1 YES VOTES, 0 NO VOTES")},
+		{"mp.vote.yes.shown",true},{"mp.vote.yes.available",true},{"mp.vote.yes.label",std::string("VOTE YES")},
+		{"mp.keys.vote_yes",std::string("F1")},{"mp.keys.vote_yes_bound",true},{"mp.vote.no.shown",true},{"mp.vote.no.available",true},
+		{"mp.vote.no.label",std::string("VOTE NO")},{"mp.keys.vote_no",std::string("F2")},{"mp.keys.vote_no_bound",true},
+		{"mp.vote.call.reason",std::string("There is already a vote in progress")}},error,3),"a vote runs");
+	Check(runtime.RunEvent("tab_team",3.01,effects,error) && runtime.RunEvent("tab_vote",3.02,effects,error),"back to the Vote tab");
+	runtime.Frame(viewport,3.3);
+	Check(text("vote-none","display") == "none" && text("vote-caller","display") == "block" && text("vote-line-1","display") == "block" &&
+		text("vote-line-2","display") == "none" && text("vote-time","display") == "block" && text("vote-tally","display") == "block",
+		"the caller, the vote's lines, the time left and the tally");
+	Check(runtime.FocusedControl() == "vote-yes" && text("vote-yes-keycap","display") == "block" && text("vote-no-keycap","display") == "block",
+		"the page opens on Yes, and each ballot shows its key");
+	const auto yes = bounds("vote-yes-label"), keycap = bounds("vote-yes-keycap"), plate = bounds("vote-yes");
+	Check(keycap.x >= yes.x+yes.width && keycap.x+keycap.width <= plate.x+plate.width,"the key follows the label on the plate");
+	const auto lines = bounds("vote-tally"), ballots = bounds("vote-yes-slot");
+	Check(lines.y+lines.height <= ballots.y && bounds("vote-no-slot").y >= ballots.y+45,"the ballots follow the tally");
+	Check(runtime.RunEvent("vote_yes",3.4,effects,error) && effects.actions.size() == 1 &&
+		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpVoteYes","Yes asks the game");
+	// Once the player has voted the ballots lock and say why; the keys go.
+	Check(runtime.SetState({{"mp.vote.yes.available",false},{"mp.vote.no.available",false},
+		{"mp.vote.yes.reason",std::string("You have voted.")},{"mp.vote.no.reason",std::string("You have voted.")}},error,3.5),"voted");
+	runtime.Frame(viewport,3.6);
+	Check(text("vote-yes-keycap","display") == "none" && text("vote-yes-lock","display") == "block" && text("vote-no-reason","display") == "block",
+		"a ballot the player cannot cast locks and says why");
+	Check(runtime.RunEvent("vote_no",3.7,effects,error) && effects.actions.empty(),"and asks nothing");
+	// Another tab takes the page's input away.
+	Check(runtime.RunEvent("tab_team",3.8,effects,error),"to the Team tab");
+	runtime.Frame(viewport,4.1);
+	Check(!runtime.CanActivateControl("vote-row-map",4.1) && !runtime.CanActivateControl("vote-call",4.1),"the Vote page takes no input");
 }
 
 // The multiplayer Welcome card (section 14.18): centered, each mode's join
@@ -1616,6 +1760,7 @@ int main(int argc, char** argv) {
 		sub.SetReducedMotion(false,7.2);
 	}
 	CheckEscape(host,argv[7]);
+	CheckVote(host,argv[7]);
 	CheckWelcome(host,argv[8]);
 	Check(host.errors == 0,"no retained diagnostics");
 	std::printf("retained screens: %d checks passed\n",checks);

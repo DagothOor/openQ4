@@ -6,18 +6,18 @@ with one card over the live, softened match (section 14.18 of the
 Escape card's shell came first: the card, its header, the eight-tab strip, the
 prompt bar, the Disconnect confirmation, the softening and its release, and the
 session and game plumbing that let the card cover the game's own menu. The
-Team, Players and Server pages are built on it; the other five pages still
-hand off to their stock pages, so the card stays opt-in. The Welcome card
-covers the connect-time join offer with its Join, Server, Players and Settings
-pages; its Settings page hands off too. The other pages follow in later
-increments (the plan's B5 to B9).
+Team, Players, Vote and Server pages are built on it; the other four pages
+still hand off to their stock pages, so the card stays opt-in. The Welcome
+card covers the connect-time join offer with its Join, Server, Players and
+Settings pages; its Settings page hands off too. The other pages follow in
+later increments (the plan's B6 to B9).
 
 ## The gate
 
 `ui_retainedMultiplayer` (default 0) opts into both cards. `ui_retained` alone
 includes a card only once none of its pages hands off any more: the session
 lists the pages that still do in `RETAINED_MP_ESCAPE_MISSING_PAGES`, today
-Vote, Match, Settings, Voice and Admin, and `RETAINED_MP_WELCOME_MISSING_PAGES`,
+Match, Settings, Voice and Admin, and `RETAINED_MP_WELCOME_MISSING_PAGES`,
 today Settings, and `tools/tests/ui_retained_gate.py` keeps each list equal to
 its document's hand-off pages (its `stock_<page>` programs). Players never see
 a mix of card and stock pages unless they opt in.
@@ -156,6 +156,44 @@ There is no friends service on PC (the engine's is empty), so a friend is the
 player's own mark, shown in the lists and on the scoreboard while the map runs;
 the stock page's Friend button keeps the same mark now.
 
+### The Vote page
+
+The running vote comes first, beside the call a player can make:
+
+- **The running vote.** Who called it ("CALLED BY" and the player), what it
+  changes, one line each in the stock vote menu's words and order (up to
+  six), the time left in the value color and the tally, then Vote Yes and
+  Vote No, each with the key bound to it (F1 and F2 by default). On a remote
+  client the time left counts the vote's 30 seconds (20 for a console vote)
+  from when the vote reached it. Once the player has voted, both ballots lock
+  and say so; spectators and a managed match get their own reasons. A ballot
+  closes the menu, as the stock buttons do. With no vote running the column
+  says so.
+- **The call.** NEW VOTE lists the fields the drafted game type uses, one
+  setting row each: the map and the game type, each a list that unfolds under
+  its row; the time limit and the mode's own limit (frags, captures, the
+  tournament's rounds or the Dead Zone's control time), each a slider that
+  Left and Right step (Page Up and Page Down by ten); team balance and
+  shuffle in team modes, restart, and buying where the mode has a buy menu,
+  each a check box; and the player to kick, a list that leads with "No one".
+  At most nine rows show. A field the server forbids (`si_voteFlags`) stays,
+  dimmed with a padlock after its label, and the heading says it is locked by
+  the server. Call Vote follows, unavailable with its reason while voting is
+  off on the server, in a managed match (whose votes are Match Control
+  proposals), for a spectator, while a vote runs, or until something differs
+  from the server's settings.
+
+The call is the game's: each opening of the menu drafts it again from the
+server's settings, and a row's control asks the game to change one field.
+The game checks every value against its field's rules (a map the drafted
+game type plays, a game type the vote offers, a limit inside its setting's
+range, a player on the server), so the row shows only what the game accepts.
+Changing the game type lists only the maps it plays; a drafted map it cannot
+play gives way to the first that can. Call Vote sends only the fields that
+differ from the server's, since the server refuses a whole vote for one
+unchanged field. The page opens on Vote Yes while the player can vote, and on
+its first row otherwise.
+
 ### The Welcome card
 
 The Welcome card covers the menu the game opens when a player joins without
@@ -213,7 +251,20 @@ only when it changes and moving `mp.revision` when anything did:
   and sixteen rows `mp.players.<list><0-15>.{client,name,score,ping,local,friend,muted}`;
   the statistics `mp.stat.{client,name,color,kills,deaths,score,flag_mode}`,
   `mp.stat.acc<0-9>` and `mp.stat.award<0-7>`; and Mute and Friend as
-  `mp.mute.*` and `mp.friend.*`, shaped like the Team page's actions.
+  `mp.mute.*` and `mp.friend.*`, shaped like the Team page's actions;
+- the Vote page: the running vote as `mp.vote.{running,caller,time,tally}`,
+  `mp.vote.line<0-5>` and `mp.vote.line_count`, the ballots as
+  `mp.vote.yes.*` and `mp.vote.no.*`, Call Vote as `mp.vote.call.*` (shaped
+  like the Team page's actions); and the draft, each field's value as
+  `mp.vote.<field>` with `mp.vote.<field>.{row_shown,row_allowed}`, the lists
+  as `mp.vote.{map,gametype,kick}<row>` with their counts
+  `mp.vote.{map,gametype,kick}_count` (the kick count includes "No one"),
+  and `mp.vote.locked`.
+
+The session writes the names of the keys bound to the ballots,
+`mp.keys.vote_yes` and `mp.keys.vote_no` with `mp.keys.vote_{yes,no}_bound`,
+when the card opens: the engine's key lists name keys by number, which only
+the stock GUIs draw.
 
 Player and server text (player names, the server's name and message, the
 chat) is cleaned as the loading screen's server card cleans it: colour codes,
@@ -260,6 +311,20 @@ The card's verbs are the stock menu's own commands with its selection sound:
 | `mpMute` | `play main_menu_selection ; retained mute <client>`, by `card.client` |
 | `mpFriend` | `play main_menu_selection ; retained friend <client>`, by `card.client` |
 | `mpWelcomeAction` | `play main_menu_selection ; retained welcome <slot>`, by `card.welcome_action` |
+| `mpVoteYes`, `mpVoteNo` | `play main_menu_selection ; retained vote yes\|no` |
+| `mpCallVote` | `play main_menu_selection ; retained callVote` |
+
+The Vote page's rows are value controls. Their actions use the adapter's
+`session.menuValue` operation, which carries the control's new value with a
+verb: `mpVoteMap`, `mpVoteGameType`, `mpVoteTimeLimit`, `mpVoteFragLimit`,
+`mpVoteCaptureLimit`, `mpVoteTourneyLimit`, `mpVoteControlTime`,
+`mpVoteBalance`, `mpVoteShuffle`, `mpVoteRestart`, `mpVoteBuying` and
+`mpVoteKick`. The adapter accepts only these verbs, with a whole number from
+-1 to 999 or a Boolean, and queues `<verb> <value>`; the session maps the
+verb to its field (`RETAINED_MP_VOTE_FIELDS`, in the game's field order) and
+sends `retained voteSet <field> <value>` without a sound, keeping the menu
+open. A list sends its row (the kick list's "No one" is -1), a check box 1 or
+0, a slider its value.
 
 A row records its player's client number before it asks, and Mute and Friend
 record the selected player's. The session refuses a client outside the
@@ -303,6 +368,14 @@ without affecting players:
   join card did.
 - **Card sizes.** Each card fits its widest prompt bar; Welcome takes
   Escape's height (above).
+- **Vote page.** The rows are the runtime's value controls: lists for the
+  map, game type and kick, check boxes for balance, shuffle, restart and
+  buying, sliders for the limits (time 0 to 60 minutes, frags 0 to 100,
+  captures 1 to 50, tournament rounds 1 to 20, control time 10 to 600 seconds
+  in tens; a server's setting outside a slider shows as it is until changed).
+  Rows show only for the fields the drafted game type uses. The ballots and
+  Call Vote close the menu, as the stock buttons do; the rows keep it open.
+  The heading of the call reads NEW VOTE, so it never repeats the button.
 - **Players page.** Rows run 14 to 24 dp, tighter than the held scoreboard,
   so sixteen players fit beside the statistics without scrolling; the lists
   hold their order while the menu stays open; Mute and Friend refuse the
@@ -421,11 +494,47 @@ The Welcome card adds:
 Evidence: `.tmp/ui/retained-mp-welcome/validation-evidence.json`, SHA-256
 `1620a52f64b2971dabf170c00bbe91d50b1041ccdbad74a66e67feaa503d0887`.
 
+The Vote page adds:
+
+- gate cases: a row's request reaching the game quietly as
+  `retained voteSet <field> <value>` with the menu open, the ballots and Call
+  Vote closing it when the game acts, and malformed, unknown, prefixed and
+  out-of-range requests refused; the keys bound to the ballots reaching the
+  card by name when it opens, and an unnamed key left out; pins that the
+  adapter's value verbs, the session's field table, the game's field order,
+  its publisher and the document's rows agree, that the game casts a ballot
+  only while the player can, checks each field without closing the menu,
+  calls only the fields that differ and closes the menu after, and drafts the
+  call again at each opening; and that the Vote page no longer hands off;
+- adapter checks that a value verb carries a whole number from -1 to 999 or a
+  Boolean, and only the Vote page's verbs may carry one;
+- native checks of the page: no vote running and no ballots, the first row
+  focused, the rows the drafted game type uses stacked above Call Vote, a
+  locked row dimmed with its padlock and out of reach, Call Vote waiting with
+  its reason, a slider, a check box and both lists requesting their verbs
+  with the new values, the running vote's caller, lines, time left and tally,
+  Vote Yes focused with the keys shown, the ballots locking once the player
+  has voted, and the page out of reach from another tab;
+- generator checks that every row label, ballot, reason, heading and running
+  vote line fits in every language, and the stock maps' long names in the
+  collapsed lists;
+- live probes: a host and a remote client over loopback (Team DM, English on
+  OpenGL and German on Vulkan) where the host steps the time limit up five
+  minutes and calls the vote, the client sees the caller, the line, the time
+  left and the tally, votes yes through the card and the vote passes; and a
+  listen server drafting a CTF call from Team DM (the map giving way to a CTF
+  map and the capture limit replacing the frag limit, the kick list with the
+  bots), in Polish on Vulkan while spectating with two fields locked by the
+  server, and in Russian with voting off and a Tourney draft.
+
+Evidence: `.tmp/ui/retained-mp-vote/validation-evidence.json`, SHA-256
+`c43517ab3160ddb9ff865380dc2a83374597aa5b0bb5d4f0daf575d3b0d08aa2`.
+
 The card's acceptance continues under `FLOW-046`.
 
 ## Known limitations
 
-- Five pages hand off to their stock pages, and the stock menu then keeps the
+- Four pages hand off to their stock pages, and the stock menu then keeps the
   menu until it closes; the card does not come back over it.
 - Choosing an unavailable action does not announce its reason to the
   accessibility text backing yet, and a controller gives no rumble.
@@ -447,6 +556,17 @@ The card's acceptance continues under `FLOW-046`.
   place in the queue (neither has a model yet), and its team cards carry no
   faction mark.
 - The Welcome card's Settings page hands off to the join panel's settings.
+- On a remote client a running vote's time left counts from when the vote
+  reached it, so it can read a little long; no message carries the server's.
+- The kick list names its rows, and the game reads the row at the moment of
+  the choice: a player leaving in that instant can shift the rows. The row
+  then shows whom the call would kick before Call Vote sends it.
+- The map list holds 48 maps; a server with more for one game type lists the
+  first 48.
+- Lists and check boxes take Left and Right as focus moves and change only on
+  accept; sliders step with them (decision D2 is open). A list's value shows
+  one frame after the game accepts it.
+- A managed match's refusals on the Vote page have no live probe yet.
 - The prompt bar shows keyboard keycaps only; controller glyphs wait for the
   glyph families (`INP-011`).
 - Narrower views than 4:3 (5:4, portrait) do not scale the card down yet
