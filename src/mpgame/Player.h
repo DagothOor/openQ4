@@ -459,6 +459,9 @@ public:
 	idVec3					firstPersonViewOrigin;
 	idMat3					firstPersonViewAxis;
 	int						presentationViewTime;
+	// openQ4 VR: where the body stood at the last reported tic (room scale)
+	idVec3					vrRoomScaleOrigin;
+	bool					vrRoomScaleOriginValid;
 	bool					presentationCanInterpolate;
 	idVec3					presentationPrevViewOrigin;
 	idMat3					presentationPrevViewAxis;
@@ -596,6 +599,8 @@ public:
 	bool					GetVRAimMarker( vrAimMarker_t &marker ) const;
 	// A pulse in the local player's weapon hand, other hand, or both.
 	void					VRVibrate( bool weaponHand, bool otherHand, float amplitude, int durationMsec ) const;
+	// Room scale: report a new tic's predicted progress to the tracking space.
+	void					ReportVRRoomScaleWalk( void );
 	void					UpdateEyeHeight( bool snap );
  	void					OffsetThirdPersonView( float angle, float range, float height, bool clip );
 	void					OffsetThirdPersonVehicleView( bool clip );

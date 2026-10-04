@@ -18,8 +18,14 @@ Checks:
   only difference between captures: one small red dot in each eye, at the
   same height in both, whose disparity puts it in front of the player at a
   plausible range, and a beam that adds more;
+- two hands: the off-hand grip squeezed on the foregrip raises the aim (the
+  dot in both eyes), buzzes the off hand and opens no weapon wheel;
+- the comfort vignette: a smooth turn at full strength blacks out the eyes'
+  top corners and leaves their centres clear;
 - the trigger fires the weapon through its default binding, and each shot
   pulses the weapon hand's controller (a 40 ms vibration on the right hand);
+- the machinegun's zoom magnifies the eyes and puts no scope picture on the
+  head-locked HUD;
 - room scale: half a metre's step forward walks the body after the head, so
   the head ends up within a few units of the tracking origin, while with
   vr_roomScale 0 the same step leaves the whole distance as a lean;

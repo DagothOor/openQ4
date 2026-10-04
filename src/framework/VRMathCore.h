@@ -364,6 +364,49 @@ inline float VR_ComfortEase( float current, float target, float seconds ) {
 
 /*
 ====================
+Room-scale walking through the usercmd
+
+A multiplayer server moves bodies only from usercmds, so there the body
+walks after the head the way a stick would move it: towards the head's
+horizontal offset from the body (tracking space, units), at up to half of
+full input 12 units out. A body moved by usercmds coasts after its input
+stops, so the walk starts only beyond 6 units and runs until the head is
+within 2: the coast then ends inside the free zone instead of setting off a
+walk back. walking carries that state between calls. forward and right are
+in the aim frame the usercmd moves along, given the aim's yaw in tracking
+space.
+====================
+*/
+inline bool VR_RoomScaleWalkInput( float headX, float headY, float aimYawDegrees, bool &walking, float &forward, float &right ) {
+	forward = right = 0.0f;
+	const float startRadius = 6.0f;
+	const float stopRadius = 2.0f;
+	const float ramp = 12.0f;
+	const float strongest = 0.5f;
+	const float distance = std::sqrt( headX * headX + headY * headY );
+	if ( !( distance == distance ) ) {
+		walking = false;
+		return false;
+	}
+	if ( walking ? distance < stopRadius : !( distance > startRadius ) ) {
+		walking = false;
+		return false;
+	}
+	walking = true;
+	float strength = ( distance - stopRadius ) / ramp;
+	strength = ( strength > 1.0f ? 1.0f : strength ) * strongest;
+	const float dx = headX / distance;
+	const float dy = headY / distance;
+	const float c = std::cos( aimYawDegrees * VR_DEG2RAD );
+	const float s = std::sin( aimYawDegrees * VR_DEG2RAD );
+	// the engine's left is +y; the usercmd moves right
+	forward = strength * ( dx * c + dy * s );
+	right = -strength * ( -dx * s + dy * c );
+	return true;
+}
+
+/*
+====================
 Two-handed aim
 
 The off hand steadies the gun when its palm closes in front of the weapon

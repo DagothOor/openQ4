@@ -412,6 +412,7 @@ jobs:
             tools/tests/openxr_vr_contract.py \
             tools/tests/openxr_vr_smoke.py \
             tools/tests/openxr_vr_menu_smoke.py \
+            tools/tests/openxr_vr_mp_smoke.py \
             tools/tests/renderer_display_presentation.py \
             tools/tests/renderer_gl_display_policy.py \
             tools/tests/sdl3_strict_window.py \

@@ -1403,6 +1403,9 @@ idPlayer::idPlayer
 idPlayer::idPlayer() {
 	memset( &usercmd, 0, sizeof( usercmd ) );
 
+	vrRoomScaleOrigin.Zero();
+	vrRoomScaleOriginValid = false;
+
 	alreadyDidTeamAnnouncerSound = false;
 
 	noclip					= false;
@@ -11226,6 +11229,7 @@ void idPlayer::Think( void ) {
 // RAVEN END
 
 	Move();
+	ReportVRRoomScaleWalk();
 
 	if ( !g_stopTime.GetBool() ) {
  		if ( !noclip && !spectating && ( health > 0 ) && !IsHidden() ) {
@@ -12921,6 +12925,41 @@ bool idPlayer::GetVRAimMarker( vrAimMarker_t &marker ) const {
 
 /*
 ===============
+idPlayer::ReportVRRoomScaleWalk
+
+openQ4 VR: multiplayer room scale. The engine walks the body after the head
+through the usercmd (VR_RoomScaleWalkInput), because only usercmds move a
+networked body. This reports each new tic's predicted horizontal progress so
+the tracking space can follow the body; the engine keeps only a room-scale
+walk's part of it. A jump of more than 32 units is a teleport or a respawn.
+===============
+*/
+void idPlayer::ReportVRRoomScaleWalk( void ) {
+	vrFrameState_t frame;
+	float trackingYaw;
+	if ( !gameLocal.isNewFrame ) {
+		return;
+	}
+	if ( spectating || noclip || health <= 0 || !GetVRView( frame, trackingYaw ) || !frame.roomScale ) {
+		vrRoomScaleOriginValid = false;
+		return;
+	}
+	const idVec3 origin = physicsObj.GetOrigin();
+	if ( vrRoomScaleOriginValid ) {
+		idVec3 moved = origin - vrRoomScaleOrigin;
+		moved.z = 0.0f;
+		if ( moved.LengthSqr() > 0.0f && moved.LengthSqr() < 32.0f * 32.0f ) {
+			idVec3 movedTracking = moved * VR_TrackingAxis( trackingYaw ).Transpose();
+			movedTracking.z = 0.0f;
+			vrSystem->ShiftTrackingOrigin( movedTracking );
+		}
+	}
+	vrRoomScaleOrigin = origin;
+	vrRoomScaleOriginValid = true;
+}
+
+/*
+===============
 idPlayer::VRVibrate
 
 openQ4 VR: a pulse in the local player's controllers. Prediction reruns a
@@ -14180,6 +14219,7 @@ void idPlayer::LocalClientPredictionThink( void ) {
  		// don't allow client to move when lagged
 		predictedUpdated = false;
  		Move();
+		ReportVRRoomScaleWalk();
 
 		// predict collisions with items
 		if ( !noclip && !spectating && ( health > 0 ) && !IsHidden() ) {

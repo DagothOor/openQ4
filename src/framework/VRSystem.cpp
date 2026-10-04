@@ -67,7 +67,7 @@ idCVar vr_comfortVignette( "vr_comfortVignette", "0.5", CVAR_SYSTEM | CVAR_ARCHI
 idCVar vr_twoHanded( "vr_twoHanded", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL,
 	"1 = squeezing the off-hand grip on the gun's foregrip, in front of the weapon hand, holds the gun in both hands; elsewhere that squeeze opens the weapon wheel" );
 idCVar vr_roomScale( "vr_roomScale", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL,
-	"1 = in single player the body walks after your head as you move about the room; 0 = it stays put and leaning stops at vr_headOffsetLimit" );
+	"1 = the body walks after your head as you move about the room (in multiplayer through its movement input); 0 = it stays put and leaning stops at vr_headOffsetLimit" );
 idCVar vr_hapticStrength( "vr_hapticStrength", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_FLOAT,
 	"controller vibration strength, from 0 (off) to 1", 0.0f, 1.0f );
 idCVar vr_aimLaser( "vr_aimLaser", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_INTEGER,

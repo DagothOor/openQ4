@@ -341,6 +341,9 @@ private:
 	vrSnapTurnState_t		snapTurn;
 	int						heldKeys[16];
 	bool					twoHanded;		// the off hand holds the gun's foregrip (vr_twoHanded)
+	bool					roomScaleStickIdle;	// the locomotion stick rests (multiplayer room scale)
+	int						roomScaleWalkMsec;	// when the head last walked the body through the usercmd
+	bool					roomScaleWalking;	// a usercmd walk is under way (VR_RoomScaleWalkInput)
 };
 
 static idVRSystemOpenXR *	vrOpenXR = NULL;
@@ -479,6 +482,9 @@ idVRSystemOpenXR::idVRSystemOpenXR( void ) {
 	snapTurn.latched = false;
 	memset( heldKeys, 0, sizeof( heldKeys ) );
 	twoHanded = false;
+	roomScaleStickIdle = true;
+	roomScaleWalkMsec = 0;
+	roomScaleWalking = false;
 }
 
 /*
@@ -1665,6 +1671,23 @@ void idVRSystemOpenXR::SyncInput( float frameSeconds ) {
 		}
 	}
 
+	// Multiplayer room scale: a server moves bodies only from usercmds, so
+	// while the stick rests a head beyond the free radius walks the body after
+	// it the way the stick would, and ShiftTrackingOrigin then takes the
+	// body's predicted progress. Single player walks the body directly.
+	const bool stickIdle = forwardMove == 0.0f && rightMove == 0.0f;
+	if ( !menu && stickIdle && vr_roomScale.GetBool() && idAsyncNetwork::IsActive() && frame.head.valid ) {
+		float walkForward, walkRight;
+		if ( VR_RoomScaleWalkInput( frame.head.origin.x, frame.head.origin.y, localYaw, roomScaleWalking, walkForward, walkRight ) ) {
+			forwardMove = walkForward;
+			rightMove = walkRight;
+			roomScaleWalkMsec = Sys_Milliseconds();
+		}
+	} else {
+		roomScaleWalking = false;
+	}
+	roomScaleStickIdle = stickIdle;
+
 	Sys_EnterCriticalSection( VR_INPUT_CRITICAL_SECTION );
 	inputValid = sessionRunning && sessionFocused;
 	if ( bodyYawValid ) {
@@ -1887,6 +1910,11 @@ out for this frame move with it, so the camera stays on the head.
 void idVRSystemOpenXR::ShiftTrackingOrigin( const idVec3 &trackingDelta ) {
 	const float unitsPerMetre = vr_worldScale.GetFloat();
 	if ( !sessionRunning || unitsPerMetre <= 0.0f || !VR_IsFinite( VR_Vec3( trackingDelta.x, trackingDelta.y, trackingDelta.z ) ) ) {
+		return;
+	}
+	// In multiplayer the local player reports every tic's movement; only a
+	// room-scale walk's, or its coast to a stop, belongs to the tracking space.
+	if ( idAsyncNetwork::IsActive() && ( !roomScaleStickIdle || Sys_Milliseconds() - roomScaleWalkMsec > 400 ) ) {
 		return;
 	}
 	const idVec3 horizontal( trackingDelta.x, trackingDelta.y, 0.0f );

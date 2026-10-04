@@ -3676,7 +3676,7 @@
       "target": "vr_roomScale",
       "default": "1",
       "restart_required": false,
-      "accessibility": "Focusable choiceDef row. Single player: the character walks after the player's steps."
+      "accessibility": "Focusable choiceDef row. The character walks after the player's steps; in multiplayer through its movement input."
     },
     {
       "id": "game.vr_aimlaser",

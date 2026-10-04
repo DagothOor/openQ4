@@ -237,7 +237,7 @@ The Game Options pane is `p_settings_game` and is included from `content/baseoq4
 | Turning | `choiceDef` | `set_game_vr_turnmode_value` | `vr_turnMode` | `0 Snap`, `1 Smooth` | Weapon-hand stick left and right. |
 | Snap Turn Angle | `choiceDef` | `set_game_vr_snapturnangle_value` | `vr_snapTurnAngle` | `30;45;60;90` degrees | Degrees per snap turn. |
 | Walk Direction | `choiceDef` | `set_game_vr_movedirection_value` | `vr_moveDirection` | `0 Head`, `1 Off Hand` | What the off-hand stick's forward follows. |
-| Room Scale | `choiceDef` | `set_game_vr_roomscale_value` | `vr_roomScale` | `Disabled;Enabled` | Single player: the character walks after the player's steps. |
+| Room Scale | `choiceDef` | `set_game_vr_roomscale_value` | `vr_roomScale` | `Disabled;Enabled` | The character walks after the player's steps; in multiplayer through its movement input. |
 | Laser Sight | `choiceDef` | `set_game_vr_aimlaser_value` | `vr_aimLaser` | `0 Off`, `1 Dot`, `2 Dot and Beam` | Marks where controller-aimed shots land, at the target's depth. |
 | Vibration | `choiceDef` | `set_game_vr_hapticstrength_value` | `vr_hapticStrength` | `0 Off`, `0.5 Low`, `1 Full` | Controller pulses on each shot and hit. |
 | Two-Handed Grip | `choiceDef` | `set_game_vr_twohanded_value` | `vr_twoHanded` | `Disabled;Enabled` | The off-hand grip on the gun's foregrip holds it in both hands; elsewhere it opens the weapon wheel. |

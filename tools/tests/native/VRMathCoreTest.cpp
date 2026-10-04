@@ -180,6 +180,27 @@ static void TestComfortVignette( void ) {
 	Check( VR_ComfortEase( 0.3f, 1.0f, 0.0f ) == 0.3f, "no time, no change" );
 }
 
+static void TestRoomScaleWalkInput( void ) {
+	float forward, right;
+	bool walking = false;
+	Check( !VR_RoomScaleWalkInput( 4.0f, 3.0f, 0.0f, walking, forward, right ) && !walking && forward == 0.0f && right == 0.0f,
+		"a lean inside the start radius walks nothing" );
+	Check( VR_RoomScaleWalkInput( 8.0f, 0.0f, 0.0f, walking, forward, right ) && walking, "a head 8 units ahead starts a walk" );
+	Check( Near( forward, 0.25f ) && Near( right, 0.0f ), "half the ramp out is half of the walk, straight ahead" );
+	Check( VR_RoomScaleWalkInput( 4.0f, 0.0f, 0.0f, walking, forward, right ) && walking && forward > 0.0f,
+		"once walking, the body keeps after a head inside the start radius" );
+	Check( !VR_RoomScaleWalkInput( 1.0f, 0.0f, 0.0f, walking, forward, right ) && !walking, "the walk ends within the stop radius" );
+	Check( !VR_RoomScaleWalkInput( -5.0f, 0.0f, 0.0f, walking, forward, right ) && !walking,
+		"a coast past the head stays inside the free zone" );
+	walking = false;
+	VR_RoomScaleWalkInput( 0.0f, -30.0f, 0.0f, walking, forward, right );
+	Check( Near( forward, 0.0f ) && Near( right, 0.5f ), "a head far to the right walks right at the strongest" );
+	// aiming 90 degrees left, a head straight ahead in tracking space is on the aim's right
+	walking = false;
+	VR_RoomScaleWalkInput( 20.0f, 0.0f, 90.0f, walking, forward, right );
+	Check( Near( forward, 0.0f, 0.0001f ) && Near( right, 0.5f, 0.0001f ), "the walk turns into the aim frame" );
+}
+
 static void TestTwoHandedAim( void ) {
 	const float upm = 40.0f;	// units per metre
 	const vrVec3_t palm = VR_Vec3( 10.0f, -8.0f, -14.0f );
@@ -272,6 +293,7 @@ int main() {
 	TestEyeImage();
 	TestRotationBetween();
 	TestTwoHandedAim();
+	TestRoomScaleWalkInput();
 	TestComfortVignette();
 	TestZoomScale();
 	TestTurning();

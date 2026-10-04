@@ -122,12 +122,14 @@ openQ4 avoids moving your view in ways your body doesn't feel:
   what your body doesn't feel; walking about your room never triggers it;
 - in-game cinematics play on the floating screen instead of moving your view.
 
-In single player you can walk around your room: step and your character
-steps with you, sliding along walls and up stairs, so your view never ends
-up inside a wall. Lean a little and only your head moves. Your character
-won't follow you off a ledge; you can lean over it instead. In multiplayer
-your character stays put and you can lean up to `vr_headOffsetLimit` from
-it, because the server decides where everyone is.
+You can walk around your room: step and your character steps with you,
+sliding along walls and up stairs, so your view never ends up inside a
+wall. Lean a little and only your head moves. In single player your
+character won't follow you off a ledge; you can lean over it instead. In
+multiplayer the server decides where everyone is, so your character walks
+after you the way the stick would move it: it takes a moment to catch up,
+and while you hold the stick your steps stay leans, up to
+`vr_headOffsetLimit` from your character.
 
 You can change these settings:
 
@@ -139,7 +141,7 @@ You can change these settings:
 | `vr_moveDirection` | 0 | 0 walk where you look, 1 walk where the off-hand controller points |
 | `vr_stickDeadzone` | 0.2 | thumbstick deadzone |
 | `vr_comfortVignette` | 0.5 | how strongly the comfort vignette narrows your view, from 0 (off) to 1 (a black edge around a 60 degree clear centre) |
-| `vr_roomScale` | 1 | 1 your character follows your steps about the room (single player), 0 it stays put |
+| `vr_roomScale` | 1 | 1 your character follows your steps about the room, 0 it stays put |
 | `vr_headOffsetLimit` | 16 | how far you can lean from your character before the view stops (game units) |
 
 Use `vr_recenter` to make your current position and direction the front. It
