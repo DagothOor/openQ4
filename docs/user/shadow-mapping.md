@@ -299,11 +299,13 @@ Projected-light tuning:
 
 Projected shadow maps store Quake 4's authored light falloff depth directly, so the projected defaults are intentionally small. Raise them only when you see acne or speckling.
 
+Soft projected shadows sample the shadow map at several points around each pixel. On a wall or floor lit at a shallow angle, the surface itself is nearer the light at some of those points, so each sample allows for the surface's tilt in proportion to its distance from the centre. Wide filters such as the default `2.0` texels therefore stay free of speckles on grazing surfaces, while the centre sample keeps the ordinary bias, so shadows still meet the objects that cast them. OpenGL and Vulkan do this automatically; it needs no tuning.
+
 | Setting | Default | Range | What it does |
 |---|---:|---:|---|
 | `r_shadowMapBias` | `0.00016` | `0..0.05` | Constant receiver depth bias for projected lights. |
 | `r_shadowMapNormalBias` | `0.00075` | `0..0.05` | Extra projected-light bias on sloped receivers. |
-| `r_shadowMapTexelBiasScale` | `0.45` | `0..8` | Uses texel-aware receiver bias based on fitted cascade/light footprint. Constant bias acts as a compatibility floor. |
+| `r_shadowMapTexelBiasScale` | `0.45` | `0..8` | Uses texel-aware receiver bias based on fitted cascade/light footprint. Constant bias acts as a compatibility floor. The tilt allowance of projected filter samples away from the centre is separate and does not depend on this scale. |
 | `r_shadowMapNormalOffsetScale` | `1.0` | `0..8` | Normal-offset bias in shadow texels. It helps slope acne but can move contact edges when set too high, especially on lights whose texels cover a large world-space footprint. |
 | `r_shadowMapReceiverPlaneBias` | `0` | `0..1` | Enables the experimental derivative receiver-plane approximation. Keep it disabled for ordinary play. |
 | `r_shadowMapPolygonFactor` | `0.25` | `0..16` | Slope-scale caster depth offset applied by the caster shaders while rendering shadow maps (shadow casters write shader depth, which `glPolygonOffset` cannot bias). |
@@ -324,7 +326,7 @@ Practical advice:
 - If shadows detach from contact points, lower the relevant bias before changing many other settings.
 - Existing configs may keep older archived bias values. If detached shadows persist after updating, compare your local cvars against the defaults above.
 - If CSM shimmers while moving the camera, keep `r_shadowMapCascadeStabilize 1`.
-- Wider filter radii usually need more careful bias tuning.
+- Projected filter radii allow for surface tilt themselves. Wider point-light radii usually need more careful bias tuning.
 
 ## Debugging and Diagnostics
 

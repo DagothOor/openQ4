@@ -74,6 +74,13 @@ void R_ShadowMapBuildBaseClipPlanesForLight( const viewLight_t *vLight, idPlane 
 void R_ShadowMapClipPlanesToGLMatrix( const idPlane clipPlanes[4], float matrix[16] );
 idVec4 R_ShadowMapBuildAtlasRect( int cascadeIndex, int atlasDiv );
 float R_ShadowMapTexelDepthBias( float worldTexelSize, float depthRange );
+// Stored depth that one shadow texel of a receiver spans per unit of slope
+// (tan of its angle to the light); R_ShadowMapTexelDepthBias scales it by
+// r_shadowMapTexelBiasScale. Projected receivers add step * slope * the tap's
+// distance from the centre, in texels, to each off-centre filter tap's bias.
+float R_ShadowMapTexelDepthStep( float worldTexelSize, float depthRange );
+// The step for every cascade of a projected state, zero for unused cascades.
+void R_ShadowMapProjectedTexelDepthSteps( const shadowMapProjectedLightState_t &state, float steps[SHADOWMAP_PROJECTED_MAX_CASCADES] );
 float R_ShadowMapQuantizeCascadeExtent( float rawExtent, int tileSize );
 float R_ShadowMapSnapCascadeCenter( float rawCenter, float quantizedExtent, int tileSize );
 int R_ShadowMapProjectedStateHash( int hash, const shadowMapProjectedLightState_t &state );

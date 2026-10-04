@@ -476,6 +476,21 @@ float R_ShadowMapTexelDepthBias( const float worldTexelSize, const float depthRa
 	return Max( 0.0f, r_shadowMapTexelBiasScale.GetFloat() ) * worldTexelSize / Max( depthRange, 1.0f );
 }
 
+float R_ShadowMapTexelDepthStep( const float worldTexelSize, const float depthRange ) {
+	if ( worldTexelSize <= 0.0f || depthRange <= 0.0f ) {
+		return 0.0f;
+	}
+	return worldTexelSize / Max( depthRange, 1.0f );
+}
+
+void R_ShadowMapProjectedTexelDepthSteps( const shadowMapProjectedLightState_t &state, float steps[SHADOWMAP_PROJECTED_MAX_CASCADES] ) {
+	for ( int cascadeIndex = 0; cascadeIndex < SHADOWMAP_PROJECTED_MAX_CASCADES; cascadeIndex++ ) {
+		steps[cascadeIndex] = cascadeIndex < state.cascadeCount
+			? R_ShadowMapTexelDepthStep( state.worldTexelSize[cascadeIndex], state.depthRange[cascadeIndex] )
+			: 0.0f;
+	}
+}
+
 static void R_ShadowMapTransformPointToClip( const idVec3 &point, const idPlane clipPlanes[4], idVec4 &clip ) {
 	for ( int i = 0; i < 4; i++ ) {
 		clip[i] = point[0] * clipPlanes[i][0] + point[1] * clipPlanes[i][1] + point[2] * clipPlanes[i][2] + clipPlanes[i][3];

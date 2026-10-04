@@ -50,6 +50,48 @@
   `renderer_vulkan_shadow_compatibility.py` pins the contact radius and the
   cache-cell reuse.
 
+- [x] Remove the grazing-wall shadow acne of the 2.0-texel projected filter
+  default on all three projected receivers: the classic OpenGL
+  `shadow_interaction.fs`, the modern GL clustered receiver and Vulkan's
+  `interaction_shadow.frag`. Each compared every PCF tap and PCSS blocker probe
+  with the centre's receiver bias. On a receiver at an angle to the light that
+  bias, with the one-texel normal offset, covers about 1.7 texels of the
+  surface's own depth slope. The 0.75 radius kept the Poisson taps inside it;
+  at 2.0 they reach 1.96 texels and the 4-texel blocker search 3.9, so taps on
+  the side nearer the light found the receiver itself, and PCSS also took it
+  for a blocker. Every off-centre tap and probe now adds
+  `R_ShadowMapTexelDepthStep` (world texel over falloff depth extent; the
+  texel bias is `r_shadowMapTexelBiasScale` times it) times `min(tan, 4)` per
+  texel of its distance from the centre. The centre sample keeps the plain
+  bias. Vulkan's shadow block carries the step in place of the scaled bias,
+  with the scale in `texelSize.z`, and stays 512 bytes. The modern GL receiver
+  derives the step from its shadow matrix's depth row. A signed receiver-plane
+  bias from screen-space derivatives also cleared the wall, but drew a dark
+  line along concave corners. A one-sided version kept the corner line that
+  radius 2.0 already had; the distance-scaled bias also removes most of it.
+  Evidence (`+g632d66b1` built with and without this change, lab
+  projector-only captures, unoccluded left-wall patch, mean/max max-channel
+  error): OpenGL classic 3.09/25 to 0.53/1 at the shipped defaults and
+  3.86/13 to 0.53/1 at mode 0, the old 0.75 defaults' 0.53/1; Vulkan 2.74/25
+  and 3.92/13 to 0/0. Pixels darkened by more than two levels on the deeper
+  wall fell from 34,660 to 39 (OpenGL), 34,685 to 46 (Vulkan) and 5,005 to 17
+  (modern GL); the old 0.75 filter also loses its 857 (OpenGL) and 1,153
+  (Vulkan). A sphere moved to touch the grazing wall keeps its contact shadow
+  (retained occlusion against the stencil reference in the contact band 0.988
+  before, 0.987 after, on OpenGL and Vulkan), and the packed-ORM station is
+  pixel-identical on both PBR receivers. Air Defense 1's terrain keeps 0.854
+  (OpenGL) and 0.856 (Vulkan) of the stencil shadow contrast, against 0.866
+  and 0.869 before: about 300 pixels along one stair-stepped shadow edge on
+  sloped ground are about 4 levels lighter. The one-sided plane variant kept
+  0.863 there but kept the corner line. Vulkan's lab `shadows` case now
+  passes; `shadows-manual-point`, `multi-budget` and `local-global` fail
+  identically with and without the change. OpenGL laboratory groups 80/80
+  with `--gl-debug`, `vulkan-direct` 68/68 at 0x and 4x, the Air Defense 1
+  and q4dm2 terrain checks on OpenGL and Vulkan (three runs each, both
+  builds) and the four Air Defense 2 door scenarios pass.
+  `renderer_vulkan_shadow_compatibility.py` pins the footprint bias on all
+  three receivers and both upload paths.
+
 - [x] Make `r_resolutionScaleMode 2` and `3` reach single player. The SP game
   renders its below-native scene into its own targets and presented them with
   a full-screen material, a bilinear stretch, so the modes never applied. It

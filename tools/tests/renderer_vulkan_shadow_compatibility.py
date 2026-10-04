@@ -1968,7 +1968,7 @@ def validate_shadow_filtering_contract() -> None:
     require_order(
         projected_compare,
         (
-            "float compareDepth = depth - ShadowReceiverBias(cascadeIndex);",
+            "float compareDepth = depth - ShadowReceiverBias(cascadeIndex) - tapBias;",
             "if (shadow.filterParams.w > 0.5)",
             "texture(shadowCompareMap, vec3(uv, compareDepth))",
             "texture(shadowRawMap, uv).r",
@@ -2175,7 +2175,8 @@ def validate_shadow_filtering_contract() -> None:
         )
         require_compact(
             gl_blocker_search,
-            f"if ( d{tap_index} < compareDepth ) {{ blockerDepth += d{tap_index}; blockerCount += 1.0; }}",
+            f"if ( d{tap_index} < compareDepth - length( o{tap_index} ) * searchBias ) "
+            f"{{ blockerDepth += d{tap_index}; blockerCount += 1.0; }}",
             f"OpenGL PCSS probe d{tap_index} contribution",
         )
 
@@ -2196,7 +2197,7 @@ def validate_shadow_filtering_contract() -> None:
         (
             "mat2 rotation = ShadowOffsetRotation( uv, depth );",
             "ProjectedPCSSRadius( uv, depth, cascadeIndex, clampMin, clampMax, rotation )",
-            "shadow += SampleShadowCompare( uv, depth, cascadeIndex );",
+            "shadow += SampleShadowCompare( uv, depth, cascadeIndex, 0.0 );",
             "if ( uShadowFilterTaps <= 1.0 )",
             "if ( uShadowFilterTaps <= 5.0 )",
             "if ( uShadowFilterTaps <= 9.0 )",
@@ -2232,6 +2233,165 @@ def validate_shadow_filtering_contract() -> None:
         ),
         "OpenGL exact point filter tiers",
     )
+
+
+def validate_projected_footprint_bias_contract() -> None:
+    """Off-centre projected taps add bias per texel of their distance.
+
+    A receiver at an angle to the light changes stored depth by
+    texelDepthStep * slope per shadow texel. Comparing a PCF tap or PCSS
+    probe several texels away with the centre's bias alone shadows the
+    receiver with its own nearer surface: the grazing-wall speckle that grew
+    with r_shadowMapFilterRadius 2.0. All three projected receivers scale the
+    same step by each tap's distance, and the centre sample keeps the plain
+    receiver bias so contact shadows keep their reach.
+    """
+    projected_state = read("src/renderer/ShadowMapProjected.cpp")
+    step = braced_body(
+        projected_state,
+        "float R_ShadowMapTexelDepthStep(",
+        "projected texel depth step",
+    )
+    require(step, "return worldTexelSize / Max( depthRange, 1.0f );", "projected texel depth step")
+    texel_bias = braced_body(
+        projected_state,
+        "float R_ShadowMapTexelDepthBias(",
+        "projected texel depth bias",
+    )
+    require(
+        texel_bias,
+        "Max( 0.0f, r_shadowMapTexelBiasScale.GetFloat() ) * worldTexelSize / Max( depthRange, 1.0f )",
+        "texel depth bias is the scaled texel depth step",
+    )
+    steps = braced_body(
+        projected_state,
+        "void R_ShadowMapProjectedTexelDepthSteps(",
+        "per-cascade texel depth steps",
+    )
+    require_compact(
+        steps,
+        "R_ShadowMapTexelDepthStep( state.worldTexelSize[cascadeIndex], state.depthRange[cascadeIndex] )",
+        "per-cascade texel depth steps",
+    )
+
+    arb2 = read("src/renderer/draw_arb2.cpp")
+    require(
+        arb2,
+        'glGetUniformLocationARB( programObject, "uShadowTexelDepthStep[0]" )',
+        "OpenGL projected receiver texel depth step uniform",
+    )
+    if arb2.count("R_ShadowMapProjectedTexelDepthSteps(") != 2:
+        raise AssertionError(
+            "Both OpenGL projected receiver uploads must provide the texel depth step"
+        )
+
+    gl = read("content/baseoq4/pak0/glprogs/shadow_interaction.fs")
+    require(gl, "uniform float uShadowTexelDepthStep[4];", "OpenGL projected receiver")
+    gl_footprint = braced_body(gl, "float ShadowFootprintBias(", "OpenGL footprint bias")
+    require_order(
+        gl_footprint,
+        (
+            "if ( ShadowDebugModeIs( kShadowDebugBiasOff ) )",
+            "float slopeBias = min( sinTheta / lightCos, kShadowBiasMaxSlope );",
+            "return max( CascadeTexelDepthStep( cascadeIndex ), 0.0 ) * slopeBias;",
+        ),
+        "OpenGL footprint bias",
+    )
+    gl_compare = braced_body(gl, "float SampleShadowCompare(", "OpenGL projected compare")
+    require(
+        gl_compare,
+        "float bias = ShadowReceiverBias( cascadeIndex, depth ) + tapBias;",
+        "OpenGL projected compare",
+    )
+    gl_search = braced_body(gl, "float ProjectedPCSSRadius(", "OpenGL PCSS blocker search")
+    require(
+        gl_search,
+        "float searchBias = ShadowFootprintBias( cascadeIndex ) * searchRadius;",
+        "OpenGL PCSS blocker search",
+    )
+    gl_samples = braced_body(gl, "vec4 SampleShadowCascade(", "OpenGL projected Poisson shadow filter")
+    require(
+        gl_samples,
+        "float tapBias = ShadowFootprintBias( cascadeIndex ) * filterRadius;",
+        "OpenGL projected Poisson shadow filter",
+    )
+    if gl_samples.count("SampleShadowCompare( uv, depth, cascadeIndex, 0.0 )") != 2:
+        raise AssertionError("OpenGL projected centre samples must keep the plain receiver bias")
+    for tap_index in range(1, 13):
+        require(
+            gl_samples,
+            f"depth, cascadeIndex, length( o{tap_index} ) * tapBias );",
+            f"OpenGL projected tap o{tap_index} footprint bias",
+        )
+
+    vulkan = read("src/renderer/Vulkan/shaders/interaction_shadow.frag")
+    vulkan_bias = braced_body(vulkan, "float ShadowReceiverBias(", "Vulkan projected receiver bias")
+    require_compact(
+        vulkan_bias,
+        "float texelBias = shadow.texelSize.z * CascadeComponent( shadow.texelDepthStep, cascadeIndex) * (1.0 + slopeBias);",
+        "Vulkan texel bias rebuilt from the texel depth step",
+    )
+    vulkan_footprint = braced_body(vulkan, "float ShadowFootprintBias(", "Vulkan footprint bias")
+    require_order(
+        vulkan_footprint,
+        (
+            "if (ShadowDebugModeIs(kShadowDebugBiasOff))",
+            "float slopeBias = min(sinTheta / lightCos, 4.0);",
+            "return max(CascadeComponent(shadow.texelDepthStep, cascadeIndex), 0.0) * slopeBias;",
+        ),
+        "Vulkan footprint bias",
+    )
+    vulkan_search = braced_body(vulkan, "float ProjectedPCSSRadius(", "Vulkan PCSS blocker search")
+    require(
+        vulkan_search,
+        "float searchBias = ShadowFootprintBias(cascadeIndex) * searchRadius;",
+        "Vulkan PCSS blocker search",
+    )
+    for tap_index in range(1, 9):
+        require(
+            vulkan_search,
+            f"if (d{tap_index} < compareDepth - length(o{tap_index}) * searchBias)",
+            f"Vulkan PCSS probe d{tap_index} footprint bias",
+        )
+    vulkan_samples = braced_body(vulkan, "float SampleShadowCascade(", "Vulkan projected Poisson shadow filter")
+    require(
+        vulkan_samples,
+        "float tapBias = ShadowFootprintBias(cascadeIndex) * filterRadius;",
+        "Vulkan projected Poisson shadow filter",
+    )
+    if vulkan_samples.count("SampleShadowCompare(uv, depth, cascadeIndex, 0.0)") != 2:
+        raise AssertionError("Vulkan projected centre samples must keep the plain receiver bias")
+    for tap_index in range(1, 13):
+        require(
+            vulkan_samples,
+            f"length(o{tap_index}) * tapBias);",
+            f"Vulkan projected tap o{tap_index} footprint bias",
+        )
+    for stage in ("interaction_shadow.vert", "interaction_shadow.frag"):
+        stage_source = read(f"src/renderer/Vulkan/shaders/{stage}")
+        if "texelDepthBias" in stage_source or "vec4 texelDepthStep;" not in stage_source:
+            raise AssertionError(f"Vulkan {stage} must declare the shadow block's texel depth step")
+
+    interactions = read("src/renderer/Vulkan/vk_Interactions.cpp")
+    if interactions.count("R_ShadowMapProjectedTexelDepthSteps( projected, block.texelDepthStep );") != 2:
+        raise AssertionError("Both Vulkan projected shadow blocks must carry the texel depth step")
+    if interactions.count("block.texelSize[ 2 ] = Max( 0.0f, r_shadowMapTexelBiasScale.GetFloat() );") != 2:
+        raise AssertionError("Both Vulkan projected shadow blocks must carry the texel bias scale")
+
+    modern = read("src/renderer/ModernGLShaderLibrary.cpp")
+    require_order(
+        modern,
+        (
+            r'"float ModernClusterShadowFootprintBias(ModernClusterShadowDescriptor descriptor, int cascadeIndex, vec3 normal, vec3 lightDir) {\n"',
+            r'"    float depthPerUnit = min(length(vec3(shadowMatrix[0].z, shadowMatrix[1].z, shadowMatrix[2].z)), 1.0);\n"',
+            r'"    float bias = ModernClusterShadowReceiverBias(descriptor, cascadeIndex, normal, lightDir, depth) + tapBias;\n"',
+            r'"    float shadow = ModernClusterCompareProjected(descriptor, uv, depth, cascadeIndex, normal, lightDir, 0.0);\n"',
+            r'"        float tapBias = ModernClusterShadowFootprintBias(descriptor, cascadeIndex, normal, lightDir) * radius * 0.70710678;\n"',
+        ),
+        "modern GL projected footprint bias",
+    )
+    if modern.count("depth, cascadeIndex, normal, lightDir, tapBias);") != 4:
+        raise AssertionError("Every modern GL projected PCF tap must carry the footprint bias")
 
 
 def point_receiver_settings(
@@ -7069,6 +7229,7 @@ def main() -> None:
     validate_csm_atlas_and_receiver_contract()
     validate_shadow_descriptor_abi()
     validate_shadow_filtering_contract()
+    validate_projected_footprint_bias_contract()
     validate_point_receiver_world_bias_contract()
     validate_shadow_contact_and_gl_robustness_contract()
     validate_exact_static_cache_and_admission_contract()

@@ -65,11 +65,11 @@ layout(set = 7, binding = 1, std140) uniform ShadowBlock {
     vec4 atlasRects[4];
     vec4 splitDepths;
     vec4 cascadeBiasScale;
-    vec4 texelDepthBias;
+    vec4 texelDepthStep; // stored depth per shadow texel of a slope-1 receiver
     vec4 normalOffsetWorld;
     vec4 viewDepthRow;
     vec4 biasParams;   // x: constant bias, y: normal bias, z: cascade blend, w: cascade count
-    vec4 texelSize;    // x,y: 1 / atlas dimensions
+    vec4 texelSize;    // x,y: 1 / atlas dimensions, z: r_shadowMapTexelBiasScale
     vec4 filterParams; // x: radius, y: taps, z: mode, w: hardware compare
     vec4 pcssParams;   // x: light radius, y: max radius, z: effective radius, w: receiver-plane bias
     vec4 debugParams;  // x: r_shadowMapDebugMode, y: receiver fallback reason
@@ -241,8 +241,8 @@ float ShadowReceiverBias(int cascadeIndex) {
         ? 0.0 : shadow.biasParams.y;
     float scalarBias = (shadow.biasParams.x + normalBias * sinTheta)
         * CascadeComponent(shadow.cascadeBiasScale, cascadeIndex);
-    float texelBias = CascadeComponent(shadow.texelDepthBias,
-        cascadeIndex) * (1.0 + slopeBias);
+    float texelBias = shadow.texelSize.z * CascadeComponent(
+        shadow.texelDepthStep, cascadeIndex) * (1.0 + slopeBias);
     float receiverPlaneBias = 0.0;
     if (shadow.pcssParams.w > 0.5
             && !ShadowDebugModeIs(kShadowDebugReceiverPlaneBiasOff)) {
@@ -253,8 +253,27 @@ float ShadowReceiverBias(int cascadeIndex) {
         max(max(texelBias, receiverPlaneBias), 0.0));
 }
 
-float SampleShadowCompare(vec2 uv, float depth, int cascadeIndex) {
-    float compareDepth = depth - ShadowReceiverBias(cascadeIndex);
+// Off-centre PCF taps and PCSS blocker probes read the map several texels
+// away from the receiver. A receiver at an angle to the light changes depth by
+// texelDepthStep * slope per texel, so a tap on the side nearer the light
+// would compare the receiver with its own surface and speckle it, more as the
+// filter widens. Each tap therefore adds this bias per texel of its distance
+// from the centre. The centre sample keeps the plain receiver bias, so contact
+// shadows keep their reach. glprogs/shadow_interaction.fs matches it.
+float ShadowFootprintBias(int cascadeIndex) {
+    if (ShadowDebugModeIs(kShadowDebugBiasOff)) {
+        return 0.0;
+    }
+    float lightCos = clamp(vShadowLightCos, 0.20, 1.0);
+    float sinTheta = sqrt(max(1.0 - lightCos * lightCos, 0.0));
+    float slopeBias = min(sinTheta / lightCos, 4.0);
+    return max(CascadeComponent(shadow.texelDepthStep, cascadeIndex), 0.0)
+        * slopeBias;
+}
+
+float SampleShadowCompare(vec2 uv, float depth, int cascadeIndex,
+        float tapBias) {
+    float compareDepth = depth - ShadowReceiverBias(cascadeIndex) - tapBias;
     if (shadow.filterParams.w > 0.5) {
         return texture(shadowCompareMap, vec3(uv, compareDepth));
     }
@@ -278,7 +297,10 @@ float ProjectedPCSSRadius(vec2 uv, float depth, int cascadeIndex,
     }
 
     float compareDepth = depth - ShadowReceiverBias(cascadeIndex);
-    vec2 searchTap = texelStep * max(shadow.pcssParams.x, 0.5);
+    float searchRadius = max(shadow.pcssParams.x, 0.5);
+    vec2 searchTap = texelStep * searchRadius;
+    // Without the footprint bias a tilted receiver finds itself as a blocker.
+    float searchBias = ShadowFootprintBias(cascadeIndex) * searchRadius;
     float blockerDepth = 0.0;
     float blockerCount = 0.0;
     float d0 = RawShadowDepth(uv);
@@ -310,14 +332,38 @@ float ProjectedPCSSRadius(vec2 uv, float depth, int cascadeIndex,
         clampMin, clampMax));
     float d8 = RawShadowDepth(clamp(uv + o8 * searchTap,
         clampMin, clampMax));
-    if (d1 < compareDepth) { blockerDepth += d1; blockerCount += 1.0; }
-    if (d2 < compareDepth) { blockerDepth += d2; blockerCount += 1.0; }
-    if (d3 < compareDepth) { blockerDepth += d3; blockerCount += 1.0; }
-    if (d4 < compareDepth) { blockerDepth += d4; blockerCount += 1.0; }
-    if (d5 < compareDepth) { blockerDepth += d5; blockerCount += 1.0; }
-    if (d6 < compareDepth) { blockerDepth += d6; blockerCount += 1.0; }
-    if (d7 < compareDepth) { blockerDepth += d7; blockerCount += 1.0; }
-    if (d8 < compareDepth) { blockerDepth += d8; blockerCount += 1.0; }
+    if (d1 < compareDepth - length(o1) * searchBias) {
+        blockerDepth += d1;
+        blockerCount += 1.0;
+    }
+    if (d2 < compareDepth - length(o2) * searchBias) {
+        blockerDepth += d2;
+        blockerCount += 1.0;
+    }
+    if (d3 < compareDepth - length(o3) * searchBias) {
+        blockerDepth += d3;
+        blockerCount += 1.0;
+    }
+    if (d4 < compareDepth - length(o4) * searchBias) {
+        blockerDepth += d4;
+        blockerCount += 1.0;
+    }
+    if (d5 < compareDepth - length(o5) * searchBias) {
+        blockerDepth += d5;
+        blockerCount += 1.0;
+    }
+    if (d6 < compareDepth - length(o6) * searchBias) {
+        blockerDepth += d6;
+        blockerCount += 1.0;
+    }
+    if (d7 < compareDepth - length(o7) * searchBias) {
+        blockerDepth += d7;
+        blockerCount += 1.0;
+    }
+    if (d8 < compareDepth - length(o8) * searchBias) {
+        blockerDepth += d8;
+        blockerCount += 1.0;
+    }
     if (blockerCount <= 0.0) {
         return 0.0;
     }
@@ -394,11 +440,13 @@ float SampleShadowCascade(vec4 shadowCoord, vec4 atlasRect,
     float filterRadius = ProjectedPCSSRadius(uv, depth, cascadeIndex,
         clampMin, clampMax, texelStep, rotation);
     if (filterRadius <= 0.0) {
-        return SampleShadowCompare(uv, depth, cascadeIndex);
+        return SampleShadowCompare(uv, depth, cascadeIndex, 0.0);
     }
 
     vec2 tap = texelStep * filterRadius;
-    float result = SampleShadowCompare(uv, depth, cascadeIndex);
+    // Each tap's bias grows with its distance from the centre, filterRadius * |o|.
+    float tapBias = ShadowFootprintBias(cascadeIndex) * filterRadius;
+    float result = SampleShadowCompare(uv, depth, cascadeIndex, 0.0);
     if (shadow.filterParams.y <= 1.0) {
         return result;
     }
@@ -407,13 +455,17 @@ float SampleShadowCascade(vec4 shadowCoord, vec4 atlasRect,
     vec2 o3 = rotation * vec2(-0.695914, 0.457137);
     vec2 o4 = rotation * vec2(-0.203345, 0.620716);
     result += SampleShadowCompare(clamp(uv + o1 * tap,
-        clampMin, clampMax), depth, cascadeIndex);
+        clampMin, clampMax), depth, cascadeIndex,
+        length(o1) * tapBias);
     result += SampleShadowCompare(clamp(uv + o2 * tap,
-        clampMin, clampMax), depth, cascadeIndex);
+        clampMin, clampMax), depth, cascadeIndex,
+        length(o2) * tapBias);
     result += SampleShadowCompare(clamp(uv + o3 * tap,
-        clampMin, clampMax), depth, cascadeIndex);
+        clampMin, clampMax), depth, cascadeIndex,
+        length(o3) * tapBias);
     result += SampleShadowCompare(clamp(uv + o4 * tap,
-        clampMin, clampMax), depth, cascadeIndex);
+        clampMin, clampMax), depth, cascadeIndex,
+        length(o4) * tapBias);
     if (shadow.filterParams.y <= 5.0) {
         return result * (1.0 / 5.0);
     }
@@ -422,13 +474,17 @@ float SampleShadowCascade(vec4 shadowCoord, vec4 atlasRect,
     vec2 o7 = rotation * vec2(0.519456, 0.767022);
     vec2 o8 = rotation * vec2(0.185461, -0.893124);
     result += SampleShadowCompare(clamp(uv + o5 * tap,
-        clampMin, clampMax), depth, cascadeIndex);
+        clampMin, clampMax), depth, cascadeIndex,
+        length(o5) * tapBias);
     result += SampleShadowCompare(clamp(uv + o6 * tap,
-        clampMin, clampMax), depth, cascadeIndex);
+        clampMin, clampMax), depth, cascadeIndex,
+        length(o6) * tapBias);
     result += SampleShadowCompare(clamp(uv + o7 * tap,
-        clampMin, clampMax), depth, cascadeIndex);
+        clampMin, clampMax), depth, cascadeIndex,
+        length(o7) * tapBias);
     result += SampleShadowCompare(clamp(uv + o8 * tap,
-        clampMin, clampMax), depth, cascadeIndex);
+        clampMin, clampMax), depth, cascadeIndex,
+        length(o8) * tapBias);
     if (shadow.filterParams.y <= 9.0) {
         return result * (1.0 / 9.0);
     }
@@ -437,13 +493,17 @@ float SampleShadowCascade(vec4 shadowCoord, vec4 atlasRect,
     vec2 o11 = rotation * vec2(-0.321940, -0.932615);
     vec2 o12 = rotation * vec2(-0.791559, -0.597705);
     result += SampleShadowCompare(clamp(uv + o9 * tap,
-        clampMin, clampMax), depth, cascadeIndex);
+        clampMin, clampMax), depth, cascadeIndex,
+        length(o9) * tapBias);
     result += SampleShadowCompare(clamp(uv + o10 * tap,
-        clampMin, clampMax), depth, cascadeIndex);
+        clampMin, clampMax), depth, cascadeIndex,
+        length(o10) * tapBias);
     result += SampleShadowCompare(clamp(uv + o11 * tap,
-        clampMin, clampMax), depth, cascadeIndex);
+        clampMin, clampMax), depth, cascadeIndex,
+        length(o11) * tapBias);
     result += SampleShadowCompare(clamp(uv + o12 * tap,
-        clampMin, clampMax), depth, cascadeIndex);
+        clampMin, clampMax), depth, cascadeIndex,
+        length(o12) * tapBias);
     return result * (1.0 / 13.0);
 }
 

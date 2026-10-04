@@ -220,11 +220,11 @@ typedef struct vkShadowBlock_s {
 	float			atlasRects[ SHADOWMAP_PROJECTED_MAX_CASCADES ][ 4 ];
 	float			splitDepths[ 4 ];
 	float			cascadeBiasScale[ 4 ];
-	float			texelDepthBias[ 4 ];
+	float			texelDepthStep[ 4 ];	// R_ShadowMapProjectedTexelDepthSteps
 	float			normalOffsetWorld[ 4 ];
 	float			viewDepthRow[ 4 ];	// -modelView row 2
 	float			biasParams[ 4 ];	// x: constant, y: normal, z: cascade blend, w: cascade count
-	float			texelSize[ 4 ];		// x,y: 1 / atlas dimensions
+	float			texelSize[ 4 ];		// x,y: 1 / atlas dimensions, z: r_shadowMapTexelBiasScale
 	float			filterParams[ 4 ];	// x: radius, y: taps, z: mode, w: hardware compare
 	float			pcssParams[ 4 ];	// x: light radius, y: max radius, z: effective radius, w: receiver-plane bias
 	float			debugParams[ 4 ];	// x: r_shadowMapDebugMode, y: receiver fallback reason
@@ -839,8 +839,9 @@ static bool VK_ClassicInteraction_BuildMappedShadowBlock(
 		sizeof( block.splitDepths ) );
 	memcpy( block.cascadeBiasScale, projected.biasScale,
 		sizeof( block.cascadeBiasScale ) );
-	memcpy( block.texelDepthBias, projected.texelDepthBias,
-		sizeof( block.texelDepthBias ) );
+	// The receiver rebuilds texelDepthBias as texelSize.z * step and also
+	// scales the step by each filter tap's distance from the centre.
+	R_ShadowMapProjectedTexelDepthSteps( projected, block.texelDepthStep );
 	for ( int cascadeIndex = 0;
 			cascadeIndex < SHADOWMAP_PROJECTED_MAX_CASCADES;
 			++cascadeIndex ) {
@@ -858,6 +859,7 @@ static bool VK_ClassicInteraction_BuildMappedShadowBlock(
 	block.biasParams[ 3 ] = static_cast<float>( cascadeCount );
 	block.texelSize[ 0 ] = physicalLight.invAtlasSize[ 0 ];
 	block.texelSize[ 1 ] = physicalLight.invAtlasSize[ 1 ];
+	block.texelSize[ 2 ] = Max( 0.0f, r_shadowMapTexelBiasScale.GetFloat() );
 	block.filterParams[ 0 ] = mapPass.projected.filter.filterRadius;
 	block.filterParams[ 1 ] = static_cast<float>(
 		mapPass.projected.filter.filterTaps );
@@ -3679,8 +3681,7 @@ static int VK_Inter_WriteShadowSlice( const viewEntity_t *space ) {
 			sizeof( block.splitDepths ) );
 	memcpy( block.cascadeBiasScale, projected.biasScale,
 			sizeof( block.cascadeBiasScale ) );
-	memcpy( block.texelDepthBias, projected.texelDepthBias,
-			sizeof( block.texelDepthBias ) );
+	R_ShadowMapProjectedTexelDepthSteps( projected, block.texelDepthStep );
 	const float normalOffsetScale =
 			Max( 0.0f, r_shadowMapNormalOffsetScale.GetFloat() );
 	for ( int cascadeIndex = 0 ;
@@ -3705,6 +3706,7 @@ static int VK_Inter_WriteShadowSlice( const viewEntity_t *space ) {
 	block.biasParams[ 3 ] = (float)cascadeCount;
 	block.texelSize[ 0 ] = state->invAtlasSize[ 0 ];
 	block.texelSize[ 1 ] = state->invAtlasSize[ 1 ];
+	block.texelSize[ 2 ] = Max( 0.0f, r_shadowMapTexelBiasScale.GetFloat() );
 	const shadowMapProjectedFilterSettings_t filterSettings =
 			R_ShadowMapProjectedFilterSettings( state->vLight );
 	block.filterParams[ 0 ] = filterSettings.filterRadius;

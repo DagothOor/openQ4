@@ -1802,6 +1802,7 @@ typedef struct {
 	GLint			shadowBias;
 	GLint			shadowNormalBias;
 	GLint			shadowTexelDepthBias;
+	GLint			shadowTexelDepthStep;
 	GLint			shadowNormalOffsetWorld;
 	GLint			shadowReceiverPlaneBias;
 	GLint			shadowFilterRadius;
@@ -5284,6 +5285,7 @@ static const char *programBaseName = "glprogs/shadow_interaction";
 	g_shadowMapProgram.shadowBias = glGetUniformLocationARB( programObject, "uShadowBias" );
 	g_shadowMapProgram.shadowNormalBias = glGetUniformLocationARB( programObject, "uShadowNormalBias" );
 	g_shadowMapProgram.shadowTexelDepthBias = glGetUniformLocationARB( programObject, "uShadowTexelDepthBias[0]" );
+	g_shadowMapProgram.shadowTexelDepthStep = glGetUniformLocationARB( programObject, "uShadowTexelDepthStep[0]" );
 	g_shadowMapProgram.shadowNormalOffsetWorld = glGetUniformLocationARB( programObject, "uShadowNormalOffsetWorld[0]" );
 	g_shadowMapProgram.shadowReceiverPlaneBias = glGetUniformLocationARB( programObject, "uShadowReceiverPlaneBias" );
 	g_shadowMapProgram.shadowFilterRadius = glGetUniformLocationARB( programObject, "uShadowFilterRadius" );
@@ -10942,6 +10944,11 @@ static bool RB_GLSLShadowMap_CreateDrawInteractions( const drawSurf_t *surf ) {
 	if ( g_shadowMapProgram.shadowTexelDepthBias >= 0 ) {
 		glUniform1fvARB( g_shadowMapProgram.shadowTexelDepthBias, SHADOWMAP_MAX_CASCADES, g_projectedShadowMapState.texelDepthBias );
 	}
+	if ( g_shadowMapProgram.shadowTexelDepthStep >= 0 ) {
+		float texelDepthSteps[SHADOWMAP_MAX_CASCADES];
+		R_ShadowMapProjectedTexelDepthSteps( g_projectedShadowMapState, texelDepthSteps );
+		glUniform1fvARB( g_shadowMapProgram.shadowTexelDepthStep, SHADOWMAP_MAX_CASCADES, texelDepthSteps );
+	}
 	if ( g_shadowMapProgram.shadowNormalOffsetWorld >= 0 ) {
 		float normalOffsets[SHADOWMAP_MAX_CASCADES];
 		const float normalOffsetScale = Max( 0.0f, r_shadowMapNormalOffsetScale.GetFloat() );
@@ -15769,6 +15776,11 @@ static void RB_SharedWorldInteractionGLBeginMappedReceiver(
 		glUniform1fvARB( g_shadowMapProgram.shadowTexelDepthBias,
 			SHADOWMAP_MAX_CASCADES,
 			pass.projected.state.texelDepthBias );
+		float texelDepthSteps[SHADOWMAP_MAX_CASCADES] = {};
+		R_ShadowMapProjectedTexelDepthSteps( pass.projected.state,
+			texelDepthSteps );
+		glUniform1fvARB( g_shadowMapProgram.shadowTexelDepthStep,
+			SHADOWMAP_MAX_CASCADES, texelDepthSteps );
 		float normalOffsets[SHADOWMAP_MAX_CASCADES] = {};
 		for ( int i = 0; i < SHADOWMAP_MAX_CASCADES; ++i ) {
 			normalOffsets[i] = pass.projected.state.worldTexelSize[i]

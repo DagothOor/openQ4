@@ -26,6 +26,7 @@ uniform vec2 uShadowTexelSize;
 uniform float uShadowBias;
 uniform float uShadowNormalBias;
 uniform float uShadowTexelDepthBias[4];
+uniform float uShadowTexelDepthStep[4];
 uniform float uShadowReceiverPlaneBias;
 uniform float uShadowFilterRadius;
 uniform float uShadowFilterTaps;
@@ -337,6 +338,19 @@ float CascadeTexelDepthBias( int cascadeIndex ) {
 	return uShadowTexelDepthBias[3];
 }
 
+float CascadeTexelDepthStep( int cascadeIndex ) {
+	if ( cascadeIndex <= 0 ) {
+		return uShadowTexelDepthStep[0];
+	}
+	if ( cascadeIndex == 1 ) {
+		return uShadowTexelDepthStep[1];
+	}
+	if ( cascadeIndex == 2 ) {
+		return uShadowTexelDepthStep[2];
+	}
+	return uShadowTexelDepthStep[3];
+}
+
 float ShadowDepthGradient( int cascadeIndex ) {
 	if ( cascadeIndex <= 0 ) {
 		return gShadowDepthGradients.x;
@@ -369,8 +383,25 @@ float ShadowReceiverBias( int cascadeIndex, float depth ) {
 	return max( max( scalarBias, 0.0 ), max( texelAwareBias, 0.0 ) );
 }
 
-float SampleShadowCompare( vec2 uv, float depth, int cascadeIndex ) {
-	float bias = ShadowReceiverBias( cascadeIndex, depth );
+// Off-centre PCF taps and PCSS blocker probes read the map several texels
+// away from the receiver. A receiver at an angle to the light changes depth by
+// texelDepthStep * slope per texel, so a tap on the side nearer the light
+// would compare the receiver with its own surface and speckle it, more as the
+// filter widens. Each tap therefore adds this bias per texel of its distance
+// from the centre. The centre sample keeps the plain receiver bias, so contact
+// shadows keep their reach.
+float ShadowFootprintBias( int cascadeIndex ) {
+	if ( ShadowDebugModeIs( kShadowDebugBiasOff ) ) {
+		return 0.0;
+	}
+	float lightCos = clamp( vShadowLightCos, kShadowBiasMinLightCos, 1.0 );
+	float sinTheta = sqrt( max( 1.0 - lightCos * lightCos, 0.0 ) );
+	float slopeBias = min( sinTheta / lightCos, kShadowBiasMaxSlope );
+	return max( CascadeTexelDepthStep( cascadeIndex ), 0.0 ) * slopeBias;
+}
+
+float SampleShadowCompare( vec2 uv, float depth, int cascadeIndex, float tapBias ) {
+	float bias = ShadowReceiverBias( cascadeIndex, depth ) + tapBias;
 #ifdef OPENQ4_SHADOW_COMPARE
 	return shadow2D( uShadowMap, vec3( uv, depth - bias ) ).r;
 #else
@@ -398,7 +429,10 @@ float ProjectedPCSSRadius( vec2 uv, float depth, int cascadeIndex, vec2 clampMin
 	}
 
 	float compareDepth = depth - ShadowReceiverBias( cascadeIndex, depth );
-	vec2 searchTap = uShadowTexelSize * max( uShadowPCSSLightRadius, 0.5 );
+	float searchRadius = max( uShadowPCSSLightRadius, 0.5 );
+	vec2 searchTap = uShadowTexelSize * searchRadius;
+	// Without the footprint bias a tilted receiver finds itself as a blocker.
+	float searchBias = ShadowFootprintBias( cascadeIndex ) * searchRadius;
 	float blockerDepth = 0.0;
 	float blockerCount = 0.0;
 	float d0 = RawShadowDepth( uv );
@@ -422,14 +456,14 @@ float ProjectedPCSSRadius( vec2 uv, float depth, int cascadeIndex, vec2 clampMin
 	float d6 = RawShadowDepth( clamp( uv + o6 * searchTap, clampMin, clampMax ) );
 	float d7 = RawShadowDepth( clamp( uv + o7 * searchTap, clampMin, clampMax ) );
 	float d8 = RawShadowDepth( clamp( uv + o8 * searchTap, clampMin, clampMax ) );
-	if ( d1 < compareDepth ) { blockerDepth += d1; blockerCount += 1.0; }
-	if ( d2 < compareDepth ) { blockerDepth += d2; blockerCount += 1.0; }
-	if ( d3 < compareDepth ) { blockerDepth += d3; blockerCount += 1.0; }
-	if ( d4 < compareDepth ) { blockerDepth += d4; blockerCount += 1.0; }
-	if ( d5 < compareDepth ) { blockerDepth += d5; blockerCount += 1.0; }
-	if ( d6 < compareDepth ) { blockerDepth += d6; blockerCount += 1.0; }
-	if ( d7 < compareDepth ) { blockerDepth += d7; blockerCount += 1.0; }
-	if ( d8 < compareDepth ) { blockerDepth += d8; blockerCount += 1.0; }
+	if ( d1 < compareDepth - length( o1 ) * searchBias ) { blockerDepth += d1; blockerCount += 1.0; }
+	if ( d2 < compareDepth - length( o2 ) * searchBias ) { blockerDepth += d2; blockerCount += 1.0; }
+	if ( d3 < compareDepth - length( o3 ) * searchBias ) { blockerDepth += d3; blockerCount += 1.0; }
+	if ( d4 < compareDepth - length( o4 ) * searchBias ) { blockerDepth += d4; blockerCount += 1.0; }
+	if ( d5 < compareDepth - length( o5 ) * searchBias ) { blockerDepth += d5; blockerCount += 1.0; }
+	if ( d6 < compareDepth - length( o6 ) * searchBias ) { blockerDepth += d6; blockerCount += 1.0; }
+	if ( d7 < compareDepth - length( o7 ) * searchBias ) { blockerDepth += d7; blockerCount += 1.0; }
+	if ( d8 < compareDepth - length( o8 ) * searchBias ) { blockerDepth += d8; blockerCount += 1.0; }
 	if ( blockerCount <= 0.0 ) {
 		return 0.0;
 	}
@@ -487,12 +521,14 @@ vec4 SampleShadowCascade( vec4 shadowCoord, vec4 atlasRect, int cascadeIndex ) {
 	}
 #endif
 	if ( filterRadius <= 0.0 ) {
-		return vec4( SampleShadowCompare( uv, depth, cascadeIndex ), localUv.x, localUv.y, depth );
+		return vec4( SampleShadowCompare( uv, depth, cascadeIndex, 0.0 ), localUv.x, localUv.y, depth );
 	}
 
 	vec2 tap = uShadowTexelSize * filterRadius;
+	// Each tap's bias grows with its distance from the centre, filterRadius * |o|.
+	float tapBias = ShadowFootprintBias( cascadeIndex ) * filterRadius;
 	float shadow = 0.0;
-	shadow += SampleShadowCompare( uv, depth, cascadeIndex );
+	shadow += SampleShadowCompare( uv, depth, cascadeIndex, 0.0 );
 	if ( uShadowFilterTaps <= 1.0 ) {
 		return vec4( shadow, localUv.x, localUv.y, depth );
 	}
@@ -500,10 +536,10 @@ vec4 SampleShadowCascade( vec4 shadowCoord, vec4 atlasRect, int cascadeIndex ) {
 	vec2 o2 = rotation * vec2( -0.840144, -0.073580 );
 	vec2 o3 = rotation * vec2( -0.695914, 0.457137 );
 	vec2 o4 = rotation * vec2( -0.203345, 0.620716 );
-	shadow += SampleShadowCompare( clamp( uv + o1 * tap, clampMin, clampMax ), depth, cascadeIndex );
-	shadow += SampleShadowCompare( clamp( uv + o2 * tap, clampMin, clampMax ), depth, cascadeIndex );
-	shadow += SampleShadowCompare( clamp( uv + o3 * tap, clampMin, clampMax ), depth, cascadeIndex );
-	shadow += SampleShadowCompare( clamp( uv + o4 * tap, clampMin, clampMax ), depth, cascadeIndex );
+	shadow += SampleShadowCompare( clamp( uv + o1 * tap, clampMin, clampMax ), depth, cascadeIndex, length( o1 ) * tapBias );
+	shadow += SampleShadowCompare( clamp( uv + o2 * tap, clampMin, clampMax ), depth, cascadeIndex, length( o2 ) * tapBias );
+	shadow += SampleShadowCompare( clamp( uv + o3 * tap, clampMin, clampMax ), depth, cascadeIndex, length( o3 ) * tapBias );
+	shadow += SampleShadowCompare( clamp( uv + o4 * tap, clampMin, clampMax ), depth, cascadeIndex, length( o4 ) * tapBias );
 	if ( uShadowFilterTaps <= 5.0 ) {
 		return vec4( shadow * ( 1.0 / 5.0 ), localUv.x, localUv.y, depth );
 	}
@@ -511,10 +547,10 @@ vec4 SampleShadowCascade( vec4 shadowCoord, vec4 atlasRect, int cascadeIndex ) {
 	vec2 o6 = rotation * vec2( 0.473434, -0.480026 );
 	vec2 o7 = rotation * vec2( 0.519456, 0.767022 );
 	vec2 o8 = rotation * vec2( 0.185461, -0.893124 );
-	shadow += SampleShadowCompare( clamp( uv + o5 * tap, clampMin, clampMax ), depth, cascadeIndex );
-	shadow += SampleShadowCompare( clamp( uv + o6 * tap, clampMin, clampMax ), depth, cascadeIndex );
-	shadow += SampleShadowCompare( clamp( uv + o7 * tap, clampMin, clampMax ), depth, cascadeIndex );
-	shadow += SampleShadowCompare( clamp( uv + o8 * tap, clampMin, clampMax ), depth, cascadeIndex );
+	shadow += SampleShadowCompare( clamp( uv + o5 * tap, clampMin, clampMax ), depth, cascadeIndex, length( o5 ) * tapBias );
+	shadow += SampleShadowCompare( clamp( uv + o6 * tap, clampMin, clampMax ), depth, cascadeIndex, length( o6 ) * tapBias );
+	shadow += SampleShadowCompare( clamp( uv + o7 * tap, clampMin, clampMax ), depth, cascadeIndex, length( o7 ) * tapBias );
+	shadow += SampleShadowCompare( clamp( uv + o8 * tap, clampMin, clampMax ), depth, cascadeIndex, length( o8 ) * tapBias );
 	if ( uShadowFilterTaps <= 9.0 ) {
 		return vec4( shadow * ( 1.0 / 9.0 ), localUv.x, localUv.y, depth );
 	}
@@ -522,10 +558,10 @@ vec4 SampleShadowCascade( vec4 shadowCoord, vec4 atlasRect, int cascadeIndex ) {
 	vec2 o10 = rotation * vec2( 0.896420, 0.412458 );
 	vec2 o11 = rotation * vec2( -0.321940, -0.932615 );
 	vec2 o12 = rotation * vec2( -0.791559, -0.597705 );
-	shadow += SampleShadowCompare( clamp( uv + o9 * tap, clampMin, clampMax ), depth, cascadeIndex );
-	shadow += SampleShadowCompare( clamp( uv + o10 * tap, clampMin, clampMax ), depth, cascadeIndex );
-	shadow += SampleShadowCompare( clamp( uv + o11 * tap, clampMin, clampMax ), depth, cascadeIndex );
-	shadow += SampleShadowCompare( clamp( uv + o12 * tap, clampMin, clampMax ), depth, cascadeIndex );
+	shadow += SampleShadowCompare( clamp( uv + o9 * tap, clampMin, clampMax ), depth, cascadeIndex, length( o9 ) * tapBias );
+	shadow += SampleShadowCompare( clamp( uv + o10 * tap, clampMin, clampMax ), depth, cascadeIndex, length( o10 ) * tapBias );
+	shadow += SampleShadowCompare( clamp( uv + o11 * tap, clampMin, clampMax ), depth, cascadeIndex, length( o11 ) * tapBias );
+	shadow += SampleShadowCompare( clamp( uv + o12 * tap, clampMin, clampMax ), depth, cascadeIndex, length( o12 ) * tapBias );
 	return vec4( shadow * ( 1.0 / 13.0 ), localUv.x, localUv.y, depth );
 }
 

@@ -58,11 +58,11 @@ layout(set = 7, binding = 1, std140) uniform ShadowBlock {
     vec4 atlasRects[4];
     vec4 splitDepths;
     vec4 cascadeBiasScale;
-    vec4 texelDepthBias;
+    vec4 texelDepthStep;
     vec4 normalOffsetWorld;
     vec4 viewDepthRow;
     vec4 biasParams;   // x: constant bias, y: normal bias, z: cascade blend, w: cascade count
-    vec4 texelSize;    // x,y: 1 / atlas dimensions
+    vec4 texelSize;    // x,y: 1 / atlas dimensions, z: r_shadowMapTexelBiasScale
     vec4 filterParams; // x: radius, y: taps, z: mode, w: hardware compare
     vec4 pcssParams;   // x: light radius, y: max radius, z: effective radius, w: receiver-plane bias
 } shadow;
