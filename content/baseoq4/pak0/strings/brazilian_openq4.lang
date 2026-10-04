@@ -794,6 +794,7 @@
 	"#str_42388"	"A operação está em tempo de recarga."
 	"#str_42389"	"Erro interno da partida."
 	"#str_42390"	"O alinhamento da mensagem de partida é inválido."
+	"#str_42391"	"Balanceamento automático: essa equipe tem jogadores demais."
 
 	"#str_42400"	"Inativo"
 	"#str_42401"	"Aquecimento"

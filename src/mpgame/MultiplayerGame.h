@@ -901,6 +901,9 @@ private:
 	bool			matchSeriesNeedsBindingRecovery;
 	bool			matchSeriesAwaitingMapSession;
 	bool			matchSessionOperational;
+	// The client slot whose committed match-layer side ApplyMatchTeamsPlanToLegacy
+	// is publishing, or -1. VerifyTeamSwitch leaves that side as it is.
+	int				matchTeamApplicationSlot;
 	uint64_t		nextMatchConnectionId;
 	uint64_t		matchConnectionId[ MAX_CLIENTS ];
 	mpMatchTeams	matchTeams;
@@ -988,6 +991,7 @@ private:
 	bool			ApplyMatchSpectatorTransition( mpParticipantId participant,
 						mpOperationExecutionResult_t &execution );
 	void			ReconcileGameplayPhaseAfterMatchMutation( void );
+	bool			MatchTeamJoinUnbalances( mpParticipantId participant, int side );
 	void			ApplyMatchTeamsPlanToLegacy(
 						const mpMatchTeamsTransactionPlan_t &plan );
 	void			ProcessMatchTeamQueue( void );

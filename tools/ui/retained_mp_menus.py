@@ -2020,7 +2020,7 @@ MATCH_ROW_PITCH = 32.0
 # Every reason an action row can show: the protocol's reasons (the projection
 # names each by its own key or by the same key through the server's
 # localization id), the wait for a view and the unknown value.
-MATCH_REASON_KEYS = ("#str_41774", "#str_42301") + tuple(f"#str_{key}" for key in range(42360, 42391))
+MATCH_REASON_KEYS = ("#str_41774", "#str_42301") + tuple(f"#str_{key}" for key in range(42360, 42392))
 
 
 def match_op(token: str) -> list:

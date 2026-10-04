@@ -794,6 +794,7 @@
 	"#str_42388"	"L'operazione è in ricarica."
 	"#str_42389"	"Errore interno della partita."
 	"#str_42390"	"L'allineamento del messaggio partita non è valido."
+	"#str_42391"	"Autobilanciamento: quella squadra ha troppi giocatori."
 
 	"#str_42400"	"Inattivo"
 	"#str_42401"	"Riscaldamento"

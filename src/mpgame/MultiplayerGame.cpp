@@ -1149,6 +1149,7 @@ idMultiplayerGame::idMultiplayerGame() {
 	matchSeriesNeedsBindingRecovery = false;
 	matchSeriesAwaitingMapSession = false;
 	matchSessionOperational = false;
+	matchTeamApplicationSlot = -1;
 	nextMatchConnectionId = 0;
 	memset( matchConnectionId, 0, sizeof( matchConnectionId ) );
 	memset( matchSeriesCompetitionConnection, 0,
@@ -4999,6 +5000,20 @@ bool idMultiplayerGame::ApplyMatchOperationContinuation( int clientNum,
 			execution.continuation.Clear();
 			return !queued.WasRejected();
 		}
+		// A voluntary join obeys si_autobalance exactly as the stock team menu
+		// and ui_team do. Refuse it here, before anything commits: the legacy
+		// player takes whatever side the match layer publishes. A roster seat
+		// already fixes its holder's side, so the balance never moves them off it.
+		if ( decision.IsAllowed() &&
+			matchSession.FindRosterSeat( execution.continuation.participant ) < 0 &&
+			MatchTeamJoinUnbalances( execution.continuation.participant,
+				execution.continuation.side ) ) {
+			execution.outcome = MP_OPERATION_REJECTED;
+			execution.reason = MP_OPERATION_REASON_CORE_REJECTED;
+			execution.protocolReason = MP_MATCH_PROTOCOL_REASON_TEAM_BALANCE;
+			execution.continuation.Clear();
+			return false;
+		}
 		if ( !ApplyMatchTeamsTransaction( decision, execution ) ) {
 			return false;
 		}
@@ -7573,6 +7588,31 @@ void idMultiplayerGame::ReconcileGameplayPhaseAfterMatchMutation( void ) {
 	gameState->SetNextMPGameStateTime( 0 );
 }
 
+/*
+================
+idMultiplayerGame::MatchTeamJoinUnbalances
+
+Whether si_autobalance refuses this participant's voluntary join to `side`:
+VerifyTeamSwitch would send the player elsewhere because that side, without
+them, already has more players than the other.
+================
+*/
+bool idMultiplayerGame::MatchTeamJoinUnbalances( mpParticipantId participant,
+		int side ) {
+	int slot = -1;
+	uint32_t generation = 0;
+	if ( !gameLocal.IsTeamGame() || side < 0 || side >= TEAM_MAX ||
+		!matchSession.ResolveParticipant( participant, slot, generation ) ||
+		slot < 0 || slot >= gameLocal.numClients || slot >= MAX_CLIENTS ) {
+		return false;
+	}
+	idEntity *entity = gameLocal.entities[ slot ];
+	if ( entity == NULL || !entity->IsType( idPlayer::GetClassType() ) ) {
+		return false;
+	}
+	return VerifyTeamSwitch( side, static_cast<idPlayer *>( entity ) ) != side;
+}
+
 void idMultiplayerGame::ApplyMatchTeamsPlanToLegacy(
 		const mpMatchTeamsTransactionPlan_t &plan ) {
 	const mpParticipantId participants[ 2 ] = {
@@ -7603,7 +7643,14 @@ void idMultiplayerGame::ApplyMatchTeamsPlanToLegacy(
 		} else {
 			updated.Set( "ui_spectate", "Spectate" );
 		}
+		// The side is already committed, and a voluntary join has passed the
+		// si_autobalance check (MatchTeamJoinUnbalances). Balancing it again in
+		// idPlayer::UserInfoChanged would keep the player on its old team while
+		// the session records the new one, so VerifyTeamSwitch leaves it alone.
+		const int previousApplication = matchTeamApplicationSlot;
+		matchTeamApplicationSlot = slot;
 		gameLocal.SetUserInfo( slot, updated, false );
+		matchTeamApplicationSlot = previousApplication;
 		// This is a game-initiated change, so SetUserInfo alone never reaches
 		// the engine's reliable broadcast. Publish the accepted participation
 		// and team to the owner too; snapshots do not carry wantSpectate.
@@ -9784,6 +9831,7 @@ void idMultiplayerGame::Clear() {
 	clientMatchControlModel.Clear();
 	ClearClientMatchControlConnectionState( true );
 	matchSessionOperational = false;
+	matchTeamApplicationSlot = -1;
 	// A failed paired series/report checkpoint is retriable.  Map reset may tear
 	// down presentation state, but it must not erase the sealed journal and its
 	// artifact identity before BeginMatchSession retries that transaction.
@@ -23947,6 +23995,14 @@ int idMultiplayerGame::VerifyTeamSwitch( int wantTeam, idPlayer *player ) {
 	int balanceTeam = -1;
 
 	if( !gameLocal.serverInfo.GetBool( "si_autoBalance" ) ) {
+		return wantTeam;
+	}
+
+	// openQ4: the match layer has already committed this player's side and is
+	// publishing it (ApplyMatchTeamsPlanToLegacy). It checked a voluntary join
+	// against this rule before committing; a roster, substitution or mirror is
+	// an assignment the session owns. Moving the player now would split them.
+	if ( player != NULL && player->entityNumber == matchTeamApplicationSlot ) {
 		return wantTeam;
 	}
 

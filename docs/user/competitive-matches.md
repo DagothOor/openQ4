@@ -226,6 +226,10 @@ are projections of the latest view authorized for your current connection.
 
 Unavailable actions remain visible and show the server's localized reason.
 Mouse hover and keyboard/controller focus both reveal that explanation.
+Joining a team on the **Teams** tab follows the server's **Auto Balance Teams**
+setting, as the team menu does. A join that would put that team two or more
+players ahead of the other is refused with that reason, and you stay where
+you are.
 Long explanations and operation results wrap and can be scrolled. Readiness
 is shown during warmup and countdown; live play and review do not label
 players unready, and observers are not asked to ready up.

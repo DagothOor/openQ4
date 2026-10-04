@@ -755,6 +755,31 @@
   - a save/load voice count (1, 2, 3 before; 1, 1, 1 after);
   - a six-bot multiplayer match;
   - the related contract tests.
+- [x] Match Control's team join and the player's own team agree again. Joining a
+  side from Match Control (the stock page and the retained card send the same
+  `team_join_*` token) committed the session's side. `idPlayer::UserInfoChanged`
+  then ran the legacy `VerifyTeamSwitch`, whose `si_autobalance` rule (on by
+  default) kept the player on their team. A casual session copied that team
+  back, so the result read Committed while nothing moved. The team-change
+  continuation now applies the same rule after the team core admits the join and
+  before anything commits. It refuses an unbalancing join with the appended
+  protocol reason `MP_MATCH_PROTOCOL_REASON_TEAM_BALANCE` ("Auto Balance Teams:
+  that team has too many players.", `#str_42391` in all twelve languages,
+  short enough for the retained card's reason column); a roster seat exempts
+  its holder. A side the match layer has
+  committed is published without being balanced again, so roster acceptance,
+  substitution and the session's mirrors land too. Evidence, from hidden listen
+  servers with bots in a Team DM warm-up and console verbs only:
+  - the reported case (Player and a bot Marine, two bots Strogg): the stock Join
+    Strogg button is refused with that reason, and the player's team, the
+    session's side and its revision are unchanged; with `si_autobalance 0`
+    the same button moves the player and the session to Strogg;
+  - a remote client is refused with the reason in its own result line, then
+    moves on the server and in its accepted view once a Marine bot leaves;
+  - under `competitive_tdm` bots sit out, and the join applies;
+  - `mp_match_control_team_join_smoke.py` passes, and fails on a pre-fix
+    runtime (revision 19 -> 21, "Committed" while the player stays Marine);
+    `competitive_match_layer.py` pins the order, and eight mutants fail it.
 
 ## Unreleased — Quake 4: The Awakening (`q4xbase`)
 

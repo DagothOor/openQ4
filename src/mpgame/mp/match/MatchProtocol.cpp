@@ -32,6 +32,9 @@ static_assert( MP_MATCH_NESTED_ARGUMENT_BASE + MP_MATCH_ARG_COUNT <= 256,
 static_assert( MP_MATCH_LOCALIZATION_REASON_ALIGNMENT ==
 	MP_MATCH_LOCALIZATION_REASON_BASE + MP_MATCH_PROTOCOL_REASON_ALIGNMENT,
 	"Protocol reasons and localization keys are no longer aligned" );
+static_assert( MP_MATCH_LOCALIZATION_REASON_TEAM_BALANCE ==
+	MP_MATCH_LOCALIZATION_REASON_BASE + MP_MATCH_PROTOCOL_REASON_TEAM_BALANCE,
+	"Protocol reasons and localization keys are no longer aligned" );
 static_assert( MP_MATCH_LOCALIZATION_COUNT ==
 	MP_MATCH_LOCALIZATION_REASON_BASE + MP_MATCH_PROTOCOL_REASON_COUNT,
 	"Protocol reason localization range is incomplete" );

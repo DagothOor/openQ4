@@ -104,6 +104,66 @@ def extract_window(text: str, name: str) -> str:
     raise AssertionError(f"windowDef {name!r} is not balanced")
 
 
+def function_body(text: str, signature: str) -> str:
+    """Return the balanced body of the C++ function defined with `signature`."""
+
+    start = text.find(signature)
+    if start < 0 or text.find(signature, start + 1) >= 0:
+        raise AssertionError(f"Expected exactly one definition of {signature!r}")
+    opening = text.find("{", start)
+    depth = 0
+    for index in range(opening, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[opening : index + 1]
+    raise AssertionError(f"{signature!r} is not balanced")
+
+
+def validate_team_join_balance(multiplayer: str) -> None:
+    """Match Control's committed team and the player's legacy team agree.
+
+    A voluntary join is checked against si_autobalance before anything
+    commits, and the legacy player then takes the committed side instead of
+    balancing it again in idPlayer::UserInfoChanged.
+    """
+
+    continuation = function_body(
+        multiplayer, "bool idMultiplayerGame::ApplyMatchOperationContinuation(")
+    start = continuation.find("kind == MP_OPERATION_CONTINUATION_TEAM_CHANGE")
+    end = continuation.find("kind == MP_OPERATION_CONTINUATION_TEAM_LOCK", start)
+    if start < 0 or end < 0:
+        raise AssertionError("Could not locate the team-change continuation")
+    team_change = continuation[start:end]
+    refusal = team_change.find("MatchTeamJoinUnbalances(")
+    commit = team_change.find("ApplyMatchTeamsTransaction( decision, execution )")
+    if refusal < 0 or commit < 0 or refusal > commit:
+        raise AssertionError("A team join must face si_autobalance before it commits")
+    require(team_change[refusal:commit], "MP_MATCH_PROTOCOL_REASON_TEAM_BALANCE",
+            "team-balance refusal reason")
+    # A roster seat fixes its holder's side; the balance never moves them.
+    require(team_change[:refusal], "FindRosterSeat( execution.continuation.participant ) < 0",
+            "rostered team-join exemption")
+
+    balance = function_body(multiplayer, "bool idMultiplayerGame::MatchTeamJoinUnbalances(")
+    require(balance, "VerifyTeamSwitch( side,", "team-join balance rule")
+
+    publish = function_body(multiplayer, "void idMultiplayerGame::ApplyMatchTeamsPlanToLegacy(")
+    marked = publish.find("matchTeamApplicationSlot = slot;")
+    applied = publish.find("gameLocal.SetUserInfo( slot, updated, false );")
+    restored = publish.find("matchTeamApplicationSlot = previousApplication;")
+    if not 0 <= marked < applied < restored:
+        raise AssertionError("The committed side must be published without re-balancing")
+
+    verify = function_body(multiplayer, "int idMultiplayerGame::VerifyTeamSwitch(")
+    exemption = verify.find("player->entityNumber == matchTeamApplicationSlot")
+    counting = verify.find("teamCount[ TEAM_MARINE ] = teamCount[ TEAM_STROGG ] = 0;")
+    if exemption < 0 or counting < 0 or exemption > counting:
+        raise AssertionError("VerifyTeamSwitch must leave a committed match-layer side alone")
+
+
 def validate_match_context_surface(
     gui: str,
     *,
@@ -261,6 +321,8 @@ def main() -> None:
         require(presentation_contract, f"`{state}`", "managed-match presentation contract")
     for rectangle in ("`400,8,232,106`", "`83,427,477,49`"):
         require(presentation_contract, rectangle, "managed-match presentation placement")
+
+    validate_team_join_balance(multiplayer)
 
     print("competitive match cross-repository contracts: PASS")
 
