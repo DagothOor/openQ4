@@ -22,6 +22,18 @@ def linear(value):
     return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
 
 
+def decode(x):
+    """sRGB decode continued above one (PBRSRGBToLinearExtended)."""
+    x = max(x, 0.0)
+    return x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4
+
+
+def encode(x):
+    """sRGB encode continued above one (PBRLinearToSRGBExtended)."""
+    x = max(x, 0.0)
+    return x * 12.92 if x <= 0.0031308 else 1.055 * x ** (1 / 2.4) - 0.055
+
+
 def multi_bounce_ao(visibility, albedo):
     """Independent copy of PBRMultiBounceAO (Jimenez et al. 2016), one channel."""
     v = min(max(visibility, 0.0), 1.0)
@@ -114,15 +126,23 @@ def compare(paths):
             if error > 1.1:
                 failures.append(f'{backend}/{name}: independent radiance/composition mismatch ({error:.3f})')
 
-        radiance = np.asarray((1, 0.5, 0.25))
+        # The classic light term of the white fixture: what a white classic
+        # surface would show. PBR receives pi times its decoded value as
+        # irradiance (PBRClassicLightIrradiance).
+        light_term = (1, 0.5, 0.25)
 
         # An authored ambient light stands in for bounced light, so material
         # AO occludes it through the same multi-bounce form as environment
         # diffuse. The data specimens all carry AO 192/255; ao_zero is black.
+        # Every light stage is its own draw into the display-referred
+        # framebuffer, encoded on its own exactly like a classic interaction.
         def diffuse(rgb=(188, 188, 188), metallic=0, stages=1, ao=1.0):
             color = np.asarray([linear(c) for c in rgb]) * (1 - metallic)
             occlusion = np.asarray([multi_bounce_ao(ao, c) for c in color])
-            return color * occlusion * (0.96 / math.pi) * radiance * stages * 255
+            irradiance = np.asarray([math.pi * decode(t) for t in light_term])
+            radiance = color * occlusion * (0.96 / math.pi) * irradiance
+            # The display-referred framebuffer saturates at white.
+            return np.minimum(np.asarray([encode(v) for v in radiance]) * stages * 255, 255)
 
         for name, stages in (('scalar', 1), ('packed', 1), ('separate', 1),
                              ('two', 2), ('two-stages', 2), ('restored', 1)):
@@ -144,7 +164,7 @@ def compare(paths):
         for name in ('owned', 'owned-two'):
             values(name, (0, 255, 0))
         for name in ('emission-dark', 'emission', 'emission-two'):
-            values(name, [min(255, 255 * linear(c) * 4) for c in (30, 200, 255)])
+            values(name, [min(255, 255 * encode(linear(c) * 4)) for c in (30, 200, 255)])
         alpha = 112 / 255
         for suffix, stages in (('dark', 0), ('one', 1), ('two', 2), ('stages', 2)):
             target = images['background-' + suffix] * (1 - alpha) + diffuse((50, 180, 255), stages=stages) * alpha

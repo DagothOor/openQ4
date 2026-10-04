@@ -11,6 +11,16 @@
   since c850233d; the atlas now keeps its mip chain, and GL/Vulkan IBL parity
   is exact. Evidence and the remaining stages:
   [production-readiness plan](plans/2026-10-04-pbr-production-readiness.md).
+- [x] PBR production readiness, Stage C: calibration and display-domain
+  composition on both backends. PBR irradiance is pi times the decoded classic
+  light term (`PBRClassicLightIrradiance`), so a white rough PBR surface
+  matches classic at normal incidence (a grey sphere showed 25/255 against
+  classic 112/255). Every PBR light, light stage, environment term and emission
+  is encoded into the display-referred framebuffer on its own, exactly as
+  classic lights add; GL's clustered path encodes inside its light loop and
+  splits ambient lights per stage. The linear scene and Vulkan's float preview
+  are the laboratory mode `r_pbrLinearScene` (default 0); production shares
+  the classic HDR tone map, so PBR never changes stock presentation.
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:

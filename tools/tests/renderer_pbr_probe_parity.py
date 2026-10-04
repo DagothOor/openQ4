@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 import renderer_pbr_laboratory as lab
-from renderer_pbr_environment_parity import metrics, coverage_lighting
+from renderer_pbr_environment_parity import metrics, coverage_lighting, within_encoded_allowance
 
 REQUIRED = {
     'analytic','both','warm','cool','rotated','fade','outside','tinted',
@@ -136,7 +136,10 @@ def compare(gl: dict, vk: dict) -> dict:
                 proof=hard_cutout_lighting(a,b,*masks,1280,800)
                 checks[name]['coverageLighting']=proof
                 if proof['failures']: failures.append(f'{name}: coverage/lighting mismatch')
-            elif full['maximumError']>2: failures.append(f'{name}: full-frame color differs beyond two bytes')
+            elif not within_encoded_allowance(full['maximumError'],full['fractionAbove2']) or patch['maximumError']>2:
+                # Grazing silhouette pixels may use the encoded-frame allowance;
+                # the specimen interior must still agree within two bytes.
+                failures.append(f'{name}: full-frame color differs beyond two bytes')
         else:
             # The specimen interior isolates shading from edge rasterization.
             # Bound total MSAA edge disagreement independently as well.

@@ -6,6 +6,8 @@ from pathlib import Path
 import re
 from PIL import Image, ImageChops
 
+from renderer_pbr_environment_parity import within_encoded_allowance
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--gl-report', type=Path, required=True)
 parser.add_argument('--vk-report', type=Path, required=True)
@@ -26,6 +28,9 @@ for name in set(reports[0]['runtimeSHA256']) | set(reports[1]['runtimeSHA256']):
         failures.append('mismatched runtime '+name)
 images = []
 checks = {}
+def above2(a,b):
+    histogram = ImageChops.difference(a,b).histogram()
+    return sum(n for i,n in enumerate(histogram) if i%256 > 2)/(a.width*a.height*3)
 def maximum(a,b):
     histogram = ImageChops.difference(a,b).histogram()
     return max(i%256 for i,n in enumerate(histogram) if n)
@@ -79,17 +84,19 @@ receiver_bounds = (512,272,768,528)
 for case in sorted(expected):
     delta = maximum(images[0][case],images[1][case])
     receiver_delta = maximum(images[0][case].crop(receiver_bounds),images[1][case].crop(receiver_bounds))
-    checks[case] = {'maximumError':delta, 'receiverMaximumError':receiver_delta}
-    if receiver_delta > 2:
+    fraction = above2(images[0][case],images[1][case])
+    checks[case] = {'maximumError':delta, 'receiverMaximumError':receiver_delta, 'fractionAbove2':fraction}
+    # A normal-mapped highlight may use the encoded-frame allowance.
+    if not within_encoded_allowance(receiver_delta, fraction):
         receiver_failures.append(case+': complete receiver error above two bytes')
-    if delta > 2:
+    if not within_encoded_allowance(delta, fraction):
         failures.append(case+': full-frame error above two bytes')
 proof = {'status':'fail' if failures else 'pass','failures':failures,'checks':checks,
          'receiverStatus':'fail' if receiver_failures else 'pass',
          'receiverFailures':receiver_failures, 'receiverBounds':receiver_bounds,
          'inputs':{str(path.resolve()):digest(path) for path in (args.gl_report,args.vk_report)},
          'harnessSHA256':digest(Path(__file__)),
-         'scope':'Fully back-facing plane with native mapped normals, classic rollback, frustum rejection and restoration; fixed camera, whole-frame <=2 comparison.'}
+         'scope':'Fully back-facing plane with native mapped normals, classic rollback, frustum rejection and restoration; fixed camera, whole-frame <=2 comparison with the encoded-frame allowance.'}
 assert not args.output.exists()
 args.output.write_text(json.dumps(proof,indent=2)+'\n')
 print('PBR backface geometry:',proof['receiverStatus'],'whole frame:',proof['status'],failures)

@@ -10,6 +10,21 @@ from pathlib import Path
 import renderer_pbr_laboratory as laboratory
 
 
+# Production composition encodes every PBR light into the display-referred
+# frame (Stage C of the PBR production-readiness plan). The same small relative
+# GL/Vulkan evaluation difference, in a normal-mapped highlight or at a grazing
+# silhouette, is then a few bytes rather than one: calibrated surfaces are about
+# three times brighter in linear light. A whole-frame gate of two bytes admits
+# at most this many channels, by at most ENCODED_ALLOWANCE_BYTES.
+ENCODED_ALLOWANCE_FRACTION = 0.0001
+ENCODED_ALLOWANCE_BYTES = 4
+
+
+def within_encoded_allowance(maximum_error: float, fraction_above2: float) -> bool:
+    return maximum_error <= 2 or (maximum_error <= ENCODED_ALLOWANCE_BYTES
+                                  and fraction_above2 <= ENCODED_ALLOWANCE_FRACTION)
+
+
 def metrics(a: bytes, b: bytes) -> dict:
     errors = [abs(x-y) for x, y in zip(a, b)]
     return {'meanError': sum(errors)/len(errors), 'maximumError': max(errors),

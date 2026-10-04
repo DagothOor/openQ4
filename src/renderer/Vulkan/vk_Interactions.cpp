@@ -2832,6 +2832,9 @@ static void VK_PBR_SubmitPrepared( VkCommandBuffer cmd, const vkPBRPreparedDraw_
 	vkInteractionPush_t push = prepared.push;
 	memcpy( push.mvp, mvp, sizeof( push.mvp ) );
 	push.a[3] = alphaScale;
+	// Recorded draws replay after their light pass: the target they now write
+	// decides their transfer, not the one current when they were recorded.
+	push.b[3] = VK_HDRScene_DisplayReferredTarget() ? 1.0f : 0.0f;
 	vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, prepared.pipeline );
 	vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, prepared.layout,
 		0, uint32_t( prepared.setCount ), prepared.sets,
@@ -3320,8 +3323,10 @@ static void VK_DrawSingleInteractionMode( const drawInteraction_t *din,
 	push.a[ 2 ] = din->ambientLight ? 1.0f : 0.0f;
 	if ( nativePBR ) {
 		// PBR never reads the classic tangent-space ambient direction. Its
-		// ambient light stage takes the material AO scalar from b.x instead.
+		// ambient light stage takes the material AO scalar from b.x instead,
+		// and b.w selects display-referred output (PBRDisplayOutput).
 		push.b[ 0 ] = pbr.ao;
+		push.b[ 3 ] = VK_HDRScene_DisplayReferredTarget() ? 1.0f : 0.0f;
 	} else {
 		push.b[ 0 ] = interPass.ambientDir[ 0 ];
 		push.b[ 1 ] = interPass.ambientDir[ 1 ];

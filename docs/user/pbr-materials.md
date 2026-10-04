@@ -70,6 +70,16 @@ derived from AO, roughness and view angle, so smooth surfaces seen head-on keep
 reflections a cavity would remove from rough ones. Reflections that a normal
 map would send below the geometric surface fade out.
 
+PBR surfaces are lit at the level of the map's classic lighting. A light that
+makes a white classic surface show a given brightness gives a white, rough PBR
+surface the same brightness where the light falls on it head-on, and each light
+adds to the picture exactly as a classic light does. Author the albedo as the
+surface's own color; do not brighten it to compensate for the renderer. PBR
+keeps its physically based cosine falloff and highlights, so curved surfaces
+fall off towards their edges more naturally than classic ones. With
+`r_hdrToneMap 1`, PBR surfaces share the classic HDR tone curve, so turning PBR
+on never changes how stock surfaces look.
+
 For a cutout, author the classic diffuse stage's `alphaTest` threshold. A
 conventional `translucent` material with a single `blend blend` stage can use
 ordered PBR source-alpha transparency on OpenGL and on native Vulkan. Keep its
@@ -81,7 +91,11 @@ Unusual blend expressions and custom material programs keep classic ownership.
 ## Preview and fallback
 
 The PBR preview requires `r_rendererModernQuality 1`, `r_pbrMaterials 1` and
-`r_rendererModernVisible 1`. Use `r_hdrToneMap 1` for linear HDR composition.
+`r_rendererModernVisible 1`. `r_hdrToneMap 1` presents the scene through the
+classic HDR tone map. The laboratory mode `r_pbrLinearScene 1` (default 0, not
+saved) instead accumulates PBR radiance in a separate linear scene, encoded once
+per pixel, and with `r_hdrToneMap 1` presents the whole view, classic surfaces
+included, through the PBR filmic curve.
 `r_pbrIBL 1` supplies filtered environment lighting; `r_rendererReflectionProbes 1`
 allows explicitly authored probe lights. `r_pbrIBLIntensity` changes indirect
 lighting only. `r_rendererModernQuality 0` restores classic ownership.
@@ -228,7 +242,8 @@ exercise moving shadows, skinning, baked lighting, fallback, resize and reloads.
 Reports retain binary/fixture/map/harness hashes, ownership diagnostics, display
 TGA images and pre-tone-map PFM radiance for completed linear HDR scenes.
 Use `screenshot linear screenshots/<name>.pfm` for a completed linear HDR scene
-on either backend. Native Vulkan exports the scene after fog and transparency,
+(`r_pbrLinearScene 1` with `r_hdrToneMap 1`) on either backend; the laboratory's
+HDR controls set both. Native Vulkan exports the scene after fog and transparency,
 before exposure, bloom, tone mapping and HUD, at the active scene resolution.
 Views that cannot use complete linear HDR, menus and invalid paths are rejected.
 The engine rejects linear capture of the encoded non-HDR preview. Add `hdr`

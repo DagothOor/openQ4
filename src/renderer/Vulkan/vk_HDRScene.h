@@ -23,6 +23,10 @@ bool VK_HDRScene_BeginView( const viewDef_t *view, const char *rejection );
 bool VK_HDRScene_EndOpaque( const viewDef_t *view );
 bool VK_HDRScene_FinishPreview( const viewDef_t *view, bool *composited = NULL );
 bool VK_HDRScene_LinearActive();
+// True when PBR draws write Quake 4's display-referred framebuffer and must
+// encode their linear radiance, one draw at a time like classic lights: every
+// target except the laboratory linear scene (r_pbrLinearScene with HDR).
+bool VK_HDRScene_DisplayReferredTarget();
 void VK_HDRScene_FinishOutput( bool submitted );
 void VK_HDRScene_PrintInfo();
 bool VK_Exec_HDRScenePipelinesReady( const viewDef_t *view );

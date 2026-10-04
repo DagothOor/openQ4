@@ -280,6 +280,7 @@ idCVar r_pbrDebug( "r_pbrDebug", "0", CVAR_RENDERER | CVAR_INTEGER, "PBR debug v
 idCVar r_pbrIBL( "r_pbrIBL", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "enable the analytic environment contribution for explicitly PBR-authored materials" );
 idCVar r_pbrIBLIntensity( "r_pbrIBLIntensity", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "analytic PBR environment intensity", 0.0f, 4.0f );
 idCVar r_pbrInferFromLegacyMaterials( "r_pbrInferFromLegacyMaterials", "0", CVAR_RENDERER | CVAR_BOOL, "research-only legacy material reinterpretation; never used for stock rendering by default" );
+idCVar r_pbrLinearScene( "r_pbrLinearScene", "0", CVAR_RENDERER | CVAR_BOOL, "laboratory mode: accumulate PBR radiance in a separate linear scene, encoded once per pixel; with r_hdrToneMap the whole view, classic surfaces included, is presented through the PBR filmic curve. 0 composites each PBR draw into Quake 4's display-referred framebuffer like classic lighting" );
 idCVar r_bloom( "r_bloom", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "enable bloom post-process" );
 idCVar r_bloomThreshold( "r_bloomThreshold", "0.45", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "bloom bright-pass threshold in scene-referred units", 0.0f, 16.0f );
 idCVar r_bloomSoftKnee( "r_bloomSoftKnee", "0.15", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "relative bloom soft-threshold knee", 0.0f, 1.0f );

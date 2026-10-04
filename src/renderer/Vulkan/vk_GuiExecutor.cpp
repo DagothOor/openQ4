@@ -11557,7 +11557,11 @@ static void VK_Exec_DrawAmbientStages( const viewDef_t *viewDef, const drawSurf_
 			default:					push.params[ 0 ] = 0.0f; break;
 		}
 		if ( nativePBREmission != NULL ) {
-			push.params[ 0 ] = 3.0f; // native emission, ignore vertex tint, finite radiance storage
+			// Native emission ignores vertex tint and bounds its radiance. 4 also
+			// encodes it for the display-referred framebuffer. The emission view
+			// (r_pbrDebug 6) shows the term exactly as it reaches the frame.
+			const int debugMode = r_pbrDebug.GetInteger();
+			push.params[ 0 ] = VK_HDRScene_DisplayReferredTarget() && ( debugMode == 0 || debugMode == 6 ) ? 4.0f : 3.0f;
 		} else if ( !softParticle ) {
 			VK_Exec_ClampClassicStageColor( push.stageColor, pStage->vertexColor != SVC_IGNORE );
 		}

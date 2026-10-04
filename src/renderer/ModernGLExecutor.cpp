@@ -236,8 +236,11 @@ bool R_ModernGLExecutor_ModernVisibleRequestedForPost( void ) {
 
 static bool R_ModernGLExecutor_PBRLinearSceneRequested( void ) {
 	// A renderer mode, never a test for the visible material count: crossing a
-	// portal must not change the transfer function of the whole scene.
-	return r_rendererModernQuality.GetBool() && r_pbrMaterials.GetBool() && r_hdrToneMap.GetBool();
+	// portal must not change the transfer function of the whole scene. The
+	// linear scene presents classic surfaces through the PBR filmic curve, so
+	// it is the explicit laboratory mode, never implied by tone mapping alone.
+	return r_rendererModernQuality.GetBool() && r_pbrMaterials.GetBool() && r_hdrToneMap.GetBool()
+		&& r_pbrLinearScene.GetBool();
 }
 
 bool R_ModernGLExecutor_PBRLinearSceneActive( void ) {

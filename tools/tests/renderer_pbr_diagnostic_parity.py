@@ -26,6 +26,12 @@ def color_byte(value):
     return linear * 255.0
 
 
+def encoded_byte(radiance):
+    """255 x sRGB encode of linear radiance, white-limited (PBRLinearToSRGBExtended)."""
+    x = max(radiance, 0.0)
+    return min(255.0, 255.0 * (x * 12.92 if x <= 0.0031308 else 1.055 * x ** (1 / 2.4) - 0.055))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--gl-report', type=Path, required=True)
@@ -82,7 +88,9 @@ def main():
                             5: (192,) * 3, 6: (0,) * 3, 7: (0, 255, 0)},
             'emissive': {1: tuple(color_byte(c) for c in (30, 200, 255)), 3: (0,) * 3,
                          4: (127.5,) * 3, 5: (255,) * 3,
-                         6: tuple(min(255, color_byte(c) * 4) for c in (30, 200, 255)),
+                         # The emission view shows emission as it reaches the
+                         # display-referred frame: linear radiance, encoded.
+                         6: tuple(encoded_byte(color_byte(c) * 4 / 255) for c in (30, 200, 255)),
                          7: (0, 255, 0)},
             'source_alpha': {1: tuple(color_byte(c) * 112 / 255 for c in (50, 180, 255)),
                              3: (0,) * 3, 4: (22.4,) * 3, 5: (112,) * 3,

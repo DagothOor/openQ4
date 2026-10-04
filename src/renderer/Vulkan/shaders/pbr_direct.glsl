@@ -40,6 +40,26 @@ vec3 PBRMultiBounceAOColor(float visibility, vec3 albedo) {
         PBRMultiBounceAO(visibility, albedo.g), PBRMultiBounceAO(visibility, albedo.b));
 }
 
+// Production composition: a PBR draw that writes Quake 4's display-referred
+// framebuffer encodes its linear radiance, exactly like the classic surfaces
+// beside it. pc.b.w is zero only while the laboratory linear scene
+// accumulates PBR separately (r_pbrLinearScene).
+vec3 PBRDisplayOutput(vec3 radiance) {
+    if (pc.b.w < 0.5) {
+        return radiance;
+    }
+    return vec3(PBRLinearToSRGBExtended(radiance.r),
+        PBRLinearToSRGBExtended(radiance.g), PBRLinearToSRGBExtended(radiance.b));
+}
+
+// The classic light term is what a white classic surface shows. Decoded and
+// scaled by pi it is the irradiance at which a white Lambertian PBR surface
+// matches it (PBRClassicLightIrradiance).
+vec3 PBRClassicLightIrradianceColor(vec3 lightTerm) {
+    return vec3(PBRClassicLightIrradiance(lightTerm.r),
+        PBRClassicLightIrradiance(lightTerm.g), PBRClassicLightIrradiance(lightTerm.b));
+}
+
 vec3 PBREnergyCompensationColor(vec3 f0, float specularAlbedo) {
     return vec3(PBREnergyCompensation(f0.r, specularAlbedo),
         PBREnergyCompensation(f0.g, specularAlbedo), PBREnergyCompensation(f0.b, specularAlbedo));
@@ -65,9 +85,10 @@ vec3 EvaluatePBRDirect(vec3 localNormal, vec2 albedoTexCoord,
         }
     }
     float metallic = clamp(materialData.x * pc.d.y, 0.0, 1.0);
-    vec3 radiance = textureProj(lightFalloffMap, vLightFalloffTexCoord).rgb
+    vec3 radiance = PBRClassicLightIrradianceColor(
+        textureProj(lightFalloffMap, vLightFalloffTexCoord).rgb
         * textureProj(lightProjectionMap, vLightProjectionTexCoord).rgb
-        * inter.diffuseColor.rgb * shadowFactor;
+        * inter.diffuseColor.rgb) * shadowFactor;
     if (pc.a.z > 0.5) {
         // Authored ambient lights are an isotropic diffuse source, matching
         // ModernClusterEvaluatePBRLight. They have neither the classic
@@ -81,9 +102,9 @@ vec3 EvaluatePBRDirect(vec3 localNormal, vec2 albedoTexCoord,
             aoTexel = texture(specularMap, dataTexCoord).r;
         }
         vec3 diffuseColor = albedo * (1.0 - metallic);
-        return radiance * diffuseColor * (0.96 / 3.14159265)
+        return PBRDisplayOutput(radiance * diffuseColor * (0.96 / 3.14159265)
             * PBRMultiBounceAOColor(clamp(aoTexel * pc.b.x, 0.0, 1.0), diffuseColor)
-            * vVertexColor;
+            * vVertexColor);
     }
     float roughness = PBRRoughness(materialData.y * pc.d.z);
     // A flat tangent-space normal still varies across a curved surface.
@@ -121,5 +142,5 @@ vec3 EvaluatePBRDirect(vec3 localNormal, vec2 albedoTexCoord,
     vec3 diffuse = (vec3(1.0) - fresnel) * (1.0 - metallic)
         * albedo * (1.0 / 3.14159265);
     // Authored AO modulates indirect irradiance, never this direct light.
-    return (diffuse + specular) * radiance * ndotl * vVertexColor;
+    return PBRDisplayOutput((diffuse + specular) * radiance * ndotl * vVertexColor);
 }

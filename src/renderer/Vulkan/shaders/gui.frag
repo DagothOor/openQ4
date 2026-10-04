@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "../../PBRMath.h"
 
 // openQ4 Vulkan GUI/2D pipeline â€” fragment stage (Phase D,
 // docs/dev/plans/2026-07-18-vulkan-phase-d.md).
@@ -41,6 +43,12 @@ void main() {
         // texture modulation: a faint channel can remain in range at high gain.
         color.rgb = mix(clamp(color.rgb, vec3(0.0), vec3(65504.0)),
                         vec3(0.0), isnan(color.rgb));
+        if (pc.params.x > 3.5) {
+            // Production composition writes the display-referred framebuffer,
+            // so linear emission takes the same encoding as classic colors.
+            color.rgb = vec3(PBRLinearToSRGBExtended(color.r),
+                PBRLinearToSRGBExtended(color.g), PBRLinearToSRGBExtended(color.b));
+        }
     }
     if (pc.params.y > 3.5) {
         // Modern PBR hard cutouts include the threshold, like GL's step().

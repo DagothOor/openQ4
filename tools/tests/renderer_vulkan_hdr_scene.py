@@ -24,6 +24,14 @@ def decode(byte):
     return x / 12.92 if x <= .04045 else ((x + .055) / 1.055) ** 2.4
 
 
+def multi_bounce_ao(visibility, albedo):
+    """Independent copy of PBRMultiBounceAO (Jimenez et al. 2016), one channel."""
+    v = min(max(visibility, 0.0), 1.0)
+    x = min(max(albedo, 0.0), 1.0)
+    bounced = ((v * (2.0404 * x - 0.3324) + (0.6417 - 4.7951 * x)) * v + (2.7552 * x + 0.6903)) * v
+    return min(max(bounced, v), 1.0)
+
+
 def output(x, exposure=1):
     def film(v):
         return v * (2.51 * v + .03) / (v * (2.43 * v + .59) + .14)
@@ -229,13 +237,21 @@ def qualify(report, profile, backend, samples, suite):
     if suite == 'ambient':
         # Isotropic authored ambient irradiance has an independent analytic
         # response; use the fully covered centre where no edge samples mix.
-        for suffix, lights in (('scalar', 1), ('packed', 1), ('separate', 1), ('ao-zero', 1),
-                               ('two', 2), ('two-stages', 2), ('restored', 1)):
+        # The classic light term (1, .5, .25) reaches PBR as pi times its
+        # decoded value (PBRClassicLightIrradiance); the data specimens carry
+        # AO 192/255 through the multi-bounce form, and ao_zero has none.
+        albedo = decode(188) * (1 - 102 / 255)
+        for suffix, lights, ao in (('scalar', 1, 192 / 255), ('packed', 1, 192 / 255),
+                                   ('separate', 1, 192 / 255), ('ao-zero', 1, 0),
+                                   ('two', 2, 192 / 255), ('two-stages', 2, 192 / 255),
+                                   ('restored', 1, 192 / 255)):
             name = 'linear-ambient-' + suffix
             if name not in images:
                 continue
-            target = [output(decode(188) * (1 - 102 / 255) * .96 / math.pi * color * lights)
-                      for color in (1, .5, .25)]
+            irradiance = [math.pi * (t / 12.92 if t <= .04045 else ((t + .055) / 1.055) ** 2.4)
+                          for t in (1, .5, .25)]
+            target = [output(albedo * multi_bounce_ao(ao, albedo) * .96 / math.pi * e * lights)
+                      for e in irradiance]
             centre = images[name][(400 * 1280 + 640) * 3: (400 * 1280 + 640) * 3 + 3]
             error = max(abs(c - t) for c, t in zip(centre, target))
             checks[name + '/radiance'] = dict(expected=target, actual=list(centre), maximumError=error)

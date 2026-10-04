@@ -36,7 +36,12 @@ BASE = {
     'r_msaaAlphaToCoverage':'1',
     'r_vkPBRSpecularAA':'1',
     'r_gpuSkinning':'0',
-    'r_useScissor':'1', 'r_lightScale':'2',
+    # The overview's key light is three times overbright. Calibrated PBR shows
+    # the classic brightness, so at the game's r_lightScale 2 classic and PBR
+    # alike saturate 40% of the frame and most stations read white. A quarter
+    # of it keeps the stations measurable; controls that need other light
+    # levels set their own.
+    'r_useScissor':'1', 'r_lightScale':'0.5',
     'logFileName': 'logs/openq4.log', 'developer': '1', 'r_ignoreGLErrors': '0',
     'com_skipLoadingContinue': '1', 'com_loadingContinueAutoAdvance': '1',
     'com_levelLoadModernization': '0', 'g_autoSkipCinematics': '1',
@@ -50,6 +55,10 @@ BASE = {
     'r_rendererSharedWorldAmbient':'0',
     'r_rendererReflectionProbes': '1', 'r_pbrMaterials': '1', 'r_pbrDebug': '0',
     'r_pbrIBL': '1', 'r_pbrIBLIntensity': '1', 'r_shadows': '0',
+    # The laboratory keeps its linear-scene and floating-point preview
+    # machinery under test. Production (0) composites each PBR draw into the
+    # display-referred framebuffer; the composite-* controls select it.
+    'r_pbrLinearScene': '1',
     'r_bloom': '0', 'r_ssao': '0', 'r_postAA': '0', 'r_motionBlur': '0',
     'r_hdrToneMap': '0', 'r_hdrAutoExposure': '0', 'r_hdrSceneTarget': '1',
     'r_hdrExposure': '1', 'r_hdrHighlightDesaturation': '0', 'r_hdrGamutCompression': '0',
@@ -327,6 +336,10 @@ VK_DIRECT_MATERIALS = {
     'shadow-point-owned':'data_separate', 'shadow-point-restored':'data_separate',
     'shadow-projected-off':'baked_normal_agb', 'shadow-projected':'baked_normal_agb',
     'shadow-projected-owned':'baked_normal_agb', 'shadow-projected-restored':'baked_normal_agb',
+    # Production composition: the same draws written straight into the
+    # display-referred framebuffer, and a rough grey dielectric against its own
+    # classic diffuse fallback under the same light (brightness calibration).
+    'composite':'data_scalar', 'calibration':'dielectric_5', 'calibration-classic':'dielectric_5',
 }
 for suffix in VK_DIRECT_MATERIALS:
     case='vk-direct-'+suffix
@@ -344,6 +357,10 @@ for suffix in VK_DIRECT_MATERIALS:
     if suffix=='cutout-legacy':
         CASES[case]['r_pbrMaterials']='0'
     if suffix=='emission-legacy':
+        CASES[case]['r_pbrMaterials']='0'
+    if suffix in ('composite','calibration','calibration-classic'):
+        CASES[case]['r_pbrLinearScene']='0'
+    if suffix=='calibration-classic':
         CASES[case]['r_pbrMaterials']='0'
     if suffix in ('emission-one-light','emission-many-lights'):
         CASES[case]['r_pbrDebug']='6'
@@ -600,6 +617,8 @@ def compare_vulkan_direct_captures(results: list[dict]) -> None:
         ('emission-half','emission-many-lights',0), ('emission-half','emission-partial-restart',0),
         ('emission-half','emission-full-restart',0),
         ('emission-half','emission-shared',0),
+        # One float preview store versus one display-referred blend per draw.
+        ('scalar','composite',0.5),
         ('emission-mismatch-fallback','emission-mismatch-native',0),
         ('cutout-mismatch-fallback','cutout-mismatch-native',0),
         ('cutout-lit','cutout-restored',0), ('cutout-lit','cutout-partial-restart',0),
@@ -633,19 +652,50 @@ def compare_vulkan_direct_captures(results: list[dict]) -> None:
             row['failures'].append('native alpha-to-coverage did not smooth interior cutout edges')
         if not samples4 and changed:
             row['failures'].append('alpha-to-coverage changed a single-sample cutout')
-    # The untonemapped native target stores linear energy. These constants
-    # are independently decoded from the original (30,200,255) color texture;
-    # this proves material decode/scale, not full-scene display transfer.
+    # Native emission is linear radiance, independently decoded from the
+    # original (30,200,255) color texture and scaled, then encoded once for
+    # the display-referred framebuffer like every other PBR draw.
     for name,scale in (('emission-half',0.5),('emission-quarter',0.25)):
         if name not in patches: continue
         expected=[]
         for value in (255,200,30):  # normal_patch is BGR
             encoded=value/255
-            expected.append(255*scale*(encoded/12.92 if encoded<=0.04045 else ((encoded+0.055)/1.055)**2.4))
+            radiance=scale*(encoded/12.92 if encoded<=0.04045 else ((encoded+0.055)/1.055)**2.4)
+            expected.append(255*(12.92*radiance if radiance<=0.0031308 else 1.055*radiance**(1/2.4)-0.055))
         error=max(abs(value-expected[i%3]) for i,value in enumerate(patches[name]))
         by_case[name]['nativeEmissionReference']={'expectedBGR':expected,'maximumByteError':error,'limit':1}
         if error>1:
             by_case[name]['failures'].append('native emission differs from independent linear color reference')
+    if 'calibration' in by_case and 'calibration-classic' in by_case:
+        # PBR irradiance is pi times the decoded classic light term
+        # (PBRClassicLightIrradiance), so where the light meets the grey
+        # dielectric head-on its diffuse reproduces the classic pixel through
+        # the sRGB transfer. Find that point as the brightest classic pixel
+        # of the specimen and predict the PBR byte there; the rough lobe adds
+        # about two bytes. Away from it PBR applies the cosine in linear light,
+        # brighter than classic's display-space cosine, so their means differ
+        # by design (about 1.25 here, against 0.22 before calibration).
+        images={name:capture_rgb(Path(by_case[name]['screenshot'])) for name in ('calibration','calibration-classic')}
+        row=by_case['calibration']
+        if any(image is None for image in images.values()):
+            row['failures'].append('calibration captures are missing')
+        else:
+            def decode(v: float) -> float:
+                return v/12.92 if v<=0.04045 else ((v+0.055)/1.055)**2.4
+            def encode(v: float) -> float:
+                return v*12.92 if v<=0.0031308 else 1.055*v**(1/2.4)-0.055
+            classic,pbr=images['calibration-classic'],images['calibration']
+            green=[((y*1280+x)*3+1) for y in range(280,521) for x in range(500,781)]
+            peak=max(green,key=lambda i:classic[i])
+            albedo=188/255
+            light=classic[peak]/255/albedo
+            predicted=255*encode(0.96*decode(albedo)*decode(light))
+            means=[sum(image[i] for i in green)/len(green) for image in (pbr,classic)]
+            row['classicCalibration']={'classicPeak':classic[peak],'pbrAtPeak':pbr[peak],
+                'predictedPBR':predicted,'limit':[-1,4],'meanRatio':means[0]/max(means[1],1e-6)}
+            if not -1<=pbr[peak]-predicted<=4:
+                row['failures'].append(f'PBR brightness is not calibrated to the classic light term: '
+                                       f'{pbr[peak]} at the classic peak {classic[peak]}, expected {predicted:.1f}')
     if 'emission-dark' in patches and max(patches['emission-dark'])!=0:
         by_case['emission-dark']['failures'].append('emission leaked through the disabled ambient owner')
     if 'emission-extreme' in patches:

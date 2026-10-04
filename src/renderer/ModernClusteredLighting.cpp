@@ -1060,7 +1060,9 @@ static bool R_ModernClusteredLighting_UsePerStageDescriptors( const viewLight_t 
 	if ( vLight == NULL || lightShader == NULL || vLight->shaderRegisters == NULL ) {
 		return false;
 	}
-	if ( lightShader->IsFogLight() || lightShader->IsAmbientLight() || lightShader->IsBlendLight() ) {
+	// Ambient lights split like every other additive light: classic draws one
+	// interaction per stage, and PBR encodes each stage's draw on its own.
+	if ( lightShader->IsFogLight() || lightShader->IsBlendLight() ) {
 		return false;
 	}
 	if ( !vLight->pointLight && vLight->parallel ) {
@@ -3403,6 +3405,9 @@ static void R_ModernClusteredLighting_BuildGridParams( const modernClusterGridRe
 	params.projectionDepth[3] = static_cast<float>( stats.probeFrameGeneration );
 }
 
+static void R_ModernClusteredLighting_PackProbeViews( unsigned int exactGeneration,
+		std::vector<rendererSpecularProbeView_t> &views );
+
 bool R_ModernClusteredLighting_PrepareProbes( const idScenePacketFrame &packetFrame,
 		rendererProbeAtlasAcquire_t acquire, std::uint64_t generation,
 		std::vector<rendererSpecularProbeView_t> &views, rendererClusteredLightingStats_t &stats ) {
@@ -3415,6 +3420,22 @@ bool R_ModernClusteredLighting_PrepareProbes( const idScenePacketFrame &packetFr
 	stats.uploadedProbes = stats.probeCount;
 	stats.probeFrameGeneration = exactGeneration;
 	stats.probeFrameReady = true;
+	R_ModernClusteredLighting_PackProbeViews( exactGeneration, views );
+	return true;
+}
+
+bool R_ModernClusteredLighting_ExportProbeViews( std::uint64_t generation,
+		std::vector<rendererSpecularProbeView_t> &views ) {
+	views.clear();
+	if ( generation == 0 || !rg_clusteredLightingStats.frameValid || rg_clusteredLightingStats.probeCount <= 0 ) {
+		return false;
+	}
+	R_ModernClusteredLighting_PackProbeViews( R_ModernClusteredLighting_ProbeGenerationExact( generation ), views );
+	return true;
+}
+
+static void R_ModernClusteredLighting_PackProbeViews( unsigned int exactGeneration,
+		std::vector<rendererSpecularProbeView_t> &views ) {
 	for ( int g = 0; g < rg_clusteredLightingFrame.gridCount; ++g ) {
 		const modernClusterGridRecord_t &grid = rg_clusteredLightingFrame.grids[g];
 		if ( grid.probeCount == 0 ) { continue; }
@@ -3450,7 +3471,6 @@ bool R_ModernClusteredLighting_PrepareProbes( const idScenePacketFrame &packetFr
 		}
 		views.push_back( view );
 	}
-	return true;
 }
 
 void R_ModernClusteredLighting_Init( const renderBackendCaps_t &caps, const renderFeatureSet_t &features ) {

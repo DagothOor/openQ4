@@ -115,8 +115,8 @@ vec3 EvaluatePBREnvironment() {
     vec4 baked = ModernBakedIrradiance(vLightProjectionTexCoord.xyw, n, pc.b.z > 0.5);
     diffuse = ModernBakedClamp((1.0 - fresnel) * diffuseColor
         * baked.rgb * diffuseAO * vVertexColor, baked.w);
-    return diffuse + specular * pc.c.z * vVertexColor;
+    return PBRDisplayOutput(diffuse + specular * pc.c.z * vVertexColor);
 #else
-    return (diffuse + specular) * pc.c.z * vVertexColor;
+    return PBRDisplayOutput((diffuse + specular) * pc.c.z * vVertexColor);
 #endif
 }

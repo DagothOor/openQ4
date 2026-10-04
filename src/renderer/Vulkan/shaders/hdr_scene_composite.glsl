@@ -36,8 +36,9 @@ void main() {
     vec3 c = max(classic.rgb, vec3(0.0));
     vec3 linear = mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92,
                       lessThanEqual(c, vec3(0.04045)));
-    // HDR-off previews retain the classic encoded numeric domain. Their PBR
-    // radiance still needs floating-point storage until the scene is resolved.
+    // HDR-off previews retain the classic encoded numeric domain, and their PBR
+    // draws were encoded one light at a time like the classic lights beside
+    // them; only the storage is floating point until the scene is resolved.
     vec3 base = pc.params.y != 0 ? c : linear;
     outColor = vec4(min(base + max(pbr, vec3(0.0)), vec3(65504.0)), classic.a);
 #endif

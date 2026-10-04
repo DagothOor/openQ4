@@ -108,6 +108,33 @@ static void EnergyCompensationTests() {
     Require(kernel::PBRSpecularAlbedo(1.0f, 0.0f) == kernel::PBRSpecularAlbedo(1.0f, 0.045f), "roughness floor");
 }
 
+// The extended transfer pair must equal the clamped one on [0, 1], continue
+// smoothly above white, and the classic light calibration must reproduce a
+// white classic surface's display value at normal incidence.
+static void ClassicCalibrationTests() {
+    for (int i = 0; i <= 255; ++i) {
+        const float x = i / 255.0f;
+        Require(kernel::PBRSRGBToLinearExtended(x) == kernel::PBRSRGBToLinear(x), "extended decode matches on [0,1]");
+        Require(kernel::PBRLinearToSRGBExtended(x) == kernel::PBRLinearToSRGB(x), "extended encode matches on [0,1]");
+    }
+    float previous = 0.0f;
+    for (int i = 0; i <= 64; ++i) {
+        const float x = i / 8.0f;
+        const float linear = kernel::PBRSRGBToLinearExtended(x);
+        Require(linear >= previous, "extended decode is monotonic");
+        previous = linear;
+        Require(std::fabs(kernel::PBRLinearToSRGBExtended(linear) - x) < 2e-5f * (1.0f + x), "extended round trip above white");
+    }
+    Require(kernel::PBRSRGBToLinearExtended(-1.0f) == 0.0f && kernel::PBRLinearToSRGBExtended(-1.0f) == 0.0f,
+        "negative light is black");
+    // White Lambertian at normal incidence: radiance = albedo / pi * E.
+    for (float display : {0.05f, 0.25f, 0.5f, 0.75f, 1.0f, 2.0f}) {
+        const double radiance = 1.0 / 3.141592653589793 * kernel::PBRClassicLightIrradiance(display);
+        Require(std::fabs(kernel::PBRLinearToSRGBExtended(float(radiance)) - display) < 1e-4f,
+            "PBR white matches the classic white under the same light");
+    }
+}
+
 static void OcclusionTests() {
     for (float r : {0.045f, 0.2f, 0.5f, 0.8f, 1.0f}) {
         for (int vi = 0; vi <= 20; ++vi) {
@@ -227,6 +254,7 @@ int main() {
     EnvironmentTests();
     EnergyCompensationTests();
     OcclusionTests();
-    std::puts("PBRMathTest: passed sRGB, mirror peaks, Smith reference, reciprocity, 24 white furnaces, probe convolution, HDR, seams, irradiance, split-sum integration, energy compensation, specular/multi-bounce/horizon occlusion");
+    ClassicCalibrationTests();
+    std::puts("PBRMathTest: passed sRGB, mirror peaks, Smith reference, reciprocity, 24 white furnaces, probe convolution, HDR, seams, irradiance, split-sum integration, energy compensation, specular/multi-bounce/horizon occlusion, extended transfer and classic light calibration");
     return 0;
 }

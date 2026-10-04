@@ -85,10 +85,19 @@ broader HDR/PBR parity requirements.
 
 ## PBR previews with tone mapping off
 
-An eligible view containing authored PBR now retains its radiance until MSAA
-resolve even with `r_hdrToneMap 0`. Previously an RGBA8 scene clipped every
-covered sample independently: a quarter-covered emissive value of four became
-0.25 instead of one, making bright silhouettes too dark.
+Since Stage C of the [PBR production-readiness plan](plans/2026-10-04-pbr-production-readiness.md)
+the floating-point preview and the linear HDR scene are the laboratory mode
+`r_pbrLinearScene 1` (default 0). Production composition writes every PBR draw,
+encoded on its own, into the classic display-referred framebuffer and shares
+the classic HDR tone map, so no PBR view changes the presentation of stock
+surfaces. The preview now stores those same per-draw encoded values; only its
+storage stays floating point until the scene is resolved.
+
+With `r_pbrLinearScene 1`, an eligible view containing authored PBR retains its
+values until MSAA resolve even with `r_hdrToneMap 0`. Previously an RGBA8 scene
+clipped every covered sample independently: a quarter-covered emissive value
+of four became 0.25 instead of one, making bright silhouettes too dark.
+Production keeps the classic per-sample limit, exactly like classic glow.
 
 The preview reuses complete-view material admission and separate classic/PBR
 accumulation. Its classic attachment keeps the original destination format and

@@ -7,7 +7,13 @@ reflection probes and baked light grids. Vulkan and PBR remain experimental.
 
 Eligible PBR receivers now evaluate an ambient light in the same linear material
 domain as their point and projected lights. The source is isotropic diffuse:
-projection × falloff × light color × linear albedo × (1 − metallic) × 0.96/π.
+E × linear albedo × (1 − metallic) × 0.96/π, where the irradiance E is π times
+the sRGB-decoded classic light term (projection × falloff × light color,
+`PBRClassicLightIrradiance`, since Stage C of the
+[production-readiness plan](plans/2026-10-04-pbr-production-readiness.md)).
+Each light stage is one draw whose radiance is encoded into the display-referred
+framebuffer on its own, like a classic interaction, so a white receiver under
+one ambient light shows 0.96 of the classic light term's decoded energy.
 It has no normal-direction or roughness dependence and contributes no metallic
 specular lobe. Environment lighting retains that responsibility. An authored
 ambient light stands in for bounced light, so since 2026-10-04 material AO
@@ -17,7 +23,11 @@ scalar travels in `pc.b.x`, which the classic ambient direction occupies for
 classic draws only. The texel comes from the ORM red channel or, for an ambient
 stage only, from a separate AO map bound in the slot that holds the roughness
 map the stage never reads (`dataFlags & 16`). The parity oracle models the
-same factor; `ao_zero` is black under an ambient light.
+same factor, the per-stage encoding and the framebuffer's white limit;
+`ao_zero` is black under an ambient light. OpenGL's modern clustered path now
+builds one record per ambient stage like other additive lights, matching this
+per-draw composition, although its whole-frame owner still declines scenes
+with ambient lights (below).
 Material diagnostics and emission retain their once-per-surface owner.
 
 Previously, `VK_PBRDirectInteraction` rejected ambient lights. Opaque PBR
@@ -85,9 +95,8 @@ Independent native radiance qualification does not claim GL scene parity.
 ## Remaining scope
 
 Ambient admission removes one source of mixed numeric lighting on PBR surfaces.
-It does not finish native linear HDR scene ownership. Classic accumulated light,
-baked diffuse, material compositing and PBR still need a consistent scene-color
-boundary before the matching filmic/output transfer can be enabled. In
-particular, changing tone curves based on visible PBR counts or decoding each
-classic light independently would change the wrong operation. See
+Production composition no longer needs a linear scene: every PBR draw encodes
+into the classic display-referred framebuffer, and the linear scene is the
+laboratory mode `r_pbrLinearScene`. Linear HDR scene ownership remains a
+laboratory feature. See
 [native HDR acceptance](vulkan-hdr.md#remaining-acceptance).

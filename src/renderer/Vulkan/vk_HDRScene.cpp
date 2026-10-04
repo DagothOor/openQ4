@@ -46,14 +46,19 @@ static bool previewCommitted;
 static const char *previewRejection = "disabled";
 static unsigned int previewCompletedViews;
 
+// The linear scene and the floating-point preview are laboratory modes
+// (r_pbrLinearScene): the linear scene presents classic surfaces through the
+// PBR filmic curve. Production PBR composites each draw into the classic
+// display-referred framebuffer instead, so stock frames never change.
 bool VK_HDRScene_Requested() {
-	return r_rendererModernQuality.GetBool() && r_pbrMaterials.GetBool()
+	return r_rendererModernQuality.GetBool() && r_pbrMaterials.GetBool() && r_pbrLinearScene.GetBool()
 		&& r_hdrToneMap.GetBool() && VK_PostProcess_HDRSceneRequested();
 }
 
 bool VK_HDRScene_PreviewRequested( const viewDef_t *view ) {
 	if ( view == NULL || !r_rendererModernQuality.GetBool() || !r_pbrMaterials.GetBool()
-			|| r_hdrToneMap.GetBool() || r_hdrDebugView.GetInteger() > 0 ) { return false; }
+			|| !r_pbrLinearScene.GetBool() || r_hdrToneMap.GetBool()
+			|| r_hdrDebugView.GetInteger() > 0 ) { return false; }
 	// Stock-only views retain their original targets and blending. A PBR view
 	// still has to pass complete-view admission before any framebuffer write.
 	for ( int i = 0; i < view->numDrawSurfs; ++i ) {
@@ -76,6 +81,13 @@ void VK_HDRScene_ResetView() {
 }
 
 bool VK_HDRScene_LinearActive() { return hdrLinearActive; }
+
+// Only the linear scene, its accumulation and its linear target, holds
+// radiance. The HDR-off preview stores the framebuffer's display-referred
+// values, merely in floating point, so its PBR draws encode like any other.
+bool VK_HDRScene_DisplayReferredTarget() {
+	return !hdrLinearActive && ( !VK_HDRScene_Accumulating() || VK_HDRScene_PreviewAccumulating() );
+}
 
 void VK_HDRScene_PrintInfo() {
 	common->Printf( "Vulkan HDR scene ownership: requested=%d committed=%d linearActive=%d reason=%s completedViews=%u samples=%d\n",

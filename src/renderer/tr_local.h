@@ -1149,6 +1149,7 @@ extern idCVar r_multiSamples;			// number of antialiasing samples
 extern idCVar r_postAA;					// post AA mode: 0 = off, 1/2/3 = SMAA medium/high/ultra, 4 = colour-edge prototype
 extern idCVar r_postAAStatePoisonTest;	// intentionally dirty GL texture/client state before SMAA draws
 extern idCVar r_pbrMaterials;			// allow explicitly PBR-authored materials on modern paths
+extern idCVar r_pbrLinearScene;		// laboratory linear PBR scene instead of display-referred composition
 extern idCVar r_pbrGeneratedLegacyFallback;	// allow development-only generated classic fallbacks
 extern idCVar r_pbrDebug;				// PBR attachment/fallback debug view
 extern idCVar r_pbrIBL;				// opt-in PBR-only analytic environment contribution

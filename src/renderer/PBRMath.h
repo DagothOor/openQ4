@@ -25,6 +25,25 @@ OPENQ4_PBR_INLINE float PBRLinearToSRGB(float value) { \
     float x = PBRClamp(value, 0.0, 1.0); \
     return x <= 0.0031308 ? x * 12.92 : 1.055 * pow(x, 1.0 / 2.4) - 0.055; \
 } \
+/* The same transfer pair continued above one, for display-referred HDR      \
+   framebuffers: Quake 4's FP16 scene holds encoded values beyond white.     \
+   Negative input is treated as black. */ \
+OPENQ4_PBR_INLINE float PBRSRGBToLinearExtended(float value) { \
+    float x = value > 0.0 ? value : 0.0; \
+    return x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4); \
+} \
+OPENQ4_PBR_INLINE float PBRLinearToSRGBExtended(float value) { \
+    float x = value > 0.0 ? value : 0.0; \
+    return x <= 0.0031308 ? x * 12.92 : 1.055 * pow(x, 1.0 / 2.4) - 0.055; \
+} \
+/* A classic light term (projection x falloff x color, with the classic     \
+   light scale) is display-referred: it is what a white classic surface      \
+   shows. Read as encoded radiance, a white Lambertian PBR surface leaves    \
+   the same radiance at normal incidence when the light's irradiance is pi   \
+   times its decoded value. PBR keeps cosine falloff and its specular lobe. */ \
+OPENQ4_PBR_INLINE float PBRClassicLightIrradiance(float displayLight) { \
+    return 3.141592653589793 * PBRSRGBToLinearExtended(displayLight); \
+} \
 OPENQ4_PBR_INLINE float PBRFresnelWeight(float VoH) { \
     float x = 1.0 - PBRClamp(VoH, 0.0, 1.0); \
     float x2 = x * x; \

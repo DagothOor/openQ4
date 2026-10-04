@@ -1030,7 +1030,9 @@ def test_vulkan_pbr_support_stays_narrow_and_fail_closed() -> None:
     require(function_body(executor, "static bool VK_ClassicWorldAmbient_Preflight("),
             "material->GetPBRInfo().emissive.present", "shared classic glow must yield to native emission")
     reject(emission, "65504.0f", "do not clamp intensity before emission texture modulation")
-    require(executor, "push.params[ 0 ] = 3.0f", "native emission finite-storage mode")
+    # 3 keeps finite radiance storage; 4 also encodes for the display-referred
+    # framebuffer (test_pbr_display_calibration_contract).
+    require(executor, "? 4.0f : 3.0f;", "native emission finite-storage mode")
     fragment = read(ROOT / "src/renderer/Vulkan/shaders/gui.frag")
     for token in ("if (pc.params.x > 2.5)", "vec3(65504.0)", "isnan(color.rgb)"):
         require(fragment, token, "evaluated emission radiance storage")
@@ -1165,6 +1167,76 @@ def test_vulkan_environment_mip_chain_sampler() -> None:
     environment = read(ROOT / "src/renderer/Vulkan/shaders/pbr_environment.glsl")
     require(environment, "textureLod(lightFalloffMap, texel / float(2048 >> level), float(level))",
             "explicit-LOD environment level sampling")
+
+
+def test_pbr_display_calibration_contract() -> None:
+    """PBR composes with Quake 4's display-referred lighting like a classic light.
+
+    A classic light term is what a white classic surface shows; PBR receives
+    pi times its decoded value as irradiance, so a white Lambertian surface
+    matches classic at normal incidence (before calibration PBR showed 22% of
+    the classic brightness). Production writes each PBR light, the indirect
+    term and emission into the display-referred framebuffer encoded on its own,
+    exactly as classic lights add. Only the laboratory linear scene
+    (r_pbrLinearScene with HDR) keeps linear radiance, and it is off by default.
+    """
+    kernel = read(ROOT / "src/renderer/PBRMath.h")
+    for token in ("float PBRSRGBToLinearExtended(float value)",
+                  "float PBRLinearToSRGBExtended(float value)",
+                  "return 3.141592653589793 * PBRSRGBToLinearExtended(displayLight);"):
+        require(kernel, token, "shared classic calibration kernel")
+    init = read(ROOT / "src/renderer/RenderSystem_init.cpp")
+    require(init, 'idCVar r_pbrLinearScene( "r_pbrLinearScene", "0", CVAR_RENDERER | CVAR_BOOL,',
+            "the linear scene is an unarchived laboratory mode, off by default")
+    executor = read(ROOT / "src/renderer/ModernGLExecutor.cpp")
+    require(function_body(executor, "static bool R_ModernGLExecutor_PBRLinearSceneRequested("),
+            "&& r_pbrLinearScene.GetBool()", "GL linear scene must be explicit")
+    hdr = read(ROOT / "src/renderer/Vulkan/vk_HDRScene.cpp")
+    for name in ("bool VK_HDRScene_Requested(", "bool VK_HDRScene_PreviewRequested("):
+        require(function_body(hdr, name), "r_pbrLinearScene.GetBool()", "Vulkan linear scene must be explicit")
+    require(hdr, "return !hdrLinearActive && ( !VK_HDRScene_Accumulating() || VK_HDRScene_PreviewAccumulating() );",
+            "only the linear scene keeps radiance")
+    composite = read(ROOT / "src/renderer/Vulkan/shaders/hdr_scene_composite.glsl")
+    reject(composite, "1.0 / 2.4", "preview radiance is encoded per draw, never once per pixel")
+    gl = read(ROOT / "src/renderer/ModernGLShaderLibrary.cpp")
+    for token in (
+        "vec3 radiance = vec3(PBRClassicLightIrradiance(lightTerm.r), PBRClassicLightIrradiance(lightTerm.g), PBRClassicLightIrradiance(lightTerm.b));",
+        "if (uPBRIBL.z > 0.5) return color;",
+        "lightAccum += pbr ? ModernPBRSceneColor(contribution * inX * inY * shadowVisibility)",
+        "lightAccum += supported ? (pbr ? ModernPBRSceneColor(lightTerm) : lightTerm) : vec3(0.0);",
+        "lightAccum += pbr ? ModernPBRSceneColor(contribution * shadowVisibility)",
+        "ModernPBRSceneColor(pbrIndirect) + lightAccum + ModernPBRSceneColor(emissive)",
+        "if (!pbr) transparentColor = ModernClassicSceneColor(transparentColor);",
+    ):
+        require(gl, token, "modern GL per-light display composition")
+    if gl.count("ModernPBRSceneColor(emissive)") != 6:
+        raise AssertionError("every modern GL emission term and emission view must be encoded")
+    reject(gl, "lit = pbr ? ModernPBRSceneColor(lit)", "modern GL must not encode the summed lights once")
+    clusters = read(ROOT / "src/renderer/ModernClusteredLighting.cpp")
+    body = function_body(clusters, "static bool R_ModernClusteredLighting_UsePerStageDescriptors(")
+    reject(body, "IsAmbientLight()", "ambient light stages are separate draws, as in classic")
+    direct = read(ROOT / "src/renderer/Vulkan/shaders/pbr_direct.glsl")
+    for token in ("vec3 PBRDisplayOutput(vec3 radiance) {", "if (pc.b.w < 0.5) {",
+                  "vec3 radiance = PBRClassicLightIrradianceColor("):
+        require(direct, token, "Vulkan direct calibration and output transfer")
+    if direct.count("return PBRDisplayOutput(") != 2:
+        raise AssertionError("both Vulkan direct PBR returns must take the display transfer")
+    environment = read(ROOT / "src/renderer/Vulkan/shaders/pbr_environment.glsl")
+    if environment.count("return PBRDisplayOutput(") != 2:
+        raise AssertionError("both Vulkan environment PBR returns must take the display transfer")
+    interactions = read(ROOT / "src/renderer/Vulkan/vk_Interactions.cpp")
+    require(interactions, "push.b[ 3 ] = VK_HDRScene_DisplayReferredTarget() ? 1.0f : 0.0f;",
+            "Vulkan direct draws select their transfer from the target")
+    require(function_body(interactions, "static void VK_PBR_SubmitPrepared("),
+            "push.b[3] = VK_HDRScene_DisplayReferredTarget() ? 1.0f : 0.0f;",
+            "recorded draws select their transfer when they replay")
+    gui = read(ROOT / "src/renderer/Vulkan/vk_GuiExecutor.cpp")
+    require(gui, "VK_HDRScene_DisplayReferredTarget() && ( debugMode == 0 || debugMode == 6 ) ? 4.0f : 3.0f;",
+            "Vulkan native emission takes the display transfer")
+    require(read(ROOT / "src/renderer/Vulkan/shaders/gui.frag"), "if (pc.params.x > 3.5) {",
+            "Vulkan native emission encode")
+    laboratory = read(ROOT / "tools/tests/renderer_pbr_laboratory.py")
+    require(laboratory, "'r_pbrLinearScene': '1',", "the laboratory pins its linear-scene machinery explicitly")
 
 
 def main() -> int:
