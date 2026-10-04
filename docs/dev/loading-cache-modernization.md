@@ -488,10 +488,12 @@ also counted the envelope. Reading the files is mostly loading-screen redraws, b
 `AddToReadCount` updates the pacifier every MiB. On a warm load the remaining
 cost is the two SHA-256 passes over every payload.
 
-Static and world cache bytes are not reproducible from run to run, and this
-change does not cause that. Five static-model files differed in one float each.
-The world file differed in every surface's id, because
-`idRenderWorldLocal::ParseModel` leaves `modelSurface_t::id` uninitialised.
+Five static-model files and the world file also differed between these runs.
+The differences were uninitialised surface ids, which this change did not
+touch: the back sides `FinishSurfaces` added, and every surface
+`idRenderWorldLocal::ParseModel` parsed. World parser version 3 and static
+parser version `0x00010003` number those ids (see Render worlds), so both
+caches are now reproducible across cold loads.
 
 ### Dedicated-server development run
 
