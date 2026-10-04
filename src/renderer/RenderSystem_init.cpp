@@ -320,6 +320,7 @@ idCVar r_hdrSaturation( "r_hdrSaturation", "1.0", CVAR_RENDERER | CVAR_ARCHIVE |
 idCVar r_hdrContrast( "r_hdrContrast", "1.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "post-process contrast applied when tone mapping is enabled", 0.1f, 3.0f );
 idCVar r_hdrAutoExposure( "r_hdrAutoExposure", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "derive exposure from a log-average scene luminance pyramid" );
 idCVar r_hdrAutoExposureAsync( "r_hdrAutoExposureAsync", "1", CVAR_RENDERER | CVAR_BOOL, "read the auto-exposure luminance sample back asynchronously with one frame of latency instead of stalling the GPU pipeline" );
+idCVar r_hdrAutoExposureInterval( "r_hdrAutoExposureInterval", "4", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "measure scene luminance for auto exposure every N frames (adaptation still runs every frame)", 1, 60 );
 idCVar r_hdrAutoExposureClassic( "r_hdrAutoExposureClassic", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "allow HDR auto exposure (eye adaptation) on the classic renderer path, not only with r_rendererModernVisible" );
 idCVar r_hdrKeyValue( "r_hdrKeyValue", "0.18", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "middle-gray key value used by HDR auto exposure", 0.01f, 1.0f );
 idCVar r_hdrMinExposure( "r_hdrMinExposure", "0.25", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "minimum auto-exposure multiplier", 0.01f, 16.0f );

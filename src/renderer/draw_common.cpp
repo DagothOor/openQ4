@@ -4244,6 +4244,23 @@ static float RB_UpdateHDRAutoExposure( idImage *sceneImage, int viewportWidth, i
 		return rbHDRExposureInitialized ? rbHDRAdaptedExposure : 1.0f;
 	}
 
+	// Metering (luminance pyramid + readback) is the expensive part; eye
+	// adaptation takes seconds, so measuring every Nth frame is enough. In
+	// between, keep adapting towards the last measured target.
+	static int rbHDRExposureFrameCounter = 0;
+	const int meterInterval = Max( 1, r_hdrAutoExposureInterval.GetInteger() );
+	if ( rbHDRExposureInitialized && ( ++rbHDRExposureFrameCounter % meterInterval ) != 0 ) {
+		const float nowSkip = backEnd.viewDef->floatTime;
+		if ( nowSkip >= rbHDRLastAdaptationTime && ( nowSkip - rbHDRLastAdaptationTime ) <= 1.0f ) {
+			const float deltaSkip = nowSkip - rbHDRLastAdaptationTime;
+			const float speedSkip = ( rbHDRLastTargetExposure > rbHDRAdaptedExposure ) ? r_hdrAdaptUpSpeed.GetFloat() : r_hdrAdaptDownSpeed.GetFloat();
+			const float blendSkip = idMath::ClampFloat( 0.0f, 1.0f, 1.0f - idMath::Exp( -speedSkip * deltaSkip ) );
+			rbHDRAdaptedExposure += ( rbHDRLastTargetExposure - rbHDRAdaptedExposure ) * blendSkip;
+		}
+		rbHDRLastAdaptationTime = nowSkip;
+		return rbHDRAdaptedExposure;
+	}
+
 	RB_InitBloomStages();
 	if ( !R_ValidateGLSLProgram( &rbHDRLuminanceStage ) || !RB_EnsureHDRExposureRenderTextures( viewportWidth, viewportHeight ) ) {
 		return rbHDRExposureInitialized ? rbHDRAdaptedExposure : 1.0f;
