@@ -794,7 +794,7 @@
 	"#str_42388"	"Operation is on cooldown."
 	"#str_42389"	"Internal match error."
 	"#str_42390"	"Match message alignment is invalid."
-	"#str_42391"	"Auto Balance Teams is on: that team has too many players."
+	"#str_42391"	"Auto Balance Teams: that team has too many players."
 
 	"#str_42400"	"Inactive"
 	"#str_42401"	"Warmup"

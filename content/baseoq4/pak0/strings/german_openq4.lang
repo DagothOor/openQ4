@@ -794,7 +794,7 @@
 	"#str_42388"	"Die Aktion unterliegt noch einer Wartezeit."
 	"#str_42389"	"Interner Partiefehler."
 	"#str_42390"	"Ungültige Ausrichtung der Partienachricht."
-	"#str_42391"	"Der automatische Teamausgleich ist aktiv: Dieses Team hat zu viele Spieler."
+	"#str_42391"	"Teamausgleich: Dieses Team hat zu viele Spieler."
 
 	"#str_42400"	"Inaktiv"
 	"#str_42401"	"Aufwärmphase"

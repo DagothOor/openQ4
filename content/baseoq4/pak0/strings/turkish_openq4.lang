@@ -794,7 +794,7 @@
 	"#str_42388"	"İşlem bekleme süresinde."
 	"#str_42389"	"Dahili maç hatası."
 	"#str_42390"	"Maç mesajı hizalaması geçersiz."
-	"#str_42391"	"Takımları otomatik dengeleme açık: bu takımda çok fazla oyuncu var."
+	"#str_42391"	"Otomatik dengeleme: bu takımda çok fazla oyuncu var."
 
 	"#str_42400"	"Etkin değil"
 	"#str_42401"	"Isınma"

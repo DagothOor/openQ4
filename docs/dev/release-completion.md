@@ -731,9 +731,10 @@
   back, so the result read Committed while nothing moved. The team-change
   continuation now applies the same rule after the team core admits the join and
   before anything commits. It refuses an unbalancing join with the appended
-  protocol reason `MP_MATCH_PROTOCOL_REASON_TEAM_BALANCE` ("Auto Balance Teams
-  is on: that team has too many players.", `#str_42391` in all twelve
-  languages); a roster seat exempts its holder. A side the match layer has
+  protocol reason `MP_MATCH_PROTOCOL_REASON_TEAM_BALANCE` ("Auto Balance Teams:
+  that team has too many players.", `#str_42391` in all twelve languages,
+  short enough for the retained card's reason column); a roster seat exempts
+  its holder. A side the match layer has
   committed is published without being balanced again, so roster acceptance,
   substitution and the session's mirrors land too. Evidence, from hidden listen
   servers with bots in a Team DM warm-up and console verbs only:

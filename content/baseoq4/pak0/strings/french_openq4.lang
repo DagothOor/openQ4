@@ -794,7 +794,7 @@
 	"#str_42388"	"L'opération est en délai de récupération."
 	"#str_42389"	"Erreur interne du match."
 	"#str_42390"	"L'alignement du message de match n'est pas valide."
-	"#str_42391"	"L'autoéquilibrage des équipes est activé : cette équipe a trop de joueurs."
+	"#str_42391"	"Autoéquilibrage : cette équipe a trop de joueurs."
 
 	"#str_42400"	"Inactif"
 	"#str_42401"	"Échauffement"
