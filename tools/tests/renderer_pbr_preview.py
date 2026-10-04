@@ -37,12 +37,7 @@ def captured_scene(log, name):
 
 
 def configure(manifest, samples):
-    # Console waits count presentation frames, but removals and a spawned
-    # entity's first render definition are serviced on simulation tics, and
-    # presentation is decoupled from simulation. A loaded machine passed whole
-    # g_stopTime 0 windows without a tic, capturing a stale light or no
-    # specimen. Run exactly one simulation tic per presentation frame.
-    lab.BASE.update(r_screenFraction='100', r_resolutionScaleMode='1', r_temporalAA='0', com_fixedTic='1')
+    lab.BASE.update(r_screenFraction='100', r_resolutionScaleMode='1', r_temporalAA='0')
     profile = {}
     for name, spec in scene.configure_composition(manifest, samples).items():
         profile[name.replace('linear-', 'preview-', 1)] = dict(spec,

@@ -48,8 +48,9 @@ def configure_composition(manifest, samples):
             if overlay:
                 commands += [f'script "${overlay}.remove()"', 'wait 30']
             # Removal is serviced on a game tick, while console wait counts
-            # render frames. Unique names avoid a fast renderer respawning a
-            # name before its predecessor's deferred removal has completed.
+            # render frames; the laboratory runs one tick per frame. Unique
+            # names remain a second guard against respawning a name before
+            # its predecessor's deferred removal has completed.
             specimen = f'linear_specimen_{len(profile)}'
             overlay = f'linear_overlay_{len(profile)}' if effect != 'clear' else None
             if overlay:

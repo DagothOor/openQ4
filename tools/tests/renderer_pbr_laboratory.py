@@ -32,6 +32,12 @@ BASE = {
     'r_mode': '-1', 'r_customWidth': '1280', 'r_customHeight': '800',
     'r_windowWidth': '1280', 'r_windowHeight': '800', 'r_swapInterval': '0',
     'r_multiSamples': '0', 'com_maxfps': '60', 'logFile': '2',
+    # Console waits count presentation frames, but removals, light On/Off and
+    # a spawned entity's first render definition are serviced on simulation
+    # tics, and presentation is decoupled from simulation. Run exactly one tic
+    # per presentation frame: otherwise a contended machine can pass a whole
+    # g_stopTime 0 setup window without a tic and capture the previous scene.
+    'com_fixedTic': '1',
     'r_screenFraction':'100', 'r_resolutionScaleMode':'1',
     'r_msaaAlphaToCoverage':'1',
     'r_vkPBRSpecularAA':'1',
@@ -254,7 +260,7 @@ for restart in ('partial','full'):
     CASE_COMMANDS[f'skin-gpu-{restart}-restart']=CASE_COMMANDS[f'{restart}-restart']
 for case, origin in (('shadow-moved','100 -40 480'),('shadow-restored','100 160 480'),('unshadowed-moved','100 -40 480')):
     # SetOrigin updates physics immediately, but Present publishes the change
-    # on a simulation tick. Two render frames can contain no simulation tick.
+    # on a simulation tick. BASE runs one per waited frame.
     CASE_COMMANDS[case] = ['g_stopTime 0',f'''script "$metal_3.setOrigin('{origin}'); sys.println($metal_3.getOrigin())"''','wait 30','g_stopTime 1']
 for case in ('multi-shadows','multi-unshadowed','multi-budget','multi-legacy'):
     CASE_COMMANDS[case] = [
