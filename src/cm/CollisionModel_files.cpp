@@ -1331,7 +1331,8 @@ idCollisionModelManagerLocal::WriteGeneratedCollisionCache
 */
 void idCollisionModelManagerLocal::WriteGeneratedCollisionCache( const char *sourcePath,
 		unsigned int mapFileCRC, const char *ownerSettings ) {
-	if ( sourcePath == NULL || sourcePath[0] == '\0' || models == NULL ) {
+	if ( sourcePath == NULL || sourcePath[0] == '\0' || models == NULL
+		|| !fileSystem->GeneratedCacheWritesEnabled( GENERATED_CACHE_COLLISION_MODEL ) ) {
 		return;
 	}
 

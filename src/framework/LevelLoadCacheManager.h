@@ -48,6 +48,11 @@ public:
 	// complete source identity matches; otherwise returns NULL.
 	idFile *OpenPreloadedSource( const char *normalizedPath, idFile *authoritativeSource );
 
+	// The gates OpenGeneratedCacheRead and WriteGeneratedCache apply before any
+	// source or cache I/O, exposed so owners can skip building a payload.
+	bool GeneratedCacheReadsEnabled( generatedCacheKind_t kind ) const;
+	bool GeneratedCacheWritesEnabled( generatedCacheKind_t kind ) const;
+
 	idFile *OpenGeneratedCacheRead( generatedCacheKind_t kind,
 		const char *sourcePath, unsigned int parserVersion,
 		const char *settingsKey, const char *contentKey );

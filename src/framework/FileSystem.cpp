@@ -1498,6 +1498,8 @@ public:
 	virtual void			DiscardGeneratedCache( generatedCacheKind_t kind,
 								const char *sourcePath, unsigned int parserVersion,
 								const char *settingsKey );
+	virtual bool			GeneratedCacheReadsEnabled( generatedCacheKind_t kind ) const;
+	virtual bool			GeneratedCacheWritesEnabled( generatedCacheKind_t kind ) const;
 	virtual idFile *		GetNewFileMemory( void );
 	virtual idFile *		GetNewFilePermanent( void );
 	virtual idFile *		OpenFileReadFlags( const char *relativePath, int searchFlags, pack_t **foundInPak = NULL, bool allowCopyFiles = true, const char* gamedir = NULL );
@@ -1820,7 +1822,8 @@ void idFileSystemLocal::RecordLevelLoadResource( const levelLoadResourceType_t t
 
 idFile *idFileSystemLocal::OpenGeneratedCacheRead( const generatedCacheKind_t kind,
 		const char *sourcePath, const unsigned int parserVersion, const char *settingsKey ) {
-	if ( levelLoadCache == NULL ) {
+	// the content key walks every search path; skip it when nothing can hit
+	if ( !GeneratedCacheReadsEnabled( kind ) ) {
 		return NULL;
 	}
 	idStr contentKey;
@@ -1832,7 +1835,7 @@ idFile *idFileSystemLocal::OpenGeneratedCacheRead( const generatedCacheKind_t ki
 bool idFileSystemLocal::WriteGeneratedCache( const generatedCacheKind_t kind,
 		const char *sourcePath, const unsigned int parserVersion, const char *settingsKey,
 		const void *payload, const unsigned int payloadBytes ) {
-	if ( levelLoadCache == NULL ) {
+	if ( !GeneratedCacheWritesEnabled( kind ) ) {
 		return false;
 	}
 	idStr contentKey;
@@ -1850,6 +1853,14 @@ void idFileSystemLocal::DiscardGeneratedCache( const generatedCacheKind_t kind,
 	BuildLevelLoadContentKey( contentKey );
 	levelLoadCache->DiscardGeneratedCache( kind, sourcePath, parserVersion,
 		settingsKey, contentKey.c_str() );
+}
+
+bool idFileSystemLocal::GeneratedCacheReadsEnabled( const generatedCacheKind_t kind ) const {
+	return levelLoadCache != NULL && levelLoadCache->GeneratedCacheReadsEnabled( kind );
+}
+
+bool idFileSystemLocal::GeneratedCacheWritesEnabled( const generatedCacheKind_t kind ) const {
+	return levelLoadCache != NULL && levelLoadCache->GeneratedCacheWritesEnabled( kind );
 }
 
 /*

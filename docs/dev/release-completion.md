@@ -286,6 +286,25 @@
   with the new filter default. See [display settings](../user/display-settings.md)
   and [shadow mapping](../user/shadow-mapping.md).
 
+- [x] Stop map loads paying for generated caches that are switched off, and
+  make the opt-in ones cheaper. With `com_levelLoadModernization 0`, the
+  default, every static, MD5 and MD5R model load still serialized a cache
+  payload, the collision loader serialized the map's collision data, and each
+  cache call built a content key from every search path, all of it then
+  discarded. Owners now ask the appended `idFileSystem` queries
+  `GeneratedCacheReadsEnabled` and `GeneratedCacheWritesEnabled` (render API
+  23) first. On a debug Air Defense 1 load with `r_convertStaticToMD5R 1` that
+  removes about 134 ms of model serialization and 55 ms of key building, and
+  collision data loaded in 345 ms instead of 662 ms. With the cache on, the
+  MD5R codec streams vertex lists, index buffers, silhouette edges and joint
+  matrices in bulk like the static codec, halving its warm decode (35 ms to
+  18 ms for 127 payloads in debug), and writes byte-identical caches, so
+  existing caches stay valid. That decode was a small part of the 1.8 s once
+  blamed on it; most of that was SHA-256. A warm read no longer hashes each
+  payload a third time, which saved about 1.35 s across Air Defense 1's 82.6
+  MB of caches in a debug build. See
+  [generated-cache cost](loading-cache-modernization.md#generated-cache-cost-on-air-defense-1).
+
 - [x] Correct outdoor shadow-map terrain sampling on OpenGL and Vulkan.
   Point filters compare against the receiver plane at each sampled texel, while
   distant off-centre point sources use fitted perspective maps and cascades.
