@@ -230,6 +230,19 @@ that representation rather than losing the sharing contract. A selected
 MD5RProc companion, or classic proc converted through `r_convertProcToMD5R`,
 therefore uses the authoritative source path with no world-cache write.
 
+Static and world payloads store each surface's id, and every static surface's
+id is its index in its model. `ParseModel` and the back sides `FinishSurfaces`
+adds number their surfaces the way the ASE, LWO and MA converters do, because
+`idRenderModelStatic::GetSurfaceMask` sets `suppressSurfaceMask` bits by index
+and the ambient pass tests them against the id. Shadow models have one surface,
+id 0. Before world parser version 3 and static parser version `0x00010003`,
+proc-model and back-side ids were uninitialised stack values, so two cold loads
+of Air Defense 1 wrote world caches that differed in every surface id, five
+static-model caches differed in one back-side id each, and a cached load did not
+match a parsed one. The bumped versions make those payloads miss.
+`level_load_cache.py` fails any `modelSurface_t` in `src/renderer` or `src/bse`
+that starts uninitialised.
+
 ### Collision models
 
 The collision payload stores pointer-free model vertices, edges, polygons,

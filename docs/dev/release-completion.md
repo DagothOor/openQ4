@@ -273,6 +273,25 @@
   MB of caches in a debug build. See
   [generated-cache cost](loading-cache-modernization.md#generated-cache-cost-on-air-defense-1).
 
+- [x] Make the generated world and static-model caches reproducible. Proc
+  model surfaces from `ParseModel` and `ParseShadowModel`, and the back sides
+  `FinishSurfaces` adds, left `modelSurface_t::id` and `mOriginalSurfaceName`
+  uninitialised, and both caches stored the ids. Two cold Air Defense 1 loads
+  with `com_levelLoadModernization 1` wrote world caches that differed in all
+  2,025 surface ids, and five static-model caches that differed in one
+  back-side id each. That id had looked like a near-zero float, but it was
+  uninitialised stack data. A surface's id is now its index, the way the ASE,
+  LWO and MA converters number surfaces, because `GetSurfaceMask` sets
+  `suppressSurfaceMask` bits by index and the ambient pass tests them against
+  the id; with zero ids, hiding the first material of a brush model would hide
+  all of it. The other renderer and BSE surfaces that started uninitialised are
+  zeroed too. World parser version 3 and static parser version `0x00010003`
+  make older caches miss, so they are rebuilt once. Two cold loads now write
+  byte-identical world and model caches with `r_convertStaticToMD5R` 0 and 1,
+  a warm load with the default 0 hits all 198 of its caches, and
+  `level_load_cache.py` fails any `modelSurface_t` in `src/renderer` or
+  `src/bse` that starts uninitialised.
+
 - [x] Correct outdoor shadow-map terrain sampling on OpenGL and Vulkan.
   Point filters compare against the receiver plane at each sampled texel, while
   distant off-centre point sources use fitted perspective maps and cascades.

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -381,11 +382,38 @@ def validate_resource_consumers() -> None:
     require(sp_anim, "PromoteFile", "atomic animation cache write")
 
 
+def validate_surface_ids() -> None:
+    # The static and world payloads store each surface's id, and the ambient
+    # pass tests suppressSurfaceMask against it, so no modelSurface_t may start
+    # as stack garbage: a bare declaration needs a memset or all four fields
+    # assigned straight after it.
+    declaration = re.compile(r"\bmodelSurface_t\s+(\w+)\s*[;,]")
+    fields = ("id", "shader", "geometry", "mOriginalSurfaceName")
+    for folder in ("src/renderer", "src/bse"):
+        for path in sorted((ROOT / folder).rglob("*.cpp")):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for match in declaration.finditer(text):
+                name = match.group(1)
+                following = "\n".join(text[match.end() :].split("\n", 7)[:7])
+                if f"memset( &{name}, 0," in following or all(f"{name}.{field} =" in following for field in fields):
+                    continue
+                line = text.count("\n", 0, match.start()) + 1
+                raise AssertionError(f"{path.relative_to(ROOT).as_posix()}:{line}: modelSurface_t {name} starts uninitialised")
+
+    # idRenderModelStatic::GetSurfaceMask sets mask bits by surface index, so
+    # parsed and back-side surfaces take their index as their id.
+    world = read(ROOT, "src/renderer/RenderWorld_load.cpp")
+    require(function_body(world, "idRenderModel *idRenderWorldLocal::ParseModel("),
+            "surf.id = model->NumSurfaces();", "proc model surface ids")
+    require(read(ROOT, "src/renderer/Model.cpp"), "newSurf.id = NumSurfaces();", "back-side surface ids")
+
+
 def main() -> None:
     validate_abi_contract()
     validate_manifest_and_envelope_contract()
     validate_pipeline_and_lifecycle()
     validate_resource_consumers()
+    validate_surface_ids()
     print("level_load_cache: ok")
 
 

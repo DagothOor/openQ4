@@ -1871,6 +1871,7 @@ idRenderModel *idRenderModelMD5::InstantiateDynamicModel( const struct renderEnt
 			surf->geometry = NULL;
 			surf->shader = NULL;
 			surf->id = i;
+			surf->mOriginalSurfaceName = NULL;
 		}
 
 		if ( collisionOnly || mesh->UpdateLod( ent, viewEnt, surf ) ) {
@@ -1892,6 +1893,7 @@ idRenderModel *idRenderModelMD5::InstantiateDynamicModel( const struct renderEnt
 				backSurf->geometry = NULL;
 				backSurf->shader = NULL;
 				backSurf->id = i + MD5_BackSideSurfaceIdOffset;
+				backSurf->mOriginalSurfaceName = NULL;
 			}
 
 			backSurf->shader = mesh->shader;

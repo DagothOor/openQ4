@@ -67,7 +67,7 @@ idRenderModelBeam::InstantiateDynamicModel
 idRenderModel *idRenderModelBeam::InstantiateDynamicModel( const struct renderEntity_s *renderEntity, const struct viewDef_s *viewDef, idRenderModel *cachedModel ) {
 	idRenderModelStatic *staticModel;
 	srfTriangles_t *tri;
-	modelSurface_t surf;
+	modelSurface_t surf = {};
 
 	// Match the sprite/md5 dynamic models: keep the cached snapshot for reuse
 	// unless caching is disabled. Deleting it unconditionally made the reuse

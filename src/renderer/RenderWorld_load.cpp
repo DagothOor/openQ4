@@ -451,7 +451,7 @@ namespace {
 	// openQ4-specific.
 	static const unsigned int RENDER_WORLD_CACHE_MAGIC = 0x5734514fU; // "OQ4W"
 	static const int RENDER_WORLD_CACHE_VERSION = 2;
-	static const unsigned int RENDER_WORLD_CACHE_PARSER_VERSION = 2u;
+	static const unsigned int RENDER_WORLD_CACHE_PARSER_VERSION = 3u;	// bump when the parsed models change; 3: surface ids were uninitialised before
 	static const unsigned int RENDER_WORLD_CACHE_FLAGS = 0u;
 	static const unsigned int RENDER_WORLD_SHADOW_CACHE_MAGIC = 0x4834514fU; // "OQ4H"
 	static const int RENDER_WORLD_SHADOW_CACHE_VERSION = 1;
@@ -1593,7 +1593,7 @@ idRenderModel *idRenderWorldLocal::ParseModel( Lexer *src ) {
 	idToken			token;
 	int				i, j;
 	srfTriangles_t	*tri;
-	modelSurface_t	surf;
+	modelSurface_t	surf = {};
 
 	src->ExpectTokenString( "{" );
 
@@ -1619,6 +1619,10 @@ idRenderModel *idRenderWorldLocal::ParseModel( Lexer *src ) {
 
 		src->ExpectAnyToken( &token );
 
+		// a surface's id is its index, as in the ASE/LWO/MA conversions:
+		// GetSurfaceMask sets suppressSurfaceMask bits by surface index and
+		// the ambient pass tests them against the id; the id is also cached
+		surf.id = model->NumSurfaces();
 		surf.shader = declManager->FindMaterial( token );
 
 		((idMaterial*)surf.shader)->AddReference();
@@ -1709,7 +1713,7 @@ idRenderModel *idRenderWorldLocal::ParseShadowModel( Lexer *src ) {
 	idToken			token;
 	int				j;
 	srfTriangles_t	*tri;
-	modelSurface_t	surf;
+	modelSurface_t	surf = {};	// id 0: the only surface, as the shadow cache reader builds it
 
 	src->ExpectTokenString( "{" );
 

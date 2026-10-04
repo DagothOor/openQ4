@@ -398,6 +398,7 @@ void idRenderModelOverlay::AddOverlaySurfacesToModel( idRenderModel *baseModel )
 			newSurf->geometry = NULL;
 			newSurf->shader = materials[k]->material;
 			newSurf->id = -1 - k;
+			newSurf->mOriginalSurfaceName = NULL;
 		}
 
 		if ( newSurf->geometry == NULL || newSurf->geometry->numVerts < numVerts || newSurf->geometry->numIndexes < numIndexes ) {

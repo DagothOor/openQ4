@@ -754,7 +754,7 @@ void rvSegment::AllocateSurface(rvBSE* effect, idRenderModel* model) {
 		tri->surfaceFlags |= STF_SOFT_PARTICLE_CANDIDATE;
 	}
 
-	modelSurface_t surf;
+	modelSurface_t surf = {};
 	surf.id = 0;
 	surf.geometry = tri;
 	surf.shader = pt->GetMaterial() ? pt->GetMaterial() : declManager->FindMaterial("_default");
@@ -772,7 +772,7 @@ void rvSegment::AllocateSurface(rvBSE* effect, idRenderModel* model) {
 			trailTri->numVerts = 0;
 			trailTri->numIndexes = 0;
 
-			modelSurface_t trailSurf;
+			modelSurface_t trailSurf = {};
 			trailSurf.id = 0;
 			trailSurf.geometry = trailTri;
 			trailSurf.shader = pt->GetTrailMaterial() ? pt->GetTrailMaterial() : surf.shader;

@@ -67,7 +67,7 @@ idRenderModelSprite::InstantiateDynamicModel
 idRenderModel *	idRenderModelSprite::InstantiateDynamicModel( const struct renderEntity_s *renderEntity, const struct viewDef_s *viewDef, idRenderModel *cachedModel ) {
 	idRenderModelStatic *staticModel;
 	srfTriangles_t *tri;
-	modelSurface_t surf;
+	modelSurface_t surf = {};
 
 	if ( cachedModel && !r_useCachedDynamicModels.GetBool() ) {
 		delete cachedModel;
