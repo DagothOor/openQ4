@@ -415,6 +415,12 @@ public:
 	int						presentationViewTime;
 	// openQ4 VR: the body crouched by the button, until it stands again
 	mutable bool			vrButtonCrouch;
+	// openQ4 VR: in a vehicle seat, where the tracking space faces (the seat's
+	// own deltaViewAngles yaw, which binding to the vehicle disturbs), and the
+	// vehicle's yaw last frame, while its turns carry the view
+	float					vrVehicleDeltaYaw;
+	float					vrVehicleYaw;
+	bool					vrVehicleYawValid;
 	bool					presentationCanInterpolate;
 	idVec3					presentationPrevViewOrigin;
 	idMat3					presentationPrevViewAxis;
@@ -567,6 +573,13 @@ public:
 	bool					GetVRAimMarker( vrAimMarker_t &marker ) const;
 	// Room scale: walks the body after the tracked head (vr_roomScale).
 	void					UpdateVRRoomScale( void );
+	// In a vehicle: the stick drives it the way it faces, and its turns
+	// carry the tracked view unless it steers after the driver's turret.
+	void					UpdateVRVehicleFrame( void );
+	// What turns the driven turret: the head, or the controller on the
+	// floating screen. seatAim leaves out the vehicle's own turns, which
+	// carry a turret already; worldAim is where it points. True for the head.
+	bool					GetVRVehicleAim( idAngles &seatAim, idAngles &worldAim ) const;
 	// How far the tracking origin sits above the body's eye: a crouch the
 	// tracked head made must not lower the view again.
 	float					VRCrouchLift( const vrFrameState_t &frame ) const;

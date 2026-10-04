@@ -76,7 +76,10 @@
   pose; every stock weapon checked; earlier builds' archived offsets reset
   once), two-handed aim with the off hand on the foregrip, a comfort
   vignette during stick movement and smooth turning, scope zoom that
-  magnifies each eye, and a Virtual
+  magnifies each eye, single player vehicles and turrets in stereo (the eye
+  on the turret's axis, the turret following the head, the seat keeping its
+  own facing through the vehicle bind), a weapon wheel that no longer turns
+  the world, and a Virtual
   Reality section in
   Settings > Game Options (twelve rows, twelve languages). Building that section
   fixed the Game Options and display section selectors, which ignored clicks.
@@ -85,7 +88,8 @@
   the in-tree OpenXR test runtime on Air Defense 1 (stereo parallax, head
   tracking, HUD alpha, snap turn, the aim dot fusing on the shot's path, a shot
   pulsing the weapon hand, a room-scale step walking the body, trigger
-  binding, a click on Resume with the window unfocused, changing Laser Sight
+  binding, a click on Resume with the window unfocused, a walker's cockpit
+  turning 45 degrees after the head about a fixed eye, changing Laser Sight
   in the Virtual Reality section by pointing, localised action names, ending
   VR from the runtime); the Linux sources and loader compile under GCC. A run
   on real headset hardware is still open. See the

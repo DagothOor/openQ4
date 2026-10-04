@@ -22,6 +22,15 @@ static float OpenQ4_TurboVehicleTopSpeed( float speed ) {
 	return OpenQ4_TurboVehicleSpeedsActive() ? speed * OPENQ4_TURBO_VEHICLE_SPEED_SCALE : speed;
 }
 
+// openQ4 VR: the local player, while driving this position in a headset
+static const idPlayer* OpenQ4_VRDriver( const rvVehiclePosition* position ) {
+	const idActor* driver = position != NULL ? position->GetDriver() : NULL;
+	if ( driver == NULL || driver != gameLocal.GetLocalPlayer() || vrSystem == NULL || !vrSystem->IsActive() ) {
+		return NULL;
+	}
+	return static_cast<const idPlayer*>( driver );
+}
+
 /***********************************************************************
 
 							rvVehiclePart
@@ -965,6 +974,9 @@ void rvVehicleWeapon::WeaponFeedback( const idDict* dict ) {
 	if( dict->GetInt("shakeTime") ) {
 		player->playerView.SetShakeParms( MS2SEC(gameLocal.GetTime() + dict->GetInt("shakeTime")), dict->GetFloat("shakeMagnitude") );
 	}
+	// openQ4 VR: a headset view never shakes, so the shot kicks in the weapon
+	// hand instead, harder for the guns that shake the screen
+	player->VRVibrate( true, false, dict->GetInt( "shakeTime" ) ? 0.8f : 0.5f, 50 );
 	EjectBrass();
 }
 
@@ -1016,6 +1028,19 @@ void rvVehicleWeapon::UpdateCursorGUI ( idUserInterface* gui ) const {
 		gui->SetStateInt ( "crossOffsetY", spawnArgs.GetInt ( "crosshairOffsetY", "0" ) ); 			
  		gui->StateChanged ( gameLocal.time );
 	//}
+}
+
+/*
+=====================
+rvVehicleWeapon::GetMuzzleOrigin
+=====================
+*/
+bool rvVehicleWeapon::GetMuzzleOrigin ( idVec3& origin ) const {
+	if ( !joints.Num ( ) ) {
+		return false;
+	}
+	idMat3 axis;
+	return parent->GetJointWorldTransform ( joints[jointIndex % joints.Num ( )], gameLocal.time, origin, axis );
 }
 
 /*
@@ -1561,6 +1586,10 @@ rvVehicleTurret::rvVehicleTurret
 rvVehicleTurret::rvVehicleTurret ( void ) {
 	moveTime  = 0;
 	soundPart = -1;
+	vrPendingInput.Zero ( );
+	vrLastAim.Zero ( );
+	vrAimTaken = false;
+	vrAimFromHead = false;
 }
 
 /*
@@ -1639,26 +1668,71 @@ void rvVehicleTurret::RunPostPhysics ( void ) {
 
 	oldAngles = currentAngles;
 
+	// openQ4 VR: the local player's head, or on the floating screen the
+	// controller, turns the turret (idPlayer::GetVRVehicleAim). A turret that
+	// carries the position's eye is steered by it: each frame it turns, at its
+	// turn rate, from where the eye looked to where the aim points, both in
+	// the world, so neither a tilted hull nor the vehicle's own turns throw it
+	// off. Any other turret only takes deltas, and a tracked head or hand turns
+	// further in one frame than the turn rate allows, so the clamp below would
+	// drop the rest and the turret drift off the aim for good; there the
+	// rotation is kept and caught up at the turn rate instead, after the turret
+	// first turns to the aim on taking the seat, or when the aim passes between
+	// head and controller.
+	const idPlayer* vrDriver = IsActive ( ) ? OpenQ4_VRDriver( position ) : NULL;
+	idAngles vrSeatAim;
+	idAngles vrWorldAim;
+	const bool vrHead = vrDriver != NULL && vrDriver->GetVRVehicleAim( vrSeatAim, vrWorldAim );
+	const bool vrSteered = vrDriver != NULL && CarriesJoint( position->GetEyeJoint() );
+	const idAngles vrEye = ( vrDriver != NULL ) ? position->GetEyeAxis().ToAngles() : ang_zero;
+	if ( vrDriver == NULL || vrSteered ) {
+		vrPendingInput.Zero ( );
+		vrAimTaken = false;
+	} else if ( !vrAimTaken || vrHead != vrAimFromHead ) {
+		vrPendingInput[PITCH] = invert[PITCH] * idMath::AngleDelta( vrWorldAim.pitch, vrEye.pitch );
+		vrPendingInput[YAW] = invert[YAW] * idMath::AngleDelta( vrWorldAim.yaw, vrEye.yaw );
+		vrPendingInput[ROLL] = 0.0f;
+		vrLastAim = vrSeatAim;
+		vrAimFromHead = vrHead;
+		vrAimTaken = true;
+	}
+
 	mat[PITCH].Identity();
 	mat[YAW].Identity();
 	mat[ROLL].Identity();
 	for ( i = 0; i < 3; i ++ ) {
 		if ( axisMap[i] != -1 ) {
-			float diff = (invert[i] * idMath::AngleDelta ( inputAngles[i], lastInputAngles[i] ));
-			
+			float diff;
+			if ( vrSteered ) {
+				diff = ( i == ROLL ) ? 0.0f : invert[i] * idMath::AngleDelta( vrWorldAim[i], vrEye[i] );
+			} else if ( vrDriver != NULL ) {
+				diff = ( i == ROLL ) ? 0.0f : invert[i] * idMath::AngleDelta( vrSeatAim[i], vrLastAim[i] );
+				vrPendingInput[i] = idMath::ClampFloat( -180.0f, 180.0f, vrPendingInput[i] + diff );
+				diff = vrPendingInput[i];
+			} else {
+				diff = (invert[i] * idMath::AngleDelta ( inputAngles[i], lastInputAngles[i] ));
+			}
+
 			diff = SignZero( diff ) * idMath::ClampFloat ( 0.0f, turnRate * MS2SEC(gameLocal.GetMSec()), idMath::Fabs ( diff ) );
+			const float before = currentAngles[axisMap[i]];
 			if ( angles[0][i] == angles[1][i] ) {
 				currentAngles[axisMap[i]] = idMath::AngleNormalize360( currentAngles[axisMap[i]] + diff );
 			} else {
 				currentAngles[axisMap[i]] = idMath::ClampFloat ( angles[0][i], angles[1][i], currentAngles[axisMap[i]] + diff );
 			}
-			
+			// what a stop kept the turret from taking stays owed, so the aim
+			// leads it back out of the stop rather than dragging it
+			vrPendingInput[i] = ( vrDriver != NULL && !vrSteered ) ? vrPendingInput[i] - idMath::AngleDelta( currentAngles[axisMap[i]], before ) : 0.0f;
+
 			idAngles angles;
 			angles.Zero();
 			angles[axisMap[i]] = currentAngles[axisMap[i]];
 			mat[axisMap[i]] = angles.ToMat3();
 		}
 	}	
+	if ( vrDriver != NULL ) {
+		vrLastAim = vrSeatAim;
+	}
 
 	// Update the turret moving sound
 	if ( soundPart >= 0 ) {
@@ -1689,7 +1763,7 @@ void rvVehicleTurret::RunPostPhysics ( void ) {
 	// Rotate the turret with the mouse
 	parent->GetAnimator()->SetJointAxis( joint, JOINTMOD_LOCAL, mat[YAW] * mat[PITCH] * mat[ROLL] );
 
-	if ( g_vehicleMode.GetInteger() != 0 && joint != INVALID_JOINT && parent->GetAnimator()->GetJointHandle( spawnArgs.GetString( "alignment_joint" ) ) == joint ) {
+	if ( AlignsParent ( ) ) {
 		idMat3 turretAxis;
 		idVec3 temp;
 		parent->GetJointWorldTransform( joint, gameLocal.GetTime(), temp, turretAxis );
@@ -1826,6 +1900,55 @@ void rvVehicleTurret::Restore ( idRestoreGame* savefile ) {
 	savefile->ReadFloat ( turnRate );
 
 	savefile->ReadInt ( soundPart );	
+
+	vrPendingInput.Zero ( );
+	vrLastAim.Zero ( );
+	vrAimTaken = false;
+	vrAimFromHead = false;
+}
+
+/*
+=====================
+rvVehicleTurret::AlignsParent
+=====================
+*/
+bool rvVehicleTurret::AlignsParent ( void ) const {
+	return g_vehicleMode.GetInteger() != 0 && joint != INVALID_JOINT
+		&& parent->GetAnimator()->GetJointHandle( spawnArgs.GetString( "alignment_joint" ) ) == joint;
+}
+
+/*
+=====================
+rvVehicleTurret::GetYawPivot
+=====================
+*/
+bool rvVehicleTurret::CarriesJoint ( jointHandle_t carried ) const {
+	if ( joint == INVALID_JOINT || carried == INVALID_JOINT ) {
+		return false;
+	}
+	const idDeclModelDef* modelDef = parent->GetAnimator()->ModelDef();
+	if ( modelDef == NULL ) {
+		return false;
+	}
+	const int* parents = modelDef->JointParents();
+	int ancestor = carried;
+	for ( int depth = 0; ancestor >= 0 && ancestor < modelDef->NumJoints() && ancestor != joint && depth < modelDef->NumJoints(); depth++ ) {
+		ancestor = parents[ ancestor ];
+	}
+	return ancestor == joint;
+}
+
+/*
+=====================
+rvVehicleTurret::GetYawPivot
+=====================
+*/
+bool rvVehicleTurret::GetYawPivot ( jointHandle_t carried, idVec3& origin ) const {
+	if ( axisMap[YAW] == -1 || !CarriesJoint( carried ) ) {
+		return false;
+	}
+	idMat3 axis;
+	return parent->GetJointWorldTransform( joint, gameLocal.time, origin, axis );
 }
 
 /***********************************************************************

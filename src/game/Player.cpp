@@ -1741,6 +1741,9 @@ idPlayer::idPlayer
 */
 idPlayer::idPlayer() {
 	vrButtonCrouch = false;
+	vrVehicleDeltaYaw = 0.0f;
+	vrVehicleYaw = 0.0f;
+	vrVehicleYawValid = false;
 	memset( &usercmd, 0, sizeof( usercmd ) );
 
 	alreadyDidTeamAnnouncerSound = false;
@@ -3206,6 +3209,9 @@ void idPlayer::Restore( idRestoreGame *savefile ) {
  	memset( usercmd.angles, 0, sizeof( usercmd.angles ) );
 	SetViewAngles( viewAngles );
 	spawnAnglesSet = true;
+	// openQ4 VR: a seat restored in a vehicle faces the way the view did
+	vrVehicleDeltaYaw = deltaViewAngles.yaw;
+	vrVehicleYawValid = false;
 
 	savefile->ReadInt( buttonMask );
  	savefile->ReadInt( oldButtons );
@@ -4856,7 +4862,10 @@ void idPlayer::DrawHUD( idUserInterface *_hud ) {
 	if ( vehicleController.IsDriving( ) ) {
 		if ( !gameDebug.IsHudActive( DBGHUD_ANY ) ) {
 			vehicleController.DrawHUD( );
-			if ( cursor && health > 0 && weaponWheelBlend <= 0.01f ) {		
+			// openQ4 VR: hand aim hangs the HUD below the line of sight, so a
+			// screen-centre crosshair would lie; the aim marker shows where the
+			// turret points
+			if ( cursor && health > 0 && weaponWheelBlend <= 0.01f && !IsVRHandAiming() ) {
 				// mekberg: adjustable crosshair size.
 				int crossSize = cvarSystem->GetCVarInteger( "g_crosshairSize" );
 				crossSize = crossSize - crossSize % 8;
@@ -9062,7 +9071,9 @@ void idPlayer::UpdateViewAngles( void ) {
 	int i;
 	idAngles delta;
 
-	if ( weaponWheelActive ) {
+	// openQ4 VR: the weapon hand moves the wheel's cursor, and holding the view
+	// still against it would turn the tracked world with the hand instead
+	if ( weaponWheelActive && !( vrSystem != NULL && vrSystem->IsActive() && gameLocal.GetLocalPlayer() == this ) ) {
 		UpdateDeltaViewAngles( viewAngles );
 		return;
 	}
@@ -9694,10 +9705,23 @@ idPlayer::EnterVehicle
 ==============
 */
 bool idPlayer::EnterVehicle( idEntity* vehicle ) {
+	// openQ4 VR: the seat keeps the view's facing; binding to the vehicle
+	// rewrites deltaViewAngles from the bind joint, which a seat never uses
+	const float facing = deltaViewAngles.yaw;
 	if ( !idActor::EnterVehicle ( vehicle ) ) {
 		return false;
 	}
-	
+	vrVehicleDeltaYaw = facing;
+	vrVehicleYawValid = false;
+	if ( vrSystem != NULL && vrSystem->IsActive() && gameLocal.GetLocalPlayer() == this && cvarSystem->GetCVarInteger( "vr_debug" ) > 0 ) {
+		const rvVehicle *entered = vehicleController.GetVehicle();
+		const rvVehiclePosition *seat = entered != NULL ? entered->GetPosition( vehicleController.GetPosition() ) : NULL;
+		if ( seat != NULL ) {
+			gameLocal.Printf( "VR vehicle %s: %s\n", entered->GetClassname(),
+				seat->TurretAlignsVehicle() ? "steers after its turret, the view stays put" : "its turns carry the view" );
+		}
+	}
+
 // RAVEN BEGIN
 // jshepard: safety first
 	if( weapon)	{
@@ -9720,8 +9744,15 @@ bool idPlayer::ExitVehicle ( bool force ) {
 	if ( !idActor::ExitVehicle ( force ) ) {
 		return false;
 	}
-	
+	vrVehicleYawValid = false;
+
 	SetViewAngles( viewAxis[0].ToAngles() );
+	// openQ4 VR: stepping out keeps the world where the seat had it, rather
+	// than turning it to the exit's facing
+	if ( vrSystem != NULL && vrSystem->IsActive() && gameLocal.GetLocalPlayer() == this ) {
+		deltaViewAngles.yaw = vrVehicleDeltaYaw;
+		viewAngles.yaw = idMath::AngleNormalize180( SHORT2ANGLE( usercmd.angles[ YAW ] ) + vrVehicleDeltaYaw );
+	}
 
 // RAVEN BEGIN
 // jshepard: had this crash on me more than once :(
@@ -11108,6 +11139,7 @@ void idPlayer::Think( void ) {
 	}
 
 	if ( IsInVehicle ( ) ) {	
+		UpdateVRVehicleFrame();
 		vehicleController.SetInput ( usercmd, viewAngles );
 				
 		// calculate the exact bobbed view position, which is used to
@@ -13195,6 +13227,19 @@ void idPlayer::GetViewPos( idVec3 &origin, idMat3 &axis ) const {
 	} else if ( IsInVehicle ( ) ) {	
 		vehicleController.GetEyePosition ( origin, axis );
 
+		// openQ4 VR: the tracked head turns the camera, as on foot, from a
+		// seat that stays put while the turret swings
+		vrFrameState_t vrFrame;
+		float vrTrackingYaw;
+		if ( GetVRView( vrFrame, vrTrackingYaw ) ) {
+			const rvVehicle *vehicle = vehicleController.GetVehicle();
+			const rvVehiclePosition *seat = vehicle != NULL ? vehicle->GetPosition( vehicleController.GetPosition() ) : NULL;
+			if ( seat != NULL ) {
+				seat->GetVRSeat( origin );
+			}
+			return;
+		}
+
   		idVec3		shakeOffset;
   		idAngles	shakeAngleOffset;
 	   	idBounds	relBounds(idVec3(0, 0, 0), idVec3(0, 0, 0));
@@ -13233,16 +13278,17 @@ bool idPlayer::GetVRView( vrFrameState_t &frame, float &trackingYaw ) const {
 	if ( vrSystem == NULL || !vrSystem->IsActive() || gameLocal.GetLocalPlayer() != this ) {
 		return false;
 	}
-	// cinematics, cameras, third person and vehicles play flat on the virtual screen
+	// cinematics, cameras and third person play flat on the virtual screen,
+	// and so do vehicles while vr_vehicleStereo is off
 	if ( gameLocal.inCinematic || gameLocal.GetCamera() != NULL || privateCameraView != NULL
-			|| pm_thirdPerson.GetBool() || IsInVehicle() ) {
+			|| pm_thirdPerson.GetBool() || ( IsInVehicle() && !cvarSystem->GetCVarBool( "vr_vehicleStereo" ) ) ) {
 		return false;
 	}
 	vrSystem->GetFrameState( frame );
 	if ( !frame.active ) {
 		return false;
 	}
-	trackingYaw = frame.bodyYaw + deltaViewAngles.yaw;
+	trackingYaw = frame.bodyYaw + ( IsInVehicle() ? vrVehicleDeltaYaw : deltaViewAngles.yaw );
 	return true;
 }
 
@@ -13330,10 +13376,6 @@ bool idPlayer::GetVRAimMarker( vrAimMarker_t &marker ) const {
 	if ( health <= 0 || !GetVRView( frame, trackingYaw ) || frame.aimMode != VR_AIM_HAND ) {
 		return false;
 	}
-	// a holstered or hidden weapon has nothing to aim, and a focused world GUI shows its own cursor
-	if ( weapon == NULL || weapon->IsHidden() || !weapon->ShowCrosshair() || focusType == FOCUS_GUI ) {
-		return false;
-	}
 	const vrPose_t &aim = frame.aim[ frame.weaponHand == VR_HAND_LEFT ? VR_HAND_LEFT : VR_HAND_RIGHT ];
 	if ( !aim.valid ) {
 		return false;
@@ -13343,19 +13385,41 @@ bool idPlayer::GetVRAimMarker( vrAimMarker_t &marker ) const {
 	GetPresentationViewPos( eyeOrigin, eyeAxis );
 	eyeOrigin.z += VRCrouchLift( frame );
 	const idVec3 headCorrection = VR_HeadOffsetCorrection( frame );
-	vrPose_t pose = aim;
-	pose.origin += headCorrection;
-	idVec3 handOrigin;
-	idMat3 handAxis;
-	VR_PoseToWorld( pose, eyeOrigin, trackingYaw, handOrigin, handAxis );
 
 	trace_t trace;
-	gameLocal.TracePoint( this, trace, eyeOrigin, handOrigin, MASK_SHOT_RENDERMODEL, this );
-	const idVec3 start = trace.fraction < 1.0f ? eyeOrigin + ( trace.endpos - eyeOrigin ) * 0.9f : handOrigin;
-	gameLocal.TracePoint( this, trace, start, start + handAxis[0] * VR_AIM_RANGE, MASK_SHOT_RENDERMODEL, this );
-	// a beam leaves the drawn weapon's muzzle, or the hand without one
-	if ( !weapon->GetVRMuzzle( marker.muzzle ) ) {
-		marker.muzzle = handOrigin;
+	if ( IsInVehicle() ) {
+		// a vehicle's guns follow its turret, which the head turns at the
+		// turret's own rate: the marker shows where the turret aims now, the
+		// way its shots converge on the line of its eye
+		rvVehicle *vehicle = vehicleController.GetVehicle();
+		rvVehiclePosition *position = vehicle != NULL ? vehicle->GetPosition( vehicleController.GetPosition() ) : NULL;
+		rvVehicleWeapon *vehicleWeapon = position != NULL ? position->GetActiveWeapon() : NULL;
+		if ( vehicleWeapon == NULL ) {
+			return false;
+		}
+		const idVec3 &start = position->GetEyeOrigin();
+		gameLocal.TracePoint( vehicle, trace, start, start + position->GetEyeAxis()[0] * VR_AIM_RANGE, MASK_SHOT_RENDERMODEL, vehicle );
+		if ( !vehicleWeapon->GetMuzzleOrigin( marker.muzzle ) ) {
+			marker.muzzle = start;
+		}
+	} else {
+		// a holstered or hidden weapon has nothing to aim, and a focused world GUI shows its own cursor
+		if ( weapon == NULL || weapon->IsHidden() || !weapon->ShowCrosshair() || focusType == FOCUS_GUI ) {
+			return false;
+		}
+		vrPose_t pose = aim;
+		pose.origin += headCorrection;
+		idVec3 handOrigin;
+		idMat3 handAxis;
+		VR_PoseToWorld( pose, eyeOrigin, trackingYaw, handOrigin, handAxis );
+
+		gameLocal.TracePoint( this, trace, eyeOrigin, handOrigin, MASK_SHOT_RENDERMODEL, this );
+		const idVec3 start = trace.fraction < 1.0f ? eyeOrigin + ( trace.endpos - eyeOrigin ) * 0.9f : handOrigin;
+		gameLocal.TracePoint( this, trace, start, start + handAxis[0] * VR_AIM_RANGE, MASK_SHOT_RENDERMODEL, this );
+		// a beam leaves the drawn weapon's muzzle, or the hand without one
+		if ( !weapon->GetVRMuzzle( marker.muzzle ) ) {
+			marker.muzzle = handOrigin;
+		}
 	}
 	marker.target = trace.endpos;
 	marker.hit = trace.fraction < 1.0f;
@@ -13371,8 +13435,10 @@ bool idPlayer::GetVRAimMarker( vrAimMarker_t &marker ) const {
 		const idVec3 toTarget = marker.target - headOrigin;
 		const float distance = toTarget.Length();
 		if ( distance > 8.0f ) {
+			// in a vehicle the head looks out past its own hull
+			const idEntity *seat = IsInVehicle() ? static_cast<const idEntity *>( vehicleController.GetVehicle() ) : this;
 			trace_t sight;
-			gameLocal.TracePoint( this, sight, headOrigin, marker.target - toTarget * ( 4.0f / distance ), MASK_SHOT_RENDERMODEL, this );
+			gameLocal.TracePoint( this, sight, headOrigin, marker.target - toTarget * ( 4.0f / distance ), MASK_SHOT_RENDERMODEL, seat );
 			marker.hidden = sight.fraction < 1.0f;
 		}
 	}
@@ -13392,8 +13458,9 @@ the camera stays on the head and never enters a wall.
 void idPlayer::UpdateVRRoomScale( void ) {
 	vrFrameState_t frame;
 	float trackingYaw;
-	// a multiplayer server owns positions; there the head leans within vr_headOffsetLimit
-	if ( gameLocal.isMultiplayer || noclip || spectating || health <= 0 || !GetVRView( frame, trackingYaw ) || !frame.roomScale || !frame.head.valid ) {
+	// a multiplayer server owns positions; there the head leans within vr_headOffsetLimit,
+	// as it does in a vehicle's seat
+	if ( gameLocal.isMultiplayer || noclip || spectating || health <= 0 || IsInVehicle() || !GetVRView( frame, trackingYaw ) || !frame.roomScale || !frame.head.valid ) {
 		return;
 	}
 	// leaning a little is free; beyond it the body follows
@@ -13410,6 +13477,87 @@ void idPlayer::UpdateVRRoomScale( void ) {
 	if ( walkedTracking.LengthSqr() > 0.0f ) {
 		vrSystem->ShiftTrackingOrigin( walkedTracking );
 	}
+}
+
+/*
+===============
+idPlayer::UpdateVRVehicleFrame
+
+openQ4 VR: the stick drives a vehicle the way it faces, which the head sets
+(GetVRVehicleAim). A vehicle's turns carry the tracked view, as a car turns
+its passengers, so a tram's curve or a turning walker keeps the seat and its
+guns where the player faces. A vehicle that steers after its own turret (the GEV)
+does not carry it: there the head turns the turret and the turret the hull,
+so carrying the view as well would chase the aim in circles. The turns go
+into the seat's own facing, vrVehicleDeltaYaw, which the turret's aim leaves
+out, since the vehicle carries the turret round already.
+===============
+*/
+void idPlayer::UpdateVRVehicleFrame( void ) {
+	vrFrameState_t frame;
+	float trackingYaw;
+	rvVehicle *vehicle = vehicleController.GetVehicle();
+	const rvVehiclePosition *position = vehicle != NULL ? vehicle->GetPosition( vehicleController.GetPosition() ) : NULL;
+	if ( position == NULL || health <= 0 || !GetVRView( frame, trackingYaw ) ) {
+		vrVehicleYawValid = false;
+		return;
+	}
+
+	// the head turns a vehicle's guns, and with them its facing, and the stick
+	// drives it the way it faces: the engine turned the stick into the weapon
+	// hand's aim, which a vehicle never sees, so turn it back to the head
+	const vrPose_t &aim = frame.aim[ frame.weaponHand == VR_HAND_LEFT ? VR_HAND_LEFT : VR_HAND_RIGHT ];
+	if ( frame.aimMode == VR_AIM_HAND && aim.valid && frame.head.valid ) {
+		float s, c;
+		idMath::SinCos( DEG2RAD( aim.axis[ 0 ].ToYaw() - frame.head.axis[ 0 ].ToYaw() ), s, c );
+		const float forward = usercmd.forwardmove;
+		const float left = -static_cast<float>( usercmd.rightmove );
+		usercmd.forwardmove = idMath::ClampChar( idMath::FtoiFast( c * forward - s * left ) );
+		usercmd.rightmove = idMath::ClampChar( idMath::FtoiFast( -( s * forward + c * left ) ) );
+	}
+
+	if ( position->TurretAlignsVehicle() ) {
+		vrVehicleYawValid = false;
+		return;
+	}
+	const float yaw = vehicle->GetAxis().ToAngles().yaw;
+	if ( vrVehicleYawValid ) {
+		vrVehicleDeltaYaw = idMath::AngleNormalize180( vrVehicleDeltaYaw + idMath::AngleDelta( yaw, vrVehicleYaw ) );
+	}
+	vrVehicleYaw = yaw;
+	vrVehicleYawValid = true;
+}
+
+/*
+===============
+idPlayer::GetVRVehicleAim
+
+openQ4 VR: what turns the turret the local player drives. In a vehicle seen
+in the headset it is the head, as Quake 4's vehicle view follows the mouse:
+the eye sits on the turret's axis (rvVehiclePosition::GetVRSeat), so a
+cockpit or a gun turns about the head and stays where it looks. On the
+floating screen it is the controller's aim, the usercmd angles. seatAim
+leaves out the vehicle's own turns, which carry a turret already; worldAim
+is where the aim points in the world, placed the way the seat faces.
+===============
+*/
+bool idPlayer::GetVRVehicleAim( idAngles &seatAim, idAngles &worldAim ) const {
+	vrFrameState_t frame;
+	float trackingYaw;
+	if ( GetVRView( frame, trackingYaw ) && frame.head.valid ) {
+		idVec3 headOrigin;
+		idMat3 headAxis;
+		VR_PoseToWorld( frame.head, vec3_origin, trackingYaw, headOrigin, headAxis );
+		worldAim = headAxis[ 0 ].ToAngles();
+		worldAim.roll = 0.0f;
+		seatAim = worldAim;
+		seatAim.yaw = idMath::AngleNormalize180( worldAim.yaw - vrVehicleDeltaYaw );
+		return true;
+	}
+	seatAim.Set( SHORT2ANGLE( usercmd.angles[ PITCH ] ), SHORT2ANGLE( usercmd.angles[ YAW ] ), 0.0f );
+	worldAim.Set( idMath::AngleNormalize180( seatAim.pitch + deltaViewAngles.pitch ),
+		idMath::AngleNormalize180( seatAim.yaw + vrVehicleDeltaYaw ), 0.0f );
+	return false;
 }
 
 /*

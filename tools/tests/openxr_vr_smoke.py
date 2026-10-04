@@ -38,6 +38,9 @@ Checks:
   at it (the pointer is drawn where the ray meets the screen) and the trigger
   clicks Resume there, which closes the menu even though the desktop window
   holds no focus;
+- a vehicle in stereo: a walker, spawned and entered by script, turns its
+  cockpit 45 degrees after the head while the eye, on the cockpit's turning
+  axis, stays put, and the headset keeps the stereo view;
 - the runtime can end VR: the game carries on on the desktop, keeps
   vr_enable for the next launch and waits for vr_restart;
 - the log carries no errors.
@@ -74,6 +77,9 @@ LASER_HAND_POSE = "0.2 1.25 -0.35 0 -10 0"
 # The off hand on the foregrip: 0.3 m along the laser pose's aim (10 degrees
 # down) and 5 cm above it, so holding the gun in both hands levels the aim.
 FOREGRIP_POSE = "0.2 1.248 -0.645 0 0 0"
+# Open ground ahead of airdefense1's start for a spawned walker; airdefense1
+# has walkers of its own, so it is precached.
+VEHICLE_ORIGIN = "10094 -6825 60"
 
 
 def read_events(path: Path) -> list[dict]:
@@ -190,6 +196,9 @@ def main(argv: list[str] | None = None) -> None:
         f"when {marker('pointed')} capture {profile / 'xr_menu'}",
         f"when {marker('click')} button right trigger 1",
         f"when {marker('unclick')} button right trigger 0",
+        f"when {marker('vehicle_look')} head -45 0 0",
+        f"when {marker('vehicle_cap')} capture {profile / 'xr_vehicle'}",
+        f"when {marker('vehicle_back')} head 0 0 0",
         f"when {marker('exit')} exit",
     ]
     (profile / "xr_script.txt").write_text("\n".join(script) + "\n", encoding="utf-8")
@@ -258,6 +267,15 @@ def main(argv: list[str] | None = None) -> None:
         # Resume dispatches on release, then the menu takes 250 ms to go; a
         # debug build draws the paused stereo world at only ~13 fps
         "condump vr_marker_unclick.txt", "waitMsec 2000",
+        # a walker in stereo: the cockpit turns after the head, about the eye
+        f'spawn vehicle_walker name vr_smoke_walker origin "{VEHICLE_ORIGIN}" angle 150.7', "waitMsec 2500",
+        'script "$player1.enterVehicle( $vr_smoke_walker );"', "waitMsec 3000",
+        "echo VR_VEHICLE_IN", "getviewpos",
+        "condump vr_marker_vehicle_look.txt", "waitMsec 2500",
+        "echo VR_VEHICLE_LOOKED", "getviewpos",
+        "condump vr_marker_vehicle_cap.txt", "waitMsec 500",
+        "condump vr_marker_vehicle_back.txt", "waitMsec 300",
+        'script "$player1.exitVehicle( 1 );"', "waitMsec 1000", "echo VR_VEHICLE_OUT",
         "condump vr_marker_exit.txt", "waitMsec 1500",
         "echo VR_AFTER_EXIT", "vr_status", "vr_enable",
         "echo VR_SMOKE_COMPLETE", "quit",
@@ -348,16 +366,16 @@ def main(argv: list[str] | None = None) -> None:
     for e in events:
         if e.get("event") == "capture":
             stage = next(s for s in ("gameplay", "turned", "menu", "laser_off", "laser_dot", "laser_beam",
-                                     "two_off", "two_dot", "vignette", "zoom_off", "zoom_on")
+                                     "two_off", "two_dot", "vignette", "zoom_off", "zoom_on", "vehicle")
                          if f"xr_{s}_" in Path(e["path"]).name)
             captures[f"{stage}_{e['layer']}"] = e
     for name in ("gameplay_left", "gameplay_right", "gameplay_quad1", "turned_left", "turned_right", "menu_quad1",
                  "laser_off_left", "laser_off_right", "laser_dot_left", "laser_dot_right",
                  "laser_beam_left", "laser_beam_right", "two_off_left", "two_off_right", "two_dot_left",
                  "two_dot_right", "vignette_left", "vignette_right", "zoom_off_left", "zoom_on_left",
-                 "zoom_on_quad1"):
+                 "zoom_on_quad1", "vehicle_left", "vehicle_right"):
         assert name in captures and captures[name]["written"], f"missing capture {name}: {sorted(captures)}"
-    for name in ("gameplay_left", "gameplay_right", "turned_left", "turned_right"):
+    for name in ("gameplay_left", "gameplay_right", "turned_left", "turned_right", "vehicle_left", "vehicle_right"):
         assert captures[name]["lit_fraction"] > 0.2, f"eye capture {name} is mostly black: {captures[name]}"
 
     def image(prefix: str, layer: str):
@@ -477,8 +495,14 @@ def main(argv: list[str] | None = None) -> None:
     menu_log = text.partition("VR_TRIGGER_BIND_RAN")[2]
     assert "OpenXR: JOY7 down" in menu_log, "the controller's menu button never posted its key"
     assert "VR_MENU_OPEN" in menu_log, "the menu stage did not run"
+    # the runtime runs its script in order, so each capture's frame is found
+    # by its place among the script's captures
     capture_frames = [e["frame"] for e in events if e.get("event") == "script_command" and e.get("command") == "capture"]
-    menu_frames = [f for f in frames if f["frame"] >= capture_frames[-1]]
+    capture_order = [Path(line.split()[-1]).name for line in script if line.split()[2] == "capture"]
+    assert len(capture_frames) == len(capture_order), f"captures ran {len(capture_frames)} of {len(capture_order)}"
+    menu_capture = capture_frames[capture_order.index("xr_menu")]
+    vehicle_capture = capture_frames[capture_order.index("xr_vehicle")]
+    menu_frames = [f for f in frames if menu_capture <= f["frame"] < vehicle_capture]
     assert menu_frames, "no frame followed the menu capture"
     screen_layer = menu_frames[0]["layers"][-1]
     assert screen_layer["type"] == "quad" and not screen_layer["flags"] & 0x2 and abs(screen_layer["z"] + 2.5) < 0.01, \
@@ -501,6 +525,25 @@ def main(argv: list[str] | None = None) -> None:
     assert any([layer["type"] for layer in f["layers"]] == ["projection", "quad"] and f["layers"][1]["flags"] & 0x2
                for f in menu_frames), "clicking Resume with the pointer did not close the pause menu"
 
+    # a walker in stereo: its cockpit turns after the head, about the eye,
+    # which sits on the cockpit's turning axis (off it, a quarter turn would
+    # swing the eye some 70 units; pitching the cockpit may move it a unit or
+    # two, as a nod does), and the headset keeps the stereo view with the HUD
+    assert "VR vehicle rvVehicleWalker: its turns carry the view" in menu_log, "entering the walker seated no VR view"
+    def view_pose(after: str) -> list[float]:
+        found = re.search(r"\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)\s+(-?\d+(?:\.\d+)?)",
+                          menu_log.partition(after)[2])
+        assert found, f"getviewpos after {after} printed no view position"
+        return [float(found.group(i)) for i in range(1, 5)]
+    seated, looked = view_pose("VR_VEHICLE_IN"), view_pose("VR_VEHICLE_LOOKED")
+    cockpit_turn = yaw_delta(seated[3], looked[3])
+    assert abs(cockpit_turn + 45.0) < 3.0, f"the walker's cockpit should turn 45 degrees right after the head, not {cockpit_turn:.1f}"
+    eye_moved = math.dist(seated[:3], looked[:3])
+    assert eye_moved < 4.0, f"turning the cockpit moved the eye {eye_moved:.1f} units"
+    vehicle_frames = [f for f in frames if f["frame"] >= vehicle_capture]
+    assert vehicle_frames and [layer["type"] for layer in vehicle_frames[0]["layers"]] == ["projection", "quad"], \
+        f"the walker should present a stereo view and the HUD: {vehicle_frames[:1]}"
+
     # the runtime ends VR: the game carries on and keeps the player's setting
     before_exit, _, after_exit = menu_log.partition("VR_AFTER_EXIT")
     assert "OpenXR: the runtime ended the VR session" in before_exit, "the runtime's exit request was not honoured"
@@ -515,7 +558,8 @@ def main(argv: list[str] | None = None) -> None:
         for eye in ("left", "right"):
             image(f"xr_laser_{name}", eye).save(profile / f"xr_laser_{name}_{eye}.png")
     print(f"OpenXR VR smoke: PASS (eye difference {eye_difference:.2f}, head turn {turn_difference:.2f}, "
-          f"HUD coverage {covered:.3f}, aim marker at {marker_depth:.2f} m, pointer at {px},{py}); evidence={profile}")
+          f"HUD coverage {covered:.3f}, aim marker at {marker_depth:.2f} m, pointer at {px},{py}, "
+          f"walker cockpit turned {cockpit_turn:.1f}); evidence={profile}")
 
 
 if __name__ == "__main__":

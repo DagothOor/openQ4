@@ -119,6 +119,17 @@ def check_engine() -> None:
     require(system, 'idCVar vr_enable( "vr_enable", "0",', "VR is off by default")
     require(system, 'idCVar vr_aimLaser( "vr_aimLaser", "1",', "the aim dot is on by default")
     require(system, 'idCVar vr_comfortVignette( "vr_comfortVignette", "0.5",', "the comfort vignette is on by default")
+    require(system, 'idCVar vr_vehicleStereo( "vr_vehicleStereo", "1",', "vehicles render in stereo by default")
+    # single player vehicles: the eye sits on the turret's axis and the turret
+    # follows the head; multiplayer has no vehicles and keeps them flat
+    player = read("src/game/Player.cpp")
+    require(player, '( IsInVehicle() && !cvarSystem->GetCVarBool( "vr_vehicleStereo" ) )',
+            "single player vehicles render in stereo unless vr_vehicleStereo is off")
+    require(player, "seat->GetVRSeat( origin );", "a vehicle seat puts the eye on its turret's axis")
+    require(read("src/game/vehicle/VehicleParts.cpp"), "vrDriver->GetVRVehicleAim( vrSeatAim, vrWorldAim )",
+            "a turret driven in VR follows the head without dropping rotation")
+    require(read("src/mpgame/Player.cpp"), "|| pm_thirdPerson.GetBool() || IsInVehicle() ) {",
+            "multiplayer, which has no vehicles, keeps them on the floating screen")
     for module in ("src/game/PlayerView.cpp", "src/mpgame/PlayerView.cpp"):
         require(read(module), "\t\tSingleView( hud, &eyeView, RF_NO_GUI | RF_PRIMARY_VIEW );\n"
                               "\t\tVR_DrawComfortVignette( eyeView, vignette, vignetteMaterial );\n\t\tif ( drawAimMarker ) {\n"
@@ -181,7 +192,7 @@ def check_documents() -> None:
             raise AssertionError(f"missing {relative}")
     guide = read("docs/user/vr.md")
     for cvar in ("vr_enable", "vr_aimMode", "vr_aimLaser", "vr_hapticStrength", "vr_turnMode", "vr_recenter",
-                 "vr_restart", "vr_twoHanded", "vr_comfortVignette", "vr_physicalCrouch"):
+                 "vr_restart", "vr_twoHanded", "vr_comfortVignette", "vr_physicalCrouch", "vr_vehicleStereo"):
         require(guide, cvar, "the VR guide documents the settings players use")
 
 
