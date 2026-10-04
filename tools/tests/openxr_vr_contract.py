@@ -122,11 +122,14 @@ def check_engine() -> None:
     for module in ("src/game/PlayerView.cpp", "src/mpgame/PlayerView.cpp"):
         require(read(module), "\t\tSingleView( hud, &eyeView, RF_NO_GUI | RF_PRIMARY_VIEW );\n"
                               "\t\tVR_DrawComfortVignette( eyeView, vignette, vignetteMaterial );\n\t\tif ( drawAimMarker ) {\n"
-                              "\t\t\tVR_DrawAimMarker( eyeView, aimMarker, vrFrame.aimLaser, aimMaterial );\n\t\t}\n\t\tScreenFade();",
+                              "\t\t\tVR_DrawAimMarker( eyeView, aimMarker, aimLaser, aimMaterial );\n\t\t}\n\t\tScreenFade();",
                 f"{module} vignettes and marks the aim in each eye over its 3D pass, under its fade")
         # the vignette follows artificial motion only, read from the engine's cvar
         require(read(module), 'cvarSystem->GetCVarFloat( "vr_comfortVignette" )',
                 f"{module} reads the vignette setting without touching the frame state")
+        # a zoom magnifies each eye by the weapon's own ratio; the dot alone marks it
+        require(read(module), "VR_ZoomTangentScale( player->CalcFov( true ), player->CalcFov( false ) )",
+                f"{module} magnifies the eyes for a weapon's zoom")
 
     openxr = read("src/sys/openxr/OpenXRSystem.cpp")
     for banned in ("SendInput", "keybd_event", "mouse_event", "XTest"):

@@ -4827,7 +4827,10 @@ void idPlayer::DrawHUD( idUserInterface *_hud ) {
 	if ( objectiveSystemOpen ) {
 		if ( !GuiActive() ) {
 			// showing weapon zoom gui when objectives are open because that's the way I'z told to make it werkz
-			if ( weapon && weapon->GetZoomGui( ) && zoomed ) {
+			// openQ4 VR: the scope picture is head-locked on the HUD, so it would
+			// point where the head looks; while a controller aims, the laser dot
+			// in the magnified eyes is the reticle
+			if ( weapon && weapon->GetZoomGui( ) && zoomed && !IsVRHandAiming() ) {
 				weapon->GetZoomGui( )->Redraw( gameLocal.time );
 			}
 		}
@@ -4894,7 +4897,10 @@ void idPlayer::DrawHUD( idUserInterface *_hud ) {
 	if ( !spectating && !gameDebug.IsHudActive( DBGHUD_ANY ) ) {
 		// weapon targeting crosshair
 		if ( !GuiActive() ) {
-			if ( weapon && weapon->GetZoomGui( ) && zoomed ) {
+			// openQ4 VR: the scope picture is head-locked on the HUD, so it would
+			// point where the head looks; while a controller aims, the laser dot
+			// in the magnified eyes is the reticle
+			if ( weapon && weapon->GetZoomGui( ) && zoomed && !IsVRHandAiming() ) {
 				weapon->GetZoomGui( )->Redraw( gameLocal.time );
 			}
 // RAVEN BEGIN

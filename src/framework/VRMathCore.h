@@ -333,6 +333,24 @@ inline float VR_ComfortMotion( float speed, float turnDegreesPerSecond ) {
 	return strongest < 0.0f ? 0.0f : ( strongest > 1.0f ? 1.0f : strongest );
 }
 
+/*
+====================
+Zoom
+
+A headset's field of view is fixed, so a weapon's zoom magnifies by narrowing
+each eye's frustum instead: its tangents scale by tan(zoomed / 2) over
+tan(normal / 2), both horizontal fields of view in degrees. 1 leaves the eye
+alone; the scale stops at a third, 3x magnification.
+====================
+*/
+inline float VR_ZoomTangentScale( float zoomedFovDegrees, float normalFovDegrees ) {
+	if ( !( zoomedFovDegrees > 0.0f ) || !( normalFovDegrees > 0.0f ) || zoomedFovDegrees >= normalFovDegrees ) {
+		return 1.0f;
+	}
+	const float scale = std::tan( zoomedFovDegrees * 0.5f * VR_DEG2RAD ) / std::tan( normalFovDegrees * 0.5f * VR_DEG2RAD );
+	return scale < ( 1.0f / 3.0f ) ? ( 1.0f / 3.0f ) : scale;
+}
+
 // Eases the vignette towards its target: in within about a tenth of a second,
 // so it is there as motion starts, and out over about a third, so a stop does
 // not flash the edges open.

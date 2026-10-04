@@ -60,7 +60,8 @@
   model's own grip with the barrel along the aim (measured from its idle
   pose; every stock weapon checked; earlier builds' archived offsets reset
   once), two-handed aim with the off hand on the foregrip, a comfort
-  vignette during stick movement and smooth turning, and a Virtual
+  vignette during stick movement and smooth turning, scope zoom that
+  magnifies each eye, and a Virtual
   Reality section in
   Settings > Game Options (eleven rows, twelve languages). Building that section
   fixed the Game Options and display section selectors, which ignored clicks.

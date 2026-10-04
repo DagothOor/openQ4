@@ -160,6 +160,10 @@ def main(argv: list[str] | None = None) -> None:
         f"when {marker('laser_done')} hand left -0.2 1.25 -0.35 0 0 0",
         f"when {marker('fire')} button right trigger 1",
         f"when {marker('fire_release')} button right trigger 0",
+        f"when {marker('zoom_off')} capture {profile / 'xr_zoom_off'}",
+        f"when {marker('zoom')} button left trigger 1",
+        f"when {marker('zoom_on')} capture {profile / 'xr_zoom_on'}",
+        f"when {marker('unzoom')} button left trigger 0",
         f"when {marker('room_walk')} head 0 0 0 0 1.6 -0.5",
         f"when {marker('room_lean')} head 0 0 0 0 1.6 -1.0",
         f"when {marker('room_back')} head 0 0 0 0 1.6 0",
@@ -208,6 +212,13 @@ def main(argv: list[str] | None = None) -> None:
         # the right trigger's default binding fires the weapon
         "echo VR_FIRE", "condump vr_marker_fire.txt", "waitMsec 400",
         "condump vr_marker_fire_release.txt", "waitMsec 600",
+        # a scoped weapon's zoom magnifies each eye and puts no scope picture
+        # on the head-locked HUD while the controller aims
+        # (give may switch to the new gun itself, so select it by its impulse)
+        "give weapon_machinegun", "waitMsec 500", "_impulse1", "waitMsec 2500",
+        "condump vr_marker_zoom_off.txt", "waitMsec 400",
+        "condump vr_marker_zoom.txt", "waitMsec 1500", "condump vr_marker_zoom_on.txt", "waitMsec 400",
+        "condump vr_marker_unzoom.txt", "waitMsec 800",
         # room scale: a step forward walks the body; without it the step is a lean
         "vr_roomScale 1", "condump vr_marker_room_walk.txt", "waitMsec 1200", "echo VR_ROOM_WALKED", "vr_status",
         "vr_roomScale 0", "condump vr_marker_room_lean.txt", "waitMsec 1000", "echo VR_ROOM_LEANED", "vr_status",
@@ -323,13 +334,14 @@ def main(argv: list[str] | None = None) -> None:
     for e in events:
         if e.get("event") == "capture":
             stage = next(s for s in ("gameplay", "turned", "menu", "laser_off", "laser_dot", "laser_beam",
-                                     "two_off", "two_dot", "vignette")
+                                     "two_off", "two_dot", "vignette", "zoom_off", "zoom_on")
                          if f"xr_{s}_" in Path(e["path"]).name)
             captures[f"{stage}_{e['layer']}"] = e
     for name in ("gameplay_left", "gameplay_right", "gameplay_quad1", "turned_left", "turned_right", "menu_quad1",
                  "laser_off_left", "laser_off_right", "laser_dot_left", "laser_dot_right",
                  "laser_beam_left", "laser_beam_right", "two_off_left", "two_off_right", "two_dot_left",
-                 "two_dot_right", "vignette_left", "vignette_right"):
+                 "two_dot_right", "vignette_left", "vignette_right", "zoom_off_left", "zoom_on_left",
+                 "zoom_on_quad1"):
         assert name in captures and captures[name]["written"], f"missing capture {name}: {sorted(captures)}"
     for name in ("gameplay_left", "gameplay_right", "turned_left", "turned_right"):
         assert captures[name]["lit_fraction"] > 0.2, f"eye capture {name} is mostly black: {captures[name]}"
@@ -354,6 +366,16 @@ def main(argv: list[str] | None = None) -> None:
     assert 0.0 <= walked <= 4.5, f"a 0.5 m step should walk the body and leave the head within 4 units, not {walked:.1f}"
     assert abs(leaned - walked - step_units) < 1.5, \
         f"with vr_roomScale 0 another 0.5 m step should stay a {step_units:.1f}-unit lean, moved {leaned - walked:.1f}"
+
+    # zoom: the scoped machinegun magnifies the eye, which changes nearly every
+    # pixel, and the HUD layer stays a light overlay rather than a scope picture
+    zoom_difference = max(ImageStat.Stat(ImageChops.difference(image("xr_zoom_off", "left"),
+                                                               image("xr_zoom_on", "left"))).mean)
+    assert zoom_difference > 4.0, f"zooming the machinegun barely changed the view ({zoom_difference:.3f})"
+    with Image.open(profile / "xr_zoom_on_quad1.tga") as zoom_hud:
+        zoom_alpha = zoom_hud.convert("RGBA").getchannel("A")
+        zoom_covered = sum(zoom_alpha.histogram()[16:]) / float(zoom_hud.width * zoom_hud.height)
+    assert zoom_covered < 0.2, f"the zoomed HUD carries a head-locked scope picture ({zoom_covered:.3f} covered)"
 
     # a shot pulses the weapon hand, and only it (a hit would pulse both, for 90 ms)
     pulses = [e for e in events if e.get("event") == "haptic" and e.get("duration_ns") == 40_000_000]

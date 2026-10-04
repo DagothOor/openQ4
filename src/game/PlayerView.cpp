@@ -1000,6 +1000,12 @@ void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const
 	vrAimMarker_t aimMarker;
 	const bool drawAimMarker = vrFrame.aimLaser != VR_AIM_LASER_OFF && player->GetVRAimMarker( aimMarker );
 	const idMaterial *aimMaterial = drawAimMarker ? declManager->FindMaterial( "_white" ) : NULL;
+	// a weapon's zoom magnifies each eye by its own ratio, eased like the flat
+	// screen's field of view; the headset's own field of view cannot narrow
+	const float zoomScale = VR_ZoomTangentScale( player->CalcFov( true ), player->CalcFov( false ) );
+	// zoomed, the dot alone marks the shot: a beam from the hidden gun would
+	// cut across the magnified view
+	const int aimLaser = ( zoomScale < 1.0f && vrFrame.aimLaser == VR_AIM_LASER_BEAM ) ? VR_AIM_LASER_DOT : vrFrame.aimLaser;
 	// the edges of each eye darken while the stick moves or turns the player
 	const float vignette = VRComfortVignette( vrFrame );
 	const idMaterial *vignetteMaterial = vignette > 0.01f ? declManager->FindMaterial( "_white" ) : NULL;
@@ -1010,10 +1016,18 @@ void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const
 		}
 		renderView_t eyeView = *view;
 		VR_BuildEyeView( vrFrame, eye, eyeOrigin, trackingYaw, eyeView );
+		if ( zoomScale < 1.0f ) {
+			eyeView.fovTanLeft *= zoomScale;
+			eyeView.fovTanRight *= zoomScale;
+			eyeView.fovTanUp *= zoomScale;
+			eyeView.fovTanDown *= zoomScale;
+			eyeView.fov_x = RAD2DEG( 2.0f * idMath::ATan( idMath::Tan( DEG2RAD( eyeView.fov_x * 0.5f ) ) * zoomScale ) );
+			eyeView.fov_y = RAD2DEG( 2.0f * idMath::ATan( idMath::Tan( DEG2RAD( eyeView.fov_y * 0.5f ) ) * zoomScale ) );
+		}
 		SingleView( hud, &eyeView, RF_NO_GUI | RF_PRIMARY_VIEW );
 		VR_DrawComfortVignette( eyeView, vignette, vignetteMaterial );
 		if ( drawAimMarker ) {
-			VR_DrawAimMarker( eyeView, aimMarker, vrFrame.aimLaser, aimMaterial );
+			VR_DrawAimMarker( eyeView, aimMarker, aimLaser, aimMaterial );
 		}
 		ScreenFade();
 	}

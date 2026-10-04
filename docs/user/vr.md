@@ -94,12 +94,18 @@ To steady a gun, hold it in both hands: put your off hand in front of your
 weapon hand, where a rifle's foregrip would be, and squeeze its grip. The
 off-hand controller gives a short buzz, and the gun then points from your
 rear hand through your front hand until you let go. Squeezing the off-hand
-grip anywhere else opens the weapon wheel as usual.
+grip anywhere else opens the weapon wheel: turn your weapon hand towards the
+weapon you want and let go of the grip to switch to it.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `vr_aimLaser` | 1 | 0 no marker, 1 laser dot, 2 laser dot and a beam from the gun |
 | `vr_twoHanded` | 1 | 1 the off-hand grip on the foregrip holds the gun in both hands, 0 it always opens the weapon wheel |
+
+The off-hand trigger zooms with a scoped weapon, such as the machinegun or
+the railgun: your whole view magnifies as far as the scope would, and the
+laser dot is your crosshair. Keep zoom short if magnified head movement
+makes you uneasy.
 
 The controllers vibrate: your weapon hand with every shot, and both hands
 when you're hit, harder for bigger hits. Set `vr_hapticStrength` between 0

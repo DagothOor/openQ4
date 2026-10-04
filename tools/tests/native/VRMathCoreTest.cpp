@@ -153,6 +153,14 @@ static void TestRotationBetween( void ) {
 	Check( NearVec( VR_MultiplyRows( VR_Vec3( 0.2f, 0.3f, 0.4f ), rows ), VR_Vec3( 0.2f, 0.3f, 0.4f ) ), "parallel vectors leave everything alone" );
 }
 
+static void TestZoomScale( void ) {
+	Check( VR_ZoomTangentScale( 90.0f, 90.0f ) == 1.0f, "no zoom leaves the eye alone" );
+	Check( VR_ZoomTangentScale( 100.0f, 90.0f ) == 1.0f, "a wider field never shrinks the view" );
+	Check( Near( VR_ZoomTangentScale( 50.0f, 90.0f ), std::tan( 25.0f * VR_DEG2RAD ), 0.0001f ), "a 50 degree scope magnifies by the tangent ratio" );
+	Check( Near( VR_ZoomTangentScale( 10.0f, 90.0f ), 1.0f / 3.0f ), "magnification stops at 3x" );
+	Check( VR_ZoomTangentScale( 0.0f, 90.0f ) == 1.0f, "a missing zoom field is no zoom" );
+}
+
 static void TestComfortVignette( void ) {
 	Check( VR_ComfortMotion( 0.0f, 0.0f ) == 0.0f, "standing still needs no vignette" );
 	Check( VR_ComfortMotion( 10.0f, 5.0f ) == 0.0f, "a drift or a slow turn needs none" );
@@ -265,6 +273,7 @@ int main() {
 	TestRotationBetween();
 	TestTwoHandedAim();
 	TestComfortVignette();
+	TestZoomScale();
 	TestTurning();
 	TestOffsets();
 	TestQuad();
