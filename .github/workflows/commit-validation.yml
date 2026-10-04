@@ -292,6 +292,7 @@ jobs:
             tools/tests/renderer_vulkan_gui_residency.py \
             tools/tests/renderer_vulkan_md5r_compatibility.py \
             tools/tests/renderer_vulkan_probe_safety.py \
+            tools/tests/renderer_vulkan_qualification.py \
             tools/tests/renderer_vulkan_shadow_compatibility.py \
             tools/tests/renderer_vulkan_world_interaction_compatibility.py \
             tools/tests/rigid_body_recovery_diagnostics.py \
