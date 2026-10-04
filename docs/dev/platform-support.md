@@ -36,7 +36,7 @@ What the tiers mean:
 
 The real-hardware evidence here is community reporting on GitHub issues, not the accepted signoff archives the first-class gates require. Reports from other channels can move a target once they are recorded in the matching evidence document.
 
-Renderer backends are tiered separately from platforms. OpenGL is the supported renderer on every platform. The Vulkan renderer is a preview on Windows x64, signed off 2026-10-04 on NVIDIA and Intel real-hardware evidence, and experimental on Linux and macOS; `best` still resolves to OpenGL everywhere. The "Vulkan renderer" row of [the engine capability matrix](engine-capability-matrix.md) records why, and [Display Settings](../user/display-settings.md#what-vulkan-does-not-do-yet) lists the OpenGL features it does not have yet.
+Renderer backends are tiered separately from platforms. OpenGL is the default, supported renderer on every platform. The Vulkan renderer is a stable, supported opt-in renderer on Windows x64, signed off 2026-10-04 on NVIDIA and Intel real-hardware evidence, and experimental on Linux and macOS; `best` still resolves to OpenGL everywhere. The "Vulkan renderer" row of [the engine capability matrix](engine-capability-matrix.md) records why, and [Display Settings](../user/display-settings.md#what-vulkan-does-not-do-yet) lists the OpenGL features it does not have yet.
 
 ## Current Baseline (v0.13.x release line)
 

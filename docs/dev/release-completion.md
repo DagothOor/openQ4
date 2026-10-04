@@ -22,8 +22,8 @@
   and `renderer_native_ui_output.py` pin the routing, refusals and filter
   restore.
 
-- [x] Promote the Vulkan renderer to a preview on Windows x64 (user
-  sign-off 2026-10-04). It stays experimental on Linux and macOS, OpenGL stays
+- [x] Promote the Vulkan renderer to a stable, supported opt-in renderer on
+  Windows x64 (user sign-off 2026-10-04). It stays experimental on Linux and macOS, OpenGL stays
   the default and `best` still resolves to `gl`. README, the user guides,
   `TECHNICAL.md`, the platform-support tiers, the capability matrix, the
   `r_renderApi` help text and the release notes now say so.
