@@ -2222,6 +2222,7 @@ enum rbLightGridUniformIndex_t {
 	RB_LIGHTGRID_UNIFORM_DIFFUSE_COLOR,
 	RB_LIGHTGRID_UNIFORM_VERTEX_COLOR_PARAMS,
 	RB_LIGHTGRID_UNIFORM_FLAT_DIFFUSE_PARAMS,
+	RB_LIGHTGRID_UNIFORM_LIGHT_PARAMS,
 	RB_LIGHTGRID_UNIFORM_COUNT
 };
 
@@ -2286,7 +2287,8 @@ static void RB_InitLightGridIndirectStage( void ) {
 		{ "uColorInfo", 4 },
 		{ "uDiffuseColor", 4 },
 		{ "uVertexColorParams", 2 },
-		{ "uFlatDiffuseParams", 4 }
+		{ "uFlatDiffuseParams", 4 },
+		{ "uLightGridParams", 4 }
 	};
 
 	rbLightGridIndirectStage.numShaderParms = RB_LIGHTGRID_UNIFORM_COUNT;
@@ -2375,6 +2377,8 @@ enum rbSSAOUniformIndex_t {
 
 static newShaderStage_t rbSSAOStage;
 static bool rbSSAOStageInitialized = false;
+static bool rbSSAOStageLegacy = false;		// stage currently holds ssao_legacy.fs
+static bool rbSSAOGTAOFailed = false;		// GTAO did not compile on this GPU/driver
 static idImage *rbSSAOWorldDepthImage = NULL;
 static idImage *rbSSAOFinalDepthImage = NULL;
 static int rbSSAOWorldDepthFrame = -1;
@@ -2426,6 +2430,13 @@ static bool RB_SSAORequestedForCurrentView( void ) {
 	if ( r_skipPostProcess.GetBool() || !r_ssao.GetBool() ) {
 		return false;
 	}
+	// r_lightGridAO applies AO to the baked indirect light inside the light-grid
+	// pass; a full-frame AO pass on top would darken twice. Keep the post pass
+	// only where that path cannot run (no baked grid in this world).
+	if ( r_lightGridAO.GetBool() && r_useLightGrid.GetBool() && backEnd.viewDef != NULL
+		&& backEnd.viewDef->renderWorld != NULL && backEnd.viewDef->renderWorld->AnyLightGridAvailable() ) {
+		return false;
+	}
 	if ( !glConfig.GLSLProgramAvailable ) {
 		return false;
 	}
@@ -2453,14 +2464,22 @@ static idImage *RB_EnsureSSAODepthScratchImage( idImage *&image, const char *nam
 	return image;
 }
 
-static void RB_InitSSAOStage( void ) {
+// ssao.fs is GTAO (needs GLSL 4.00); ssao_legacy.fs is the original
+// spiral-sample SSAO. r_ssaoGTAO picks one; GPUs that cannot compile GTAO fall
+// back to the legacy shader automatically.
+static void RB_InitSSAOStage( bool legacy ) {
 	if ( rbSSAOStageInitialized ) {
-		return;
+		if ( rbSSAOStageLegacy == legacy ) {
+			return;
+		}
+		RB_FreeGLSLProgram( &rbSSAOStage );
+		rbSSAOStageInitialized = false;
 	}
 
 	memset( &rbSSAOStage, 0, sizeof( rbSSAOStage ) );
 	rbSSAOStage.glslProgram = true;
-	idStr::Copynz( rbSSAOStage.glslProgramName, "ssao.fs", sizeof( rbSSAOStage.glslProgramName ) );
+	idStr::Copynz( rbSSAOStage.glslProgramName, legacy ? "ssao_legacy.fs" : "ssao.fs", sizeof( rbSSAOStage.glslProgramName ) );
+	rbSSAOStageLegacy = legacy;
 
 	static const rbBuiltinUniformDef_t uniforms[RB_SSAO_UNIFORM_COUNT] = {
 		{ "invTexSize", 2 },
@@ -2492,6 +2511,27 @@ static void RB_InitSSAOStage( void ) {
 	idStr::Copynz( rbSSAOStage.shaderTextureNames[4], "AOField", sizeof( rbSSAOStage.shaderTextureNames[4] ) );
 
 	rbSSAOStageInitialized = true;
+}
+
+/*
+GTAO (glprogs/ssao.fs) unless r_ssaoGTAO is 0 or it failed to compile on this
+GPU; then the stock-algorithm glprogs/ssao_legacy.fs. Both shaders implement
+the same modes (classic, PBR indirect field, field apply), so every SSAO path
+loads its program here.
+*/
+static bool RB_PrepareSSAOProgram( void ) {
+	const bool legacy = !r_ssaoGTAO.GetBool() || rbSSAOGTAOFailed;
+	RB_InitSSAOStage( legacy );
+	if ( R_ValidateGLSLProgram( &rbSSAOStage ) ) {
+		return true;
+	}
+	if ( legacy ) {
+		return false;
+	}
+	rbSSAOGTAOFailed = true;
+	common->Warning( "GTAO (glprogs/ssao.fs) failed to compile; falling back to glprogs/ssao_legacy.fs" );
+	RB_InitSSAOStage( true );
+	return R_ValidateGLSLProgram( &rbSSAOStage );
 }
 
 static void RB_BindSSAODepthImage( int unit, idImage *image ) {
@@ -2663,8 +2703,7 @@ static void RB_PrepareSSAOIndirectField( void ) {
 			|| rbSSAOWorldDepthImage == NULL || rbSSAOClassicDepthImage == NULL || backEnd.renderTexture == NULL ) {
 		return;
 	}
-	RB_InitSSAOStage();
-	if ( !R_ValidateGLSLProgram( &rbSSAOStage ) ) {
+	if ( !RB_PrepareSSAOProgram() ) {
 		return;
 	}
 	const int viewportWidth = backEnd.viewDef->viewport.x2 - backEnd.viewDef->viewport.x1 + 1;
@@ -2733,8 +2772,7 @@ static void RB_STD_SSAO( void ) {
 		return;
 	}
 
-	RB_InitSSAOStage();
-	if ( !R_ValidateGLSLProgram( &rbSSAOStage ) ) {
+	if ( !RB_PrepareSSAOProgram() ) {
 		return;
 	}
 
@@ -14599,6 +14637,19 @@ static bool RB_STD_DrawLightGridSurface( const drawSurf_t *surf, const LightGrid
 	glUniform4fvARB( rbLightGridIndirectStage.shaderParmLocations[RB_LIGHTGRID_UNIFORM_DEPTH_INFO], 1, depthInfo );
 	glUniform4fvARB( rbLightGridIndirectStage.shaderParmLocations[RB_LIGHTGRID_UNIFORM_DEPTH_VIEWPORT], 1, depthViewport );
 	glUniform4fvARB( rbLightGridIndirectStage.shaderParmLocations[RB_LIGHTGRID_UNIFORM_COLOR_INFO], 1, colorInfo );
+	{
+		// x: GTAO + multi-bounce on the indirect light only, y: minimum
+		// indirect irradiance (bounce light lost below the 8-bit bake's 1/255).
+		const float lightGridParams[4] = {
+			r_lightGridAO.GetBool() ? 1.0f : 0.0f,
+			idMath::ClampFloat( 0.0f, 1.0f, r_lightGridShadowFloor.GetFloat() ),
+			0.0f,
+			0.0f
+		};
+		if ( rbLightGridIndirectStage.shaderParmLocations[RB_LIGHTGRID_UNIFORM_LIGHT_PARAMS] >= 0 ) {
+			glUniform4fvARB( rbLightGridIndirectStage.shaderParmLocations[RB_LIGHTGRID_UNIFORM_LIGHT_PARAMS], 1, lightGridParams );
+		}
+	}
 	glUniform4fvARB( rbLightGridIndirectStage.shaderParmLocations[RB_LIGHTGRID_UNIFORM_FLAT_DIFFUSE_PARAMS], 1, flatDiffuseParams.ToFloatPtr() );
 
 	GL_SelectTextureNoClient( 2 );

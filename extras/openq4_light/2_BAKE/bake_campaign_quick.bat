@@ -28,7 +28,7 @@ set MAPS=airdefense1 hangar1 hangar2 mcc_landing mcc_1 convoy1 building_b convoy
 for %%M in (%MAPS%) do (
   call echo  [%%time%%] Запекаю карту / Baking map game/%%M
   start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0bake_watch.ps1" -Map %%M
-  start "openQ4 bake %%M" /low /wait "%~dp0openQ4-client_x64.exe" +set logFile 2 +set logFileName logs/bake_%%M.log +set r_fullscreen 0 +set r_lightGridIntensity 1 +set r_forceAmbient 0 +set r_lightGridBakeAsyncReadback 0 +set r_lightGridBakeReadbackSlots 1 +bakeLightGrids game/%%M size16 samples4 limit64 bounce1 -quit
+  start "openQ4 bake %%M" /low /wait "%~dp0openQ4-client_x64.exe" +set logFile 2 +set logFileName logs/bake_%%M.log +set r_fullscreen 0 +set r_lightGridIntensity 1 +set r_forceAmbient 0 +set r_lightGridAO 0 +set r_lightGridShadowFloor 0 +set r_hdrToneMap 0 +set r_lightGridBakeAsyncReadback 0 +set r_lightGridBakeReadbackSlots 1 +bakeLightGrids game/%%M size16 samples4 limit64 bounce1 -quit
 )
 
 powershell -NoProfile -Command "Get-ChildItem -Path $env:LOCALAPPDATA\openQ4, '%~dp0baseoq4' -Recurse -Filter openQ4Config.cfg.before_bake -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $_.FullName.Substring(0, $_.FullName.Length - 12) -Force; Remove-Item -LiteralPath $_.FullName }"
