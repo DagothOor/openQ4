@@ -200,7 +200,10 @@ trigger to fire. The laser dot shows where the shots will land, and each shot
 kicks in your weapon hand. The left stick drives the way the vehicle faces.
 A vehicle that turns under you, such as a walker turning on the spot, turns
 your view with it, and the comfort vignette darkens the edges of your view
-while a vehicle moves you.
+while a vehicle moves you. Scripted rides seat you the same way, from the
+tram's rear gun to the drop pods. Your view stays level whatever the ride
+does, so a pod swung nose-up into its launch tube turns around you instead
+of tipping you onto your back.
 
 | Setting | Default | What it does |
 | --- | --- | --- |

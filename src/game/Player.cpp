@@ -13527,7 +13527,16 @@ void idPlayer::UpdateVRVehicleFrame( void ) {
 		vrVehicleYawValid = false;
 		return;
 	}
-	const float yaw = vehicle->GetAxis().ToAngles().yaw;
+	// a nose within six degrees of straight up or down has no heading to
+	// follow: its yaw rests on a sliver of the axis and flips half a turn as
+	// it crosses the vertical (mcc_2's launch arm stands the drop pod 0.07
+	// degrees short of it), so the seat keeps its facing until one returns
+	const idVec3 &nose = vehicle->GetAxis()[ 0 ];
+	if ( nose.ToVec2().LengthSqr() < 0.01f ) {
+		vrVehicleYawValid = false;
+		return;
+	}
+	const float yaw = nose.ToYaw();
 	if ( vrVehicleYawValid ) {
 		vrVehicleDeltaYaw = idMath::AngleNormalize180( vrVehicleDeltaYaw + idMath::AngleDelta( yaw, vrVehicleYaw ) );
 	}

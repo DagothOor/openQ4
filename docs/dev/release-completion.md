@@ -95,7 +95,8 @@
   vignette during stick movement and smooth turning, scope zoom that
   magnifies each eye, single player vehicles and turrets in stereo (the eye
   on the turret's axis, the turret following the head, the seat keeping its
-  own facing through the vehicle bind), a weapon wheel that no longer turns
+  own facing through the vehicle bind; the tram gun, the medical table, the
+  bed and both drop pod rides probed start to finish), a weapon wheel that no longer turns
   the world, and a Virtual
   Reality section in
   Settings > Game Options (twelve rows, twelve languages). Building that section
