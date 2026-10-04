@@ -4862,10 +4862,7 @@ void idPlayer::DrawHUD( idUserInterface *_hud ) {
 	if ( vehicleController.IsDriving( ) ) {
 		if ( !gameDebug.IsHudActive( DBGHUD_ANY ) ) {
 			vehicleController.DrawHUD( );
-			// openQ4 VR: hand aim hangs the HUD below the line of sight, so a
-			// screen-centre crosshair would lie; the aim marker shows where the
-			// turret points
-			if ( cursor && health > 0 && weaponWheelBlend <= 0.01f && !IsVRHandAiming() ) {
+			if ( cursor && health > 0 && weaponWheelBlend <= 0.01f ) {		
 				// mekberg: adjustable crosshair size.
 				int crossSize = cvarSystem->GetCVarInteger( "g_crosshairSize" );
 				crossSize = crossSize - crossSize % 8;

@@ -632,6 +632,10 @@ def main(argv: list[str] | None = None) -> None:
     vehicle_frames = [f for f in frames if f["frame"] >= vehicle_capture]
     assert vehicle_frames and [layer["type"] for layer in vehicle_frames[0]["layers"]] == ["projection", "quad"], \
         f"the walker should present a stereo view and the HUD: {vehicle_frames[:1]}"
+    # the head aims the cockpit, so the HUD and its sights hang on the line of
+    # sight even though the controller aims on foot (where it hangs lower)
+    assert abs(vehicle_frames[0]["layers"][1]["y"]) < 0.01, \
+        f"in the walker the HUD should hang on the line of sight: {vehicle_frames[0]['layers'][1]}"
 
     # the runtime ends VR: the game carries on and keeps the player's setting
     before_exit, _, after_exit = menu_log.partition("VR_AFTER_EXIT")

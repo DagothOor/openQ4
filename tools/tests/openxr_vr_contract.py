@@ -130,6 +130,12 @@ def check_engine() -> None:
             "a turret driven in VR follows the head without dropping rotation")
     require(read("src/mpgame/Player.cpp"), "|| pm_thirdPerson.GetBool() || IsInVehicle() ) {",
             "multiplayer, which has no vehicles, keeps them on the floating screen")
+    # a seat's turret follows the head, so the HUD hangs on the line of sight
+    require(read("src/sys/openxr/OpenXRSystem.cpp"),
+            "( vr_aimMode.GetInteger() == VR_AIM_HAND && !vr_hudOnSight.GetBool() ) ? vr_hudHeightOffset.GetFloat() : 0.0f;",
+            "the HUD hangs on the line of sight while the head aims a vehicle")
+    require(read("src/game/PlayerView.cpp"), 'cvarSystem->SetCVarBool( "vr_hudOnSight", player->IsInVehicle() );',
+            "a vehicle seat in stereo asks for the HUD on the line of sight")
     for module in ("src/game/PlayerView.cpp", "src/mpgame/PlayerView.cpp"):
         require(read(module), "\t\tSingleView( hud, &eyeView, RF_NO_GUI | RF_PRIMARY_VIEW );\n"
                               "\t\tVR_DrawComfortVignette( eyeView, vignette, vignetteMaterial );\n\t\tif ( drawAimMarker ) {\n"

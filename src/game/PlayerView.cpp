@@ -982,6 +982,10 @@ Double vision and influence effects are flat-screen effects and stand down.
 ===================
 */
 void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const vrFrameState_t &vrFrame, float trackingYaw ) {
+	// a vehicle's turret follows the head, so its HUD sights hang on the line
+	// of sight, as in head aim, wherever the weapon hand points
+	cvarSystem->SetCVarBool( "vr_hudOnSight", player->IsInVehicle() );
+
 	idVec3 eyeOrigin;
 	idMat3 eyeAxis;
 	player->GetPresentationViewPos( eyeOrigin, eyeAxis );
