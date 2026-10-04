@@ -9702,7 +9702,7 @@ idPlayer::EnterVehicle
 ==============
 */
 bool idPlayer::EnterVehicle( idEntity* vehicle ) {
-	// openQ4 VR: the seat keeps the view's facing; binding to the vehicle
+	// openQ4 VR: the seat keeps its own facing, since binding to the vehicle
 	// rewrites deltaViewAngles from the bind joint, which a seat never uses
 	const float facing = deltaViewAngles.yaw;
 	if ( !idActor::EnterVehicle ( vehicle ) ) {
@@ -9710,10 +9710,20 @@ bool idPlayer::EnterVehicle( idEntity* vehicle ) {
 	}
 	vrVehicleDeltaYaw = facing;
 	vrVehicleYawValid = false;
-	if ( vrSystem != NULL && vrSystem->IsActive() && gameLocal.GetLocalPlayer() == this && cvarSystem->GetCVarInteger( "vr_debug" ) > 0 ) {
-		const rvVehicle *entered = vehicleController.GetVehicle();
-		const rvVehiclePosition *seat = entered != NULL ? entered->GetPosition( vehicleController.GetPosition() ) : NULL;
-		if ( seat != NULL ) {
+	const rvVehicle *entered = vehicleController.GetVehicle();
+	const rvVehiclePosition *seat = entered != NULL ? entered->GetPosition( vehicleController.GetPosition() ) : NULL;
+	vrFrameState_t vrFrame;
+	float vrTrackingYaw;
+	if ( seat != NULL && GetVRView( vrFrame, vrTrackingYaw ) ) {
+		// in the headset the seat faces where the vehicle's eye looks, as the
+		// flat view does at once: a rear gun must not end up behind a player
+		// who climbed aboard facing forwards
+		idVec3 eyeOrigin;
+		idMat3 eyeAxis;
+		seat->GetEyePosition( eyeOrigin, eyeAxis );
+		const float headYaw = vrFrame.head.valid ? vrFrame.head.axis[ 0 ].ToYaw() : 0.0f;
+		vrVehicleDeltaYaw = idMath::AngleNormalize180( eyeAxis[ 0 ].ToYaw() - vrFrame.bodyYaw - headYaw );
+		if ( cvarSystem->GetCVarInteger( "vr_debug" ) > 0 ) {
 			gameLocal.Printf( "VR vehicle %s: %s\n", entered->GetClassname(),
 				seat->TurretAlignsVehicle() ? "steers after its turret, the view stays put" : "its turns carry the view" );
 		}
