@@ -2,7 +2,9 @@
 
 Status: in progress. This is the living plan for running the unreleased Raven/Ritual
 expansion on openQ4. The gap analysis it works from is
-[the support audit](../q4x-awakening-support-audit.md).
+[the support audit](../q4x-awakening-support-audit.md). What has changed for players
+is summarised in [The Awakening on openQ4](../../user/awakening.md); keep that page
+current when a change here reaches the campaign.
 
 ## Current architecture (1 October 2026)
 
@@ -209,6 +211,11 @@ expansion's code. What changed:
   most every `grenadedelay`. Only the expansion's elite model has `throw_grenade`.
 - **Space flyers (m03).** `canturn 0` and `noFaceEnemy` keep them on their spline, and
   they climb, dive and bank with their mover (`useMasterPitch`, `useMasterRoll`).
+  The movers bank because the expansion's `idPhysics_Parametric` rolls every mover
+  that faces along its spline: against the change of heading between the next two
+  `g_splineRollLookahead` spans of the spline (500, five spline points), times
+  `g_splineRollMultiplier` (2.0), both its defaults. Retail's movers never banked, so
+  openQ4 banks only the Awakening's. m03's and m06's fighters ride such movers.
 - The walker monster is a marine ally (team 0): it fights the Strogg, never the player.
 
 **Weapons**
@@ -240,6 +247,57 @@ expansion's code. What changed:
   speed or less and its shield takes the damage.
 - The speeder bike cruises at about 690 units a second and boosts (crouch) to about
   1,090. m06's hacked Strogg fighters fly their splines, and the walker drives.
+- A vehicle passes its script `guiEvent` and `setGuiParm` calls to its HUD as well as
+  its world screens, as the expansion's `rvVehicle` did (its event table overrides
+  both). m07's race scripts run the speeder bike's HUD race clock this way and m06
+  sets the MCC cannon's health readout; neither appeared before. Retail's vehicle
+  HUDs handle none of the events retail scripts send to vehicles.
+- The expansion's `rvVehicle::UpdateHUD` also wrote `playerYaw` (the local player's
+  view yaw) to the HUD and `vehicle_speed` to the vehicle's own screens (a quarter of
+  its speed less four, never below 0), and its `idPlayer::DrawHUD` wrote `playerYaw`
+  after the HUD stats. openQ4 does the same: the speeder bike's speedometer
+  (`speeder.gui`) reads its speed and the m03 ship panels' view cones turn
+  (`turretplayerhud.gui`, `q4xhud.gui`). Retail reads `playerYaw` only on weapon
+  scopes, which are separate GUIs, and never reads `vehicle_speed`.
+- `idPlayer::UpdateFocusCharacter` writes the character's talk state to the cursor
+  as `npc_talkstate`, as the expansion's did; its `cursor.gui` shows `crosstalk_wait`
+  at `TALK_WAIT`. Retail's cursor does not read it.
+- The goob gun's alternate fire holds the player's flamethrower pose (`useAltFireAnim`
+  picks `fire_alt` while `wsfl.zoom` is set), which shows in shadows, mirrors and
+  third person.
+- m09's flares are not the single quads `deform flare` expects; `R_FlareDeform` logged
+  that about 340 times a second and now warns once per material.
+- The pulse cannon's barrels (the turret model's `pulse_cannon_l` and `pulse_cannon_r`)
+  move as the expansion's barrel helper moved them, through `JOINTMOD_LOCAL` joint
+  mods: a shot kicks the firing barrel 32 units back along the pivot's forward axis at
+  once and it slides home over 0.1 s; while the other weapon is selected both barrels
+  fold over 0.4 s (12 units outward and 12 down, turned -7.5 degrees about the barrel's
+  x axis, then -15 about its z axis) and unfold over 0.2 s when the cannon is selected
+  again. The motion is not saved: a spawned or loaded cannon settles its barrels to the
+  selection. The m03 cannons and m06's MCC cannon all use that model.
+- The expansion's `rvVehiclePosition` ran a second per-frame virtual on every weapon
+  but the selected one. openQ4 adds `rvVehiclePart::RunInactivePostPhysics`, empty by
+  default so retail vehicles are unchanged: through it the pulse cannon cools and folds
+  its barrels, and the missile launcher reloads its magazine, while the other weapon is
+  selected.
+- The m07 races fail by design: each lockdown gate closes on a timer and, if the player
+  is not past it, the script triggers the area's `objectivefailed` item.
+- `rvMonsterHarvester` turns in place only when its model has the turn animation.
+  m07's background harvester is retail's cinematic `monster_harvester` (`noturn`, no
+  turn animations), which failed the turn every 250 ms, logging a warning each time (158
+  in one race) and skipping that think's attack checks. Retail's combat harvesters have
+  the animations and turn as before.
+
+**Audits.** Beyond the key scan, every `object_call` frame command in the
+expansion's models resolves to a state of its class (state names ignore case; the
+spike gun's `AddToClip` sits in a reload animation its clip size of 0 never plays),
+every action its defs configure that its code initialises is initialised here, and
+the script events and states its code registers match openQ4's, class for class
+(`.tmp/awk/objcallaudit.py`, `actionaudit.py`, `evcompare.py`, `statecompare.py`).
+The only difference left is `idAFEntity_Base`'s `canDamage`, which no script calls.
+Every `gui::` state and named event the expansion's single-player GUIs use is now
+written by openQ4's code or by a script, or the GUI sets it itself
+(`guistateaudit.py`); what remains is multiplayer GUI state.
 
 **Content holes found** (no code change helps): m09 has no `valk_forcefield` or
 `mvr_makShields` for its script to show and hide; after the Valkaryne dies the escape
@@ -248,7 +306,18 @@ there, harmlessly; m04's start inventory gives `weaponmod_goobgun_burst`, which 
 def; the m08 and m09 development give lists have typos; the Tank's rocket flash names a
 joint (`gunBarrelReal`) its model lacks; m07's background harvester is retail's
 cinematic one (`noturn`), which has no turn animations; `m07_race1.aas48` is empty, which
-leaves its scripted gunner and fighters without navigation.
+leaves its scripted gunner and fighters without navigation. m08's first-lab scientists'
+`script_death` names `FirstLabCleared`, which the script never defines (the counter it
+would have kept, `first_lab_enemy_count`, is declared and never used); m07_race2's
+`guis/monitors/strogg/stroyent/stroyent_flow1.gui` exists nowhere; and the expansion's
+charge effects use retail's `gfx/effects/fire/p_fire2a`, whose image retail never
+shipped, so they draw nothing there, as on retail. m07_race1 and m07_race2 call
+`setFOV` on the player, which only cameras handle in the expansion's code as in
+retail's; the call is ignored with a warning. m09's `coldInHere` binds its breath
+effects to `legs_channel`, a joint only the marine and player models have, and stops at a
+`cold_breath_*` entity the map lacks; `trigger_once_70` calls `spawnTactical02`, which
+the script has commented out, and `trigger_once_96` calls `spawnTrashCan01`, which it
+never defines.
 
 ## What the expansion's code taught us
 

@@ -116,6 +116,8 @@ extern idCVar	ai_debugTrajectory;
 extern idCVar	ai_debugTactical;
 extern idCVar	ai_debugFilterString;
 extern idCVar	ai_debugActions;
+extern idCVar	g_splineRollLookahead;
+extern idCVar	g_splineRollMultiplier;
 extern idCVar	ai_testPredictPath;
 extern idCVar	ai_showCombatNodes;
 extern idCVar	ai_showPaths;

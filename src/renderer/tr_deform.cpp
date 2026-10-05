@@ -649,7 +649,13 @@ static void R_FlareDeform( drawSurf_t *surf ) {
 
 	if ( tri->numVerts != 4 || tri->numIndexes != 6 ) {
 		//FIXME: temp hack for flares on tripleted models
-		common->Warning( "R_FlareDeform: not a single quad" );
+		// openQ4: once per material. The surface fails the same way every
+		// frame (The Awakening's m09 printed this about 340 times a second).
+		static idList<const idMaterial *> warnedMaterials;
+		if ( warnedMaterials.FindIndex( surf->material ) < 0 ) {
+			warnedMaterials.Append( surf->material );
+			common->Warning( "R_FlareDeform: not a single quad (%s)", surf->material ? surf->material->GetName() : "no material" );
+		}
 		return;
 	}
 

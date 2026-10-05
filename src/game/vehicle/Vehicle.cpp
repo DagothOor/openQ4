@@ -37,6 +37,8 @@ CLASS_DECLARATION( idActor, rvVehicle )
 	EVENT( EV_HUDShockWarningOff,		rvVehicle::Event_HUDShockWarningOff )
 	EVENT( EV_StalledRestart,			rvVehicle::Event_StalledRestart )
 	EVENT( EV_GetViewAngles,			rvVehicle::Event_GetViewAngles )
+	EVENT( EV_GuiEvent,					rvVehicle::Event_GuiEvent )
+	EVENT( EV_SetGuiParm,				rvVehicle::Event_SetGuiParm )
 END_CLASS
 
 /*
@@ -1300,6 +1302,21 @@ void rvVehicle::UpdateHUD ( int position, idUserInterface* gui ) {
 	gui->SetStateInt ( "vehicle_haz", hazardWarningTime != 0 );
 	gui->SetStateInt ( "vehicle_locked", IsLocked ( ) );
 	
+	// openQ4: as The Awakening's game code did, the HUD's view cone (m03's ship
+	// panel) turns with the local player's view, and the vehicle's own screens
+	// show its speed (the speeder bike's speedometer: a quarter of its speed less
+	// four, never below 0). No retail GUI reads either value.
+	idPlayer* localPlayer = gameLocal.GetLocalPlayer ( );
+	if ( localPlayer ) {
+		gui->SetStateFloat ( "playerYaw", localPlayer->firstPersonViewAxis.ToAngles ( ).yaw );
+	}
+	const int speed = Max ( 0, idMath::FtoiFast ( GetPhysics()->GetLinearVelocity().Length() * 0.25f + 0.5f ) - 4 );
+	for ( int i = 0; i < MAX_RENDERENTITY_GUI; i++ ) {
+		if ( renderEntity.gui[ i ] ) {
+			renderEntity.gui[ i ]->SetStateInt ( "vehicle_speed", speed );
+		}
+	}
+
 	// Update position specific information	
 	positions[position].UpdateHUD ( gui );	
 }
@@ -1658,6 +1675,36 @@ rvVehicle::Event_GetViewAngles
 void rvVehicle::Event_GetViewAngles ( ) {
 
 	idThread::ReturnVector( GetPosition( 0)->GetEyeAxis()[0]);
+}
+
+/*
+================
+rvVehicle::Event_GuiEvent
+
+openQ4: a vehicle's script GUI events and parameters reach its HUD as well as
+its world screens, as The Awakening's game code did: its m07 race scripts run
+the speeder bike's HUD race timer this way, and m06 sets the MCC turret's
+health readout. No retail vehicle HUD handles what retail scripts send.
+================
+*/
+void rvVehicle::Event_GuiEvent ( const char* eventName ) {
+	if ( hud ) {
+		hud->HandleNamedEvent ( eventName );
+	}
+	idEntity::Event_GuiEvent ( eventName );
+}
+
+/*
+================
+rvVehicle::Event_SetGuiParm
+================
+*/
+void rvVehicle::Event_SetGuiParm ( const char* key, const char* value ) {
+	if ( hud ) {
+		hud->SetStateString ( key, value );
+		hud->StateChanged ( gameLocal.time );
+	}
+	idEntity::Event_SetGuiParm ( key, value );
 }
 
 /*

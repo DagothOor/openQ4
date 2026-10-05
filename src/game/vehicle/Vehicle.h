@@ -326,6 +326,8 @@ private:
 	void					Event_HUDShockWarningOff( void );
 	void					Event_StalledRestart	( float shield, float damage );
 	void					Event_GetViewAngles		( void );
+	void					Event_GuiEvent			( const char* eventName );
+	void					Event_SetGuiParm		( const char* key, const char* value );
 
 	virtual void			OnDeath					( void ) { }
 

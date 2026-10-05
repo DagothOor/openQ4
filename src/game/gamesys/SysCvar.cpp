@@ -254,6 +254,9 @@ idCVar ai_debugTactical(			"ai_debugTactical",			"0",			CVAR_GAME, "draws tactic
 idCVar ai_debugHelpers(				"ai_debugHelpers",			"0",			CVAR_GAME, "draws ai helpers" );
 idCVar ai_debugFilterString(		"ai_debugFilterString",		"",				CVAR_GAME, "see ai_debugFilter" );
 idCVar ai_debugActions(			"ai_debugActions",			"",				CVAR_GAME, "prints the actions and attacks of the named AI entity (* for all)" );
+// openQ4: The Awakening's spline movers bank into their turns, with its defaults
+idCVar g_splineRollLookahead(		"g_splineRollLookahead",	"500",			CVAR_GAME | CVAR_FLOAT, "how far along its spline an Awakening mover looks ahead to bank into a turn (100 a spline point)" );
+idCVar g_splineRollMultiplier(		"g_splineRollMultiplier",	"2.0",			CVAR_GAME | CVAR_FLOAT, "degrees an Awakening spline mover banks for each degree its path turns over the look-ahead" );
 idCVar ai_testPredictPath(			"ai_testPredictPath",		"0",			CVAR_GAME | CVAR_BOOL, "" );
 idCVar ai_showCombatNodes(			"ai_showCombatNodes",		"0",			CVAR_GAME | CVAR_BOOL, "draws attack cones for monsters" );
 idCVar ai_showPaths(				"ai_showPaths",				"0",			CVAR_GAME | CVAR_BOOL, "draws path_* entities" );

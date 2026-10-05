@@ -7,6 +7,40 @@
 CLASS_DECLARATION( idPhysics_Base, idPhysics_Parametric )
 END_CLASS
 
+/*
+================
+Parametric_SplineBanking
+
+openQ4: The Awakening's spline movers that face along their spline also bank
+into its turns, as its game code did; its m03 and m06 fighters ride them.
+Retail's movers never banked, so only the Awakening's do.
+================
+*/
+static bool Parametric_SplineBanking( void ) {
+	return !idStr::Icmp( fileSystem->GetActiveGameDir(), "q4xbase" );
+}
+
+/*
+================
+Parametric_SplineRoll
+
+The roll that banks into the turn ahead: against the change of heading between
+the spline's next two g_splineRollLookahead spans, times g_splineRollMultiplier.
+================
+*/
+static float Parametric_SplineRoll( const idCurve_Spline<idVec3> *spline, float t, const idVec3 &origin ) {
+	const float lookahead = g_splineRollLookahead.GetFloat();
+	const idVec3 ahead = spline->GetCurrentValue( t + lookahead );
+	const idVec3 further = spline->GetCurrentValue( t + 2.0f * lookahead );
+	float turn = idMath::ATan( further.y - ahead.y, further.x - ahead.x ) - idMath::ATan( ahead.y - origin.y, ahead.x - origin.x );
+	if ( turn > idMath::PI ) {
+		turn -= idMath::TWO_PI;
+	} else if ( turn < -idMath::PI ) {
+		turn += idMath::TWO_PI;
+	}
+	return -g_splineRollMultiplier.GetFloat() * RAD2DEG( turn );
+}
+
 
 /*
 ================
@@ -98,6 +132,7 @@ idPhysics_Parametric::idPhysics_Parametric( void ) {
 
 	hasMaster = false;
 	isOrientated = false;
+	splineBanking = false;
 
 // RAVEN BEGIN
 // abahr:
@@ -290,6 +325,7 @@ void idPhysics_Parametric::Restore( idRestoreGame *savefile ) {
 	savefile->ReadBool ( useAxisOffset );	// cnicholson: Added unrestored var
 	savefile->ReadMat3 ( axisOffset );		// cnicholson: Added unrestored var
 
+	splineBanking = Parametric_SplineBanking( );
 }
 
 /*
@@ -396,6 +432,7 @@ void idPhysics_Parametric::SetSpline( idCurve_Spline<idVec3> *spline, int accelT
 		current.splineInterpolate.Init( startTime, accelTime, decelTime, endTime - startTime, 0.0f, length );
 	}
 	current.useSplineAngles = useSplineAngles;
+	splineBanking = Parametric_SplineBanking( );
 	Activate();
 }
 
@@ -581,6 +618,9 @@ bool idPhysics_Parametric::Evaluate( int timeStepMSec, int endTimeMSec ) {
 		current.localOrigin = current.spline->GetCurrentValue( t );
 		if ( current.useSplineAngles ) {
 			current.localAngles = current.spline->GetCurrentFirstDerivative( t ).ToAngles();
+			if ( splineBanking ) {
+				current.localAngles.roll = Parametric_SplineRoll( current.spline, t, current.localOrigin );
+			}
 		}
 	} else if ( current.linearInterpolation.GetDuration() != 0 ) {
 		current.localOrigin += current.linearInterpolation.GetCurrentValue( endTimeMSec );

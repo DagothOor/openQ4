@@ -527,6 +527,12 @@ void rvVehiclePosition::RunPostPhysics ( void ) {
 		mParts[i]->RunPostPhysics ( );
 	}
 	
+	for ( i = 0; i < mWeapons.Num(); i ++ ) {
+		if ( i != mCurrentWeapon ) {
+			mWeapons[i]->RunInactivePostPhysics ( );
+		}
+	}
+
 	if ( mCurrentWeapon >= 0 ) {
 		mWeapons[mCurrentWeapon]->RunPostPhysics ( );
 	}

@@ -993,6 +993,34 @@
   Stock content is unchanged: the new keys appear only in Awakening defs and
   maps, and the jam lock defaults on only under `q4xbase`.
   `awakening_gameplay_contract.py` pins the fixes.
+- [x] A vehicle passes script `guiEvent` and `setGuiParm` calls to its HUD as
+  well as its world screens, as the expansion's `rvVehicle` did, so m07's race
+  clock counts down on the speeder bike's HUD and m06's MCC health shows on the
+  MCC cannon's; retail's vehicle HUDs handle none of what retail scripts send.
+  Vehicles also write `vehicle_speed` to their own screens (the speeder bike's
+  speedometer) and `playerYaw` to their HUD, as the player HUD now does too (the
+  m03 ship panels' view cones), and the cursor gets `npc_talkstate` (the
+  "wait" talk crosshair). Awakening spline movers that face along their spline
+  bank into its turns (`g_splineRollLookahead` 500, `g_splineRollMultiplier`
+  2.0, the expansion's defaults), so m03's and m06's fighters bank; retail's
+  movers never did and do not. The goob gun's alternate fire holds the player's
+  `fire_alt` pose, and m09's non-quad flares warn once per material instead of
+  about 340 times a second. Audits of the expansion's frame commands, actions,
+  script events, states and single-player GUI state find nothing else missing.
+  Player-facing summary: [The Awakening on openQ4](../user/awakening.md).
+- [x] The pulse cannon's barrels move as the expansion's code moved them: a
+  shot kicks the firing barrel back and it slides home, and both fold out and
+  down while the missiles are selected. Unselected vehicle weapons now get a
+  per-frame call, `rvVehiclePart::RunInactivePostPhysics` (empty by default, so
+  retail vehicles are unchanged), through which the cannon cools and the
+  missile launcher reloads while the other weapon is selected, as in the
+  expansion. Retail's cinematic harvester, which m07's races use as a
+  background monster, no longer tries to turn in place without turn
+  animations: it logged a warning every 250 ms (158 in one race) and skipped
+  that think's attack checks; retail's combat harvesters, which have the
+  animations, turn as before. A probe of m07_race1 to the end of m09 found the
+  races' timed lockdown gates fail the mission by design, and only content
+  holes past them (recorded in the support plan).
 
 ## Unreleased — `idtech5-ui` development
 

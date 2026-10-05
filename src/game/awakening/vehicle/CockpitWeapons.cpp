@@ -250,6 +250,19 @@ static const char * const PULSE_STARTUP_SOUND	= "space_cannon_startup";
 static const char * const PULSE_SELECT_SOUND	= "space_cannon_switch_to_turret";
 static const char * const MISSILE_SELECT_SOUND	= "space_cannon_switch_to_missiles";
 
+// the pulse cannon's barrels, moved as the expansion's code moved them. The
+// offsets are along the turret pivot's axes, the fold angles about the
+// barrel's own.
+static const char * const PULSE_BARREL_JOINTS[ 2 ] = { "pulse_cannon_l", "pulse_cannon_r" };
+static const float BARREL_RECOIL			= 32.0f;	// units back along the aim
+static const float BARREL_KICK_SEC			= 0.01f;
+static const float BARREL_RETURN_SEC		= 0.1f;
+static const float BARREL_FOLD_SEC			= 0.4f;
+static const float BARREL_UNFOLD_SEC		= 0.2f;
+static const float BARREL_FOLD_OFFSET		= 12.0f;	// out to the side, and down
+static const float BARREL_FOLD_ANGLE_X		= -7.5f;	// degrees about the barrel joint's x axis, then
+static const float BARREL_FOLD_ANGLE_Z		= -15.0f;	// its z axis: on the turret model, a twist and a dip
+
 /*
 ================
 riVehicleCockpitWeapon::riVehicleCockpitWeapon
@@ -496,6 +509,12 @@ idActor *riVehicleCockpitWeapon::FindEnemyNearCrosshair( float coneDegrees ) con
 	"fx_closestTargetGuide", or "fx_outOfRangeGuide" when it is beyond the
 	cannon's "range".
 
+	The cannon's two barrels are the vehicle's "pulse_cannon_l" and
+	"pulse_cannon_r" joints, moved as the expansion moved them: a shot kicks
+	the barrel that fired back along the aim and it slides home, and while the
+	missiles are selected both barrels fold out and down out of the way. The
+	cannon keeps cooling while the missiles are selected.
+
 ===============================================================================
 */
 
@@ -510,14 +529,34 @@ public:
 	void					Restore( idRestoreGame *savefile );
 
 	virtual void			RunPostPhysics( void );
+	virtual void			RunInactivePostPhysics( void );
 	virtual void			Activate( bool activate );
 	virtual bool			Fire( void );
 	virtual void			Select( bool select );
 
 private:
+	enum barrelKick_t {
+		BARREL_AT_REST,
+		BARREL_KICKING,
+		BARREL_RETURNING
+	};
+
+	struct barrel_t {
+		jointHandle_t		joint;
+		barrelKick_t		kickState;
+		float				kick;		// 0 at rest .. 1 kicked fully back
+		float				fold;		// 0 in the firing pose .. 1 folded away
+	};
+
+	static const int		NUM_BARRELS = 2;
+
 	void					Cool( void );
 	void					UpdateTargeting( void );
 	void					StopGuides( void );
+	void					UpdateBarrels( void );
+
+	barrel_t				barrels[ NUM_BARRELS ];
+	bool					barrelsSettled;	// not saved: a spawned or loaded cannon settles its barrels to the selection
 
 	float					heat;
 	float					heatPerShot;
@@ -551,6 +590,13 @@ riVCWPulseCannon::riVCWPulseCannon( void ) {
 	overheated = false;
 	attackHeld = false;
 	range = 0.0f;
+	for ( int i = 0; i < NUM_BARRELS; i++ ) {
+		barrels[ i ].joint = INVALID_JOINT;
+		barrels[ i ].kickState = BARREL_AT_REST;
+		barrels[ i ].kick = 0.0f;
+		barrels[ i ].fold = 0.0f;
+	}
+	barrelsSettled = false;
 }
 
 /*
@@ -683,10 +729,79 @@ void riVCWPulseCannon::UpdateTargeting( void ) {
 
 /*
 ================
+riVCWPulseCannon::UpdateBarrels
+
+Kicks run out and home; the fold follows the selection, out while the missiles
+are selected. A spawned or loaded cannon starts with its barrels settled.
+================
+*/
+void riVCWPulseCannon::UpdateBarrels( void ) {
+	rvVehicle *vehicle = parent.GetEntity();
+	idAnimator *animator = vehicle != NULL ? vehicle->GetAnimator() : NULL;
+	const float foldTarget = ( position != NULL && position->GetActiveWeapon() != this ) ? 1.0f : 0.0f;
+	const float step = MS2SEC( gameLocal.msec );
+
+	for ( int i = 0; i < NUM_BARRELS; i++ ) {
+		barrel_t &barrel = barrels[ i ];
+		if ( !barrelsSettled ) {
+			barrel.joint = animator != NULL ? animator->GetJointHandle( PULSE_BARREL_JOINTS[ i ] ) : INVALID_JOINT;
+			barrel.fold = foldTarget;
+		}
+
+		if ( barrel.kickState == BARREL_KICKING ) {
+			barrel.kick += step / BARREL_KICK_SEC;
+			if ( barrel.kick >= 1.0f ) {
+				barrel.kick = 1.0f;
+				barrel.kickState = BARREL_RETURNING;
+			}
+		} else if ( barrel.kickState == BARREL_RETURNING ) {
+			barrel.kick -= step / BARREL_RETURN_SEC;
+			if ( barrel.kick <= 0.0f ) {
+				barrel.kick = 0.0f;
+				barrel.kickState = BARREL_AT_REST;
+			}
+		}
+
+		if ( barrel.fold < foldTarget ) {
+			barrel.fold = Min( foldTarget, barrel.fold + step / BARREL_FOLD_SEC );
+		} else if ( barrel.fold > foldTarget ) {
+			barrel.fold = Max( foldTarget, barrel.fold - step / BARREL_UNFOLD_SEC );
+		}
+
+		if ( animator == NULL || barrel.joint == INVALID_JOINT ) {
+			continue;
+		}
+		const float side = ( i == 0 ) ? 1.0f : -1.0f;
+		idMat3 axis;
+		axis.Identity();
+		axis.RotateAbsolute( 0, barrel.fold * BARREL_FOLD_ANGLE_X );
+		axis.RotateRelative( 2, barrel.fold * BARREL_FOLD_ANGLE_Z );
+		animator->SetJointPos( barrel.joint, JOINTMOD_LOCAL,
+			idVec3( -BARREL_RECOIL * barrel.kick, side * BARREL_FOLD_OFFSET * barrel.fold, -BARREL_FOLD_OFFSET * barrel.fold ) );
+		animator->SetJointAxis( barrel.joint, JOINTMOD_LOCAL, axis );
+	}
+	barrelsSettled = true;
+}
+
+/*
+================
+riVCWPulseCannon::RunInactivePostPhysics
+================
+*/
+void riVCWPulseCannon::RunInactivePostPhysics( void ) {
+	if ( IsActive() ) {
+		Cool();
+	}
+	UpdateBarrels();
+}
+
+/*
+================
 riVCWPulseCannon::RunPostPhysics
 ================
 */
 void riVCWPulseCannon::RunPostPhysics( void ) {
+	UpdateBarrels();
 	Cool();
 
 	const bool attack = ( position->mInputCmd.buttons & BUTTON_ATTACK ) != 0;
@@ -712,8 +827,12 @@ bool riVCWPulseCannon::Fire( void ) {
 	}
 
 	PlaySound( "snd_fire_stereo" );
+	const int firingBarrel = jointIndex;	// the launch joints alternate between the barrels
 	if ( !rvVehicleWeapon::Fire() ) {
 		return false;
+	}
+	if ( firingBarrel >= 0 && firingBarrel < NUM_BARRELS ) {
+		barrels[ firingBarrel ].kickState = BARREL_KICKING;
 	}
 
 	heat += heatPerShot;
@@ -781,8 +900,8 @@ void riVCWPulseCannon::Select( bool select ) {
 
 	The rocket screen counts a five-rocket magazine: empty on firing
 	(rocketEmpty), one more rocket loaded every "loaddelay" seconds
-	(firstRocketLoaded ... fifthRocketLoaded). It is a display: the rate of
-	fire is the weapon's "firedelay".
+	(firstRocketLoaded ... fifthRocketLoaded), also while the pulse cannon is
+	selected. It is a display: the rate of fire is the weapon's "firedelay".
 
 ===============================================================================
 */
@@ -798,6 +917,7 @@ public:
 	void					Restore( idRestoreGame *savefile );
 
 	virtual void			RunPostPhysics( void );
+	virtual void			RunInactivePostPhysics( void );
 	virtual void			Activate( bool activate );
 	virtual bool			Fire( void );
 	virtual void			Select( bool select );
@@ -1057,6 +1177,19 @@ void riVCWMissileTurret::RunPostPhysics( void ) {
 		UpdateTargeting();
 	}
 	rvVehicleWeapon::RunPostPhysics();
+}
+
+/*
+================
+riVCWMissileTurret::RunInactivePostPhysics
+
+The magazine reloads while the pulse cannon is selected too.
+================
+*/
+void riVCWMissileTurret::RunInactivePostPhysics( void ) {
+	if ( IsActive() ) {
+		UpdateMagazine();
+	}
 }
 
 /*

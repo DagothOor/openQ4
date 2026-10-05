@@ -1,0 +1,227 @@
+# Quake 4: The Awakening on openQ4
+
+The Awakening is the Quake 4 expansion Raven Software and Ritual Entertainment
+never released. Justin Marshall recovered and published its alpha. openQ4 plays
+its single-player campaign from your copy of that content, using openQ4's own
+engine and game code. It never loads the expansion's leaked game DLL, and
+openQ4 ships none of the expansion's files.
+
+This page lists what openQ4 changes to make the campaign run and play as it was
+built. To install the content and choose the campaign, see
+[Campaigns](campaigns.md).
+
+## At a glance
+
+- All 13 campaign maps load, play through and save, from the trenches of
+  Stranarus to the Valkaryne's lair.
+- Every new monster, weapon and vehicle is rebuilt in openQ4's game code: the
+  Pain Lord, the Valkaryne, the Tank, the Retch and the walker; the goob,
+  freeze and spike guns; the speeder bike and the dropship and MCC cannons.
+- Where the alpha's own code or content stopped something working as designed,
+  openQ4 fixes it. The Valkaryne finale, the beach's death-ray turret, the Pain
+  Lord's weak spot and Retches that could never move are the biggest examples
+  (see [Fixes to the alpha](#fixes-to-the-alpha)).
+- The alpha is unfinished. Some sounds, effects, models and scripted voice-over
+  are missing from the content itself (see [Known issues in the
+  alpha](#known-issues-in-the-alpha)).
+- The campaign works with openQ4's other features. VR seats you in the
+  expansion's turrets and on its speeder bike.
+- Multiplayer is not part of this integration. Multiplayer always runs on stock
+  Quake 4 content.
+
+## Running the campaign
+
+What openQ4 changed so the expansion's content loads at all:
+
+- **Campaign choice.** Single Player → Campaign offers The Awakening once
+  openQ4 finds its content. Choosing it mounts the expansion (`q4xbase`) and
+  restarts the filesystem, so its overrides never leak into Quake 4, Arena or
+  multiplayer. Its saves and settings live apart, under `fs_savepath/q4xbase`.
+  `fs_awakeningpath` points openQ4 at content kept outside the Quake 4 folder.
+- **Retail definitions kept.** The expansion ships files with retail's names
+  (`def/debris.def`, `def/ai/persona.def`, `sound/music.sndshd` and others)
+  that would replace retail's whole file. openQ4 also reads the retail file
+  underneath, so the 239 definitions they would hide survive: debris in death
+  effects, marine chatter and the menu music.
+- **New file formats.** Version 2 collision models (the expansion's model clip
+  hulls), DXT3 textures, textures named `.jpg` that only exist as `.tga` (the
+  Valkaryne's limbs), and music under `sound/music/`, which now follows the
+  music volume.
+- **Menus and controls.** The menu commands its interface uses
+  (`GetCVarValue`, `SetCVarValue`, `GetVecCVarValue`) work, and its
+  `_altattack` binding is the alternate-fire button.
+- **Ten new script events** for its levels: docking the Valkaryne, the Pain
+  Lord's processing machine, the speeder bike's speed, gravity and boost, and
+  two control-point queries.
+- **Saves.** The expansion's marines have up to 540 animations, more than the
+  256 openQ4's saves allowed for retail's models (at most 244), so a game saved
+  on the prison level (m04) never loaded. It does now, on every campaign map.
+- **A quieter log.** Flares in the Valkaryne's lair (m09) are not the single
+  quads the flare effect expects, which logged a warning hundreds of times a
+  second; openQ4 now warns once per material.
+
+## What openQ4 rebuilt
+
+| Element | Where | What it does |
+|---|---|---|
+| Fire vents (`func_fire_volume`) | m01, m01 part 2, m02, m03, m04 | Burn whoever touches them. Only the freeze gun puts them out, dimming their firelight as they shrink. |
+| Walker | m01, m01 part 2, m06 invasion | A marine walker on your side; it fights the Strogg with its cannon and rockets. |
+| Retch | m01 part 2, m02, m04, m05, m08 | Buffs a Strogg ally's damage or defence with a beam, fires lightning and dodges. |
+| Tank | m02, m04, m08, m09 | Railgun, machine gun and shoulder rockets behind armour. Break its launcher to stop the rockets and its chest plate to reach its heart, which takes six times the damage. |
+| Pain Lord | m05 | A boss who works a marine-processing machine. Two half-processed marines on his back shield him; he is stunned at two thirds and one third of his health, and enraged when the marines are torn off. If he finishes his third processing, Strauss dies and the mission fails. |
+| Valkaryne | m08 (set piece), m09 | Docked on her platform she is untouchable and fires death-ray volleys; on foot she uses her railguns, grenades, rockets and claws. |
+| Goob gun | m02 on | Its globs burn what they hit, and burst into six smaller globs. Its flamethrower mod adds a short-range alternate fire. |
+| Freeze gun | player arsenal | Chills enemies until they slow, freezes them solid as they die, and shatters them. Its ammo regenerates. |
+| Spike gun | player arsenal | Spikes stick where they land, stay in the enemies they kill and pin the bodies to the wall behind. Its scope mod fires explosive spikes. |
+| Turrets | m01, m01 part 2, m04, m05 | Tighten their aim the longer they fire, pause before re-firing, and security cameras sweep. |
+| Speeder bike | m06 invasion, the three m07 races | Hover bike with a gun and a crouch-activated boost. |
+| Dropship and MCC cannons | m03, m06 invasion | Pulse cannon that overheats, and a missile launcher whose rockets lock on and home. |
+| Scripted targets | m03, m04, m06, m07, m09 | Set pieces name the only enemies an AI may fight (`onlyTarget`), so scripted battles stay on script. |
+
+Rebuilding these went down to the details the levels rely on, matching the
+alpha's own code:
+
+- **Enemies.** Elite grunts pull you in with a gravity well, elite gunners
+  spray their fire, and tactical elites throw grenades. The Tank scatters its
+  rockets once its launcher smokes, plays its own break effects, and loses its
+  rockets when either armoured part breaks. Space flyers (m03) follow their
+  attack runs instead of turning to face you, climbing, diving and banking with
+  them, and the fighters of m03 and m06 bank into their turns.
+- **Weapons.** The goob gun bursts into its six globs and shows its
+  flamethrower's flame, with your character holding the flamethrower's pose.
+  Spikes knock bodies back towards the wall they pin them to, and keep their
+  launch orientation in flight.
+- **Vehicles.** The dropship and MCC cannons keep their gunner from harm,
+  recentre when you leave, and freeze during m03's scripted ammo jam. Their
+  pulse cannon's barrels kick back with every shot and fold out of the way while
+  the missiles are selected; the cannon keeps cooling and the launcher keeps
+  reloading while you use the other weapon. The speeder bike turns, grips and
+  hovers as built: a held turn holds steady, the bike reaches racing speed, and
+  it keeps itself off walls and tunnel ceilings. The race tracks' rough edges
+  (m07) slow it, their damage going to its shield. The races are against the
+  clock: if a lockdown gate closes before you get past it, the mission fails.
+- **Displays.** The race clock counts down on the speeder bike's HUD (m07), the
+  MCC's health shows on the MCC cannon's (m06), the bike's dashboard shows your
+  speed, the dropship status panel's view cone turns with your view (m03), and
+  the crosshair shows when a marine is too busy to talk.
+
+## Fixes to the alpha
+
+The alpha's own code or content kept these from working as designed. openQ4
+fixes them:
+
+- **The Valkaryne finale (m09).** Her docking script was never run, so she
+  never took her platform: she wandered harmlessly and could be killed before
+  the Makron sphere, skipping the fight built around it. She now docks behind
+  the sphere's shields and fires death-ray volleys, with about two seconds of
+  warning; the arena's pillars give cover. When the sphere dies she undocks and
+  fights on foot, and her death starts the escape.
+- **The beach's death-ray turret (m01 part 2)** is meant to bombard the
+  landing, never you. It no longer turns on you after the turrets beside it,
+  a sound or a hit draw its attention.
+- **The Pain Lord's head.** His definition makes headshots count double, but
+  listed his legs over the whole body, so in the alpha every headshot counted
+  as a leg hit (three quarters damage). Headshots now count.
+- **The Retch** asks for navigation data that two levels lack (Trianfac and
+  Stranarus Trench part 2), so four of them could never move. They now walk.
+- **The goob gun's burning effect** shows from the first hit; the alpha looked
+  it up in the wrong place.
+
+## Deliberate differences from the alpha
+
+openQ4 departs from the alpha's behaviour in a few places, to keep your
+settings or to keep the game fair:
+
+- **Your field of view is yours.** The alpha's m03 gun scripts and the speeder
+  bike's boost rewrote your FOV setting. openQ4 applies those changes to the
+  view only and never touches the setting.
+- **Burns merge.** In the alpha one goob shot could light up to eight separate
+  fires on one enemy, about 350 damage. Each enemy now carries one burn, which
+  later hits feed up to three times its strength.
+- **The Retch's fallback.** Where a level lacks the Retch's own navigation
+  data, it uses the next size down, which its body fits.
+- **An overheating pulse cannon says so.** The alpha's overheat signal reached
+  none of the cannon's screens; openQ4 shows their JAMMED warning while it
+  cools, and never clears the scripted ammo jam's warning early.
+- **The ammo-jam lock and banking flight paths** apply only in The Awakening.
+  Stock Quake 4 vehicles and flight paths are unchanged.
+- **Multiplayer-only content stays out.** The vampiric gauntlet mod belongs to
+  the expansion's multiplayer arsenal and has no effect in the campaign.
+
+## Known issues in the alpha
+
+These are holes in the expansion's content itself; no code change can supply
+them, and openQ4 ships no replacement assets:
+
+- Some voice-over never plays: thirteen scripted voice-over files are never
+  loaded by the expansion's own scripts.
+- About 100 sound references, a handful of in-map screens, effects, models and
+  one teleport-dropper animation are missing from the content.
+- m09's Valkaryne arena script shows and hides a force field and shield pieces
+  the map does not contain, and the Tank's rocket flash names a joint its
+  model lacks. Both only lose an effect. m09's frosty-breath effects name a
+  joint only marines have, and two of its triggers call script functions the
+  developers commented out or never wrote.
+- m04's starting inventory names a goob-gun mod that does not exist, and the
+  m08 and m09 developer give lists contain typos. m08's first-lab scientists
+  call a script function (`FirstLabCleared`) the map never defines; nothing
+  waits on it.
+- The background harvester in the m07 races is retail's cinematic one, which
+  has no turning animations. openQ4 no longer has it try to turn, which flooded
+  the log and cost it its attacks.
+- On the first race map (`m07_race1`) the navigation data for its scripted
+  gunner and fighters is empty, so they stay where they are placed.
+- The expansion's code also has a grapple hook, a concussion gun, a gravity-gun
+  turret and a speeder-bike spline tether, but nothing in its campaign gives or
+  places them, so openQ4 does not implement them. The objective compass is
+  switched off in the expansion's own HUD.
+
+## For modders and testers
+
+The keys openQ4 honours in Awakening content (none appears in retail Quake 4,
+so stock behaviour is unchanged):
+
+| Key | On | Effect |
+|---|---|---|
+| `requestDocking` | Valkaryne | Script function she runs the first time she has an enemy (any namespace). |
+| `ignoreplayer` | AI | Never takes the player as an enemy, by any route. |
+| `q4xElite` | grunt, gunner | Gravity well (`gravityWellTime`) or spread fire. |
+| `grenadedelay` | tactical elites | Milliseconds between offhand grenades (needs a `throw_grenade` animation). |
+| `canturn`, `noFaceEnemy` | Strogg flyer | Keep a flyer on its spline's heading. |
+| `useMasterPitch`, `useMasterRoll` | bound AI | Climb, dive and bank with the mover it is bound to. |
+| `impactEntity` | projectile | The burst it spawns on impact (also read as `def_impactEntity`). |
+| `impactForce`, `applyRotation` | projectile | Push on what it hits; keep the launch orientation. |
+| `fx_altmuzzleflash`, `useAltFireAnim` | weapon | Alternate-fire muzzle flash and player torso pose. |
+| `useGodMode`, `resetOnExit` | vehicle | Protect the gunner; recentre turrets when the gunner leaves. |
+| `allowDisableMovement` | vehicle turret | `0` keeps a turret turning while its vehicle's movement is disabled. |
+| `velscale` | `trigger_hurt` | Scales the speed of what it hurts. |
+| `traceRelativeDirection` | hover pad | Probe along a direction in the vehicle's frame. |
+| `g_splineRollLookahead`, `g_splineRollMultiplier` (settings) | spline movers | How far ahead a mover facing along its spline looks to bank into a turn (500 is five spline points), and how hard it banks (2.0). |
+
+A vehicle also passes script `guiEvent` and `setGuiParm` calls to its HUD as
+well as its world screens, as the expansion's code did. The pulse cannon moves
+its vehicle's `pulse_cannon_l` and `pulse_cannon_r` joints; a vehicle without
+them fires the same, with still barrels.
+
+Cheat commands and settings that help when testing the campaign without input:
+
+- `openq4_testInput <ms> [attack] [zoom] [run] [crouch] [jump] [forward|back|right|left <0-127>] [aim <entity>] [yaw|pitch <deg/s>] [impulse <n>]`
+  holds input on the local player for a stretch of game time, including a
+  gunner's turret aim and weapon choice.
+- `openq4_viewReport` prints your view, field of view and god mode.
+- `ai_debugActions <name|*>` prints an AI's actions and attacks, and the
+  Awakening's docking, buffs, armour breaks and freezing.
+- `damage <entity> <amount> [damage def] [joint]` hits an entity, in a chosen
+  joint's damage zone.
+- `g_debugVehicle 1` reports the cannons' overheating and missile lock;
+  `g_debugDamage 1` reports damage and burns.
+
+The development record, with the evidence behind each change, is the
+[support plan](../dev/plans/q4x-awakening.md); the original gap analysis is the
+[support audit](../dev/q4x-awakening-support-audit.md).
+
+## Credits
+
+Quake 4: The Awakening was developed by Raven Software and Ritual
+Entertainment. Justin Marshall recovered and published the expansion. openQ4's
+support for it is written independently and includes none of its content.

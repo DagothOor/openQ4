@@ -4927,6 +4927,11 @@ void idPlayer::DrawHUD( idUserInterface *_hud ) {
 
 		UpdateHudStats( _hud );
 
+		// openQ4: The Awakening's HUD turns its ship panel's view cone (m03, on
+		// foot) by the view's yaw, which its game code wrote here; retail's HUD
+		// does not read it
+		_hud->SetStateFloat( "playerYaw", ( renderView != NULL ? renderView->viewaxis : firstPersonViewAxis ).ToAngles().yaw );
+
 		if ( focusBrackets ) {
 			// If 2d_calc is still true then the gui didnt render so we can abandon it
 			if ( focusBrackets->State().GetBool( "2d_calc" ) ) {
@@ -8571,6 +8576,10 @@ void idPlayer::UpdateFocusCharacter( idEntity* newEnt ) {
 	} else {
 		cursor->SetStateInt( "npc_medictech", 0 );
 	}
+	// openQ4: The Awakening's cursor shows a "wait" talk crosshair while the
+	// character's talk state is TALK_WAIT, which its game code passed here;
+	// retail's cursor does not read it
+	cursor->SetStateInt( "npc_talkstate", newEnt->IsType( idAI::GetClassType() ) ? static_cast<idAI *>( newEnt )->GetTalkState() : TALK_NEVER );
 }
 /*
 ================

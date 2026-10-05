@@ -155,6 +155,10 @@ private:
 	idMat3					axisOffset;
 // RAVEN END
 
+	// openQ4: bank into a spline's turns (The Awakening only; set when a spline
+	// starts and on restore, not saved)
+	bool					splineBanking;
+
 private:
 	bool					TestIfAtRest( void ) const;
 	void					Rest( void );

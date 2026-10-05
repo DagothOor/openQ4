@@ -125,6 +125,7 @@ When upgrading, replace the whole openQ4 package rather than individual files.
 
 - [Getting Started](docs/user/getting-started.md) - system requirements, installation, first launch, and common setup questions
 - [Campaigns](docs/user/campaigns.md) - choosing Quake 4 or The Awakening, installing expansion content, and separate saves
+- [The Awakening](docs/user/awakening.md) - what openQ4 fixes and changes in the expansion's campaign
 - [Client Settings Guide](docs/user/client-settings.md) - where to find the most useful in-game settings
 - [Server Setup Guide](docs/user/server-setup.md) - dedicated server setup and common server variables
 - [Server and Remote-Console Security](docs/user/server-security.md) - secure remote console and password handling

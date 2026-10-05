@@ -160,7 +160,10 @@ stateResult_t idPlayer::State_Torso_Fire ( const stateParms_t& parms ) {
 	switch ( parms.stage ) {
 		// Start the firing sequence
 		case TORSO_FIRE_INIT:
- 			PlayAnim ( ANIMCHANNEL_TORSO, "fire", parms.blendFrames );
+			// openQ4: The Awakening's goob gun ("useAltFireAnim") holds its
+			// flamethrower pose ("fire_alt") while its alternate fire is on,
+			// as its game code did. No retail weapon sets the key.
+ 			PlayAnim ( ANIMCHANNEL_TORSO, ( weapon && weapon->wsfl.zoom && weapon->spawnArgs.GetBool( "useAltFireAnim" ) ) ? "fire_alt" : "fire", parms.blendFrames );
 			pfl.weaponFired = false;
 			return SRESULT_STAGE(TORSO_FIRE_WAIT);
 		

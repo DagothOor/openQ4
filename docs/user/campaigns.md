@@ -52,6 +52,8 @@ The expansion is unfinished alpha content. Finding the required files confirms
 a structurally usable installation, not completed missions or restored missing
 assets. Some authored script calls, imagery and unfinished features remain
 content limitations, recorded in the [support audit](../dev/q4x-awakening-support-audit.md).
+[The Awakening on openQ4](awakening.md) lists what openQ4 changes and fixes in
+the campaign, and the alpha's known content issues.
 
 ## Console use
 

@@ -13,15 +13,25 @@ Phase 5).
 - Elite grunts pull with a gravity well, elite gunners spread their fire,
   tactical elites throw grenades (only their model has the animation).
 - Space flyers honour canturn, noFaceEnemy and their master's pitch and roll.
-- The goob gun's burst, burn stacking and alternate muzzle flash; the spike's
-  impact force and fixed rotation.
+- The goob gun's burst, burn stacking, alternate muzzle flash and the player's
+  flamethrower pose; the spike's impact force and fixed rotation.
+- A vehicle's script GUI events and parameters reach its HUD, as the
+  expansion's rvVehicle passed them on: m07's race timer and m06's MCC health.
+- m09's flares are not single quads; R_FlareDeform warns once per material.
 - The cockpit cannons' god mode, reset on exit, jam lock (on by default only
   under q4xbase) and the jam text the overheat must not clear early.
+- The pulse cannon's barrels kick and fold as the expansion moved them, and
+  unselected vehicle weapons get a per-frame call (empty for retail's), so the
+  cannon cools and the launcher reloads while the other is selected.
+- Retail's cinematic harvester, which has no turn animations, never tries to
+  turn in place (m07's races).
 - Map scripts' g_fov becomes a view offset, and m07's hurt volumes honour
   velscale.
 - The headless test tools the audit relies on stay registered.
 
-None of these keys appears in retail content, so stock behaviour is unchanged.
+None of these keys appears in retail content, so stock behaviour is unchanged,
+except that retail's cinematic harvester no longer fails a turn it has no
+animation for.
 """
 
 from __future__ import annotations
@@ -163,6 +173,22 @@ def check_flyers() -> None:
     think = function_body(read("src/game/ai/AI.cpp"), "void idAI::Think(", "AI.cpp")
     require_order(think, ('spawnArgs.GetBool( "useMasterPitch" )', "GetMasterPosition(",
                           'spawnArgs.GetBool( "useMasterRoll" )'), "idAI::Think")
+    # the movers they ride bank into turns, in the Awakening only
+    parametric = read("src/game/physics/Physics_Parametric.cpp")
+    require(function_body(parametric, "static bool Parametric_SplineBanking(", "Physics_Parametric.cpp"),
+            'GetActiveGameDir(), "q4xbase"', "Parametric_SplineBanking")
+    require_order(function_body(parametric, "static float Parametric_SplineRoll(", "Physics_Parametric.cpp"),
+                  ("g_splineRollLookahead.GetFloat()", "t + 2.0f * lookahead", "idMath::TWO_PI",
+                   "-g_splineRollMultiplier.GetFloat() * RAD2DEG( turn )"), "Parametric_SplineRoll")
+    require_order(function_body(parametric, "bool idPhysics_Parametric::Evaluate(", "Physics_Parametric.cpp"),
+                  ("current.useSplineAngles", "if ( splineBanking )", "Parametric_SplineRoll("),
+                  "idPhysics_Parametric::Evaluate")
+    for signature in ("void idPhysics_Parametric::SetSpline(", "void idPhysics_Parametric::Restore("):
+        require(function_body(parametric, signature, "Physics_Parametric.cpp"),
+                "splineBanking = Parametric_SplineBanking( );", signature)
+    cvars = read("src/game/gamesys/SysCvar.cpp")
+    require(cvars, '"g_splineRollLookahead",	"500"', "SysCvar.cpp")
+    require(cvars, '"g_splineRollMultiplier",	"2.0"', "SysCvar.cpp")
 
 
 def check_weapons() -> None:
@@ -178,6 +204,10 @@ def check_weapons() -> None:
             "ApplyImpactForce(ent, collision, dir);", "idProjectile::Collide")
     require(read("src/game/Game_local.cpp"), '!kv->GetKey().Icmp( "impactEntity" )', "Game_local.cpp")
     require(read("src/game/Weapon.cpp"), '"fx_altmuzzleflash"', "Weapon.cpp")
+    torso_fire = function_body(read("src/game/Player_States.cpp"), "stateResult_t idPlayer::State_Torso_Fire (",
+                               "Player_States.cpp")
+    require_order(torso_fire, ("weapon->wsfl.zoom", 'GetBool( "useAltFireAnim" )', '"fire_alt"'),
+                  "idPlayer::State_Torso_Fire")
     dot = read("src/game/awakening/DOTEntity.cpp")
     require(dot, "static const int DOT_MAX_STACKS = 3;", "DOTEntity.cpp")
     require(function_body(dot, "bool DOTEntity::FeedExistingBurn(", "DOTEntity.cpp"), "DOT_MAX_STACKS",
@@ -203,6 +233,67 @@ def check_vehicles() -> None:
     cool = function_body(cockpit, "void riVCWPulseCannon::Cool(", "CockpitWeapons.cpp")
     require_order(cool, ("vehicle->IsShootingEnabled()", 'SendGuiEvent( "JammedTextOff" )'),
                   "riVCWPulseCannon::Cool")
+    # a vehicle's script GUI events and parameters reach its HUD (m07's race timer, m06's MCC health)
+    vehicle = read("src/game/vehicle/Vehicle.cpp")
+    table = vehicle[vehicle.find("CLASS_DECLARATION( idActor, rvVehicle )"):]
+    table = table[:table.find("END_CLASS")]
+    require(table, "EVENT( EV_GuiEvent,", "rvVehicle event table")
+    require(table, "EVENT( EV_SetGuiParm,", "rvVehicle event table")
+    require_order(function_body(vehicle, "void rvVehicle::Event_GuiEvent (", "Vehicle.cpp"),
+                  ("hud->HandleNamedEvent ( eventName );", "idEntity::Event_GuiEvent ( eventName );"),
+                  "rvVehicle::Event_GuiEvent")
+    require_order(function_body(vehicle, "void rvVehicle::Event_SetGuiParm (", "Vehicle.cpp"),
+                  ("hud->SetStateString ( key, value );", "hud->StateChanged ( gameLocal.time );",
+                   "idEntity::Event_SetGuiParm ( key, value );"), "rvVehicle::Event_SetGuiParm")
+    # the HUD's view cone and the bike's speedometer
+    require_order(function_body(vehicle, "void rvVehicle::UpdateHUD (", "Vehicle.cpp"),
+                  ('gui->SetStateFloat ( "playerYaw",', "GetLinearVelocity().Length() * 0.25f",
+                   'renderEntity.gui[ i ]->SetStateInt ( "vehicle_speed", speed );'), "rvVehicle::UpdateHUD")
+    player_source = read("src/game/Player.cpp")
+    require(function_body(player_source, "void idPlayer::DrawHUD(", "Player.cpp"),
+            '_hud->SetStateFloat( "playerYaw",', "idPlayer::DrawHUD")
+    # the cursor's "wait" talk crosshair
+    require_order(function_body(player_source, "void idPlayer::UpdateFocusCharacter(", "Player.cpp"),
+                  ('cursor->SetStateInt( "npc_talkstate",', "GetTalkState()"), "idPlayer::UpdateFocusCharacter")
+
+
+def check_cockpit_barrels() -> None:
+    # every weapon but the selected one gets a per-frame call, as in the expansion's
+    # rvVehiclePosition; it is empty by default, so retail vehicles are unchanged
+    require(read("src/game/vehicle/VehicleParts.h"), "virtual void				RunInactivePostPhysics	( void ) { }",
+            "rvVehiclePart")
+    post = function_body(read("src/game/vehicle/VehiclePosition.cpp"), "void rvVehiclePosition::RunPostPhysics (",
+                         "VehiclePosition.cpp")
+    require_order(post, ("if ( i != mCurrentWeapon ) {", "mWeapons[i]->RunInactivePostPhysics ( );",
+                         "mWeapons[mCurrentWeapon]->RunPostPhysics ( );"), "rvVehiclePosition::RunPostPhysics")
+    cockpit = read("src/game/awakening/vehicle/CockpitWeapons.cpp")
+    require(cockpit, '{ "pulse_cannon_l", "pulse_cannon_r" }', "CockpitWeapons.cpp")
+    for constant in ("BARREL_RECOIL			= 32.0f", "BARREL_KICK_SEC			= 0.01f", "BARREL_RETURN_SEC		= 0.1f",
+                     "BARREL_FOLD_SEC			= 0.4f", "BARREL_UNFOLD_SEC		= 0.2f", "BARREL_FOLD_OFFSET		= 12.0f",
+                     "BARREL_FOLD_ANGLE_X		= -7.5f", "BARREL_FOLD_ANGLE_Z		= -15.0f"):
+        require(cockpit, constant, "CockpitWeapons.cpp barrel constants")
+    barrels = function_body(cockpit, "void riVCWPulseCannon::UpdateBarrels(", "CockpitWeapons.cpp")
+    require_order(barrels, ("position->GetActiveWeapon() != this ) ? 1.0f : 0.0f",
+                            "axis.RotateAbsolute( 0, barrel.fold * BARREL_FOLD_ANGLE_X );",
+                            "axis.RotateRelative( 2, barrel.fold * BARREL_FOLD_ANGLE_Z );",
+                            "SetJointPos( barrel.joint, JOINTMOD_LOCAL,", "SetJointAxis( barrel.joint, JOINTMOD_LOCAL, axis );"),
+                  "riVCWPulseCannon::UpdateBarrels")
+    fire = function_body(cockpit, "bool riVCWPulseCannon::Fire(", "CockpitWeapons.cpp")
+    require_order(fire, ("const int firingBarrel = jointIndex;", "rvVehicleWeapon::Fire()",
+                         "barrels[ firingBarrel ].kickState = BARREL_KICKING;"), "riVCWPulseCannon::Fire")
+    require_order(function_body(cockpit, "void riVCWPulseCannon::RunInactivePostPhysics(", "CockpitWeapons.cpp"),
+                  ("Cool();", "UpdateBarrels();"), "riVCWPulseCannon::RunInactivePostPhysics")
+    require(function_body(cockpit, "void riVCWMissileTurret::RunInactivePostPhysics(", "CockpitWeapons.cpp"),
+            "UpdateMagazine();", "riVCWMissileTurret::RunInactivePostPhysics")
+
+
+def check_harvester_turn() -> None:
+    # retail's cinematic harvester (m07's background one) has no turn animations
+    actions = function_body(read("src/game/ai/Monster_Harvester.cpp"), "bool rvMonsterHarvester::CheckActions (",
+                            "Monster_Harvester.cpp")
+    require_order(actions, ('HasAnim ( ANIMCHANNEL_TORSO, "turn_90_lt" )', 'PerformAction ( "Torso_TurnLeft90"',
+                            'HasAnim ( ANIMCHANNEL_TORSO, "turn_90_rt" )', 'PerformAction ( "Torso_TurnRight90"'),
+                  "rvMonsterHarvester::CheckActions")
 
 
 def check_scripts_and_triggers() -> None:
@@ -213,6 +304,17 @@ def check_scripts_and_triggers() -> None:
             '"openq4_scriptFovOffset"', "idPlayer::DefaultFov")
     hurt = function_body(read("src/game/Trigger.cpp"), "void idTrigger_Hurt::Event_Touch(", "Trigger.cpp")
     require_order(hurt, ('spawnArgs.GetFloat( "velscale", "1" )', "SetLinearVelocity("), "idTrigger_Hurt::Event_Touch")
+
+
+def check_flare_warning() -> None:
+    # m09's flares are not single quads: warn once per material, not every frame
+    deform = read("src/renderer/tr_deform.cpp")
+    # the last definition is the live one; an older copy sits in a comment above it
+    active = deform[deform.rfind("static void R_FlareDeform( drawSurf_t *surf )"):]
+    body = function_body(active, "static void R_FlareDeform( drawSurf_t *surf )", "tr_deform.cpp")
+    require_order(body, ("tri->numVerts != 4 || tri->numIndexes != 6",
+                         "warnedMaterials.FindIndex( surf->material ) < 0", "warnedMaterials.Append( surf->material );",
+                         '"R_FlareDeform: not a single quad (%s)"'), "R_FlareDeform")
 
 
 def check_test_tools() -> None:
@@ -243,7 +345,10 @@ def main() -> int:
     check_flyers()
     check_weapons()
     check_vehicles()
+    check_cockpit_barrels()
+    check_harvester_turn()
     check_scripts_and_triggers()
+    check_flare_warning()
     check_test_tools()
     print("awakening_gameplay_contract: ok")
     return 0

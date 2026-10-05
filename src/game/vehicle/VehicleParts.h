@@ -33,6 +33,8 @@ public:
 	virtual void				RunPrePhysics		( void ) { }
 	virtual void				RunPhysics			( void ) { }
 	virtual void				RunPostPhysics		( void ) { }
+								// each frame, for a position's weapons other than the selected one
+	virtual void				RunInactivePostPhysics	( void ) { }
 
 	bool						IsLeft				( void ) const;
 	bool						IsFront				( void ) const;
