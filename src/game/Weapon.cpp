@@ -3212,12 +3212,17 @@ void rvWeapon::Attack( bool altAttack, int num_attacks, float spread, float fuse
 	}
 
 	// Muzzle flash effect
+	// openQ4: a zoomed (alternate) attack uses "fx_altmuzzleflash" when the weapon
+	// has one, as The Awakening's game code did: its goob gun's flamethrower mod
+	// fires unseen projectiles and the flame is this effect
+	const char *flashKey = ( wsfl.zoom && weaponDef->dict.GetString( "fx_altmuzzleflash" )[0] ) ? "fx_altmuzzleflash" : "fx_muzzleflash";
+	const char *worldFlashKey = ( wsfl.zoom && weaponDef->dict.GetString( "fx_altmuzzleflash_world" )[0] ) ? "fx_altmuzzleflash_world" : "fx_muzzleflash_world";
 	bool muzzleTint = spawnArgs.GetBool( "muzzleTint" );
-	rvClientEffect* muzzleFlashEffect = viewModel->PlayEffect( "fx_muzzleflash", flashJointView, false, vec3_origin, false, EC_IGNORE, muzzleTint ? owner->GetHitscanTint() : vec4_one );
+	rvClientEffect* muzzleFlashEffect = viewModel->PlayEffect( flashKey, flashJointView, false, vec3_origin, false, EC_IGNORE, muzzleTint ? owner->GetHitscanTint() : vec4_one );
 	DisableViewEffectWeaponDepthHack( muzzleFlashEffect );
 
 	if ( worldModel && flashJointWorld != INVALID_JOINT ) {
-		worldModel->PlayEffect( gameLocal.GetEffect( weaponDef->dict, "fx_muzzleflash_world" ), flashJointWorld, vec3_origin, mat3_identity, false, vec3_origin, false, EC_IGNORE, muzzleTint ? owner->GetHitscanTint() : vec4_one );
+		worldModel->PlayEffect( gameLocal.GetEffect( weaponDef->dict, worldFlashKey ), flashJointWorld, vec3_origin, mat3_identity, false, vec3_origin, false, EC_IGNORE, muzzleTint ? owner->GetHitscanTint() : vec4_one );
 	}
 
 	owner->WeaponFireFeedback( &weaponDef->dict );

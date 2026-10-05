@@ -2026,6 +2026,10 @@ void Cmd_EvaluateMPPerformance_f( const idCmdArgs &args ) {
 // RAVEN END
 
 
+// openQ4: scripted input for headless tests, in Player.cpp
+void Cmd_OpenQ4TestInput_f( const idCmdArgs &args );
+void Cmd_OpenQ4ViewReport_f( const idCmdArgs &args );
+
 /*
 ==================
 Cmd_OpenQ4LaunchTestProjectile_f
@@ -2081,15 +2085,16 @@ void Cmd_OpenQ4LaunchTestProjectile_f( const idCmdArgs &args ) {
 Cmd_Damage_f
 
 Damages the specified entity, with damage_moverCrush (1 point) unless a
-damage def is named, in which case <damage> scales it
+damage def is named, in which case <damage> scales it. A joint name after the
+def lands the hit there, in that joint's damage zone.
 ==================
 */
 void Cmd_Damage_f( const idCmdArgs &args ) {
 	if ( !gameLocal.GetLocalPlayer() || !gameLocal.CheatsOk( false ) ) {
 		return;
 	}
-	if ( args.Argc() != 3 && args.Argc() != 4 ) {
-		gameLocal.Printf( "usage: damage <name of entity to damage> <damage> [damage def]\n" );
+	if ( args.Argc() < 3 || args.Argc() > 5 ) {
+		gameLocal.Printf( "usage: damage <name of entity to damage> <damage> [damage def] [joint]\n" );
 		return;
 	}
 
@@ -2099,13 +2104,22 @@ void Cmd_Damage_f( const idCmdArgs &args ) {
 		return;
 	}
 
-	const char *damageDefName = args.Argc() == 4 ? args.Argv( 3 ) : "damage_moverCrush";
+	const char *damageDefName = args.Argc() >= 4 ? args.Argv( 3 ) : "damage_moverCrush";
 	if ( !gameLocal.FindEntityDefDict( damageDefName, false ) ) {
 		gameLocal.Printf( "damage def '%s' not found\n", damageDefName );
 		return;
 	}
 
-	ent->Damage( gameLocal.world, gameLocal.world, idVec3( 0, 0, 1 ), damageDefName, atof( args.Argv( 2 ) ), INVALID_JOINT );
+	jointHandle_t joint = INVALID_JOINT;
+	if ( args.Argc() == 5 ) {
+		joint = ent->GetAnimator() ? ent->GetAnimator()->GetJointHandle( args.Argv( 4 ) ) : INVALID_JOINT;
+		if ( joint == INVALID_JOINT ) {
+			gameLocal.Printf( "'%s' has no joint '%s'\n", ent->GetName(), args.Argv( 4 ) );
+			return;
+		}
+	}
+
+	ent->Damage( gameLocal.world, gameLocal.world, idVec3( 0, 0, 1 ), damageDefName, atof( args.Argv( 2 ) ), joint );
 }
 
 
@@ -4294,6 +4308,8 @@ void idGameLocal::InitConsoleCommands( void ) {
 	cmdSystem->AddCommand( "spawn",					Cmd_Spawn_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"spawns a game entity", idCmdSystem::ArgCompletion_Decl<DECL_ENTITYDEF> );
 	cmdSystem->AddCommand( "damage",				Cmd_Damage_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"apply damage to an entity", idGameLocal::ArgCompletion_EntityName );
 	cmdSystem->AddCommand( "openq4_launchTestProjectile", Cmd_OpenQ4LaunchTestProjectile_f, CMD_FL_GAME|CMD_FL_CHEAT, "launch a projectile from the player's eye at an entity, for headless tests" );
+	cmdSystem->AddCommand( "openq4_testInput",	Cmd_OpenQ4TestInput_f,		CMD_FL_GAME|CMD_FL_CHEAT,	"holds buttons and movement on the local player for headless tests" );
+	cmdSystem->AddCommand( "openq4_viewReport",	Cmd_OpenQ4ViewReport_f,		CMD_FL_GAME|CMD_FL_CHEAT,	"prints the local player's view, field of view and god mode for headless tests" );
 	cmdSystem->AddCommand( "remove",				Cmd_Remove_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"removes an entity", idGameLocal::ArgCompletion_EntityName );
 	cmdSystem->AddCommand( "killMonsters",			Cmd_KillMonsters_f,			CMD_FL_GAME|CMD_FL_CHEAT,	"removes all monsters" );
 	cmdSystem->AddCommand( "killMoveables",			Cmd_KillMovables_f,			CMD_FL_GAME|CMD_FL_CHEAT,	"removes all moveables" );

@@ -32,6 +32,15 @@ private:
 	int					standingMeleeNoAttackTime;
 	int					rageThreshold;
 
+	// openQ4: The Awakening's elite grunt ("q4xElite"); read from the def,
+	// so not saved, and a restored grunt may pull at once
+	bool				q4xElite;
+	float				gravityWellMinRange;
+	float				gravityWellMaxRange;
+	int					nextGravityWellTime;
+
+	void				ReadEliteSettings	( void );
+
 	void				RageStart			( void );
 	void				RageStop			( void );
 	
@@ -39,6 +48,10 @@ private:
 	stateResult_t		State_Torso_Enrage		( const stateParms_t& parms );
 	stateResult_t		State_Torso_Pain		( const stateParms_t& parms );
 	stateResult_t		State_Torso_LeapAttack	( const stateParms_t& parms );
+	stateResult_t		State_Torso_GravityWell	( const stateParms_t& parms );
+
+	// Frame commands
+	stateResult_t		Frame_GravityWell		( const stateParms_t& parms );
 
 	CLASS_STATES_PROTOTYPE ( rvMonsterGrunt );
 };
@@ -53,6 +66,28 @@ rvMonsterGrunt::rvMonsterGrunt
 */
 rvMonsterGrunt::rvMonsterGrunt ( void ) {
 	standingMeleeNoAttackTime = 0;
+	q4xElite = false;
+	gravityWellMinRange = 0.0f;
+	gravityWellMaxRange = 0.0f;
+	nextGravityWellTime = 0;
+}
+
+/*
+================
+rvMonsterGrunt::ReadEliteSettings
+
+openQ4: The Awakening's elite grunt pulls its enemy in with a gravity well
+("gravity_well", whose frame command Frame_GravityWell does the pull) when
+the enemy is in sight between "gravityWellMinRange" and
+"gravityWellMaxRange" away, at most once every "gravityWellTime" seconds.
+The defaults are its game code's.
+================
+*/
+void rvMonsterGrunt::ReadEliteSettings ( void ) {
+	q4xElite = spawnArgs.GetBool ( "q4xElite" );
+	gravityWellMinRange = spawnArgs.GetFloat ( "gravityWellMinRange", "128" );
+	gravityWellMaxRange = spawnArgs.GetFloat ( "gravityWellMaxRange", "256" );
+	nextGravityWellTime = 0;
 }
 
 /*
@@ -67,6 +102,8 @@ void rvMonsterGrunt::Spawn ( void ) {
 	actionMeleeMoveAttack.Init	( spawnArgs, "action_meleeMoveAttack",	NULL,				AIACTIONF_ATTACK );
 	actionChaingunAttack.Init	( spawnArgs, "action_chaingunAttack",	NULL,				AIACTIONF_ATTACK );
 	actionLeapAttack.Init		( spawnArgs, "action_leapAttack",		"Torso_LeapAttack",	AIACTIONF_ATTACK );
+
+	ReadEliteSettings ( );
 
 	// Enraged to start?
 	if ( spawnArgs.GetBool ( "preinject" ) ) {
@@ -98,6 +135,8 @@ void rvMonsterGrunt::Restore ( idRestoreGame *savefile ) {
 
 	savefile->ReadInt( rageThreshold );
 	savefile->ReadInt( standingMeleeNoAttackTime );
+
+	ReadEliteSettings ( );
 }
 
 /*
@@ -140,6 +179,14 @@ rvMonsterGrunt::CheckActions
 ================
 */
 bool rvMonsterGrunt::CheckActions ( void ) {
+	// The Awakening's elite grunt pulls a visible enemy in with its gravity well
+	if ( q4xElite && enemy.fl.visible && gameLocal.time > nextGravityWellTime ) {
+		if ( !enemy.range || ( enemy.range >= gravityWellMinRange && enemy.range <= gravityWellMaxRange ) ) {
+			PerformAction ( "Torso_GravityWell", 0, false );
+			return true;
+		}
+	}
+
 	// If our health is below the rage threshold then enrage
 	if ( health < rageThreshold ) { 
 		PerformAction ( "Torso_Enrage", 4, true );
@@ -244,6 +291,9 @@ CLASS_STATES_DECLARATION ( rvMonsterGrunt )
 	STATE ( "Torso_Enrage",		rvMonsterGrunt::State_Torso_Enrage )
 	STATE ( "Torso_Pain",		rvMonsterGrunt::State_Torso_Pain )
 	STATE ( "Torso_LeapAttack",	rvMonsterGrunt::State_Torso_LeapAttack )
+	STATE ( "Torso_GravityWell",	rvMonsterGrunt::State_Torso_GravityWell )
+
+	STATE ( "Frame_GravityWell",	rvMonsterGrunt::Frame_GravityWell )
 END_CLASS_STATES
 
 /*
@@ -315,4 +365,48 @@ stateResult_t rvMonsterGrunt::State_Torso_LeapAttack ( const stateParms_t& parms
 			return SRESULT_WAIT;
 	}
 	return SRESULT_ERROR;
+}
+
+/*
+================
+rvMonsterGrunt::State_Torso_GravityWell
+================
+*/
+stateResult_t rvMonsterGrunt::State_Torso_GravityWell ( const stateParms_t& parms ) {
+	enum {
+		STAGE_ANIM,
+		STAGE_ANIM_WAIT,
+	};
+	switch ( parms.stage ) {
+		case STAGE_ANIM:
+			TurnToward ( enemy.lastKnownPosition );
+			DisableAnimState ( ANIMCHANNEL_LEGS );
+			PlayAnim ( ANIMCHANNEL_TORSO, "gravity_well", parms.blendFrames );
+			nextGravityWellTime = gameLocal.time + SEC2MS ( spawnArgs.GetFloat ( "gravityWellTime", "2" ) );
+			return SRESULT_STAGE ( STAGE_ANIM_WAIT );
+
+		case STAGE_ANIM_WAIT:
+			if ( AnimDone ( ANIMCHANNEL_TORSO, 4 ) ) {
+				return SRESULT_DONE;
+			}
+			return SRESULT_WAIT;
+	}
+	return SRESULT_ERROR;
+}
+
+/*
+================
+rvMonsterGrunt::Frame_GravityWell
+
+Yanks the enemy towards the grunt, faster the farther it is (6.1 units a
+second for every unit of distance), when it is still within reach.
+================
+*/
+stateResult_t rvMonsterGrunt::Frame_GravityWell ( const stateParms_t& parms ) {
+	idEntity* enemyEnt = enemy.ent;
+	if ( enemyEnt && enemy.range <= gravityWellMaxRange ) {
+		const idVec3 toEnemy = enemyEnt->GetPhysics()->GetOrigin() - physicsObj.GetOrigin();
+		enemyEnt->GetPhysics()->SetLinearVelocity( toEnemy * -6.1f );
+	}
+	return SRESULT_OK;
 }

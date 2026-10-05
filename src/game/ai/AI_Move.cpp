@@ -2516,9 +2516,12 @@ idAI::FlyTurn
 =====================
 */
 void idAI::FlyTurn( void ) {
-	if ( move.moveCommand == MOVE_FACE_ENEMY || ForceFaceEnemy() ) {
+	// openQ4: "noFaceEnemy" flyers (The Awakening's) turn with their flight,
+	// never towards their enemy or goal, as its game code did
+	const bool faceTargets = !spawnArgs.GetBool( "noFaceEnemy" );
+	if ( faceTargets && ( move.moveCommand == MOVE_FACE_ENEMY || ForceFaceEnemy() ) ) {
 		TurnToward( enemy.lastKnownPosition );
-	} else if ( ( move.moveCommand == MOVE_FACE_ENTITY ) && move.goalEntity.GetEntity() ) {
+	} else if ( faceTargets && ( move.moveCommand == MOVE_FACE_ENTITY ) && move.goalEntity.GetEntity() ) {
 		TurnToward( move.goalEntity.GetEntity()->GetPhysics()->GetOrigin() );
 	} else if ( focusType != AIFOCUS_NONE && move.fl.allowDirectional ) {
 		DirectionalTurnToward ( currentFocusPos );

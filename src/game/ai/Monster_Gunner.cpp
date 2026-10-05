@@ -31,6 +31,7 @@ protected:
 	int					nextShootTime;
 	int					attackRate;
 	jointHandle_t		attackJoint;
+	bool				q4xElite;				// openQ4: The Awakening's elite gunner, from the def (not saved)
 
 	virtual void		OnStopMoving					( aiMoveCommand_t oldMoveCommand );
 	virtual bool		UpdateRunStatus					( void );
@@ -56,6 +57,7 @@ private:
 	// Torso States
 	stateResult_t		State_Torso_NailgunAttack		( const stateParms_t& parms );
 	stateResult_t		State_Torso_MovingRangedAttack	( const stateParms_t& parms );
+	stateResult_t		State_Torso_SpreadFire			( const stateParms_t& parms );
 
 	CLASS_STATES_PROTOTYPE ( rvMonsterGunner );
 };
@@ -70,6 +72,7 @@ rvMonsterGunner::rvMonsterGunner
 */
 rvMonsterGunner::rvMonsterGunner ( ) {
 	nextShootTime = 0;
+	q4xElite = false;
 }
 
 
@@ -79,6 +82,7 @@ void rvMonsterGunner::InitSpawnArgsVariables( void )
 	nailgunMaxShots = spawnArgs.GetInt ( "action_nailgunAttack_maxshots", "20" );
 	attackRate = SEC2MS( spawnArgs.GetFloat( "attackRate", "0.3" ) );
 	attackJoint = animator.GetJointHandle( spawnArgs.GetString( "attackJoint", "muzzle" ) );
+	q4xElite = spawnArgs.GetBool( "q4xElite" );
 }
 /*
 ================
@@ -321,6 +325,7 @@ bool rvMonsterGunner::Pain( idEntity *inflictor, idEntity *attacker, int damage,
 CLASS_STATES_DECLARATION ( rvMonsterGunner )
 	STATE ( "Torso_NailgunAttack",		rvMonsterGunner::State_Torso_NailgunAttack )
 	STATE ( "Torso_MovingRangedAttack",	rvMonsterGunner::State_Torso_MovingRangedAttack )
+	STATE ( "Torso_SpreadFire",			rvMonsterGunner::State_Torso_SpreadFire )
 END_CLASS_STATES
 
 /*
@@ -405,6 +410,13 @@ stateResult_t rvMonsterGunner::State_Torso_NailgunAttack ( const stateParms_t& p
 				return SRESULT_DONE;
 			}
 
+			// openQ4: The Awakening's elite gunner mostly sweeps a fan of nails
+			// across its target instead, as its game code did
+			if ( q4xElite && gameLocal.random.RandomInt ( 100 ) > 25 ) {
+				PostAnimState ( ANIMCHANNEL_TORSO, "Torso_SpreadFire", parms.blendFrames );
+				return SRESULT_DONE;
+			}
+
 			shots = (gameLocal.random.RandomInt ( nailgunMaxShots - nailgunMinShots ) + nailgunMinShots) * combat.aggressiveScale;
 			DisableAnimState ( ANIMCHANNEL_LEGS );
 			shotsFired = 0;
@@ -445,4 +457,31 @@ stateResult_t rvMonsterGunner::State_Torso_NailgunAttack ( const stateParms_t& p
 			return SRESULT_WAIT;				
 	}
 	return SRESULT_ERROR; 
+}
+
+/*
+================
+rvMonsterGunner::State_Torso_SpreadFire
+
+openQ4: The Awakening's elite gunner sweeps nine nails left or right.
+================
+*/
+stateResult_t rvMonsterGunner::State_Torso_SpreadFire ( const stateParms_t& parms ) {
+	enum {
+		STAGE_INIT,
+		STAGE_WAIT
+	};
+	switch ( parms.stage ) {
+		case STAGE_INIT:
+			DisableAnimState ( ANIMCHANNEL_LEGS );
+			PlayAnim ( ANIMCHANNEL_TORSO, gameLocal.random.RandomInt ( 100 ) > 50 ? "range_attack_spread_fire_right" : "range_attack_spread_fire_left", parms.blendFrames );
+			return SRESULT_STAGE ( STAGE_WAIT );
+
+		case STAGE_WAIT:
+			if ( AnimDone ( ANIMCHANNEL_TORSO, parms.blendFrames ) ) {
+				return SRESULT_DONE;
+			}
+			return SRESULT_WAIT;
+	}
+	return SRESULT_ERROR;
 }

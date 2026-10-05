@@ -19,8 +19,20 @@
 	The expansion looked "fx_dmgeffect" up on the victim, where no def sets it,
 	so its first flame never showed; the damage def is where the key lives.
 
+	A victim burns once. The expansion spawned a new entity for every hit, and
+	one goob shot - its glob, the splash and the six globs it bursts into -
+	lit up to eight fires on a victim, each spreading over the whole body and
+	together dealing about 350 damage. Here a second hit on a victim that is
+	already burning feeds the burn it has instead: the burn lasts "lifetime"
+	from the newest hit, and grows by the new hit's "damagePerSecond", up to
+	DOT_MAX_STACKS times its own. A dead victim keeps burning but takes no
+	more damage.
+
 ===============================================================================
 */
+
+// how many hits' worth of damage one burn can carry
+static const int DOT_MAX_STACKS = 3;
 
 class DOTEntity : public idEntity {
 public:
@@ -42,7 +54,11 @@ protected:
 	idEntityPtr<idAnimatedEntity>	victim;
 	jointHandle_t			hitJoint;
 
+	bool					merged;					// fed a burn the victim already had, and is going away (not saved)
+
 private:
+							// feeds a burn of this class the victim already has; true when it did
+	bool					FeedExistingBurn( idAnimatedEntity *target );
 	void					DealDamage( idAnimatedEntity *ent );
 
 	idEntityPtr<idEntity>	attacker;
@@ -61,9 +77,36 @@ DOTEntity::DOTEntity
 */
 DOTEntity::DOTEntity( void ) {
 	hitJoint = INVALID_JOINT;
+	merged = false;
 	damagePerSecond = 0.0f;
 	endTime = 0;
 	lastDamageTime = 0;
+}
+
+/*
+================
+DOTEntity::FeedExistingBurn
+================
+*/
+bool DOTEntity::FeedExistingBurn( idAnimatedEntity *target ) {
+	for ( idEntity *ent = gameLocal.spawnedEntities.Next(); ent != NULL; ent = ent->spawnNode.Next() ) {
+		if ( ent == this || ent->GetType() != GetType() ) {
+			continue;
+		}
+		DOTEntity *burn = static_cast<DOTEntity *>( ent );
+		if ( burn->merged || burn->victim.GetEntity() != target || burn->endTime <= gameLocal.time ) {
+			continue;
+		}
+
+		const float maxRate = burn->spawnArgs.GetFloat( "damagePerSecond" ) * DOT_MAX_STACKS;
+		burn->damagePerSecond = Min( burn->damagePerSecond + damagePerSecond, Max( maxRate, burn->damagePerSecond ) );
+		burn->endTime = Max( burn->endTime, endTime );
+		if ( g_debugDamage.GetBool() ) {
+			gameLocal.Printf( "%s '%s' feeds '%s' on '%s': %.0f damage a second\n", GetClassname(), name.c_str(), burn->name.c_str(), target->name.c_str(), burn->damagePerSecond );
+		}
+		return true;
+	}
+	return false;
 }
 
 /*
@@ -85,6 +128,13 @@ void DOTEntity::Spawn( void ) {
 	idAnimatedEntity *target = victim.GetEntity();
 	if ( target == NULL ) {
 		gameLocal.Warning( "%s '%s' has no victim", GetClassname(), name.c_str() );
+		PostEventMS( &EV_Remove, 0 );
+		return;
+	}
+
+	// a victim that is already burning burns harder instead of twice
+	if ( FeedExistingBurn( target ) ) {
+		merged = true;
 		PostEventMS( &EV_Remove, 0 );
 		return;
 	}
@@ -168,6 +218,15 @@ second since the last tick.
 void DOTEntity::DealDamage( idAnimatedEntity *ent ) {
 	int elapsed = gameLocal.time - lastDamageTime;
 	if ( elapsed < 1000 ) {
+		return;
+	}
+
+	// a corpse burns on without being hurt again
+	if ( ent->health <= 0 && ent->IsType( idActor::GetClassType() ) ) {
+		lastDamageTime = gameLocal.time;
+		if ( gameLocal.time >= endTime ) {
+			PostEventMS( &EV_Remove, 0 );
+		}
 		return;
 	}
 
@@ -257,6 +316,9 @@ FireDOTEntity::Spawn
 ================
 */
 void FireDOTEntity::Spawn( void ) {
+	if ( merged ) {
+		return;
+	}
 	numSpreads = spawnArgs.GetInt( "numfirespreads" );
 	spreadInterval = spawnArgs.GetInt( "firespreadtime" );
 	nextSpreadTime = gameLocal.time + spreadInterval;

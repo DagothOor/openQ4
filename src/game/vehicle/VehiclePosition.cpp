@@ -234,6 +234,15 @@ bool rvVehiclePosition::SetDriver ( idActor* driver ) {
 		if ( mDriverAnim.Length() ) {
 			mDriver->GetAnimator()->CycleAnim( ANIMCHANNEL_ALL, mDriver->GetAnimator()->GetAnim( mDriverAnim ), gameLocal.time, 0 );
 		}
+
+		// openQ4: The Awakening's turret cockpits ("useGodMode": m03's dropship
+		// cannons, m06's MCC cannons) keep their exposed gunner from harm, as its
+		// game code did. The vehicle remembers giving it, so leaving does not take
+		// away god mode a player already had.
+		if ( mParent->spawnArgs.GetBool( "useGodMode" ) && mDriver->IsType( idPlayer::GetClassType() ) && !static_cast<idPlayer *>( mDriver.GetEntity() )->godmode ) {
+			static_cast<idPlayer *>( mDriver.GetEntity() )->godmode = true;
+			mParent->spawnArgs.SetBool( "openq4_gaveGodMode", true );
+		}
 	} else {
 		if ( !fl.driverVisible ) {
 			mDriver->Show ( );
@@ -241,6 +250,11 @@ bool rvVehiclePosition::SetDriver ( idActor* driver ) {
 			// Take damage again
 			mDriver->fl.takedamage = true;
 		}		
+
+		if ( mParent->spawnArgs.GetBool( "openq4_gaveGodMode" ) && mDriver->IsType( idPlayer::GetClassType() ) ) {
+			static_cast<idPlayer *>( mDriver.GetEntity() )->godmode = false;
+			mParent->spawnArgs.SetBool( "openq4_gaveGodMode", false );
+		}
 
 		// Driver is no longer bound to the vehicle
 		mDriver->Unbind();

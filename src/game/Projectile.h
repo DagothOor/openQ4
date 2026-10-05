@@ -67,6 +67,7 @@ public :
 	
 protected:
 	void					SpawnImpactEntities(const trace_t& collision, const idVec3 projectileDirection);
+	void					ApplyImpactForce	( idEntity *ent, const trace_t &collision, const idVec3 &dir );
 	void					ReadStickSettings	( void );
 	void					HoldStuck			( void );
 	void					Stick				( const trace_t &collision, idEntity *ent, const idVec3 &dir );
@@ -114,6 +115,7 @@ protected:
 	int						pinClipModelId;		// where it was hit
 	idVec3					pinDir;				// the direction it was travelling
 	idEntityPtr<idEntity>	passedThrough;		// the actor a passThroughActors projectile last hurt (not saved)
+	bool					applyRotation;		// "applyRotation": turn the model to its flight each frame (not saved)
 	
 	idStr					impactEntity;
 	int						numImpactEntities;

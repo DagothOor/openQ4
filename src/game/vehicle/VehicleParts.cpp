@@ -1561,6 +1561,7 @@ rvVehicleTurret::rvVehicleTurret
 rvVehicleTurret::rvVehicleTurret ( void ) {
 	moveTime  = 0;
 	soundPart = -1;
+	allowDisableMovement = false;
 }
 
 /*
@@ -1588,6 +1589,8 @@ void rvVehicleTurret::Spawn ( void ) {
 		
 	currentAngles.Zero ( );
 
+	ReadMovementLock ( );
+
 	//the parent is *not* stuck on spawn.
 	parentStuck = false;
 
@@ -1603,6 +1606,22 @@ void rvVehicleTurret::Spawn ( void ) {
 
 /*
 =====================
+rvVehicleTurret::ReadMovementLock
+
+openQ4: In The Awakening a turret stops following its gunner while its
+vehicle's movement is disabled, unless its def says "allowDisableMovement"
+"0" (the walker's cockpit); m03's script jams the dropship's top gun this way.
+Quake 4's turrets never did this, so outside the Awakening campaign the key
+defaults to off and stock vehicles behave as they always have.
+=====================
+*/
+void rvVehicleTurret::ReadMovementLock ( void ) {
+	const bool awakening = !idStr::Icmp( fileSystem->GetActiveGameDir(), "q4xbase" );
+	allowDisableMovement = spawnArgs.GetBool( "allowDisableMovement", awakening ? "1" : "0" );
+}
+
+/*
+=====================
 rvVehicleTurret::Activate
 =====================
 */
@@ -1613,6 +1632,11 @@ void rvVehicleTurret::Activate ( bool active ) {
 		static_cast<rvVehicleSound*>(position->GetPart(soundPart))->Stop ( );
 	}
 
+	// openQ4: The Awakening's "resetOnExit" vehicles (its space cannons) swing
+	// their turrets back to rest when the gunner leaves, as its game code did
+	if ( !active && parent.GetEntity() && parent->spawnArgs.GetBool( "resetOnExit" ) ) {
+		currentAngles.Zero ( );
+	}
 }
 
 /*
@@ -1627,7 +1651,7 @@ void rvVehicleTurret::RunPostPhysics ( void ) {
 	idMat3		mat[3];
 	idAngles	oldAngles;
 
-	if ( IsActive ( ) ) {	
+	if ( IsActive ( ) && ( !allowDisableMovement || !parent.GetEntity() || parent->IsMovementEnabled ( ) ) ) {	
 		for ( i = 0; i < 3; i++ ) {
 			inputAngles[i] = SHORT2ANGLE( position->mInputCmd.angles[i] );
 			lastInputAngles[i] = SHORT2ANGLE( position->mOldInputCmd.angles[i] );
@@ -1826,6 +1850,8 @@ void rvVehicleTurret::Restore ( idRestoreGame* savefile ) {
 	savefile->ReadFloat ( turnRate );
 
 	savefile->ReadInt ( soundPart );	
+
+	ReadMovementLock ( );
 }
 
 /***********************************************************************

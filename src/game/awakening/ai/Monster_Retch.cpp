@@ -16,7 +16,12 @@
 	(fx_buffBeam) runs from its DM_muzzle1 joint to the ally. The buff lasts
 	until either of them dies.
 
-	It also strafes (action_strafe) while it has a clear shot.
+	It also strafes (action_strafe) while it has a clear shot, and holds its
+	lightning while it rushes in to melee.
+
+	Its def asks for aas96, which m02_trianfac does not ship and
+	m01_stranarus_trench2 ships empty, so the four retches there could never
+	move. Its bounds fit aas48, so a retch without its own AAS walks on that.
 
 ===============================================================================
 */
@@ -34,6 +39,7 @@ public:
 protected:
 	virtual bool			CheckActions( void );
 	virtual void			OnDeath( void );
+	virtual void			OnTacticalChange( aiTactical_t oldTactical );
 
 private:
 	bool					FindBuffTarget( void );
@@ -41,6 +47,7 @@ private:
 	void					ClearBuff( void );
 	void					UpdateBuffBeam( void );
 	void					StopBuffBeam( void );
+	void					UseFallbackAAS( void );
 
 	bool					CheckAction_Strafe( rvAIAction *action, int animNum );
 
@@ -65,6 +72,10 @@ END_CLASS_STATES
 static const char * const RETCH_DEFENSE_OVERLAY = "common/defense_boost_overlay";
 static const char * const RETCH_DAMAGE_OVERLAY = "common/damage_boost_overlay";
 static const float RETCH_BEAM_RANGE = 4096.0f;
+static const char * const RETCH_FALLBACK_AAS = "aas48";
+
+// AI_Move.cpp
+bool ValidForBounds( const idAASSettings *settings, const idBounds &bounds );
 
 /*
 ================
@@ -83,6 +94,28 @@ riMonsterRetch::Spawn
 void riMonsterRetch::Spawn( void ) {
 	actionStrafe.Init( spawnArgs, "action_strafe", NULL, 0 );
 	buffTarget = NULL;
+	UseFallbackAAS();
+}
+
+/*
+================
+riMonsterRetch::UseFallbackAAS
+
+idAI's Spawn and Restore leave the AAS unset when the map lacks the def's.
+================
+*/
+void riMonsterRetch::UseFallbackAAS( void ) {
+	if ( aas != NULL ) {
+		return;
+	}
+	idAAS *fallback = gameLocal.GetAAS( RETCH_FALLBACK_AAS );
+	const idAASSettings *settings = fallback != NULL ? fallback->GetSettings() : NULL;
+	if ( settings == NULL || !ValidForBounds( settings, physicsObj.GetBounds() ) ) {
+		return;
+	}
+	aas = fallback;
+	physicsObj.SetMaxStepHeight( settings->maxStepHeight );
+	gameLocal.DPrintf( "%s: navigating with %s\n", name.c_str(), RETCH_FALLBACK_AAS );
 }
 
 /*
@@ -108,6 +141,8 @@ void riMonsterRetch::Restore( idRestoreGame *savefile ) {
 	buffTarget.Restore( savefile );
 	savefile->ReadBool( defenseBuff );
 
+	UseFallbackAAS();
+
 	if ( buffTarget.GetEntity() != NULL ) {
 		ApplyBuff( buffTarget.GetEntity() );
 	}
@@ -119,6 +154,9 @@ riMonsterRetch::ApplyBuff
 ================
 */
 void riMonsterRetch::ApplyBuff( idAI *ally ) {
+	if ( DebugActions() ) {
+		gameLocal.Printf( "%d %s: buffs %s (%s)\n", gameLocal.time, name.c_str(), ally->GetName(), defenseBuff ? "defense" : "damage" );
+	}
 	const idMaterial *overlay;
 	if ( defenseBuff ) {
 		ally->SetDamageScales( ally->GetDamageDealtScale(), spawnArgs.GetFloat( "defenseBoostMult", "0" ) );
@@ -263,6 +301,15 @@ bool riMonsterRetch::CheckActions( void ) {
 		return true;
 	}
 	return idAI::CheckActions();
+}
+
+/*
+================
+riMonsterRetch::OnTacticalChange
+================
+*/
+void riMonsterRetch::OnTacticalChange( aiTactical_t oldTactical ) {
+	actionRangedAttack.fl.disabled = ( combat.tacticalCurrent == AITACTICAL_MELEE );
 }
 
 /*

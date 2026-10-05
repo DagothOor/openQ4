@@ -21,9 +21,10 @@ The question answered here is narrow and practical: **if a user launched openQ4 
 > `baseoq4` is searched under any mod, and the expansion's classes live in a separate
 > game-library layer (`openQ4-game-awakening`) linked with the unchanged openQ4-game
 > objects. Running the code corrected four findings below:
-> - `velScale`, `iff`, `spawn_iff`, `bindOrientied`, `canTurn`, `ignoreAAS` and
->   `ai_valkaryneShots` have no reader in the expansion's own DLL either; they are dead
->   keys, not gaps.
+> - `iff`, `spawn_iff`, `bindOrientied`, `ignoreAAS` and `ai_valkaryneShots` have no
+>   reader in the expansion's own DLL either; they are dead keys, not gaps. `velScale`
+>   and `canTurn` were first filed here too, but the October gameplay audit found their
+>   readers (the [plan's Phase 5](plans/q4x-awakening.md)).
 > - The turret keys (`dynamicAccuracy*`, `accuracyLerpTime`, `delayedTracking`,
 >   `lockDelay`, `scanAnim`) belong to the expansion's modified `rvMonsterTurret`.
 > - The "content pass" on the shadowing decl files is unnecessary: the engine now reads
@@ -356,7 +357,7 @@ Renaming the expansion's copies (e.g. `q4x_debris.def`) fixes all of these.
 files (all `*_vo.script`, 1,827 functions) are never `#include`d, so the scripted VO
 layer is dead; `m09_valkaryne.proc` was compiled from a different `.map` revision than
 its `.cm`/`.aas`; `m02_trianfac` ships no `.aas96` despite spawning `monster_q4x_retch`
-which requires it; 5 in-map GUIs, 11 effect decls, 20 ASE material names, 6 models and
+which requires it (openQ4's retches fall back to `aas48`); 5 in-map GUIs, 11 effect decls, 20 ASE material names, 6 models and
 `teleport_dropper/hide_bite.md5anim` are absent; `q4xdm7`/`8`/`9` have `mapDef`s but no
 maps; `default.cfg` sets an invalid `si_gameType` and a nonexistent `si_map`.
 

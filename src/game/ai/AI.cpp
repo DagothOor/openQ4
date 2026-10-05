@@ -54,6 +54,9 @@ idAI::idAI ( void ) {
 	frozenLocation			= INVALID_JOINT;
 	freezeOverlay			= false;
 
+	onlyTargetSubstring		= false;
+	ignorePlayer			= false;
+
 	aas						= NULL;
 	aasSensor				= NULL;
 	aasFind					= NULL;
@@ -750,6 +753,7 @@ void idAI::InitNonPersistentSpawnArgs ( void ) {
 		}
 	}
 	onlyTargetSubstring = spawnArgs.GetBool( "subStringOnlyTarget" );
+	ignorePlayer = spawnArgs.GetBool( "ignoreplayer" );
 }
 
 /*
@@ -1467,7 +1471,25 @@ void idAI::Think( void ) {
 		deltaViewAngles.Zero();
 
 		if( move.moveType != MOVETYPE_PLAYBACK ){
-			viewAxis = idAngles( 0, move.current_yaw, 0 ).ToMat3();
+			idAngles viewAngles( 0, move.current_yaw, 0 );
+
+			// openQ4: The Awakening's space flyers ride spline movers in m03's
+			// attack runs and climb and bank with them ("useMasterPitch",
+			// "useMasterRoll"), as its game code did
+			if ( GetBindMaster() && ( spawnArgs.GetBool( "useMasterPitch" ) || spawnArgs.GetBool( "useMasterRoll" ) ) ) {
+				idVec3 masterOrigin;
+				idMat3 masterAxis;
+				if ( GetMasterPosition( masterOrigin, masterAxis ) ) {
+					const idAngles masterAngles = masterAxis.ToAngles();
+					if ( spawnArgs.GetBool( "useMasterPitch" ) ) {
+						viewAngles.pitch = masterAngles.pitch;
+					}
+					if ( spawnArgs.GetBool( "useMasterRoll" ) ) {
+						viewAngles.roll = masterAngles.roll;
+					}
+				}
+			}
+			viewAxis = viewAngles.ToMat3();
 		}
 
 		if ( !move.fl.allowHiddenMove && IsHidden() ) {
@@ -1907,6 +1929,9 @@ idAI::FreezeSolid
 =====================
 */
 void idAI::FreezeSolid ( int location ) {
+	if ( DebugActions() ) {
+		gameLocal.Printf( "%d %s: frozen solid\n", gameLocal.time, name.c_str() );
+	}
 	frozenSolidTime = gameLocal.time;
 	frozenLocation = location;
 	SetFreezeFactor( 1.0f );
@@ -1932,6 +1957,9 @@ void idAI::UpdateFreeze ( void ) {
 	if ( IsFrozenSolid() ) {
 		SetFreezeFactor( 1.0f );
 		if ( gameLocal.time > frozenSolidTime + AI_FROZEN_SHATTER_DELAY || health <= 0 ) {
+			if ( DebugActions() ) {
+				gameLocal.Printf( "%d %s: shatters\n", gameLocal.time, name.c_str() );
+			}
 			frozenSolidTime = 0;
 			freezeFactor = 0.0f;
 			if ( gameLocal.FindEntityDefDict( AI_FROZEN_SHATTER_DAMAGE, false ) ) {
@@ -1956,10 +1984,22 @@ idAI::IsAllowedTarget
 "onlyTarget" (and "onlyTarget2", ...) names the only entities an AI may take as
 an enemy, for scripted fights; with "subStringOnlyTarget" a name only has to
 begin with one of them. Without the keys anything goes.
+
+"ignoreplayer" never takes a player, however the enemy reaches it (sight, a
+heard sound, a teammate's enemy, pain): m01's beach deathray turret shoots at
+the landing while the player destroys it. The Awakening's code skipped the
+player only in its sight search, so the turret could still take the player
+from the turrets beside it.
 =====================
 */
 bool idAI::IsAllowedTarget( const idEntity *ent ) const {
-	if ( ent == NULL || onlyTargets.Num() == 0 ) {
+	if ( ent == NULL ) {
+		return true;
+	}
+	if ( ignorePlayer && ent->IsType( idPlayer::GetClassType() ) ) {
+		return false;
+	}
+	if ( onlyTargets.Num() == 0 ) {
 		return true;
 	}
 	for ( int i = 0; i < onlyTargets.Num(); i++ ) {
@@ -2918,6 +2958,11 @@ idAI::Attack
 =====================
 */
 bool idAI::Attack ( const char* attackName, jointHandle_t joint, idEntity* target, const idVec3& pushVelocity ) {
+	if ( DebugActions ( ) ) {
+		gameLocal.Printf ( "%d %s: attack %s from %s at %s\n", gameLocal.time, name.c_str(), attackName,
+			joint != INVALID_JOINT ? animator.GetJointName ( joint ) : "-", target ? target->GetName ( ) : "-" );
+	}
+
 	// Get the attack dictionary
 	const idDict* attackDict;
 	attackDict = gameLocal.FindEntityDefDict ( spawnArgs.GetString ( va("def_attack_%s", attackName ) ), false );
@@ -4628,7 +4673,8 @@ idEntity *idAI::FindEnemy ( bool inFov, bool forceNearest, float maxDistSqr ){
 			continue;
 		}
 
-		// a scripted fight names its only targets ("onlyTarget")
+		// a scripted fight names its only targets ("onlyTarget"), and
+		// "ignoreplayer" never picks the player
 		if ( !IsAllowedTarget( actor ) ) {
 			continue;
 		}

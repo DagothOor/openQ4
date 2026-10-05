@@ -1108,6 +1108,7 @@ private:
 	bool					CanUseWeaponWheel( void );
 
 	void					LookAtKiller( idEntity *inflictor, idEntity *attacker );
+	void					ApplyTestInput( void );
 	void					ApplyWeaponWheelInputMask( void );
 	void					ResetWeaponWheel( bool instantRestore = false );
 	void					UpdateWeaponWheel( void );

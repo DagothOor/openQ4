@@ -11037,6 +11037,7 @@ void idPlayer::Think( void ) {
 	buttonMask &= usercmd.buttons;
 	usercmd.buttons &= ~buttonMask;
 	ApplyWeaponWheelInputMask();
+	ApplyTestInput();
 
 	HandleObjectiveInput();
 	if ( objectiveSystemOpen ) {
@@ -11373,6 +11374,189 @@ bool idPlayer::CanUseWeaponWheel( void ) {
 		!GuiActive() &&
 		!objectiveSystemOpen &&
 		!vehicleController.IsDriving();
+}
+
+/*
+===============================================================================
+
+	openq4_testInput
+
+	Scripted input for headless gameplay tests, which must never synthesise
+	real input: holds buttons and movement on the local player's usercmd for
+	a stretch of game time and can keep the view on an entity. Cheat
+	protected and never saved.
+
+===============================================================================
+*/
+
+static struct {
+	int			startTime;
+	int			endTime;
+	int			buttons;
+	signed char	forwardmove;
+	signed char	rightmove;
+	signed char	upmove;
+	idStr		aimEntity;
+	float		yawRate;		// degrees a second added to the usercmd's angles
+	float		pitchRate;
+	float		yawOffset;		// what has been added so far
+	float		pitchOffset;
+	int			impulse;		// sent once, on the test's first frame
+	bool		impulsePending;
+	int			impulseFlip;	// UCF_IMPULSE_SEQUENCE once an impulse went out: it stays
+								// flipped, so the next real usercmd is not another impulse
+} openq4TestInput;
+
+/*
+==================
+Cmd_OpenQ4TestInput_f
+
+openq4_testInput <msec> [attack] [zoom] [run] [crouch] [jump]
+	[forward|back|right|left <0-127>] [aim <entity>] [yaw|pitch <degrees a second>]
+	[impulse <n>]
+
+yaw and pitch turn the usercmd's angles, as a mouse would, so vehicle turrets
+follow them. impulse sends impulse n once (weapon n, in a vehicle too).
+
+openq4_testInput 0 releases everything.
+==================
+*/
+void Cmd_OpenQ4TestInput_f( const idCmdArgs &args ) {
+	if ( gameLocal.GetLocalPlayer() == NULL || !gameLocal.CheatsOk( false ) || args.Argc() < 2 ) {
+		gameLocal.Printf( "usage: openq4_testInput <msec> [attack] [zoom] [run] [crouch] [jump] [forward|back|right|left <0-127>] [aim <entity>] [yaw|pitch <deg/s>] [impulse <n>]\n" );
+		return;
+	}
+
+	openq4TestInput.startTime = gameLocal.time;
+	openq4TestInput.endTime = gameLocal.time + atoi( args.Argv( 1 ) );
+	openq4TestInput.buttons = 0;
+	openq4TestInput.forwardmove = 0;
+	openq4TestInput.rightmove = 0;
+	openq4TestInput.upmove = 0;
+	openq4TestInput.aimEntity.Clear();
+	openq4TestInput.yawRate = 0.0f;
+	openq4TestInput.pitchRate = 0.0f;
+	openq4TestInput.yawOffset = 0.0f;
+	openq4TestInput.pitchOffset = 0.0f;
+	openq4TestInput.impulsePending = false;
+
+	for ( int i = 2; i < args.Argc(); i++ ) {
+		const char *arg = args.Argv( i );
+		const char *value = i + 1 < args.Argc() ? args.Argv( i + 1 ) : "";
+		const signed char amount = (signed char)idMath::ClampInt( 0, 127, atoi( value ) );
+		if ( !idStr::Icmp( arg, "attack" ) ) {
+			openq4TestInput.buttons |= BUTTON_ATTACK;
+		} else if ( !idStr::Icmp( arg, "zoom" ) ) {
+			openq4TestInput.buttons |= BUTTON_ZOOM;
+		} else if ( !idStr::Icmp( arg, "run" ) ) {
+			openq4TestInput.buttons |= BUTTON_RUN;
+		} else if ( !idStr::Icmp( arg, "crouch" ) ) {
+			openq4TestInput.upmove = -127;
+		} else if ( !idStr::Icmp( arg, "jump" ) ) {
+			openq4TestInput.upmove = 127;
+		} else if ( !idStr::Icmp( arg, "forward" ) ) {
+			openq4TestInput.forwardmove = amount;
+			i++;
+		} else if ( !idStr::Icmp( arg, "back" ) ) {
+			openq4TestInput.forwardmove = -amount;
+			i++;
+		} else if ( !idStr::Icmp( arg, "right" ) ) {
+			openq4TestInput.rightmove = amount;
+			i++;
+		} else if ( !idStr::Icmp( arg, "left" ) ) {
+			openq4TestInput.rightmove = -amount;
+			i++;
+		} else if ( !idStr::Icmp( arg, "aim" ) ) {
+			openq4TestInput.aimEntity = value;
+			i++;
+		} else if ( !idStr::Icmp( arg, "yaw" ) ) {
+			openq4TestInput.yawRate = atof( value );
+			i++;
+		} else if ( !idStr::Icmp( arg, "pitch" ) ) {
+			openq4TestInput.pitchRate = atof( value );
+			i++;
+		} else if ( !idStr::Icmp( arg, "impulse" ) ) {
+			openq4TestInput.impulse = atoi( value );
+			openq4TestInput.impulsePending = true;
+			i++;
+		} else {
+			gameLocal.Printf( "openq4_testInput: unknown input '%s'\n", arg );
+		}
+	}
+}
+
+/*
+==================
+Cmd_OpenQ4ViewReport_f
+
+openq4_viewReport
+
+Prints the local player's first-person view (a seated gunner's follows the
+turret), its field of view and god mode, for headless tests.
+==================
+*/
+void Cmd_OpenQ4ViewReport_f( const idCmdArgs &args ) {
+	idPlayer *player = gameLocal.GetLocalPlayer();
+	if ( player == NULL || !gameLocal.CheatsOk( false ) ) {
+		return;
+	}
+	const renderView_t *view = player->GetRenderView();
+	if ( view == NULL ) {
+		gameLocal.Printf( "openq4_viewReport: no view\n" );
+		return;
+	}
+	const idAngles angles = view->viewaxis.ToAngles();
+	gameLocal.Printf( "openq4_viewReport: %d origin %s angles %s fov %.1f %.1f vehicle %d god %d\n", gameLocal.time,
+		view->vieworg.ToString( 1 ), angles.ToString( 1 ), view->fov_x, view->fov_y, player->IsInVehicle() ? 1 : 0, player->godmode ? 1 : 0 );
+}
+
+/*
+==================
+idPlayer::ApplyTestInput
+==================
+*/
+void idPlayer::ApplyTestInput( void ) {
+	if ( gameLocal.GetLocalPlayer() != this ) {
+		return;
+	}
+	usercmd.flags ^= openq4TestInput.impulseFlip;
+	if ( gameLocal.time < openq4TestInput.startTime || gameLocal.time >= openq4TestInput.endTime ) {
+		return;
+	}
+
+	if ( openq4TestInput.impulsePending ) {
+		openq4TestInput.impulsePending = false;
+		openq4TestInput.impulseFlip ^= UCF_IMPULSE_SEQUENCE;
+		usercmd.flags ^= UCF_IMPULSE_SEQUENCE;
+		usercmd.impulse = openq4TestInput.impulse;
+	}
+
+	usercmd.buttons |= openq4TestInput.buttons;
+	if ( openq4TestInput.forwardmove ) {
+		usercmd.forwardmove = openq4TestInput.forwardmove;
+	}
+	if ( openq4TestInput.rightmove ) {
+		usercmd.rightmove = openq4TestInput.rightmove;
+	}
+	if ( openq4TestInput.upmove ) {
+		usercmd.upmove = openq4TestInput.upmove;
+	}
+	if ( openq4TestInput.yawRate || openq4TestInput.pitchRate ) {
+		openq4TestInput.yawOffset += openq4TestInput.yawRate * MS2SEC( gameLocal.msec );
+		openq4TestInput.pitchOffset += openq4TestInput.pitchRate * MS2SEC( gameLocal.msec );
+		usercmd.angles[ YAW ] += ANGLE2SHORT( openq4TestInput.yawOffset );
+		usercmd.angles[ PITCH ] += ANGLE2SHORT( openq4TestInput.pitchOffset );
+	}
+
+	if ( openq4TestInput.aimEntity.Length() ) {
+		idEntity *target = gameLocal.FindEntity( openq4TestInput.aimEntity );
+		if ( target != NULL ) {
+			idVec3 dir = target->GetPhysics()->GetAbsBounds().GetCenter() - GetEyePosition();
+			if ( dir.Normalize() > 0.0f ) {
+				SetViewAngles( dir.ToAngles() );
+			}
+		}
+	}
 }
 
 void idPlayer::ApplyWeaponWheelInputMask( void ) {
@@ -12750,6 +12934,10 @@ float idPlayer::DefaultFov( void ) const {
 		} else if ( fov > 175.0f ) {
 			return 175.0f;
 		}
+	} else {
+		// a map script's g_fov (see idThread::Event_SetCvar), kept with the
+		// spawn args so a savegame carries it
+		fov += spawnArgs.GetFloat( "openq4_scriptFovOffset", "0" );
 	}
 
 	return fov;

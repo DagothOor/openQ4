@@ -40,6 +40,25 @@ rvAITactical::rvAITactical
 rvAITactical::rvAITactical ( void ) {
 	shots = 0;
 	nextWallTraceTime = 0;
+	grenadeDelay = 0;
+	canThrowGrenades = false;
+}
+
+/*
+================
+rvAITactical::InitGrenadeThrow
+
+openQ4: The Awakening's tactical transfers throw an offhand grenade
+("throw_grenade", only its elite model has the animation) whenever they
+could shoot, then wait "grenadedelay" milliseconds before the next, as its
+game code did. "grenadechance" was never read there either.
+================
+*/
+void rvAITactical::InitGrenadeThrow ( void ) {
+	actionThrowGrenade.Init ( spawnArgs, "action_throwgrenade", "Torso_ThrowGrenade", 0 );
+	actionThrowGrenade.fl.disabled = false;
+	grenadeDelay = spawnArgs.GetInt ( "grenadedelay", "5000" );
+	canThrowGrenades = animator.HasAnim ( "throw_grenade" );
 }
 
 void rvAITactical::InitSpawnArgsVariables ( void ) 
@@ -90,6 +109,8 @@ void rvAITactical::Spawn ( void ) {
 	actionKillswitchAttack.Init	( spawnArgs, "action_killswitchAttack",	NULL,	AIACTIONF_ATTACK );
 	
 	actionTimerPeek.Init ( spawnArgs, "actionTimer_peek" );
+
+	InitGrenadeThrow ( );
 	
 //	playerFocusTime = 0;
 //	playerAnnoyTime = SEC2MS(spawnArgs.GetFloat ( "annoyed", "5" ));
@@ -254,6 +275,8 @@ void rvAITactical::Restore( idRestoreGame *savefile ) {
 
 	actionTimerPeek.Restore ( savefile );
 
+	InitGrenadeThrow ( );
+
 	UpdateAnimPrefix ( );
 }
 
@@ -359,6 +382,12 @@ bool rvAITactical::CheckActions ( void ) {
 	// Standard attacks
 	if ( PerformAction ( &actionMeleeAttack, (checkAction_t)&idAI::CheckAction_MeleeAttack )							 || 
 		 PerformAction ( &actionElbowAttack, (checkAction_t)&idAI::CheckAction_LeapAttack )									) {
+		return true;
+	}
+
+	// The Awakening's elites lob a grenade whenever they could shoot
+	if ( canThrowGrenades && PerformAction ( &actionThrowGrenade, (checkAction_t)&idAI::CheckAction_RangedAttack, &actionTimerRangedAttack ) ) {
+		actionThrowGrenade.timer.Add ( grenadeDelay );
 		return true;
 	}
 
@@ -651,6 +680,7 @@ CLASS_STATES_DECLARATION ( rvAITactical )
 	STATE ( "Torso_Cover_Peek",				rvAITactical::State_Torso_Cover_Peek )
 
 	STATE ( "Torso_Reload",					rvAITactical::State_Torso_Reload )
+	STATE ( "Torso_ThrowGrenade",			rvAITactical::State_Torso_ThrowGrenade )
 	
 	STATE ( "Torso_SetPosture",				rvAITactical::State_Torso_SetPosture )
 	
@@ -851,6 +881,31 @@ stateResult_t rvAITactical::State_Torso_MovingRangedAttack ( const stateParms_t&
 			return SRESULT_WAIT;	
 	}
 	return SRESULT_ERROR; 
+}
+
+/*
+================
+rvAITactical::State_Torso_ThrowGrenade
+================
+*/
+stateResult_t rvAITactical::State_Torso_ThrowGrenade ( const stateParms_t& parms ) {
+	enum {
+		STAGE_INIT,
+		STAGE_WAIT
+	};
+	switch ( parms.stage ) {
+		case STAGE_INIT:
+			DisableAnimState ( ANIMCHANNEL_LEGS );
+			PlayAnim ( ANIMCHANNEL_TORSO, "throw_grenade", parms.blendFrames );
+			return SRESULT_STAGE ( STAGE_WAIT );
+
+		case STAGE_WAIT:
+			if ( AnimDone ( ANIMCHANNEL_TORSO, parms.blendFrames ) ) {
+				return SRESULT_DONE;
+			}
+			return SRESULT_WAIT;
+	}
+	return SRESULT_ERROR;
 }
 
 /*

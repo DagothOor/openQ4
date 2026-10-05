@@ -29,6 +29,11 @@
 	the machine ("ProcessingBrokenFunc"), otherwise he finishes the animation
 	("ProcessingDoneFunc").
 
+	Headshots: the def scales the head 2 and the legs 0.75, but lists the
+	legs zone ("*root origin", every joint) after the head ("*neck1"), and
+	the later zone wins, so in the expansion a headshot counted as a leg hit.
+	A zone that a later one swallows whole gets its joints back here.
+
 ===============================================================================
 */
 
@@ -55,6 +60,7 @@ private:
 	void					Enrage( void );
 	void					DamageDude( int damage, const char *side );
 	void					UpdateShieldBar( void );
+	void					RestoreShadowedDamageZones( void );
 
 	bool					stunned;
 	bool					enraged;
@@ -132,6 +138,34 @@ void riMonsterPainLord::Spawn( void ) {
 	unstunnedFunc.Init( spawnArgs.GetString( "UnstunnedFunc" ) );
 	processingBrokenFunc.Init( spawnArgs.GetString( "ProcessingBrokenFunc" ) );
 	processingDoneFunc.Init( spawnArgs.GetString( "ProcessingDoneFunc" ) );
+
+	RestoreShadowedDamageZones();
+}
+
+/*
+================
+riMonsterPainLord::RestoreShadowedDamageZones
+
+Gives a damage zone that later zones took over completely its joints, and its
+"damage_scale", back. The savegame carries the result.
+================
+*/
+void riMonsterPainLord::RestoreShadowedDamageZones( void ) {
+	idList<jointHandle_t> jointList;
+	for ( const idKeyValue *kv = spawnArgs.MatchPrefix( "damage_zone " ); kv; kv = spawnArgs.MatchPrefix( "damage_zone ", kv ) ) {
+		idStr zone = kv->GetKey();
+		zone.Strip( "damage_zone " );
+		if ( damageGroups.FindIndex( zone ) >= 0 ) {
+			continue;
+		}
+		const float scale = spawnArgs.GetFloat( va( "damage_scale %s", zone.c_str() ), "1" );
+		animator.GetJointList( kv->GetValue(), jointList );
+		for ( int i = 0; i < jointList.Num(); i++ ) {
+			damageGroups[ jointList[ i ] ] = zone;
+			damageScale[ jointList[ i ] ] = scale;
+		}
+		jointList.Clear();
+	}
 }
 
 /*

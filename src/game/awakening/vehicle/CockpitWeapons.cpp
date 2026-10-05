@@ -488,7 +488,9 @@ idActor *riVehicleCockpitWeapon::FindEnemyNearCrosshair( float coneDegrees ) con
 	jams ("snd_overheatedSound", JammedTextOn on the screens) and will not
 	fire ("snd_overheatedFireSound" if you try) until it has cooled to
 	"safeHeatLevel" ("snd_overheatRecoverSound", JammedTextOff). The screens
-	show the heat as gui::HeatPercentage, 0..1.
+	show the heat as gui::HeatPercentage, 0..1. The expansion's code sent
+	WeaponOverheated / WeaponNormal, which no screen handles; the screens'
+	JAMMED text, which m03's ammo-jam script also shows, stands in for them.
 
 	The nearest enemy near the crosshair is marked with
 	"fx_closestTargetGuide", or "fx_outOfRangeGuide" when it is beyond the
@@ -626,8 +628,16 @@ void riVCWPulseCannon::Cool( void ) {
 
 	if ( overheated && heat <= safeHeatLevel ) {
 		overheated = false;
+		if ( g_debugVehicle.GetInteger() ) {
+			gameLocal.Printf( "%d %s: cooled to %.0f\n", gameLocal.time, GetClassname(), heat );
+		}
 		PlaySound( "snd_overheatRecoverSound" );
-		SendGuiEvent( "JammedTextOff" );
+		// m03's script jams the gun with the same screen text: leave it up
+		// while the script has the weapon disabled, the script clears it
+		rvVehicle *vehicle = parent.GetEntity();
+		if ( vehicle == NULL || vehicle->IsShootingEnabled() ) {
+			SendGuiEvent( "JammedTextOff" );
+		}
 	}
 	SetGuiStateFloat( "HeatPercentage", heatTolerance > 0.0f ? idMath::ClampFloat( 0.0f, 1.0f, heat / heatTolerance ) : 0.0f );
 }
@@ -710,6 +720,9 @@ bool riVCWPulseCannon::Fire( void ) {
 	if ( heatTolerance > 0.0f && heat >= heatTolerance ) {
 		heat = heatTolerance;
 		overheated = true;
+		if ( g_debugVehicle.GetInteger() ) {
+			gameLocal.Printf( "%d %s: overheated\n", gameLocal.time, GetClassname() );
+		}
 		PlaySound( "snd_overheatedSound" );
 		SendGuiEvent( "JammedTextOn" );
 	}
@@ -936,6 +949,10 @@ void riVCWMissileTurret::SetLockState( lockState_t state ) {
 		return;
 	}
 	lockState = state;
+	if ( g_debugVehicle.GetInteger() ) {
+		gameLocal.Printf( "%d %s: lock %d on %s\n", gameLocal.time, GetClassname(), (int)state,
+			lockTarget.GetEntity() ? lockTarget->GetName() : "-" );
+	}
 	switch ( state ) {
 		case LOCK_NONE:
 			lockTarget = NULL;

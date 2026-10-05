@@ -891,6 +891,7 @@ public:
 	// "onlyTarget" names, re-read with the other non-persistent spawn args on restore
 	idStrList				onlyTargets;
 	bool					onlyTargetSubstring;
+	bool					ignorePlayer;			// "ignoreplayer": never takes a player as an enemy
 
 	rvPlaybackDriver		mPlayback;
 	rvPlaybackDriver		mLookPlayback;
@@ -1075,6 +1076,8 @@ protected:
 
 	bool					PerformAction						( rvAIAction* action, bool (idAI::*)(rvAIAction*,int), rvAIActionTimer* timer = NULL );
 	void					PerformAction						( const char* stateName, int blendFrames = 0, bool noPain = false );
+							// openQ4: ai_debugActions names this AI (or is *)
+	bool					DebugActions						( void ) const;
 
 	// RAVEN BEGIN
 	// twhitaker: needed this for difficulty settings

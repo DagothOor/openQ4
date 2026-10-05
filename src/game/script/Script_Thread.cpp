@@ -1185,6 +1185,18 @@ idThread::Event_SetCvar
 ================
 */
 void idThread::Event_SetCvar( const char *name, const char *value ) const {
+	// openQ4: The Awakening's m03 narrows the view while the player mans the
+	// dropship's guns by writing g_fov (80 in a gun, 90 out of it), which threw
+	// away the player's own field of view for good. In single player a script's
+	// g_fov is an offset from the 90 those scripts assume, on top of the
+	// player's setting. No retail script writes g_fov.
+	if ( !gameLocal.isMultiplayer && !idStr::Icmp( name, "g_fov" ) ) {
+		idPlayer *player = gameLocal.GetLocalPlayer();
+		if ( player != NULL ) {
+			player->spawnArgs.SetFloat( "openq4_scriptFovOffset", atof( value ) - 90.0f );
+			return;
+		}
+	}
 	cvarSystem->SetCVarString( name, value );
 }
 

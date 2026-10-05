@@ -10,9 +10,14 @@
 
 	Hits in the "launcher" and "chest" damage zones wear down the part's own
 	health (launcherHealth, chestHealth) and do not hurt the tank itself. A
-	launcher below 85 health smokes and fires its rockets less accurately; a
-	destroyed launcher stops the rocket attack. Breaking either part staggers
-	the tank.
+	launcher below 85 health smokes and its rockets scatter (accuracy 10).
+	Breaking either part staggers the tank and ends its rocket attack, as the
+	expansion's code did.
+
+	The breaks play "fx_chestbreak" / "fx_launcherbreak", which the def leaves
+	commented out ("INSERT FX HERE"); the expansion then fell back to the
+	railgun's arm explosion. The def does carry effects made for these breaks,
+	"fx_chest_explode" and "fx_launcher_explode", so those come next.
 
 ===============================================================================
 */
@@ -35,7 +40,7 @@ protected:
 private:
 	void					DestroyLauncher( void );
 	void					DestroyChest( void );
-	void					BreakPart( const char *surface, const char *jointName, const char *effectKey );
+	void					BreakPart( const char *surface, const char *jointName, const char *effectKey, const char *authoredEffectKey );
 	const char *			EffectKey( const char *preferred, const char *fallback ) const;
 
 	rvAIAction				actionRailgunAttack;
@@ -65,7 +70,7 @@ END_CLASS_STATES
 
 // launcher health below which it smokes and its rockets scatter
 static const int TANK_LAUNCHER_SMOKE_HEALTH = 85;
-static const float TANK_DAMAGED_ROCKET_ACCURACY = 5.0f;
+static const float TANK_DAMAGED_ROCKET_ACCURACY = 10.0f;
 
 /*
 ================
@@ -193,17 +198,21 @@ const char *riMonsterTank::EffectKey( const char *preferred, const char *fallbac
 riMonsterTank::BreakPart
 ================
 */
-void riMonsterTank::BreakPart( const char *surface, const char *jointName, const char *effectKey ) {
+void riMonsterTank::BreakPart( const char *surface, const char *jointName, const char *effectKey, const char *authoredEffectKey ) {
+	if ( DebugActions() ) {
+		gameLocal.Printf( "%d %s: breaks %s\n", gameLocal.time, name.c_str(), jointName );
+	}
 	HideSurface( surface );
 
 	idVec3 origin;
 	idMat3 axis;
 	GetJointWorldTransform( animator.GetJointHandle( jointName ), gameLocal.time, origin, axis );
-	gameLocal.PlayEffect( gameLocal.GetEffect( spawnArgs, EffectKey( effectKey, "fx_railgun_explode" ) ), origin, axis );
+	gameLocal.PlayEffect( gameLocal.GetEffect( spawnArgs, EffectKey( effectKey, EffectKey( authoredEffectKey, "fx_railgun_explode" ) ) ), origin, axis );
 
-	// the break staggers the tank
+	// the break staggers the tank and silences its launcher
 	pain.takenThisFrame = pain.threshold;
 	pain.lastTakenTime = gameLocal.time;
+	actionRocketAttack.fl.disabled = true;
 }
 
 /*
@@ -214,8 +223,7 @@ riMonsterTank::DestroyLauncher
 void riMonsterTank::DestroyLauncher( void ) {
 	launcherHealth = -1;
 	StopEffect( EffectKey( "fx_launchersmoke", "fx_railgun_burn" ) );
-	BreakPart( "models/monsters/tank/tank_launcherbreak", "launcher_break", "fx_launcherbreak" );
-	actionRocketAttack.fl.disabled = true;
+	BreakPart( "models/monsters/tank/tank_launcherbreak", "launcher_break", "fx_launcherbreak", "fx_launcher_explode" );
 }
 
 /*
@@ -226,7 +234,7 @@ riMonsterTank::DestroyChest
 void riMonsterTank::DestroyChest( void ) {
 	chestHealth = -1;
 	HideSurface( "models/monsters/tank/tank_skull" );
-	BreakPart( "models/monsters/tank/tank_chestbreak", "chestbreak", "fx_chestbreak" );
+	BreakPart( "models/monsters/tank/tank_chestbreak", "chestbreak", "fx_chestbreak", "fx_chest_explode" );
 }
 
 /*

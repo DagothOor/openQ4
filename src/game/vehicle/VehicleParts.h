@@ -405,6 +405,10 @@ protected:
 	int				soundPart;
 
 	bool			parentStuck;
+
+	// openQ4: The Awakening's "allowDisableMovement" (from the def, not saved)
+	bool			allowDisableMovement;
+	void			ReadMovementLock	( void );
 };
 
 //----------------------------------------------------------------

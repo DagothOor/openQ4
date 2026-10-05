@@ -44,6 +44,7 @@ public:
 	rvAITactical ( void );
 
 	void				InitSpawnArgsVariables			( void );
+	void				InitGrenadeThrow				( void );
 	void				Spawn							( void );
 	void				Think							( void );
 	void				Save							( idSaveGame *savefile ) const;
@@ -91,6 +92,12 @@ protected:
 	rvAIAction			actionElbowAttack;
 	rvAIAction			actionKillswitchAttack;
 
+	// openQ4: The Awakening's elite tactical transfers throw offhand grenades;
+	// set up from the def and the model, so not saved
+	rvAIAction			actionThrowGrenade;
+	int					grenadeDelay;
+	bool				canThrowGrenades;
+
 	rvAIActionTimer		actionTimerPeek;
 
 private:
@@ -112,6 +119,7 @@ private:
 	stateResult_t		State_Torso_RangedAttack			( const stateParms_t& parms );
 	stateResult_t		State_Torso_MovingRangedAttack		( const stateParms_t& parms );
 	stateResult_t		State_Torso_Reload					( const stateParms_t& parms );
+	stateResult_t		State_Torso_ThrowGrenade			( const stateParms_t& parms );
 
 	stateResult_t		State_Torso_Cover_LeanLeftAttack	( const stateParms_t& parms );
 	stateResult_t		State_Torso_Cover_LeanRightAttack	( const stateParms_t& parms );	

@@ -67,6 +67,7 @@ idProjectile::idProjectile( void ) {
 	flyEffectIsLiquid	= false;
 	flyEffectAttenuateSpeed = 0.0f;
 	bounceCount			= 0;
+	applyRotation		= true;
 	sticky				= false;
 	passThroughActors	= false;
 	maxPinDistance		= 0.0f;
@@ -428,7 +429,9 @@ void idProjectile::Launch( const idVec3 &start, const idVec3 &dir, const idVec3 
 	ReadStickSettings();
 	
 	//spawn impact entity information
-	impactEntity				= spawnArgs.GetString("def_impactEntity","");
+	// openQ4: The Awakening's projectiles name it "impactEntity" (the goob gun's
+	// glob burst); its game code read that key only
+	impactEntity				= spawnArgs.GetString("def_impactEntity", spawnArgs.GetString("impactEntity",""));
 	numImpactEntities			= spawnArgs.GetInt("numImpactEntities","0");
 	ieMinPitch					= spawnArgs.GetInt("ieMinPitch","0");
 	ieMaxPitch					= spawnArgs.GetInt("ieMaxPitch","0");
@@ -682,7 +685,9 @@ void idProjectile::Think( void ) {
 			}
 		}
 
-		UpdateVisualAngles();
+		if ( applyRotation ) {
+			UpdateVisualAngles();
+		}
 	}
 		
 	// a stuck projectile may still have a corpse to pin
@@ -896,7 +901,7 @@ bool idProjectile::Collide( const trace_t &collision, const idVec3 &velocity, bo
 	SpawnImpactEntities(collision, velocity);
 
 	//Apply any impact force if the necessary
-	//ApplyImpactForce(ent, collision, dir);
+	ApplyImpactForce(ent, collision, dir);
  
 	// MP: projectiles open doors
 	if ( gameLocal.isMultiplayer && ent->IsType( idDoor::GetClassType() ) && !static_cast< idDoor * >(ent)->IsOpen() && !ent->spawnArgs.GetBool( "no_touch" ) ) {
@@ -1126,6 +1131,9 @@ read at launch and again after a restore, so they are not saved.
 ================
 */
 void idProjectile::ReadStickSettings( void ) {
+	// openQ4: The Awakening's spike sets "applyRotation" "0" to keep its
+	// launch orientation
+	applyRotation		= spawnArgs.GetBool( "applyRotation", "1" );
 	sticky				= spawnArgs.GetBool( "sticky" );
 	passThroughActors	= spawnArgs.GetBool( "passThroughActors" );
 	maxPinDistance		= spawnArgs.GetFloat( "maxPinDistance", "0" );
@@ -1245,6 +1253,29 @@ void idProjectile::UpdatePin( void ) {
 	if ( g_debugDamage.GetBool() ) {
 		gameLocal.Printf( "projectile '%s' pinned '%s' (body %d) at %s\n", GetName(), victim->GetName(), bodyId, tr.endpos.ToString( 0 ) );
 	}
+}
+
+/*
+================
+idProjectile::ApplyImpactForce
+
+openQ4: "impactForce" pushes whatever the projectile hits along its flight,
+as The Awakening's game code did (the spike gun knocks bodies back towards
+the wall it pins them to). An articulated figure takes the push on the body
+that was hit, anything else at the middle of its bounds. No retail def sets
+the key.
+================
+*/
+void idProjectile::ApplyImpactForce( idEntity *ent, const trace_t &collision, const idVec3 &dir ) {
+	const float force = spawnArgs.GetFloat( "impactForce", "0" );
+	if ( force == 0.0f || ent == NULL || ent == gameLocal.world || gameLocal.isClient ) {
+		return;
+	}
+	if ( ent->GetPhysics()->IsType( idPhysics_AF::GetClassType() ) ) {
+		ent->ApplyImpulse( this, collision.c.id, collision.c.point, dir * force );
+		return;
+	}
+	ent->GetPhysics()->ApplyImpulse( 0, ent->GetPhysics()->GetAbsBounds().GetCenter(), dir * force );
 }
 
 void idProjectile::SpawnImpactEntities(const trace_t& collision, const idVec3 velocity)

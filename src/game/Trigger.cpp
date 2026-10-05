@@ -1341,6 +1341,14 @@ void idTrigger_Hurt::Event_Touch( idEntity *other, trace_t *trace ) {
 		ActivateTargets( other );
 		CallScript( other );
 
+		// openQ4: "velscale" scales the speed of whatever it hurts, as The
+		// Awakening's game code did; its m07 race tracks slow a speeder bike
+		// that strays into the rocks this way. No retail map sets it.
+		const float velScale = spawnArgs.GetFloat( "velscale", "1" );
+		if ( velScale != 1.0f && other->GetPhysics() != NULL ) {
+			other->GetPhysics()->SetLinearVelocity( other->GetPhysics()->GetLinearVelocity() * velScale );
+		}
+
 		nextTime = gameLocal.time + SEC2MS( delay );
 	}
 }

@@ -420,10 +420,29 @@ bool idAI::CheckActions ( void ) {
 
 /*
 ================
+idAI::DebugActions
+
+openQ4: ai_debugActions prints this AI's actions and attacks.
+================
+*/
+bool idAI::DebugActions ( void ) const {
+	const char* filter = ai_debugActions.GetString ( );
+	if ( !filter[0] ) {
+		return false;
+	}
+	return ( filter[0] == '*' && !filter[1] ) || !idStr::Icmp ( name, filter );
+}
+
+/*
+================
 idAI::PerformAction
 ================
 */
 void idAI::PerformAction ( const char* stateName, int blendFrames, bool noPain ) {
+	if ( DebugActions ( ) ) {
+		gameLocal.Printf ( "%d %s: action %s\n", gameLocal.time, name.c_str(), stateName );
+	}
+
 	// Allow movement in actions
 	move.fl.allowAnimMove = true;
 
@@ -611,6 +630,10 @@ bool idAI::PerformAction ( rvAIAction* action, bool (idAI::*condition)(rvAIActio
 	action->status = rvAIAction::STATUS_OK;
 
 	actionAnimNum  = animNum;
+
+	if ( DebugActions ( ) && animNum > 0 ) {
+		gameLocal.Printf ( "%d %s:   anim %s\n", gameLocal.time, name.c_str(), animator.GetAnim ( animNum )->FullName ( ) );
+	}
 	     	
 	return true;
 }

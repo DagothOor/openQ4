@@ -23,9 +23,18 @@
 	she fights only after the script has docked and undocked her. Her attacks
 	themselves are frame commands in her model def.
 
-	Her def's "requestDocking" names a script function (the map's
-	valkaryne_dock) that the expansion's code parsed but never called; the
-	script docks her itself, and so does nothing here.
+	The finale's Valkaryne ("valk" on m09) names the map's docking script in
+	"requestDocking" (valkaryne_dock: she vanishes, is docked() and reappears
+	on her platform). Nothing in the shipped scripts ever runs it, and the
+	expansion's code parsed the key without calling it, so she never docked:
+	she walked about harmless and could be killed before the Makron sphere,
+	skipping the fight the script builds around the sphere (it undocks her when
+	the sphere dies). Here she asks for it the first time she has an enemy,
+	which the intro gives her with becomeAggressive() just as it starts the
+	sphere's shields. The key names the function without its map_m09
+	namespace, so a name that does not resolve is looked up as the one script
+	function of that name in any namespace. Whether she asked is kept in her
+	spawn args, which the savegame carries.
 
 ===============================================================================
 */
@@ -49,6 +58,7 @@ protected:
 
 private:
 	void					SetDocked( bool dock );
+	bool					RequestDocking( void );
 
 	rvAIAction				actionPluginAttackBig;
 	bool					docked;
@@ -139,10 +149,74 @@ riMonsterValkaryne::SetDocked
 ================
 */
 void riMonsterValkaryne::SetDocked( bool dock ) {
+	if ( DebugActions() ) {
+		gameLocal.Printf( "%d %s: %s\n", gameLocal.time, name.c_str(), dock ? "docked" : "undocked" );
+	}
 	docked = dock;
 	actionPluginAttackBig.fl.disabled = !dock;
 	actionRangedAttack.fl.disabled = dock;
 	actionMeleeAttack.fl.disabled = dock;
+}
+
+/*
+================
+FindScriptFunctionAnyNamespace
+
+The script function called name, or, when no function of that name is in
+the global namespace, the only one in any other namespace.
+================
+*/
+static const function_t *FindScriptFunctionAnyNamespace( const char *name ) {
+	const function_t *func = gameLocal.program.FindFunction( name );
+	if ( func != NULL || strstr( name, "::" ) != NULL ) {
+		return func;
+	}
+	for ( int i = 0; i < gameLocal.program.NumFunctions(); i++ ) {
+		const function_t *candidate = gameLocal.program.GetFunction( i );
+		if ( candidate->eventdef != NULL || candidate->def == NULL || candidate->def->scope == NULL ||
+			 candidate->def->scope->Type() != ev_namespace ) {
+			continue;
+		}
+		// functions are named by their global name ("map_m09::valkaryne_dock")
+		const char *unscoped = candidate->Name();
+		for ( const char *sep = strstr( unscoped, "::" ); sep != NULL; sep = strstr( unscoped, "::" ) ) {
+			unscoped = sep + 2;
+		}
+		if ( idStr::Icmp( unscoped, name ) ) {
+			continue;
+		}
+		if ( func != NULL ) {
+			// more than one: ambiguous
+			return NULL;
+		}
+		func = candidate;
+	}
+	return func;
+}
+
+/*
+================
+riMonsterValkaryne::RequestDocking
+
+Starts the "requestDocking" script, once; true when it did.
+================
+*/
+bool riMonsterValkaryne::RequestDocking( void ) {
+	const char *funcName = spawnArgs.GetString( "requestDocking" );
+	if ( !funcName[0] || spawnArgs.GetBool( "openq4_dockingRequested" ) ) {
+		return false;
+	}
+	spawnArgs.SetBool( "openq4_dockingRequested", true );
+
+	const function_t *func = FindScriptFunctionAnyNamespace( funcName );
+	if ( func == NULL ) {
+		gameLocal.Warning( "%s: no docking script '%s'", name.c_str(), funcName );
+		return false;
+	}
+	idThread *thread = new idThread();
+	thread->CallFunction( func, false );
+	thread->DelayedStart( 0 );
+	return true;
 }
 
 /*
@@ -182,6 +256,10 @@ riMonsterValkaryne::CheckActions
 bool riMonsterValkaryne::CheckActions( void ) {
 	if ( undockRequested ) {
 		PerformAction( "Undock", 4, true );
+		return true;
+	}
+
+	if ( !docked && enemy.ent && RequestDocking() ) {
 		return true;
 	}
 

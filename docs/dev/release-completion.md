@@ -946,6 +946,22 @@
   ceilings and the bumpers off walls instead of all probing the ground. Stock
   vehicles are unchanged: convoy1's GEV moves identically under a scripted
   drive and turn. `awakening_speeder_physics_contract.py` pins the three fixes.
+- [x] Every unique Awakening monster, weapon and vehicle plays as its content
+  was built to, checked in headless runs against the expansion's code (the
+  [plan's Phase 5](plans/q4x-awakening.md)). The m09 Valkaryne docks behind
+  the Makron sphere through her `requestDocking` script, which nothing ran, and
+  undocks to fight on foot when the sphere dies. `ignoreplayer` holds on every
+  enemy path, so the m01 death-ray turret never takes the player. Pain Lord
+  headshots reach his head zone, which his legs zone swallowed. Retches walk
+  on `aas48` where a map lacks a usable `aas96`. The elites' gravity well,
+  spread fire and grenades, the space flyers' `canturn`, `noFaceEnemy` and
+  master pitch and roll, the Tank's damaged-launcher accuracy and break
+  effects, the goob gun's burst, burn stacking and alternate flash, the spike's
+  impact force, the cannons' `useGodMode`, `resetOnExit` and jam lock, m03's
+  script FOV and m07's `velscale` slow-down volumes now do what their keys say.
+  Stock content is unchanged: the new keys appear only in Awakening defs and
+  maps, and the jam lock defaults on only under `q4xbase`.
+  `awakening_gameplay_contract.py` pins the fixes.
 
 ## Unreleased — `idtech5-ui` development
 

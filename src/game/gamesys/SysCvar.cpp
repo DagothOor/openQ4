@@ -253,6 +253,7 @@ idCVar ai_debugTrajectory(			"ai_debugTrajectory",		"0",			CVAR_GAME | CVAR_BOOL
 idCVar ai_debugTactical(			"ai_debugTactical",			"0",			CVAR_GAME, "draws tactical information for monsters" );
 idCVar ai_debugHelpers(				"ai_debugHelpers",			"0",			CVAR_GAME, "draws ai helpers" );
 idCVar ai_debugFilterString(		"ai_debugFilterString",		"",				CVAR_GAME, "see ai_debugFilter" );
+idCVar ai_debugActions(			"ai_debugActions",			"",				CVAR_GAME, "prints the actions and attacks of the named AI entity (* for all)" );
 idCVar ai_testPredictPath(			"ai_testPredictPath",		"0",			CVAR_GAME | CVAR_BOOL, "" );
 idCVar ai_showCombatNodes(			"ai_showCombatNodes",		"0",			CVAR_GAME | CVAR_BOOL, "draws attack cones for monsters" );
 idCVar ai_showPaths(				"ai_showPaths",				"0",			CVAR_GAME | CVAR_BOOL, "draws path_* entities" );

@@ -26,6 +26,7 @@ protected:
 
 	virtual void		OnUpdatePlayback	( const rvDeclPlaybackData& pbd );
 	virtual void		OnWakeUp			( void );
+	virtual bool		CanTurn				( void ) const;
 
 	rvAIAction			actionBombAttack;
 	rvAIAction			actionBlasterAttack;
@@ -43,6 +44,7 @@ protected:
 	int					blasterAttackRate;
 	int					bombAttackDuration;
 	int					bombAttackRate;
+	bool				canTurn;				// openQ4: "canturn", from the def (not saved)
 	
 private:
 
@@ -70,6 +72,7 @@ rvMonsterStroggFlyer::rvMonsterStroggFlyer ( ) {
 	shotCount = 0;
 	lastAttackTime = 0;
 	attackStartTime = 0;
+	canTurn = true;
 }
 
 void rvMonsterStroggFlyer::InitSpawnArgsVariables( void )
@@ -81,6 +84,19 @@ void rvMonsterStroggFlyer::InitSpawnArgsVariables( void )
 	blasterAttackRate		= SEC2MS ( spawnArgs.GetFloat ( "blasterAttackRate", ".25" ) );
 	bombAttackDuration		= SEC2MS ( spawnArgs.GetFloat ( "bombAttackDuration", "1" ) );
 	bombAttackRate			= SEC2MS ( spawnArgs.GetFloat ( "bombAttackRate", ".25" ) );
+
+	// openQ4: The Awakening's space flyers say "canturn" "0": bound to the
+	// splines of m03's attack runs, they keep their mover's heading
+	canTurn					= spawnArgs.GetBool ( "canturn", "1" );
+}
+
+/*
+================
+rvMonsterStroggFlyer::CanTurn
+================
+*/
+bool rvMonsterStroggFlyer::CanTurn ( void ) const {
+	return canTurn && idAI::CanTurn ( );
 }
 
 /*
