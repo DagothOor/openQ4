@@ -16,6 +16,8 @@ The auto-skip cinematics, corpse cleanup, and corpse sink controls are also avai
 | `g_classicDynamicLights` | `1` | SP and MP game code | Quake II/III style dynamic lights on muzzle flashes, bright projectiles and explosions. On by default. |
 | `g_classicDynamicLightScale` | `1` | SP and MP game code | Radius multiplier for the classic dynamic lights, `0.25` to `4`. |
 | `s_musicVolume` | `0.5` | Client audio | Controls music volume independently of the main sound mix. |
+| `s_useEAXReverb` | `1` | Client audio | Quake 4's per-area room reverb, as the level designers set it up. See [Room Reverb](#room-reverb). |
+| `s_useEAXOcclusion` | `1` | Client audio | Closed doors muffle the sounds behind them. Works while `s_useEAXReverb` is on. |
 | `hud_damageNumbers` | `0` | Multiplayer client | Floating damage numbers over the players you hit. `0` off, `1` opponents only, `2` all damage you deal. |
 | `hud_damageNumberStyle` | `1` | Multiplayer client | How damage numbers are coloured. `1` white through red, `2` one colour per damage band, `3` one colour per weapon. |
 | `hud_damageNumberScale` | `1` | Multiplayer client | Damage number size multiplier, `0.25` to `4`. |
@@ -153,6 +155,34 @@ seta s_musicVolume 0.2
 ```cfg
 seta s_musicVolume 0
 ```
+
+## Room Reverb
+
+Every Quake 4 map tells the game which reverb each of its rooms, corridors and outdoor areas uses: a
+tiled bathroom rings, a hangar booms, a canyon sounds open. openQ4 plays these the way the original
+game did with EAX sound hardware:
+
+- the reverb follows you from area to area, and the areas next to you keep their own reverb, so a
+  gunshot in the hangar next door still sounds like the hangar;
+- each nearby area's reverb comes from the doorway that leads to it;
+- closed doors muffle the sounds behind them, and their reverb with them;
+- radio chatter stays dry and voice-over sits a little further back, as in the original mix.
+
+It needs OpenAL's EFX extension. OpenAL Soft provides it: openQ4 ships it on Windows and macOS, and
+Linux distributions install it as their OpenAL. Apple's own OpenAL framework has no EFX, so a build
+using it plays without reverb.
+
+Behavior:
+- `s_useEAXReverb 1` (default): room reverb on. `0` turns it off, along with door muffling, as in
+  the original game. Changing it from the console takes effect after `s_restart`.
+- `s_useEAXOcclusion 1` (default): closed doors muffle sound while reverb is on.
+- `s_muteEAXReverb 1`: silences the reverb of the area you are standing in, for comparison.
+
+Notes:
+- Maps without a reverb table, including The Awakening's, use the Generic reverb everywhere, as
+  the original game does.
+- `listReverbs` lists the reverbs, the current map's areas and the reverbs playing around you.
+  `s_showReverb 1` prints a line whenever they change.
 
 ## Hit Marker
 

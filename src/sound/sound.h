@@ -433,8 +433,9 @@ public:
 	// Free all sounds loaded during the last map load
 	virtual	void			BeginLevelLoad() = 0;
 
-	// Load all sounds marked as used this level
-	virtual	void			EndLevelLoad() = 0;
+	// Load all sounds marked as used this level. mapName is the session's
+	// "maps/<name>" path, which also selects the map's reverb tables.
+	virtual	void			EndLevelLoad( const char* mapName ) = 0;
 
 //	virtual void			Preload( idPreloadManifest& preload ) = 0;
 
@@ -530,6 +531,13 @@ public:
 
 	// RAVEN END
 // jmarshall end
+
+	// Quake 4 reverb editor interface: the map's portal areas and the efxs/*.efx
+	// reverb each one plays (see idSoundReverb).
+	virtual	const char*		GetReverbName( int reverb ) = 0;
+	virtual	int				GetNumAreas() = 0;
+	virtual	int				GetReverb( int area ) = 0;
+	virtual	bool			SetReverb( int area, const char* reverbName, const char* fileName ) = 0;
 };
 
 extern idSoundSystem*	soundSystem;

@@ -99,6 +99,18 @@ public:
 		idSoundVoice_Base::SetEnvironmentMuffle( f );
 		ApplyWetDryRouting();
 	}
+	bool		SetReverbSource( int areaSlot, int roomMB, int occlusionMB, bool mono ) override
+	{
+		const bool changed = idSoundVoice_Base::SetReverbSource( areaSlot, roomMB, occlusionMB, mono );
+		if( changed )
+		{
+			ApplyWetDryRouting();
+		}
+		return changed;
+	}
+
+	// Drops both reverb sends so the hardware can release its effect slots.
+	void					DetachReverbSends();
 
 	void					Create( const idSoundSample* leadinSample, const idSoundSample* loopingSample );
 
@@ -182,7 +194,8 @@ private:
 	ALuint					openalStreamingBuffer[3];
 	bool					openalStreamingBufferQueued[3];
 	ALuint					openalDirectFilter;
-	ALuint					openalAuxFilter;
+	ALuint					openalAuxFilter;		// send 0: the listener's (primary) reverb slot
+	ALuint					openalAreaAuxFilter;	// send 1: the sound's own area slot
 	idSoundSample_OpenAL*	nextQueuedSample;
 	int						nextQueuedBuffer;
 	int						nextQueuedOffset;

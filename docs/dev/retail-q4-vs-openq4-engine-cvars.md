@@ -137,12 +137,10 @@ Generated on 2026-04-19.
 | `s_minStereo` | idSoundSystemLocal::s_minStereo | sound/default/snd_system.cpp:2252 |
 | `s_minVolume2` | idSoundSystemLocal::s_minVolume2 | sound/default/snd_world.cpp:847<br>sound/default/snd_world.cpp:848<br>sound/default/snd_world.cpp:850<br>`+1 more` |
 | `s_minVolume6` | idSoundSystemLocal::s_minVolume6 | sound/default/snd_world.cpp:802<br>sound/default/snd_world.cpp:803<br>sound/default/snd_world.cpp:810<br>`+7 more` |
-| `s_muteEAXReverb` | idSoundSystemLocal::s_muteEAXReverb | sound/default/snd_world.cpp:2304<br>sound/default/snd_world.cpp:2563 |
 | `s_realTimeDecoding` | idSoundSystemLocal::s_realTimeDecoding | sound/default/snd_decoder.cpp:195 |
 | `s_reverse` | idSoundSystemLocal::s_reverse | sound/default/snd_system.cpp:747<br>sound/default/snd_system.cpp:822 |
 | `s_spatializationDecay` | idSoundSystemLocal::s_spatializationDecay | sound/default/snd_world.cpp:841 |
 | `s_useDeferredSettings` | idSoundSystemLocal::s_useDeferredSettings | sound/default/snd_system.cpp:719<br>sound/default/snd_system.cpp:734<br>sound/default/snd_system.cpp:798<br>`+1 more` |
-| `s_useEAXOcclusion` | idSoundSystemLocal::s_useEAXOcclusion | sound/default/snd_system.cpp:2005<br>sound/default/snd_system.cpp:2006<br>sound/default/snd_system.cpp:2060<br>`+8 more` |
 | `sys_country` | sys_country | framework/common.cpp:3908 |
 | `sys_language` | sys_language | framework/common.cpp:3910 |
 | `win_enableFPUExceptions` | __unnamed::win_enableFPUExceptions | sys/win32/win_main.cpp:905 |
@@ -376,6 +374,8 @@ Generated on 2026-04-19.
 | `s_radioChatterFraction` | src/sound/snd_system.cpp:36 | sound/default/snd_world.cpp:952 | Implemented for the retail radio-chatter attenuation branch; full retail metadata should be re-extracted in the next cvar audit. |
 | `s_frequencyShift` | src/sound/snd_system.cpp:37 | sound/default/snd_world.cpp:1127 | Implemented for retail frequency-shift gating; full retail metadata should be re-extracted in the next cvar audit. |
 | `s_skipStartSound` | src/sound/snd_emitter.cpp:35 | sound/default/snd_emitter.cpp:534 | Implemented for retail start-sound suppression diagnostics; full retail metadata should be re-extracted in the next cvar audit. |
+| `s_useEAXOcclusion` | src/sound/snd_system.cpp:1007 | sound/default/snd_system.cpp:2005<br>sound/default/snd_world.cpp:2179 | Implemented with the retail area reverb (EAX source occlusion); retail flags `SND ST AR`, default `1`. See [retail-audio-reverb.md](retail-audio-reverb.md). |
+| `s_muteEAXReverb` | src/sound/snd_system.cpp:1008 | sound/default/snd_world.cpp:2304<br>sound/default/snd_world.cpp:2563 | Implemented with the retail area reverb (mutes the listener slot's room level); retail flags `SND ST`, default `0`. |
 
 ## 3. Shared Names With Metadata Differences
 
@@ -426,7 +426,6 @@ Generated on 2026-04-19.
 | `s_singleEmitter` | default, flags | `-1` | `0` | `SND ST CH` | `ST CH` | `int` | `int` |
 | `s_speakerFraction` | flags | `0.65` | `0.65` | `SND ST AR` | `ST AR` | `float` | `float` |
 | `s_subFraction` | flags | `0.5` | `0.5` | `SND ST AR` | `ST AR` | `float` | `float` |
-| `s_useEAXReverb` | flags | `1` | `1` | `SND ST AR` | `ST AR` | `bool` | `bool` |
 | `s_useOcclusion` | flags | `1` | `1` | `SND ST AR` | `ST CH` | `bool` | `bool` |
 | `s_useOpenAL` | default, flags | `0` | `1` | `SND ST AR` | `ST AR` | `bool` | `bool` |
 | `s_volume` | flags, type/range | `0.5` | `0.5` | `SND ST AR` | `ST AR` | `float` | `float [0, 1]` |

@@ -29,10 +29,11 @@ idCVar s_noSound, s_useOpenAL, s_deviceName, s_useEAXReverb, s_openALHRTF, s_num
 template<class T> struct List : std::vector<T> { int Num() const {return static_cast<int>(this->size());} void AddUnique(T x){if(std::find(this->begin(),this->end(),x)==this->end())this->push_back(x);} void RemoveIndex(int i){this->erase(this->begin()+i);} };
 class idSoundVoice_OpenAL {
 public:
-	ALuint openalSource=0,openalDirectFilter=0,openalAuxFilter=0;
+	ALuint openalSource=0,openalDirectFilter=0,openalAuxFilter=0,openalAreaAuxFilter=0;
 	std::uint64_t soundSettingsSourceGeneration=0;
 	void (AL_APIENTRY *soundSettingsDeleteFilters)(ALsizei,const ALuint*)=nullptr;void DestroyWetDryFilters();
 	float gain=1,wetLevel=1,dryLevel=1,occlusion=0,environmentMuffle=0;
+	float eaxDirectGain=1,eaxDirectGainHF=1,eaxPrimaryGain=1,eaxPrimaryGainHF=1;
 	bool ApplyWetDryRoutingChecked(bool,bool,ALuint,SoundSettingsSourceReceipt&);
 	void FlushSourceBuffers(){} bool IsPlaying(){return false;}
 };
@@ -45,6 +46,10 @@ public:
 	List<idSoundVoice_OpenAL> voices; List<idSoundVoice_OpenAL*> zombieVoices,freeVoices;
 	ALCdevice* GetOpenALDevice()const{return openalDevice;} ALCcontext* GetOpenALContext()const{return openalContext;} bool InitFailed()const{return initFailed;} void Init(); bool UpdateDeviceMonitoring(); void Update();
 	void PrintPerformanceData(){}
+	// Area reverb slots: the production pair is qualified at runtime; here only
+	// the settings boundary's use of it is counted.
+	int areaReverbReleases=0;
+	bool HasAreaReverbResources()const{return false;} void ReleaseAreaReverbSlots(){++areaReverbReleases;} ALuint GetPrimaryAuxEffectSlot()const{return auxEffectSlot;}
 };
 struct World { int updates=0,budget=0; bool throws=false; void Update(){++updates;budget=s_maxEmitterChannels.GetInteger();if(throws)throw std::runtime_error("world failure");} float CurrentRumbleAmplitude(){return 0;} };
 struct idSoundSystemLocal { idSoundHardware_OpenAL hardware; bool muted=false,needsRestart=false; World* currentSoundWorld=nullptr; int soundTime=0,restarts=0;
@@ -157,6 +162,8 @@ static void Positive() {
 		CHECK(b.requested.efx==baseEfx&&b.efx==baseEfx&&b.muted==mute&&b.outputMode==ALC_STEREO_SOFT);
 		CHECK(Fake::writes==0&&b.sourceCount==3&&b.routingGeneration==0);Patch(p);CHECK(SoundSettings_TryApply(l,o,error,sizeof(error)));
 		CHECK(o.outputMode==(speakers==6?ALC_SURROUND_5_1_SOFT:ALC_STEREO_SOFT));CHECK(o.efx==targetEfx&&o.sourceCount==3);
+		// Applying EFX off drops the area reverb slots and their sends before the shared slot.
+		CHECK((soundSystemLocal.hardware.areaReverbReleases>0)==!targetEfx);
 		for(unsigned i=0;i<3;++i){CHECK(o.sources[i].source==i+1);CHECK(o.sources[i].lifetime==soundSystemLocal.hardware.voices[i].soundSettingsSourceGeneration);CHECK(Fake::sources[i+1].slot==(targetEfx?o.slot:0));CHECK(Fake::sources[i+1].direct!=0);}
 		Complete(l);CHECK(world.updates==1&&world.budget==12);CHECK(soundSystemLocal.muted==mute);CHECK(automaticMonitor==0);
 	}

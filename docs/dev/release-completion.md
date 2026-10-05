@@ -2,6 +2,23 @@
 
 ## 0.13.2 release candidate
 
+- [x] Play retail Quake 4's per-area reverb. openQ4 read neither reverb file
+  and no sound reached its single Generic reverb, because the send was gated by
+  a shader wet level that defaults to 0. It now loads `efxs/<map>.efx` or
+  `efxs/default.efx` and `maps/<map>.reverb` exactly as Quake4.exe 1.4.2 does,
+  drives four EFX reverb slots that follow the listener's area and the three
+  nearest areas through its portals (pinned, panned toward each doorway, the
+  listener's slot primary), and routes every mono voice to its own area's slot
+  and the primary slot, with retail's -10000 mB radio and -500 mB voice-over
+  room levels and -1500 mB of EAX occlusion per blocking portal. The EAX to
+  EFX arithmetic is OpenAL Soft's EAX emulation and reproduces `efx-presets.h`.
+  Adds the retail `s_useEAXOcclusion` and `s_muteEAXReverb` cvars, `s_showReverb`,
+  `listReverbs`, the SDK's reverb editor interface, and
+  `EndLevelLoad( mapName )`. Verified against the 1.4.2 binary; record and
+  addresses in [retail-audio-reverb.md](retail-audio-reverb.md).
+  `openq4-sound-reverb-core`, `sound_settings.py` (a new mutant) and
+  `sound_retail_reverb_contract.py` pin it.
+
 - [x] PBR production readiness, Stage A: complete roughness and AO shading on
   both backends. Multiple-scattering energy compensation on every specular
   lobe, specular and multi-bounce occlusion, horizon occlusion, AO on authored

@@ -45,6 +45,7 @@ extern idCVar s_speakerFraction;
 extern idCVar s_radioChatterFraction;
 extern idCVar s_quadraticFalloff;
 extern idCVar s_frequencyShift;
+extern idCVar s_useEAXOcclusion;
 
 static const int SOUND_SHADER_SHAKE_RATE_HZ = 30;
 static const float SOUND_SHADER_MATERIAL_SHAKE_SCALE = 2800.0f;
@@ -55,7 +56,6 @@ static const int Q4_SOUND_CHANNEL_SPECIAL_ATTENUATION_EXEMPT_1 = 7;
 static const int Q4_SOUND_CHANNEL_RADIO_CHATTER = 10;
 static const float SOUND_FREQUENCY_SHIFT_MIN = 0.25f;
 static const float SOUND_FREQUENCY_SHIFT_MAX = 4.0f;
-static const float SOUND_OCCLUSION_PER_BLOCKED_PORTAL = 0.5f;
 static const float SOUND_ENVIROSUIT_OCCLUSION = 0.5f;
 // openQ4: heavier than the enviro suit - water swallows high frequencies far more than a helmet
 static const float SOUND_UNDERWATER_OCCLUSION = 0.75f;
@@ -233,13 +233,6 @@ static void SoundWorldApplyDistanceFalloff( float& volumeScale, const float dist
 		}
 		volumeScale *= frac;
 	}
-}
-
-static ID_INLINE float SoundCombineOcclusion( const float a, const float b )
-{
-	const float clampedA = SoundSanitizeUnitValue( a, 0.0f );
-	const float clampedB = SoundSanitizeUnitValue( b, 0.0f );
-	return 1.0f - ( ( 1.0f - clampedA ) * ( 1.0f - clampedB ) );
 }
 
 static bool IsRadioChatterChannel( const idSoundChannel* chan )
@@ -764,19 +757,36 @@ void idSoundChannel::UpdateHardware( float volumeAdd, int currentTime )
 	hardwareVoice->SetDryLevel( dryLevel );
 	hardwareVoice->SetPitch( SoundSanitizePositiveValue( soundWorld->slowmoSpeed, 1.0f ) * pitchScale * frequencyShift );
 
-	float portalOcclusion = 0.0f;
-	const bool allowPortalOcclusion = !global && !emitterIsListener && s_useOcclusion.GetBool() && ( parms.soundShaderFlags & SSF_NO_OCCLUSION ) == 0;
-	if( allowPortalOcclusion && leadinSample->NumChannels() == 1 && emitter->occludingPortalCount > 0 )
+	// Retail EAX source state (Quake4.exe 1.4.2): every mono voice feeds the reverb slot of its
+	// own area and the listener's slot. The radio channel stays out of the room and voice-over
+	// is pulled back; while EAX reverb is on, each blocking portal on the traced path occludes
+	// the direct sound and the listener-room send by 1500 mB.
+	int reverbRoomMB = 0;
+	if( IsRadioChatterChannel( this ) )
 	{
-		portalOcclusion = SoundCombineOcclusion( portalOcclusion, SOUND_OCCLUSION_PER_BLOCKED_PORTAL * emitter->occludingPortalCount );
+		reverbRoomMB = SOUND_REVERB_ROOM_RADIO_MB;
 	}
+	else if( ( parms.soundShaderFlags & SSF_IS_VO ) != 0 )
+	{
+		reverbRoomMB = SOUND_REVERB_ROOM_VOICEOVER_MB;
+	}
+	int reverbOcclusionMB = 0;
+	if( soundSystemLocal.hardware.HasEFX() && s_useEAXOcclusion.GetBool() && s_useOcclusion.GetBool() &&
+		( parms.soundShaderFlags & SSF_NO_OCCLUSION ) == 0 && emitter->occludingPortalCount > 0 )
+	{
+		reverbOcclusionMB = SOUND_REVERB_OCCLUSION_PER_PORTAL_MB * emitter->occludingPortalCount;
+	}
+	hardwareVoice->SetReverbSource( soundSystemLocal.reverb.SlotForArea( emitter->lastValidPortalArea ), reverbRoomMB,
+		reverbOcclusionMB, leadinSample->NumChannels() == 1 );
+
 	// openQ4: a surface between the emitter and the ear is a far stronger barrier than a doorway
+	float liquidOcclusion = 0.0f;
 	if( emitter->crossesLiquidBoundary && ( parms.soundShaderFlags & SSF_NO_OCCLUSION ) == 0 )
 	{
-		portalOcclusion = SoundCombineOcclusion( portalOcclusion, SOUND_LIQUID_BOUNDARY_OCCLUSION );
+		liquidOcclusion = SOUND_LIQUID_BOUNDARY_OCCLUSION;
 	}
 
-	hardwareVoice->SetOcclusion( portalOcclusion );
+	hardwareVoice->SetOcclusion( liquidOcclusion );
 	// openQ4: the enviro suit and being underwater both muffle the mix; take whichever is heavier
 	// rather than letting one cancel the other out
 	float environmentMuffle = soundWorld->enviroSuitActive ? SOUND_ENVIROSUIT_OCCLUSION : 0.0f;
@@ -1044,16 +1054,26 @@ void idSoundEmitterLocal::Update( int currentTime )
 	float maxDistance = 0.0f;
 	bool maxDistanceValid = false;
 	bool useOcclusion = false;
+	// Retail traces portals for every playing channel, global ones included: their
+	// EAX occlusion follows the blocking portals between emitter and listener.
+	bool globalOcclusion = false;
+	float occlusionDistance = 0.0f;
 	if( emitterId != soundWorld->listener.id )
 	{
 		for( int i = 0; i < channels.Num(); i++ )
 		{
 			idSoundChannel* chan = channels[i];
+			const bool occludes = ( chan->parms.soundShaderFlags & SSF_NO_OCCLUSION ) == 0;
+			if( occludes && occlusionDistance < chan->parms.maxDistance )
+			{
+				occlusionDistance = chan->parms.maxDistance;
+			}
 			if( ( chan->parms.soundShaderFlags & SSF_GLOBAL ) != 0 )
 			{
+				globalOcclusion = globalOcclusion || occludes;
 				continue;
 			}
-			useOcclusion = useOcclusion || ( ( chan->parms.soundShaderFlags & SSF_NO_OCCLUSION ) == 0 );
+			useOcclusion = useOcclusion || occludes;
 			maxDistanceValid = true;
 			if( maxDistance < channels[i]->parms.maxDistance )
 			{
@@ -1066,28 +1086,39 @@ void idSoundEmitterLocal::Update( int currentTime )
 		// too far away to possibly hear it
 		return;
 	}
-	if( useOcclusion && s_useOcclusion.GetBool() )
+	if( soundWorld->renderWorld != NULL )
 	{
-		// work out virtual origin and distance, which may be from a portal instead of the actual origin
-		if( soundWorld->renderWorld != NULL )
+		// Retail Spatialize: every emitter in range keeps the area it is in, which
+		// the area reverb routing reads even when occlusion is off.
+		int soundInArea = soundWorld->renderWorld->PointInArea( origin );
+		if( soundInArea == -1 )
 		{
-			// we have a valid renderWorld
-			int soundInArea = soundWorld->renderWorld->PointInArea( origin );
-			if( soundInArea == -1 )
-			{
-				soundInArea = lastValidPortalArea;
-			}
-			else
-			{
-				lastValidPortalArea = soundInArea;
-			}
+			soundInArea = lastValidPortalArea;
+		}
+		else
+		{
+			lastValidPortalArea = soundInArea;
+		}
+
+		// work out virtual origin and distance, which may be from a portal instead of the actual origin
+		if( ( useOcclusion || globalOcclusion ) && s_useOcclusion.GetBool() )
+		{
 			if( soundInArea != -1 && soundInArea != soundWorld->listener.area )
 			{
-				spatializedDistance = maxDistance * METERS_TO_DOOM;
+				spatializedDistance = Max( maxDistance, occlusionDistance ) * METERS_TO_DOOM;
 				soundWorld->ResolveOrigin( 0, NULL, soundInArea, 0.0f, 0, origin, this );
 				spatializedDistance *= DOOM_TO_METERS;
+				if( !useOcclusion )
+				{
+					// traced only for the global channels' occlusion; positional
+					// channels keep the direct path
+					spatializedDistance = directDistance;
+					spatializedOrigin = origin;
+				}
 			}
-
+		}
+		if( useOcclusion && s_useOcclusion.GetBool() )
+		{
 			// openQ4: does this sound have to cross a liquid surface to reach the ear? Asked here
 			// because this is already the per-emitter geometry step, and it is the same thread.
 			if( soundWorld->liquidTest != NULL )

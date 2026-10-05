@@ -116,6 +116,7 @@ return 0;}
       'hotplug-ignored':('eventSerial.load(std::memory_order_acquire)==events','true'),
       'surround-hrtf-conflict':('target.speakers==6 && captured.requestedHrtf==2','false'),
       'slot-bind-omitted':('sloti(h.auxEffectSlot,AL_EFFECTSLOT_EFFECT,enabled?h.auxReverbEffect:AL_EFFECT_NULL);','(void)enabled;'),
+      'area-reverb-release-skipped':('if (!enabled && !Native([&] {h.ReleaseAreaReverbSlots();return true;})) return false;','(void)0;'),
       'reentrant-normal-validation':('struct UpdateExit { ~UpdateExit() { state.updating=false; } } exit;', 'state.updating=false;'),
       'lost-native-ownership':('if (!SoundSettings_NativeOperationCurrent()) return false;\n\tconst bool result=operation();\n\treturn SoundSettings_NativeOperationCurrent() && result;', 'return operation();'),
       'stale-final-source':('live.source!=routed.source || live.lifetime!=routed.lifetime || live.directFilter!=routed.directFilter','live.source!=routed.source || live.directFilter!=routed.directFilter'),

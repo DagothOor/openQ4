@@ -789,6 +789,9 @@ void idSoundWorldLocal::Update()
 							   soundSystemLocal.activeStreamBufferContexts.Num(), soundSystemLocal.freeStreamBufferContexts.Num() );
 	}
 	soundSystemLocal.hardware.BeginDeferredUpdates();
+	// Retail places the area reverb slots before it mixes any channel, so every
+	// voice's sends below see this frame's slots.
+	soundSystemLocal.reverb.Update( this );
 	for( int i = 0; i < activeEmitterChannels.Num(); i++ )
 	{
 		idSoundChannel* chan = activeEmitterChannels[i].channel;
@@ -1868,6 +1871,13 @@ bool idSoundWorldLocal::ReadSoundState( idFile* savefile, idDemoFile* demoFile )
 			{
 				reader.Fail( va( "could not resolve sound shader '%s'", shaderName.c_str() ) );
 				return AbortRead();
+			}
+			// Saves and demos from before the retail area reverb stored the old
+			// shader default wet level of 0, which no override can produce now: a
+			// zero override is ignored, so only a shader saying "reverb 0" can.
+			if( !( channel->parms.wetLevel > 0.0f ) && channel->soundShader->GetParms()->wetLevel > 0.0f )
+			{
+				channel->parms.wetLevel = channel->soundShader->GetParms()->wetLevel;
 			}
 
 			// If the leadin sample is not valid (possible if the shader changed after saving) then the looping entry can't be valid either.

@@ -253,6 +253,9 @@ typedef void ( AL_APIENTRY *openq4_alEffecti_t )( ALuint effect, ALenum param, A
 typedef void ( AL_APIENTRY *openq4_alGenAuxiliaryEffectSlots_t )( ALsizei n, ALuint *effectslots );
 typedef void ( AL_APIENTRY *openq4_alDeleteAuxiliaryEffectSlots_t )( ALsizei n, const ALuint *effectslots );
 typedef void ( AL_APIENTRY *openq4_alAuxiliaryEffectSloti_t )( ALuint effectslot, ALenum param, ALint iValue );
+typedef void ( AL_APIENTRY *openq4_alEffectf_t )( ALuint effect, ALenum param, ALfloat flValue );
+typedef void ( AL_APIENTRY *openq4_alEffectfv_t )( ALuint effect, ALenum param, const ALfloat *pflValues );
+typedef void ( AL_APIENTRY *openq4_alGetEffecti_t )( ALuint effect, ALenum param, ALint *piValue );
 
 static openq4_alGenEffects_t qalGenEffects = NULL;
 static openq4_alDeleteEffects_t qalDeleteEffects = NULL;
@@ -260,6 +263,9 @@ static openq4_alEffecti_t qalEffecti = NULL;
 static openq4_alGenAuxiliaryEffectSlots_t qalGenAuxiliaryEffectSlots = NULL;
 static openq4_alDeleteAuxiliaryEffectSlots_t qalDeleteAuxiliaryEffectSlots = NULL;
 static openq4_alAuxiliaryEffectSloti_t qalAuxiliaryEffectSloti = NULL;
+static openq4_alEffectf_t qalEffectf = NULL;
+static openq4_alEffectfv_t qalEffectfv = NULL;
+static openq4_alGetEffecti_t qalGetEffecti = NULL;
 
 static bool openQ4_LoadHardwareEfxProcs() {
 	static bool initialized = false;
@@ -276,6 +282,9 @@ static bool openQ4_LoadHardwareEfxProcs() {
 	qalGenAuxiliaryEffectSlots = reinterpret_cast<openq4_alGenAuxiliaryEffectSlots_t>( alGetProcAddress( "alGenAuxiliaryEffectSlots" ) );
 	qalDeleteAuxiliaryEffectSlots = reinterpret_cast<openq4_alDeleteAuxiliaryEffectSlots_t>( alGetProcAddress( "alDeleteAuxiliaryEffectSlots" ) );
 	qalAuxiliaryEffectSloti = reinterpret_cast<openq4_alAuxiliaryEffectSloti_t>( alGetProcAddress( "alAuxiliaryEffectSloti" ) );
+	qalEffectf = reinterpret_cast<openq4_alEffectf_t>( alGetProcAddress( "alEffectf" ) );
+	qalEffectfv = reinterpret_cast<openq4_alEffectfv_t>( alGetProcAddress( "alEffectfv" ) );
+	qalGetEffecti = reinterpret_cast<openq4_alGetEffecti_t>( alGetProcAddress( "alGetEffecti" ) );
 
 	available =
 		( qalGenEffects != NULL ) &&
@@ -283,7 +292,10 @@ static bool openQ4_LoadHardwareEfxProcs() {
 		( qalEffecti != NULL ) &&
 		( qalGenAuxiliaryEffectSlots != NULL ) &&
 		( qalDeleteAuxiliaryEffectSlots != NULL ) &&
-		( qalAuxiliaryEffectSloti != NULL );
+		( qalAuxiliaryEffectSloti != NULL ) &&
+		( qalEffectf != NULL ) &&
+		( qalEffectfv != NULL ) &&
+		( qalGetEffecti != NULL );
 	return available;
 }
 #endif
@@ -597,6 +609,14 @@ idSoundHardware_OpenAL::idSoundHardware_OpenAL()
 	efxEnabled = false;
 	auxEffectSlot = 0;
 	auxReverbEffect = 0;
+	for( int i = 0; i < SOUND_REVERB_SLOTS - 1; i++ )
+	{
+		areaReverbSlots[i] = 0;
+		areaReverbEffects[i] = 0;
+	}
+	maxAuxiliarySends = 0;
+	reverbSlotGeneration = 0;
+	ResetReverbSlotState();
 	deviceEventsEnabled = false;
 	enabledDeviceEventFlags = 0;
 	reopenDeviceAvailable = false;
@@ -1356,12 +1376,23 @@ void idSoundHardware_OpenAL::Init()
 	efxFiltersAvailable = false;
 	auxEffectSlot = 0;
 	auxReverbEffect = 0;
+	maxAuxiliarySends = 0;
+	ResetReverbSlotState();
 #if OPENQ4_OPENAL_EFX_SUPPORTED
 	const bool efxExtensionPresent = openALVersionSupported && alcIsExtensionPresent( openalDevice, "ALC_EXT_EFX" ) == AL_TRUE;
 	efxFiltersAvailable = efxExtensionPresent;
 	if( efxFiltersAvailable )
 	{
 		common->Printf( "OpenAL EFX filters available.\n" );
+#if defined( ALC_MAX_AUXILIARY_SENDS )
+		// retail EAX gave every source two active sends: its own area and the listener's
+		ALCint sends = 0;
+		alcGetIntegerv( openalDevice, ALC_MAX_AUXILIARY_SENDS, 1, &sends );
+		if( CheckALCErrors( openalDevice ) == ALC_NO_ERROR && sends > 0 )
+		{
+			maxAuxiliarySends = sends;
+		}
+#endif
 	}
 	if( s_useEAXReverb.GetBool() && efxExtensionPresent && openQ4_LoadHardwareEfxProcs() )
 	{
@@ -1386,7 +1417,7 @@ void idSoundHardware_OpenAL::Init()
 				if( CheckALErrors() == AL_NO_ERROR )
 				{
 					efxEnabled = true;
-					common->Printf( "OpenAL EFX reverb send enabled.\n" );
+					common->Printf( "OpenAL EFX reverb send enabled (%d auxiliary sends).\n", maxAuxiliarySends );
 				}
 			}
 		}
@@ -1522,6 +1553,27 @@ void idSoundHardware_OpenAL::Shutdown()
 	zombieVoices.Clear();
 
 	#if OPENQ4_OPENAL_EFX_SUPPORTED
+		// the sources are gone, so nothing still feeds the area slots
+		for( int i = 0; i < SOUND_REVERB_SLOTS - 1; i++ )
+		{
+			if( areaReverbSlots[i] != 0 )
+			{
+				if ( qalAuxiliaryEffectSloti != NULL ) {
+					qalAuxiliaryEffectSloti( areaReverbSlots[i], AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL );
+				}
+				if ( qalDeleteAuxiliaryEffectSlots != NULL ) {
+					qalDeleteAuxiliaryEffectSlots( 1, &areaReverbSlots[i] );
+				}
+				areaReverbSlots[i] = 0;
+			}
+			if( areaReverbEffects[i] != 0 )
+			{
+				if ( qalDeleteEffects != NULL ) {
+					qalDeleteEffects( 1, &areaReverbEffects[i] );
+				}
+				areaReverbEffects[i] = 0;
+			}
+		}
 		if( auxEffectSlot != 0 )
 		{
 			if ( qalAuxiliaryEffectSloti != NULL ) {
@@ -1542,6 +1594,8 @@ void idSoundHardware_OpenAL::Shutdown()
 	#endif
 	efxEnabled = false;
 	efxFiltersAvailable = false;
+	maxAuxiliarySends = 0;
+	ResetReverbSlotState();
 
 #if defined(USE_DOOMCLASSIC)
 	// ---------------------
@@ -1973,6 +2027,308 @@ void idSoundHardware_OpenAL::Update()
 		}
 	}
 	*/
+}
+
+/*
+========================
+idSoundHardware_OpenAL reverb slots
+
+The four retail area reverb slots (see idSoundReverb). Slot 0 is the
+auxEffectSlot/auxReverbEffect pair whose lifetime the checked settings path
+owns; slots 1-3 are created while slot 0 holds its reverb, and released before
+slot 0 can be deleted.
+========================
+*/
+void idSoundHardware_OpenAL::ResetReverbSlotState()
+{
+	areaReverbUnavailable = false;
+	primaryReverbSlot = 0;
+	trackedReverbSlot = 0;
+	for( int i = 0; i < SOUND_REVERB_SLOTS; i++ )
+	{
+		memset( &appliedReverb[i], 0, sizeof( appliedReverb[i] ) );
+		appliedReverbSlot[i] = 0;
+		reverbEffectType[i] = 0;
+	}
+	reverbSlotGeneration++;
+}
+
+bool idSoundHardware_OpenAL::HasAreaReverbResources() const
+{
+	for( int i = 0; i < SOUND_REVERB_SLOTS - 1; i++ )
+	{
+		if( areaReverbSlots[i] != 0 || areaReverbEffects[i] != 0 )
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+ALuint idSoundHardware_OpenAL::GetReverbSlotHandle( int slot ) const
+{
+	if( slot == 0 )
+	{
+		return auxEffectSlot;
+	}
+	if( slot > 0 && slot < SOUND_REVERB_SLOTS )
+	{
+		return areaReverbSlots[slot - 1];
+	}
+	return 0;
+}
+
+ALuint idSoundHardware_OpenAL::ReverbEffectHandle( int slot ) const
+{
+	if( slot == 0 )
+	{
+		return auxReverbEffect;
+	}
+	if( slot > 0 && slot < SOUND_REVERB_SLOTS )
+	{
+		return areaReverbEffects[slot - 1];
+	}
+	return 0;
+}
+
+ALuint idSoundHardware_OpenAL::GetPrimaryAuxEffectSlot() const
+{
+	const ALuint slot = GetReverbSlotHandle( primaryReverbSlot );
+	return slot != 0 ? slot : auxEffectSlot;
+}
+
+void idSoundHardware_OpenAL::SetPrimaryReverbSlot( int slot )
+{
+	if( GetReverbSlotHandle( slot ) != 0 )
+	{
+		primaryReverbSlot = slot;
+	}
+}
+
+int idSoundHardware_OpenAL::SyncReverbSlots()
+{
+#if OPENQ4_OPENAL_EFX_SUPPORTED
+	if( auxEffectSlot != trackedReverbSlot )
+	{
+		// the checked settings path created, replaced or removed slot 0
+		trackedReverbSlot = auxEffectSlot;
+		primaryReverbSlot = 0;
+		appliedReverbSlot[0] = 0;
+		reverbEffectType[0] = 0;
+		reverbSlotGeneration++;
+	}
+	const bool reverbUsable = efxEnabled && auxEffectSlot != 0 && auxReverbEffect != 0 && openalContext != NULL && openQ4_LoadHardwareEfxProcs();
+	if( !reverbUsable )
+	{
+		if( HasAreaReverbResources() )
+		{
+			ReleaseAreaReverbSlots();
+		}
+		return 0;
+	}
+	if( !HasAreaReverbResources() && !areaReverbUnavailable && maxAuxiliarySends >= 2 )
+	{
+		CreateAreaReverbSlots();
+	}
+	return HasAreaReverbResources() ? SOUND_REVERB_SLOTS : 1;
+#else
+	return 0;
+#endif
+}
+
+bool idSoundHardware_OpenAL::CreateAreaReverbSlots()
+{
+#if OPENQ4_OPENAL_EFX_SUPPORTED
+	CheckALErrors();
+	ALint type = 0;
+	qalGetEffecti( auxReverbEffect, AL_EFFECT_TYPE, &type );
+	if( alGetError() != AL_NO_ERROR || ( type != AL_EFFECT_EAXREVERB && type != AL_EFFECT_REVERB ) )
+	{
+		type = AL_EFFECT_EAXREVERB;
+	}
+
+	bool created = true;
+	for( int i = 0; i < SOUND_REVERB_SLOTS - 1 && created; i++ )
+	{
+		qalGenEffects( 1, &areaReverbEffects[i] );
+		created = alGetError() == AL_NO_ERROR && areaReverbEffects[i] != 0;
+		if( created )
+		{
+			qalEffecti( areaReverbEffects[i], AL_EFFECT_TYPE, type );
+			created = alGetError() == AL_NO_ERROR;
+		}
+		if( created )
+		{
+			qalGenAuxiliaryEffectSlots( 1, &areaReverbSlots[i] );
+			created = alGetError() == AL_NO_ERROR && areaReverbSlots[i] != 0;
+		}
+		if( created )
+		{
+			qalAuxiliaryEffectSloti( areaReverbSlots[i], AL_EFFECTSLOT_EFFECT, areaReverbEffects[i] );
+			created = alGetError() == AL_NO_ERROR;
+		}
+	}
+
+	if( !created )
+	{
+		// no source feeds a slot created this frame, so they can go at once
+		for( int i = 0; i < SOUND_REVERB_SLOTS - 1; i++ )
+		{
+			if( areaReverbSlots[i] != 0 )
+			{
+				qalDeleteAuxiliaryEffectSlots( 1, &areaReverbSlots[i] );
+				areaReverbSlots[i] = 0;
+			}
+			if( areaReverbEffects[i] != 0 )
+			{
+				qalDeleteEffects( 1, &areaReverbEffects[i] );
+				areaReverbEffects[i] = 0;
+			}
+		}
+		alGetError();
+		areaReverbUnavailable = true;
+		common->Warning( "OpenAL EFX could not create the area reverb slots; only the listener's area reverb will play." );
+		return false;
+	}
+
+	for( int i = 0; i < SOUND_REVERB_SLOTS; i++ )
+	{
+		reverbEffectType[i] = type;
+		if( i > 0 )
+		{
+			appliedReverbSlot[i] = 0;
+		}
+	}
+	reverbSlotGeneration++;
+	return true;
+#else
+	return false;
+#endif
+}
+
+void idSoundHardware_OpenAL::ReleaseAreaReverbSlots()
+{
+#if OPENQ4_OPENAL_EFX_SUPPORTED
+	if( !HasAreaReverbResources() )
+	{
+		primaryReverbSlot = 0;
+		return;
+	}
+
+	// OpenAL refuses to delete an effect slot that a source still feeds
+	for( int i = 0; i < voices.Num(); i++ )
+	{
+		voices[i].DetachReverbSends();
+	}
+	for( int i = 0; i < SOUND_REVERB_SLOTS - 1; i++ )
+	{
+		if( areaReverbSlots[i] != 0 )
+		{
+			qalAuxiliaryEffectSloti( areaReverbSlots[i], AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL );
+			qalDeleteAuxiliaryEffectSlots( 1, &areaReverbSlots[i] );
+			areaReverbSlots[i] = 0;
+		}
+		if( areaReverbEffects[i] != 0 )
+		{
+			qalDeleteEffects( 1, &areaReverbEffects[i] );
+			areaReverbEffects[i] = 0;
+		}
+		appliedReverbSlot[i + 1] = 0;
+		reverbEffectType[i + 1] = 0;
+	}
+	CheckALErrors();
+	primaryReverbSlot = 0;
+	reverbSlotGeneration++;
+#endif
+}
+
+void idSoundHardware_OpenAL::SetReverbSlotProperties( int slot, const soundReverbEAX_t& properties )
+{
+#if OPENQ4_OPENAL_EFX_SUPPORTED
+	if( slot < 0 || slot >= SOUND_REVERB_SLOTS || !efxEnabled || !openQ4_LoadHardwareEfxProcs() )
+	{
+		return;
+	}
+	const ALuint slotHandle = GetReverbSlotHandle( slot );
+	const ALuint effect = ReverbEffectHandle( slot );
+	if( slotHandle == 0 || effect == 0 )
+	{
+		return;
+	}
+
+	soundReverbEFX_t efx;
+	SoundReverb_ConvertEAXToEFX( properties, efx );
+	if( appliedReverbSlot[slot] == slotHandle && SoundReverb_EFXEqual( appliedReverb[slot], efx ) )
+	{
+		return;
+	}
+
+	CheckALErrors();
+	if( reverbEffectType[slot] == 0 )
+	{
+		ALint type = 0;
+		qalGetEffecti( effect, AL_EFFECT_TYPE, &type );
+		reverbEffectType[slot] = alGetError() == AL_NO_ERROR ? type : AL_EFFECT_NULL;
+	}
+
+	if( reverbEffectType[slot] == AL_EFFECT_EAXREVERB )
+	{
+		qalEffectf( effect, AL_EAXREVERB_DENSITY, efx.density );
+		qalEffectf( effect, AL_EAXREVERB_DIFFUSION, efx.diffusion );
+		qalEffectf( effect, AL_EAXREVERB_GAIN, efx.gain );
+		qalEffectf( effect, AL_EAXREVERB_GAINHF, efx.gainHF );
+		qalEffectf( effect, AL_EAXREVERB_GAINLF, efx.gainLF );
+		qalEffectf( effect, AL_EAXREVERB_DECAY_TIME, efx.decayTime );
+		qalEffectf( effect, AL_EAXREVERB_DECAY_HFRATIO, efx.decayHFRatio );
+		qalEffectf( effect, AL_EAXREVERB_DECAY_LFRATIO, efx.decayLFRatio );
+		qalEffectf( effect, AL_EAXREVERB_REFLECTIONS_GAIN, efx.reflectionsGain );
+		qalEffectf( effect, AL_EAXREVERB_REFLECTIONS_DELAY, efx.reflectionsDelay );
+		qalEffectfv( effect, AL_EAXREVERB_REFLECTIONS_PAN, efx.reflectionsPan );
+		qalEffectf( effect, AL_EAXREVERB_LATE_REVERB_GAIN, efx.lateReverbGain );
+		qalEffectf( effect, AL_EAXREVERB_LATE_REVERB_DELAY, efx.lateReverbDelay );
+		qalEffectfv( effect, AL_EAXREVERB_LATE_REVERB_PAN, efx.lateReverbPan );
+		qalEffectf( effect, AL_EAXREVERB_ECHO_TIME, efx.echoTime );
+		qalEffectf( effect, AL_EAXREVERB_ECHO_DEPTH, efx.echoDepth );
+		qalEffectf( effect, AL_EAXREVERB_MODULATION_TIME, efx.modulationTime );
+		qalEffectf( effect, AL_EAXREVERB_MODULATION_DEPTH, efx.modulationDepth );
+		qalEffectf( effect, AL_EAXREVERB_AIR_ABSORPTION_GAINHF, efx.airAbsorptionGainHF );
+		qalEffectf( effect, AL_EAXREVERB_HFREFERENCE, efx.hfReference );
+		qalEffectf( effect, AL_EAXREVERB_LFREFERENCE, efx.lfReference );
+		qalEffectf( effect, AL_EAXREVERB_ROOM_ROLLOFF_FACTOR, efx.roomRolloffFactor );
+		qalEffecti( effect, AL_EAXREVERB_DECAY_HFLIMIT, efx.decayHFLimit ? AL_TRUE : AL_FALSE );
+	}
+	else if( reverbEffectType[slot] == AL_EFFECT_REVERB )
+	{
+		// standard reverb has no low-frequency, echo, modulation or panning controls
+		qalEffectf( effect, AL_REVERB_DENSITY, efx.density );
+		qalEffectf( effect, AL_REVERB_DIFFUSION, efx.diffusion );
+		qalEffectf( effect, AL_REVERB_GAIN, efx.gain );
+		qalEffectf( effect, AL_REVERB_GAINHF, efx.gainHF );
+		qalEffectf( effect, AL_REVERB_DECAY_TIME, efx.decayTime );
+		qalEffectf( effect, AL_REVERB_DECAY_HFRATIO, efx.decayHFRatio );
+		qalEffectf( effect, AL_REVERB_REFLECTIONS_GAIN, efx.reflectionsGain );
+		qalEffectf( effect, AL_REVERB_REFLECTIONS_DELAY, efx.reflectionsDelay );
+		qalEffectf( effect, AL_REVERB_LATE_REVERB_GAIN, efx.lateReverbGain );
+		qalEffectf( effect, AL_REVERB_LATE_REVERB_DELAY, efx.lateReverbDelay );
+		qalEffectf( effect, AL_REVERB_AIR_ABSORPTION_GAINHF, efx.airAbsorptionGainHF );
+		qalEffectf( effect, AL_REVERB_ROOM_ROLLOFF_FACTOR, efx.roomRolloffFactor );
+		qalEffecti( effect, AL_REVERB_DECAY_HFLIMIT, efx.decayHFLimit ? AL_TRUE : AL_FALSE );
+	}
+	else
+	{
+		return;
+	}
+
+	// a slot holds a copy of its effect; binding it again publishes the parameters
+	qalAuxiliaryEffectSloti( slotHandle, AL_EFFECTSLOT_EFFECT, effect );
+	if( CheckALErrors() != AL_NO_ERROR )
+	{
+		appliedReverbSlot[slot] = 0;
+		return;
+	}
+	appliedReverb[slot] = efx;
+	appliedReverbSlot[slot] = slotHandle;
+#endif
 }
 
 

@@ -644,6 +644,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         (root / "tools" / "tests" / 'ui_settings_effect_journal.py', []),
         (root / "tools" / "tests" / 'sound_settings.py', []),
         (root / "tools" / "tests" / 'sound_recovery.py', []),
+        (root / "tools" / "tests" / 'sound_retail_reverb_contract.py', []),
         (root / "tools" / "tests" / 'ui_performance_presets.py', ['--mutations', '--adjacent']),
         (root / "tools" / "tests" / 'ui_system_number_fields.py', []),
         (root / "tools" / "tests" / 'ui_system_presets.py', []),

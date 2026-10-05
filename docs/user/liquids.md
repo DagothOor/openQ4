@@ -141,9 +141,9 @@ effect runs inside the world render, not over the finished frame.
 
 **Sound.** Non-global world sounds muffle while your head is under, and anything on the other side
 of the surface is occluded on top of that: the world above goes distant and dull the moment you go
-under, while music, announcements and interface sounds remain clear. Generic room-reverb tails are
-suppressed for submerged and cross-surface audio so the result sounds enclosed by water rather than
-like a large hall. Entry and exit visuals still happen at every crossing, but their shared surface
+under, while music, announcements and interface sounds remain clear. Room reverb is turned well down
+for submerged and cross-surface audio so the result sounds enclosed by water rather than like a
+large hall. Entry and exit visuals still happen at every crossing, but their shared surface
 sound has a 600 ms debounce so a single jump in shallow water cannot play it twice.
 
 **Shots and trails.** A liquid surface is a presentation boundary, not a bulletproof wall.

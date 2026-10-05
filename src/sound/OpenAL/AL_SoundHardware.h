@@ -98,6 +98,32 @@ public:
 		return auxEffectSlot;
 	}
 
+	// Retail area reverb slots (idSoundReverb). Slot 0 is auxEffectSlot, whose
+	// lifetime the checked settings path owns; slots 1-3 exist while it does.
+	// Returns the number of usable slots, 0 when EFX reverb is off.
+	int				SyncReverbSlots();
+	void			SetReverbSlotProperties( int slot, const soundReverbEAX_t& properties );
+	void			SetPrimaryReverbSlot( int slot );
+	int				GetPrimaryReverbSlot() const
+	{
+		return primaryReverbSlot;
+	}
+	ALuint			GetReverbSlotHandle( int slot ) const;
+	// the slot every mono voice's first send feeds: the one holding the listener's area
+	ALuint			GetPrimaryAuxEffectSlot() const;
+	int				GetMaxAuxiliarySends() const
+	{
+		return maxAuxiliarySends;
+	}
+	// changes whenever slot handles are created, replaced or released
+	unsigned int	GetReverbSlotGeneration() const
+	{
+		return reverbSlotGeneration;
+	}
+	bool			HasAreaReverbResources() const;
+	// detaches every voice's reverb sends, then frees slots 1-3
+	void			ReleaseAreaReverbSlots();
+
 	// OpenAL info
 	static void		PrintDeviceList( const char* list );
 	static void		PrintALCInfo( ALCdevice* device );
@@ -130,6 +156,16 @@ private:
 	bool				efxEnabled;
 	ALuint				auxEffectSlot;
 	ALuint				auxReverbEffect;
+	ALuint				areaReverbSlots[SOUND_REVERB_SLOTS - 1];
+	ALuint				areaReverbEffects[SOUND_REVERB_SLOTS - 1];
+	bool				areaReverbUnavailable;
+	int					primaryReverbSlot;
+	int					maxAuxiliarySends;
+	unsigned int		reverbSlotGeneration;
+	ALuint				trackedReverbSlot;		// auxEffectSlot as the reverb slots last saw it
+	soundReverbEFX_t	appliedReverb[SOUND_REVERB_SLOTS];
+	ALuint				appliedReverbSlot[SOUND_REVERB_SLOTS];	// slot handle appliedReverb went to
+	ALint				reverbEffectType[SOUND_REVERB_SLOTS];	// AL_EFFECT_EAXREVERB/REVERB, 0 = unqueried
 	bool				deviceEventsEnabled;
 	int					enabledDeviceEventFlags;
 	bool				reopenDeviceAvailable;
@@ -166,6 +202,9 @@ private:
 	bool			TryReopenDevice( const char* requestedDeviceName, const char* reason );
 	bool			UpdateDeviceMonitoring();
 	void			PrintPerformanceData();
+	bool			CreateAreaReverbSlots();
+	void			ResetReverbSlotState();
+	ALuint			ReverbEffectHandle( int slot ) const;
 };
 
 /*

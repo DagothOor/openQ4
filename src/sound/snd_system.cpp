@@ -38,7 +38,7 @@ idCVar s_radioChatterFraction( "s_radioChatterFraction", "0.5", CVAR_ARCHIVE | C
 idCVar s_frequencyShift( "s_frequencyShift", "1", CVAR_BOOL, "enable sound shader frequency shift playback" );
 idCVar s_useOpenAL( "s_useOpenAL", "1", CVAR_ARCHIVE | CVAR_BOOL, "use OpenAL audio backend" );
 idCVar s_deviceName( "s_deviceName", "", CVAR_ARCHIVE, "OpenAL device name override" );
-idCVar s_useEAXReverb( "s_useEAXReverb", "1", CVAR_ARCHIVE | CVAR_BOOL, "use EAX reverb if available" );
+idCVar s_useEAXReverb( "s_useEAXReverb", "1", CVAR_SOUND | CVAR_ARCHIVE | CVAR_BOOL, "use EAX reverb if available" );
 idCVar s_openALHRTF( "s_openALHRTF", "0", CVAR_ARCHIVE | CVAR_INTEGER, "OpenAL Soft HRTF mode: 0 = auto, 1 = off, 2 = on", 0, 2, idCmdSystem::ArgCompletion_Integer<0,2> );
 idCVar s_openALEfxDebugMode( "s_openALEfxDebugMode", "0", CVAR_ARCHIVE | CVAR_INTEGER, "OpenAL wet/dry debug mode (0=normal, 1=wet-only, 2=dry-only)" );
 idCVar s_numberOfSpeakers( "s_numberOfSpeakers", "6", CVAR_ARCHIVE | CVAR_INTEGER, "number of speakers (2 or 6)" );
@@ -217,6 +217,11 @@ ListSamples_f
 Compatibility name retained for OpenQ4 scripts.
 ========================
 */
+void ListReverbs_f( const idCmdArgs& args )
+{
+	soundSystemLocal.reverb.PrintInfo();
+}
+
 void ListSamples_f( const idCmdArgs& args )
 {
 	ListSounds_f( args );
@@ -383,6 +388,7 @@ void idSoundSystemLocal::Init()
 	cmdSystem->AddCommand( "reloadSounds", ReloadSounds_f, CMD_FL_SOUND | CMD_FL_CHEAT, "reloads all sounds" );
 	cmdSystem->AddCommand( "s_restart", RestartSound_f, CMD_FL_SOUND, "restarts the sound system" );
 	cmdSystem->AddCommand( "listSamples", ListSamples_f, CMD_FL_SOUND, "lists all loaded sound samples" );
+	cmdSystem->AddCommand( "listReverbs", ListReverbs_f, CMD_FL_SOUND, "lists the reverb presets, the map's area reverbs and the active reverb slots" );
 
 	idLib::Printf( "sound system initialized.\n" );
 	idLib::Printf( "--------------------------------------\n" );
@@ -444,6 +450,7 @@ void idSoundSystemLocal::Shutdown()
 	sampleHash.Free();
 	FreeStreamBuffers();
 	hardware.Shutdown();
+	reverb.Clear();
 }
 
 /*
@@ -845,10 +852,14 @@ void idSoundSystemLocal::BeginLevelLoad()
 idSoundSystemLocal::EndLevelLoad
 ========================
 */
-void idSoundSystemLocal::EndLevelLoad()
+void idSoundSystemLocal::EndLevelLoad( const char* mapName )
 {
 
 	insideLevelLoad = false;
+
+	// Retail loads the reverb presets and the map's area table here, once the
+	// game render world (and so its portal areas) exists.
+	reverb.LoadLevel( mapName, session != NULL ? session->rw : NULL );
 /*
 	common->Printf( "----- idSoundSystemLocal::EndLevelLoad -----\n" );
 	int		start = Sys_Milliseconds();
@@ -918,6 +929,31 @@ void idSoundSystemLocal::PrintMemInfo( MemInfo_t* mi )
 {
 }
 
+/*
+========================
+idSoundSystemLocal reverb editor interface
+========================
+*/
+const char* idSoundSystemLocal::GetReverbName( int reverbIndex )
+{
+	return reverb.GetReverbName( reverbIndex );
+}
+
+int idSoundSystemLocal::GetNumAreas()
+{
+	return reverb.GetNumAreas();
+}
+
+int idSoundSystemLocal::GetReverb( int area )
+{
+	return reverb.GetReverb( area );
+}
+
+bool idSoundSystemLocal::SetReverb( int area, const char* reverbName, const char* fileName )
+{
+	return reverb.SetReverb( area, reverbName, fileName );
+}
+
 // jmarshall: Quake 4 specific code
 idSoundWorld* idSoundSystemLocal::GetSoundWorldFromId(int worldId) {
 	switch (worldId)
@@ -954,3 +990,702 @@ void idSoundSystemLocal::FreeSoundEmitter(int worldId, int handle, bool immediat
 	emitter->Free( immediate );
 }
 // jmarshall
+
+/*
+===============================================================================
+
+	Retail environmental reverb
+
+	The efxs/*.efx presets, the maps/<map>.reverb area tables and the four
+	reverb slots that follow the listener (Quake4.exe 1.4.2). The slot planning
+	and the EAX to EFX arithmetic live in SoundReverbCore.h; the design record is
+	docs/dev/retail-audio-reverb.md.
+
+===============================================================================
+*/
+
+idCVar s_useEAXOcclusion( "s_useEAXOcclusion", "1", CVAR_SOUND | CVAR_BOOL | CVAR_ARCHIVE, "use EAX occlusion" );
+idCVar s_muteEAXReverb( "s_muteEAXReverb", "0", CVAR_SOUND | CVAR_BOOL, "mute EAX reverb" );
+idCVar s_showReverb( "s_showReverb", "0", CVAR_SOUND | CVAR_BOOL, "print the reverb slots whenever the listener's areas or their reverbs change" );
+
+static const char* const SOUND_REVERB_DEFAULT_EFX = "efxs/default.efx";
+static const int SOUND_REVERB_EFX_VERSION = 1;
+
+/*
+========================
+idSoundReverb::idSoundReverb
+========================
+*/
+idSoundReverb::idSoundReverb()
+{
+	efxLoaded = false;
+	numSlots = 0;
+	slotGeneration = 0;
+	ResetSlots();
+}
+
+/*
+========================
+idSoundReverb::Clear
+========================
+*/
+void idSoundReverb::Clear()
+{
+	effects.Clear();
+	efxLoaded = false;
+	efxFileName.Clear();
+	areaReverbs.Clear();
+	reverbFileName.Clear();
+	portals.Clear();
+	ResetSlots();
+}
+
+/*
+========================
+idSoundReverb::ResetSlots
+========================
+*/
+void idSoundReverb::ResetSlots()
+{
+	for( int i = 0; i < SOUND_REVERB_SLOTS; i++ )
+	{
+		slotToArea[i] = -1;
+	}
+	primarySlot = 0;
+	lastShownState.Clear();
+}
+
+/*
+========================
+SoundReverb_UnsignedToken
+
+Retail reads "environment" and "flags" as a raw number token; anything else is 0.
+========================
+*/
+static unsigned int SoundReverb_UnsignedToken( idToken& token )
+{
+	if( token.type != TT_NUMBER )
+	{
+		return 0;
+	}
+	return token.GetUnsignedLongValue();
+}
+
+/*
+========================
+idSoundReverb::ReadEffect
+
+Retail idEFXFile::ReadEffect: reverb "<name>" { "<property>" <value> ... }.
+========================
+*/
+bool idSoundReverb::ReadEffect( idLexer& src, effect_t& effect )
+{
+	idToken token;
+	if( !src.ReadToken( &token ) )
+	{
+		return false;
+	}
+	if( token != "reverb" )
+	{
+		src.Error( "idEFXFile::ReadEffect: Unknown effect definition" );
+		return false;
+	}
+
+	idToken name;
+	src.ReadTokenOnLine( &name );
+
+	if( !src.ReadToken( &token ) )
+	{
+		return false;
+	}
+	if( token != "{" )
+	{
+		src.Error( "idEFXFile::ReadEffect: { not found, found %s", token.c_str() );
+		return false;
+	}
+
+	soundReverbEAX_t& p = effect.properties;
+	SoundReverb_DefaultEAX( p );
+	while( src.ReadToken( &token ) )
+	{
+		if( token == "}" )
+		{
+			effect.name = name;
+			return true;
+		}
+
+		if( token == "environment" )
+		{
+			src.ReadTokenOnLine( &token );
+			p.environment = SoundReverb_UnsignedToken( token );
+		}
+		else if( token == "environment size" )
+		{
+			p.environmentSize = src.ParseFloat();
+		}
+		else if( token == "environment diffusion" )
+		{
+			p.environmentDiffusion = src.ParseFloat();
+		}
+		else if( token == "room" )
+		{
+			p.room = src.ParseInt();
+		}
+		else if( token == "room hf" )
+		{
+			p.roomHF = src.ParseInt();
+		}
+		else if( token == "room lf" )
+		{
+			p.roomLF = src.ParseInt();
+		}
+		else if( token == "decay time" )
+		{
+			p.decayTime = src.ParseFloat();
+		}
+		else if( token == "decay hf ratio" )
+		{
+			p.decayHFRatio = src.ParseFloat();
+		}
+		else if( token == "decay lf ratio" )
+		{
+			p.decayLFRatio = src.ParseFloat();
+		}
+		else if( token == "reflections" )
+		{
+			p.reflections = src.ParseInt();
+		}
+		else if( token == "reflections delay" )
+		{
+			p.reflectionsDelay = src.ParseFloat();
+		}
+		else if( token == "reflections pan" )
+		{
+			p.reflectionsPan[0] = src.ParseFloat();
+			p.reflectionsPan[1] = src.ParseFloat();
+			p.reflectionsPan[2] = src.ParseFloat();
+		}
+		else if( token == "reverb" )
+		{
+			p.reverb = src.ParseInt();
+		}
+		else if( token == "reverb delay" )
+		{
+			p.reverbDelay = src.ParseFloat();
+		}
+		else if( token == "reverb pan" )
+		{
+			p.reverbPan[0] = src.ParseFloat();
+			p.reverbPan[1] = src.ParseFloat();
+			p.reverbPan[2] = src.ParseFloat();
+		}
+		else if( token == "echo time" )
+		{
+			p.echoTime = src.ParseFloat();
+		}
+		else if( token == "echo depth" )
+		{
+			p.echoDepth = src.ParseFloat();
+		}
+		else if( token == "modulation time" )
+		{
+			p.modulationTime = src.ParseFloat();
+		}
+		else if( token == "modulation depth" )
+		{
+			p.modulationDepth = src.ParseFloat();
+		}
+		else if( token == "air absorption hf" )
+		{
+			p.airAbsorptionHF = src.ParseFloat();
+		}
+		else if( token == "hf reference" )
+		{
+			p.hfReference = src.ParseFloat();
+		}
+		else if( token == "lf reference" )
+		{
+			p.lfReference = src.ParseFloat();
+		}
+		else if( token == "room rolloff factor" )
+		{
+			p.roomRolloffFactor = src.ParseFloat();
+		}
+		else if( token == "flags" )
+		{
+			src.ReadTokenOnLine( &token );
+			p.flags = SoundReverb_UnsignedToken( token );
+		}
+		else
+		{
+			src.ReadTokenOnLine( &token );
+			src.Error( "idEFXFile::ReadEffect: Invalid parameter in reverb definition" );
+			return false;
+		}
+	}
+
+	src.Error( "idEFXFile::ReadEffect: EOF without closing brace" );
+	return false;
+}
+
+/*
+========================
+idSoundReverb::LoadEffectFile
+
+Retail idEFXFile::LoadFile. Quake4.exe 1.4.2 skips an effect that fails to
+parse and keeps reading. Its lexer errors are fatal; openQ4 reports them as
+warnings so a damaged mod file cannot end the session.
+========================
+*/
+bool idSoundReverb::LoadEffectFile( const char* fileName )
+{
+	effects.Clear();
+
+	idLexer src( LEXFL_NOSTRINGCONCAT | LEXFL_NOFATALERRORS );
+	if( !src.LoadFile( fileName ) )
+	{
+		return false;
+	}
+	if( !src.ExpectTokenString( "Version" ) )
+	{
+		return false;
+	}
+	if( src.ParseInt() != SOUND_REVERB_EFX_VERSION )
+	{
+		src.Error( "idEFXFile::LoadFile: Unknown file version" );
+		return false;
+	}
+
+	while( !src.EndOfFile() )
+	{
+		effect_t effect;
+		if( ReadEffect( src, effect ) )
+		{
+			effects.Append( effect );
+		}
+	}
+	return true;
+}
+
+/*
+========================
+idSoundReverb::LoadAreaTable
+
+Retail idSoundSystemLocal::LoadReverbData: every area starts on the first
+preset, then reverb { { <area> <preset> } ... } names the others.
+========================
+*/
+void idSoundReverb::LoadAreaTable( const char* mapName, int numAreas )
+{
+	areaReverbs.SetNum( Max( numAreas, 0 ) );
+	for( int i = 0; i < areaReverbs.Num(); i++ )
+	{
+		areaReverbs[i] = 0;
+	}
+	reverbFileName.Clear();
+
+	if( mapName == NULL )
+	{
+		return;
+	}
+	idStr fileName = mapName;
+	fileName.SetFileExtension( ".reverb" );
+	if( fileSystem->ReadFile( fileName, NULL ) < 0 )
+	{
+		return;
+	}
+
+	idLexer parser( LEXFL_NOFATALERRORS );
+	if( !parser.LoadFile( fileName ) )
+	{
+		return;
+	}
+	reverbFileName = fileName;
+
+	idToken token;
+	if( !parser.ReadToken( &token ) )
+	{
+		return;
+	}
+	if( token.Icmp( "reverb" ) )
+	{
+		common->Warning( "Malformed reverb file header in '%s'", fileName.c_str() );
+		return;
+	}
+	parser.SkipUntilString( "{" );
+	if( !parser.ReadToken( &token ) )
+	{
+		return;
+	}
+
+	bool wellFormed = true;
+	while( token == "{" )
+	{
+		const int area = parser.ParseInt();
+		if( !parser.ReadToken( &token ) )
+		{
+			wellFormed = false;
+			break;
+		}
+		if( area < 0 || area >= areaReverbs.Num() )
+		{
+			// Five stock tables (hub1, mcc_landing, network1, process2, q4ctf6) still
+			// name areas of an older compile of their map. Retail warns and skips them;
+			// the warning is developer-only here because players cannot act on it.
+			common->DWarning( "Invalid reverb area number %d [0,%d] in '%s'", area, areaReverbs.Num(), fileName.c_str() );
+		}
+		else
+		{
+			SetReverb( area, token.c_str(), fileName.c_str() );
+		}
+		if( !parser.ReadToken( &token ) || token != "}" || !parser.ReadToken( &token ) )
+		{
+			wellFormed = false;
+			break;
+		}
+	}
+
+	if( wellFormed && token == "}" )
+	{
+		common->Printf( "Loaded reverb file '%s'\n", fileName.c_str() );
+	}
+	else
+	{
+		common->Warning( "Malformed reverb file '%s' line %d", fileName.c_str(), parser.GetLineNum() );
+	}
+}
+
+/*
+========================
+idSoundReverb::LoadLevel
+========================
+*/
+void idSoundReverb::LoadLevel( const char* mapName, const idRenderWorld* renderWorld )
+{
+	idStr mapEfx = mapName != NULL ? mapName : "";
+	mapEfx.SetFileExtension( ".efx" );
+	mapEfx.StripPath();
+	idStr efxName = "efxs/";
+	efxName += mapEfx;
+
+	efxLoaded = LoadEffectFile( efxName );
+	if( efxLoaded )
+	{
+		efxFileName = efxName;
+		common->Printf( "sound: found %s\n", efxName.c_str() );
+	}
+	else
+	{
+		efxLoaded = LoadEffectFile( SOUND_REVERB_DEFAULT_EFX );
+		if( efxLoaded )
+		{
+			efxFileName = SOUND_REVERB_DEFAULT_EFX;
+			common->Printf( "sound: found %s\n", SOUND_REVERB_DEFAULT_EFX );
+		}
+		else
+		{
+			efxFileName.Clear();
+			common->Printf( "sound: missing %s and %s\n", efxName.c_str(), SOUND_REVERB_DEFAULT_EFX );
+		}
+	}
+
+	LoadAreaTable( mapName, renderWorld != NULL ? renderWorld->NumAreas() : 0 );
+	ResetSlots();
+	soundSystemLocal.hardware.SetPrimaryReverbSlot( 0 );
+}
+
+/*
+========================
+idSoundReverb reverb editor interface
+========================
+*/
+const char* idSoundReverb::GetReverbName( int reverb ) const
+{
+	if( !efxLoaded || reverb < 0 || reverb >= effects.Num() )
+	{
+		return NULL;
+	}
+	return effects[reverb].name.c_str();
+}
+
+int idSoundReverb::GetNumAreas() const
+{
+	return areaReverbs.Num();
+}
+
+int idSoundReverb::GetReverb( int area ) const
+{
+	if( area < 0 || area >= areaReverbs.Num() )
+	{
+		return 0;
+	}
+	return areaReverbs[area];
+}
+
+bool idSoundReverb::SetReverb( int area, const char* reverbName, const char* fileName )
+{
+	if( reverbName == NULL )
+	{
+		reverbName = "";
+	}
+	if( fileName == NULL )
+	{
+		fileName = "";
+	}
+	if( area < 0 || area >= areaReverbs.Num() )
+	{
+		common->Warning( "Invalid reverb area number %d [0,%d] in '%s'", area, areaReverbs.Num(), fileName );
+		return false;
+	}
+	for( int i = 0;; i++ )
+	{
+		const char* name = GetReverbName( i );
+		if( name == NULL )
+		{
+			break;
+		}
+		if( idStr::Icmp( name, reverbName ) )
+		{
+			continue;
+		}
+		areaReverbs[area] = i;
+		return true;
+	}
+	common->Warning( "Unknown reverb type '%s' in '%s'", reverbName, fileName );
+	return false;
+}
+
+/*
+========================
+idSoundReverb::FindEffect
+
+Retail idEFXFile::FindEffect: the first effect with exactly this name.
+========================
+*/
+int idSoundReverb::FindEffect( const char* name ) const
+{
+	for( int i = 0; i < effects.Num(); i++ )
+	{
+		if( !idStr::Cmp( effects[i].name, name ) )
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+/*
+========================
+idSoundReverb::EffectForArea
+
+The effect a slot plays for an area: the area's preset looked up by name, as
+retail does, else an effect named "default".
+========================
+*/
+int idSoundReverb::EffectForArea( void* context, int area )
+{
+	const idSoundReverb* reverb = static_cast<const idSoundReverb*>( context );
+	const char* name = reverb->GetReverbName( reverb->GetReverb( area ) );
+	int effect = reverb->FindEffect( name != NULL ? name : "" );
+	if( effect < 0 )
+	{
+		effect = reverb->FindEffect( "default" );
+	}
+	return effect;
+}
+
+/*
+========================
+idSoundReverb::SlotForArea
+========================
+*/
+int idSoundReverb::SlotForArea( int area ) const
+{
+	if( area < 0 )
+	{
+		return -1;
+	}
+	return SoundReverb_SlotForArea( slotToArea, numSlots, area );
+}
+
+/*
+========================
+idSoundReverb::Update
+
+Retail runs this from the mixer whenever EAX reverb is on and a preset file
+loaded. Only the game sound world moves the slots; the menus keep them as the
+game left them.
+========================
+*/
+void idSoundReverb::Update( idSoundWorldLocal* world )
+{
+	idSoundHardware& hardware = soundSystemLocal.hardware;
+	const int slots = hardware.SyncReverbSlots();
+	if( slots != numSlots || hardware.GetReverbSlotGeneration() != slotGeneration )
+	{
+		// new, replaced or released slots start without area pins
+		numSlots = slots;
+		slotGeneration = hardware.GetReverbSlotGeneration();
+		ResetSlots();
+	}
+	// Retail has one listener, which only the game places. The menu sound world
+	// shares the game render world but never places its listener, so only the
+	// game world moves the slots and the menus play with what the game left.
+	if( numSlots <= 0 || !efxLoaded || world == NULL || world->renderWorld == NULL || session == NULL || world != session->sw )
+	{
+		return;
+	}
+	const listener_t& listener = world->listener;
+	if( listener.area < 0 )
+	{
+		return;
+	}
+
+	idRenderWorld* renderWorld = world->renderWorld;
+	portals.SetNum( 0 );
+	if( listener.area < renderWorld->NumAreas() )
+	{
+		const int numPortals = renderWorld->NumPortalsInArea( listener.area );
+		for( int p = 0; p < numPortals; p++ )
+		{
+			const exitPortal_t exitPortal = renderWorld->GetPortal( listener.area, p );
+			if( exitPortal.w == NULL )
+			{
+				continue;
+			}
+			soundReverbPortal_t& portal = portals.Alloc();
+			portal.area = exitPortal.areas[0] == listener.area ? exitPortal.areas[1] : exitPortal.areas[0];
+			const idVec3 center = exitPortal.w->GetCenter();
+			idBounds bounds;
+			exitPortal.w->GetBounds( bounds );
+			for( int i = 0; i < 3; i++ )
+			{
+				portal.center[i] = center[i];
+				portal.mins[i] = bounds[0][i];
+				portal.maxs[i] = bounds[1][i];
+			}
+		}
+	}
+
+	soundReverbListener_t planListener;
+	for( int i = 0; i < 3; i++ )
+	{
+		planListener.origin[i] = listener.pos[i];
+		for( int j = 0; j < 3; j++ )
+		{
+			planListener.axis[i][j] = listener.axis[i][j];
+		}
+	}
+	planListener.area = listener.area;
+
+	soundReverbSlotPlan_t plan;
+	SoundReverb_PlanSlots( planListener, portals.Ptr(), portals.Num(), numSlots, slotToArea, EffectForArea, this, s_muteEAXReverb.GetBool(), plan );
+
+	for( int slot = 0; slot < numSlots; slot++ )
+	{
+		if( !plan.configured[slot] )
+		{
+			continue;
+		}
+		soundReverbEAX_t properties = effects[plan.effect[slot]].properties;
+		if( plan.muteRoom[slot] )
+		{
+			properties.room = SOUND_REVERB_MUTED_ROOM_MB;
+		}
+		for( int i = 0; i < 3; i++ )
+		{
+			properties.reflectionsPan[i] = plan.pan[slot][i];
+			properties.reverbPan[i] = plan.pan[slot][i];
+		}
+		hardware.SetReverbSlotProperties( slot, properties );
+	}
+	if( plan.primarySlot >= 0 )
+	{
+		primarySlot = plan.primarySlot;
+		hardware.SetPrimaryReverbSlot( primarySlot );
+	}
+
+	if( s_showReverb.GetBool() )
+	{
+		ShowState( listener );
+	}
+}
+
+/*
+========================
+idSoundReverb::ShowState
+========================
+*/
+void idSoundReverb::ShowState( const listener_t& listener )
+{
+	idStr state = va( "reverb: listener area %d, slots", listener.area );
+	for( int slot = 0; slot < numSlots; slot++ )
+	{
+		state += va( " [%d%s] ", slot, slot == primarySlot ? "*" : "" );
+		const int area = slotToArea[slot];
+		if( area < 0 )
+		{
+			state += "-";
+			continue;
+		}
+		const int effect = EffectForArea( this, area );
+		state += va( "area %d ", area );
+		state += effect >= 0 ? effects[effect].name.c_str() : "?";
+	}
+	if( state != lastShownState )
+	{
+		common->Printf( "%s\n", state.c_str() );
+		lastShownState = state;
+	}
+}
+
+/*
+========================
+idSoundReverb::PrintInfo
+========================
+*/
+void idSoundReverb::PrintInfo() const
+{
+	if( !efxLoaded )
+	{
+		common->Printf( "Reverb presets: none loaded\n" );
+	}
+	else
+	{
+		common->Printf( "Reverb presets: %s, %d reverbs\n", efxFileName.c_str(), effects.Num() );
+		for( int i = 0; i < effects.Num(); i++ )
+		{
+			common->Printf( "  %2d: %s\n", i, effects[i].name.c_str() );
+		}
+	}
+
+	if( reverbFileName.Length() > 0 )
+	{
+		common->Printf( "Area reverbs: %s, %d areas\n", reverbFileName.c_str(), areaReverbs.Num() );
+	}
+	else
+	{
+		common->Printf( "Area reverbs: no table for this map, %d areas use reverb 0\n", areaReverbs.Num() );
+	}
+	for( int i = 0; i < effects.Num(); i++ )
+	{
+		int count = 0;
+		for( int area = 0; area < areaReverbs.Num(); area++ )
+		{
+			count += ( areaReverbs[area] == i ) ? 1 : 0;
+		}
+		if( count > 0 )
+		{
+			common->Printf( "  %-16s %d areas\n", effects[i].name.c_str(), count );
+		}
+	}
+
+	common->Printf( "Reverb slots: %d, primary %d\n", numSlots, primarySlot );
+	for( int slot = 0; slot < numSlots; slot++ )
+	{
+		const int area = slotToArea[slot];
+		const int effect = area >= 0 ? EffectForArea( const_cast<idSoundReverb*>( this ), area ) : -1;
+		common->Printf( "  [%d]%s area %d %s\n", slot, slot == primarySlot ? "*" : " ", area,
+			effect >= 0 ? effects[effect].name.c_str() : "-" );
+	}
+}

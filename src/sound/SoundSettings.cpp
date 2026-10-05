@@ -108,11 +108,14 @@ bool KnownOutput(int mode) noexcept {
 struct SoundSettingsAccess {
 	static bool PortableNone() noexcept {
 		const auto& h=soundSystemLocal.hardware;
-		if (h.efxEnabled || h.auxEffectSlot || h.auxReverbEffect || h.voices.Num()>96) return false;
+		if (h.efxEnabled || h.auxEffectSlot || h.auxReverbEffect || h.HasAreaReverbResources() || h.voices.Num()>96) return false;
 		// Retained filters on an idle voice are resources too. BaselineSources
 		// intentionally inventories active source receipts only.
 		for (int i=0;i<h.voices.Num();++i)
 			if (h.voices[i].openalDirectFilter || h.voices[i].openalAuxFilter) return false;
+		// So is the filter of the send into a voice's own area reverb slot.
+		for (int i=0;i<h.voices.Num();++i)
+			if (h.voices[i].openalAreaAuxFilter) return false;
 		return true;
 	}
 	static bool Read(SoundSettingsObservation& out, bool effectProof=true) {
@@ -230,6 +233,9 @@ struct SoundSettingsAccess {
 			if (deviceLifetimeSerial==oldLifetime && h.openalContext==oldContext) h.auxEffectSlot=slot;
 			if (!slotCall || !Native([] {return alGetError()==AL_NO_ERROR;}) || !slot) return false;
 		}
+		// The area reverb slots, and every source send into any reverb slot, go
+		// before the shared slot is unbound and possibly deleted on restore.
+		if (!enabled && !Native([&] {h.ReleaseAreaReverbSlots();return true;})) return false;
 		if (h.auxEffectSlot && (!Native([&] {sloti(h.auxEffectSlot,AL_EFFECTSLOT_EFFECT,enabled?h.auxReverbEffect:AL_EFFECT_NULL);return true;}) ||
 			!Native([] {return alGetError()==AL_NO_ERROR;}))) return false;
 		h.efxEnabled=enabled; return true;
@@ -290,7 +296,7 @@ struct SoundSettingsAccess {
 		for (int i=0;i<h.voices.Num();++i) {
 			auto& v=h.voices[i]; if (!v.openalSource) continue;
 			SoundSettingsSourceReceipt receipt;
-			if (!v.ApplyWetDryRoutingChecked(h.efxFiltersAvailable,h.efxEnabled,h.auxEffectSlot,receipt)) return false;
+			if (!v.ApplyWetDryRoutingChecked(h.efxFiltersAvailable,h.efxEnabled,h.GetPrimaryAuxEffectSlot(),receipt)) return false;
 			c.sources[c.sourceCount++]=receipt;
 		}
 		c.routingGeneration=generation; c.routingUpdate=updateSerial; out=c; return true;

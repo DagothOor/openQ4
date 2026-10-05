@@ -390,7 +390,9 @@ bool idSoundShader::ParseShader( idLexer& src )
 	parms.soundShaderFlags = 0;
 	parms.soundClass = 0;
 	parms.frequencyShift = 1.0f;
-	parms.wetLevel = 0.0f;
+	// Retail sends every mono sound to the area reverb; it has no "reverb" keyword.
+	// openQ4 keeps the keyword's wet level as a scale on that send.
+	parms.wetLevel = 1.0f;
 	parms.dryLevel = 1.0f;
 	minFrequencyShift = SOUND_SHADER_DEFAULT_FREQUENCY_SHIFT;
 	maxFrequencyShift = SOUND_SHADER_DEFAULT_FREQUENCY_SHIFT;

@@ -6772,7 +6772,7 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 		SetRetainedLoadingPhase( RETAINED_LOAD_FINISHING );
 		mediaRenderMsec = Sys_Milliseconds() - mediaPhaseStart;
 		mediaPhaseStart = Sys_Milliseconds();
-		soundSystem->EndLevelLoad();
+		soundSystem->EndLevelLoad( fullMapName.c_str() );
 		mediaSoundMsec = Sys_Milliseconds() - mediaPhaseStart;
 		mediaPhaseStart = Sys_Milliseconds();
 		declManager->EndLevelLoad();

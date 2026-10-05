@@ -32,6 +32,7 @@ If you have questions concerning this license or the applicable additional terms
 #define __SND_LOCAL_H__
 
 #include "WaveFile.h"
+#include "SoundReverbCore.h"
 
 // Maximum number of voices we can have allocated
 #define MAX_HARDWARE_VOICES 48
@@ -486,6 +487,69 @@ public:
 
 
 /*
+================================================
+idSoundReverb
+
+Retail Quake 4 environmental reverb (Quake4.exe 1.4.2): the efxs/*.efx preset
+file, the map's maps/<map>.reverb area table, and the four reverb slots that
+follow the listener's area and the three areas nearest it through its portals.
+Slot planning and the EAX to EFX arithmetic live in SoundReverbCore.h.
+================================================
+*/
+class idSoundReverb
+{
+public:
+						idSoundReverb();
+
+	// retail idSoundSystemLocal::EndLevelLoad: efxs/<map>.efx, else efxs/default.efx,
+	// then <map>.reverb against the areas of the game render world
+	void				LoadLevel( const char* mapName, const idRenderWorld* renderWorld );
+	void				Clear();
+
+	// once per sound world update, before the voices take their sends
+	void				Update( idSoundWorldLocal* world );
+
+	// the reverb slot holding an area, -1 when no slot holds it
+	int					SlotForArea( int area ) const;
+
+	// retail reverb editor interface
+	const char*			GetReverbName( int reverb ) const;
+	int					GetNumAreas() const;
+	int					GetReverb( int area ) const;
+	bool				SetReverb( int area, const char* reverbName, const char* fileName );
+
+	void				PrintInfo() const;
+
+private:
+	struct effect_t
+	{
+		idStr				name;
+		soundReverbEAX_t	properties;
+	};
+
+	idList<effect_t>	effects;				// efxs/*.efx in file order
+	bool				efxLoaded;
+	idStr				efxFileName;
+	idList<int>			areaReverbs;			// effect index per portal area
+	idStr				reverbFileName;			// empty when the map has no table
+	int					slotToArea[SOUND_REVERB_SLOTS];
+	int					numSlots;				// slots the hardware provided at the last update
+	int					primarySlot;
+	unsigned int		slotGeneration;
+	idList<soundReverbPortal_t>	portals;		// scratch, the listener area's portals
+	idStr				lastShownState;			// s_showReverb
+
+	bool				LoadEffectFile( const char* fileName );
+	bool				ReadEffect( idLexer& src, effect_t& effect );
+	void				LoadAreaTable( const char* mapName, int numAreas );
+	int					FindEffect( const char* name ) const;
+	void				ResetSlots();
+	void				ShowState( const listener_t& listener );
+	static int			EffectForArea( void* context, int area );
+};
+
+
+/*
 ===================================================================================
 
 idSoundSystemLocal
@@ -556,10 +620,16 @@ public:
 	virtual	void			BeginLevelLoad();
 
 	// We might want to defer the loading of new sounds to this point
-	virtual	void			EndLevelLoad();
+	virtual	void			EndLevelLoad( const char* mapName );
 
 	// prints memory info
 	virtual void			PrintMemInfo( MemInfo_t* mi );
+
+	// retail reverb editor interface
+	virtual const char*		GetReverbName( int reverb );
+	virtual int				GetNumAreas();
+	virtual int				GetReverb( int area );
+	virtual bool			SetReverb( int area, const char* reverbName, const char* fileName );
 
 	//-------------------------
 
@@ -624,6 +694,8 @@ public:
 	idHashIndex					sampleHash;
 
 	idSoundHardware				hardware;
+
+	idSoundReverb				reverb;
 
 	idRandom2					random;
 
