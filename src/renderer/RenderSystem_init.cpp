@@ -4205,6 +4205,12 @@ static void R_BakeReflectionProbes_f( const idCmdArgs &args ) {
 		for ( int face = 0; face < 6; ++face ) {
 			ref.viewaxis = faceAxes[face] * light->parms.axis;
 			tr.TakeScreenshot( size, size, va( "%s%s", info.cubeImage->GetName(), suffixes[face] ), blends, &ref );
+			// A capture runs its frame inline but never reaches EndFrame:
+			// release what the face allocated as EndFrame does, without
+			// presenting (as the light-grid bake's LightGrid_FinishCapture).
+			R_ToggleSmpFrame();
+			vertexCache.EndFrame();
+			R_RendererUpload_EndFrame();
 		}
 		const idStr firstFace = va( "%s%s", info.cubeImage->GetName(), suffixes[0] );
 		if ( !R_SavedFileLoads( firstFace ) ) {

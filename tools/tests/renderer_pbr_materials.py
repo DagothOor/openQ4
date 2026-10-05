@@ -1210,6 +1210,13 @@ def test_box_parallax_and_probe_capture_contract() -> None:
                   "if ( !R_SavedFileLoads( firstFace ) ) {",
                   "info.cubeImage->Reload( true );"):
         require(init, token, "in-engine reflection probe capture")
+    # Each face's inline frame is released as EndFrame releases it.
+    bake = init[init.index("static void R_BakeReflectionProbes_f("):]
+    bake = bake[:bake.index("//====")]
+    release = [bake.find(call, bake.find("tr.TakeScreenshot(")) for call in
+               ("R_ToggleSmpFrame();", "vertexCache.EndFrame();", "R_RendererUpload_EndFrame();")]
+    if min(release) < 0 or release != sorted(release):
+        raise AssertionError("bakeReflectionProbes must release each capture's frame data after TakeScreenshot")
     # View rectangles are virtual-screen units; window pixels cropped captures.
     if init.count("ref.width = SCREEN_WIDTH;") < 3 or "ref.width = glConfig.vidWidth;" in init:
         raise AssertionError("envshot and probe captures must size their view in virtual-screen units")
