@@ -195,6 +195,7 @@ jobs:
             tools/tests/loading_continue_input.py \
             tools/tests/loading_pacifier_pacing.py \
             tools/tests/loading_pacifier_reentry_contract.py \
+            tools/tests/loading_wipe_capture_crop_contract.py \
             tools/tests/choice_gui_value_contract.py \
             tools/tests/mp_mvd_smoke.py \
             tools/tests/map_entity_strings.py \
@@ -545,6 +546,7 @@ jobs:
           python tools/tests/loading_continue_input.py
           python tools/tests/loading_pacifier_pacing.py
           python tools/tests/loading_pacifier_reentry_contract.py
+          python tools/tests/loading_wipe_capture_crop_contract.py
           python tools/tests/choice_gui_value_contract.py
           python tools/tests/map_entity_strings.py
           python tools/tests/sp_turbo_weapon_wheel.py

@@ -4124,6 +4124,39 @@ void idSessionLocal::DrawIAmTheDukeOverlay( void ) const {
 
 /*
 ================
+sessionCaptureDrawGuard_t
+
+The wipe capture and the save preview draw outside UpdateScreen, into a render
+crop they push themselves. That is drawing code all the same. Any print inside
+it (an fs_debug file lookup, a developer DPrintf, a non-precached decl warning)
+offers PacifierUpdate a loading-screen redraw, or refresh-on-print an
+UpdateScreen. That frame's BeginFrame resets the crop stack under the capture,
+which then copies the wrong rect, and the capture's UnCrop drops the map with
+"currentRenderCrop < 1". Holding insideUpdateScreen keeps both out until the
+crop is popped, and clears it again if the draw throws.
+================
+*/
+class sessionCaptureDrawGuard_t {
+public:
+	explicit sessionCaptureDrawGuard_t( idSessionLocal &session ) :
+		session( session ), owner( !session.insideUpdateScreen ) {
+		session.insideUpdateScreen = true;
+	}
+
+	~sessionCaptureDrawGuard_t() {
+		// a capture nested in a screen update leaves the flag to that update
+		if ( owner ) {
+			session.insideUpdateScreen = false;
+		}
+	}
+
+private:
+	idSessionLocal &session;
+	bool owner;
+};
+
+/*
+================
 idSessionLocal::StartWipe
 
 Draws and captures the current state, then starts a wipe with that image
@@ -4136,13 +4169,18 @@ void idSessionLocal::StartWipe( const char *_wipeMaterial, bool hold ) {
 #endif
 	console->Close();
 
-	// render the current screen into a texture for the wipe model
-	renderSystem->CropRenderSize( 640, 480, true );
+	{
+		// ExecuteMapChange captures while the loading screen still redraws on prints
+		sessionCaptureDrawGuard_t captureDraw( *this );
 
-	Draw();
+		// render the current screen into a texture for the wipe model
+		renderSystem->CropRenderSize( 640, 480, true );
 
-	renderSystem->CaptureRenderToImage( "_scratch");
-	renderSystem->UnCrop();
+		Draw();
+
+		renderSystem->CaptureRenderToImage( "_scratch");
+		renderSystem->UnCrop();
+	}
 
 	wipeMaterial = declManager->FindMaterial( _wipeMaterial, false );
 
@@ -7274,6 +7312,8 @@ bool idSessionLocal::SaveGame( const char *saveName, saveType_t saveType ) {
 		if ( rw ) {
 			rw->PushMarkedDefs();
 		}
+		// Declared before the crop, so the crop is popped while still guarded.
+		sessionCaptureDrawGuard_t previewDraw( *this );
 		// The current crop can be smaller than the drawable in legacy
 		// r_screenFraction mode.  Push a physical-size crop so all screen-space
 		// feedback targets see one coherent frame, then restore the prior crop.

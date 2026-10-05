@@ -417,6 +417,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         root / "tools" / "tests" / "choice_gui_value_contract.py",
         root / "tools" / "tests" / "list_window_selection_contract.py",
         root / "tools" / "tests" / "loading_pacifier_reentry_contract.py",
+        root / "tools" / "tests" / "loading_wipe_capture_crop_contract.py",
         root / "tools" / "tests" / "server_browser_contract.py",
         root / "tools" / "tests" / "base64_input_safety.py",
         root / "tools" / "tests" / "campaign_split_state_transition.py",

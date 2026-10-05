@@ -942,6 +942,27 @@
   - `mp_match_control_team_join_smoke.py` passes, and fails on a pre-fix
     runtime (revision 19 -> 21, "Committed" while the player stays Marine);
     `competitive_match_layer.py` pins the order, and eight mutants fail it.
+- [x] Map loads no longer drop just as they finish with "idRenderSystemLocal::UnCrop:
+  currentRenderCrop < 1". ExecuteMapChange ends with StartWipe, which pushes a
+  render crop, draws the loading screen and copies it into `_scratch` outside
+  UpdateScreen while every print still offers PacifierUpdate a loading-screen
+  redraw. A print inside that capture (fs_debug's "Can't find _scratch" from the
+  level-load cache's image lookup, a developer DPrintf, a non-precached decl
+  warning) ran the redraw once the pacing interval had passed. Its BeginFrame
+  reset the crop stack, the capture copied the whole window, and StartWipe's
+  UnCrop dropped the finished map. `sessionCaptureDrawGuard_t` now holds
+  `insideUpdateScreen` across the wipe capture and the save preview's crop, so
+  neither PacifierUpdate nor refresh-on-print can begin a frame inside a
+  capture. The other crop pairs never meet such a redraw: the game's objective
+  camshot fires 250 ms after spawn but a load runs only 160 ms of settle frames
+  (and no stock map uses it), and the renderer's subview, demo and
+  resolution-scale crops run inside a guarded draw or outside a map change.
+  `loading_wipe_capture_crop_contract.py` runs the production StartWipe,
+  PacifierUpdate and UpdateScreen against a renderer with a real crop stack and
+  checks that an unguarded StartWipe still drops. Evidence, hidden-window SP
+  loads of game/airdefense1 with fs_debug 1 and developer 1, one at a time:
+  the previous build dropped 5 of 5, the fixed build 0 of 11, and every run
+  printed "Can't find _scratch" inside the capture.
 - [x] `bakeLightGrids` captures whole cube faces at any window size. Its
   capture view took the window's pixel size as its rectangle, but render-view
   rectangles are virtual-screen units: `RenderViewToViewport` scales them by
