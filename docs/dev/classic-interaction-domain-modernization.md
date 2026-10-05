@@ -150,7 +150,9 @@ conditions:
   allocation/update failure;
 - fog/blend lights inside the interaction pass;
 - GPU-palette skinning, custom/new-style GLSL lighting, parallax,
-  enhanced-material, cel, flat-
+  enhanced-material (`r_enhancedMaterials`, inferred PBR, or a PBR-authored
+  receiver; `r_pbrMaterials`, on by default, leaves a view without one
+  eligible), cel, flat-
   diffuse, simple/test, or other alternate interaction modes;
 - unsupported or unsealed material-deform output, generated/deformed geometry,
   GPU-palette-skinned, packed, primitive-batch, missing-cache, depth-hack,

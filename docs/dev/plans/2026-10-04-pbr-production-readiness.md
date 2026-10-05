@@ -557,3 +557,39 @@ qualification is Windows/NVIDIA, with other platforms' release review open.
 | Stock map, Vulkan, fresh profile | renders normally; `records=0`; the default-safety report shows `pbr=1` and its pre-existing `rollback` issue only (Vulkan has no GL legacy bridge) |
 | Migration | a profile with `seta r_pbrMaterials "0"` logs the migration and archives `r_pbrMaterials 1` and the flag; with the flag already set, a deliberate 0 stays 0 (`effective=0`) |
 | Laboratory | the full batch passes on the Stage F build: every Vulkan, modern GL and GL-native suite, every production and SSAO pairing, diagnostics with the documented set. The GL-native probe suite failed once on scene setup under machine load (its specimen spawned twice, a laboratory console-timing race) and passed on rerun with both probe pairings |
+
+### Cross-module audit after promotion (2026-10-05)
+
+The stages were qualified on Windows, where MSVC links every module. A Linux
+GCC build of the promoted tree with CI's options (debug, forcefallback,
+native tests) compiles and links the client, the dedicated server, both game
+modules, both renderer modules and the native tests, and the renderer
+modules resolve every symbol (`ldd -r`). Three regressions surfaced outside
+that qualification and are fixed:
+
+- The shared world-interaction domain (`r_rendererSharedWorldInteraction`,
+  opt-in) rejected every view while `r_pbrMaterials` was on, so promotion
+  switched it off on stock maps: on Air Defense 1 it owned the view with PBR
+  off (`ready=1 lights=5 surfaces=183`) and fell back with PBR on, on both
+  backends. The view gate now covers only the switches that reinterpret stock
+  materials; `ValidateSurfaceMaterial` still rejects every PBR-authored
+  receiver. The gameplay benchmark's interaction profile expects that
+  ownership on stock scenes.
+- The OpenGL ES module compiles `tr_backend.cpp` and `ModernGLExecutor.cpp`
+  but not `draw_pbr.cpp` or `draw_common.cpp`, and links with `-z defs`.
+  Stage B's two calls into the native owner are compiled out there
+  (`OPENQ4_RENDERER_GLES_MODULE`, as `RenderSystem_init.cpp` and
+  `Interaction.cpp` already were), and Stage E's shared baked-grid packing
+  (`RB_LightGridBakedParams`) moved from `draw_common.cpp` into
+  `ModernGLExecutor.cpp`. With the Android branch's ES compile fixes applied,
+  every ES object compiles and the link reports only the twelve OpenGL-only
+  symbols that predate this plan, which that branch stubs in
+  `gles_Backend.cpp`; before the fix it also reported these three. main's ES
+  module does not compile on desktop Linux by itself, for desktop-GL calls
+  in three shared files that predate this plan; the Android branch fixes
+  them.
+- CI builds neither the ES module nor this closure, so
+  `renderer_pbr_materials.py` scans every translation unit the Vulkan and ES
+  modules compile for `RB_GLPBR_*` calls outside a branch that excludes the
+  module (with a negative control), and pins the baked-grid helper to
+  `ModernGLExecutor.cpp`.

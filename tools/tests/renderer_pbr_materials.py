@@ -7,6 +7,7 @@ import contextlib
 import io
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1500,6 +1501,90 @@ def test_pbr_default_promotion_contract() -> None:
             "OpenGL skips PBR preparation in a frame without a PBR material")
     require(read(ROOT / "src/renderer/Vulkan/vk_Backend.cpp"), "&& R_ScenePackets_CommandStreamHasPBR( cmds ) )",
             "Vulkan skips PBR preparation in a frame without a PBR material")
+
+
+def _calls_outside_module_guard(text: str, prefix: str, macro: str) -> list[int]:
+    # Lines that call prefix* where the module macro is not excluded by an
+    # enclosing preprocessor branch. Each stack entry is the pair (if-branch
+    # excludes the module, else-branch excludes it); "excludes" means the
+    # branch condition is a conjunction containing !defined( macro ), or the
+    # else of a positive test of the macro.
+    negative = re.compile(r"!\s*defined\s*\(\s*" + macro + r"\s*\)")
+    positive = re.compile(r"(^ifdef\s+" + macro + r"\b)|(^if\s+defined\s*\(\s*" + macro + r"\s*\)\s*$)")
+    stack: list[list[bool]] = []
+    active: list[bool] = []
+    unguarded = []
+    for number, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            directive = stripped[1:].strip()
+            if directive.startswith(("if", "ifdef", "ifndef")) and not directive.startswith("include"):
+                if directive.startswith("ifndef"):
+                    excludes = directive.split()[1:2] == [macro]
+                    pair = [excludes, False]
+                elif positive.search(directive):
+                    pair = [False, True]
+                else:
+                    pair = [bool(negative.search(directive)) and "||" not in directive, False]
+                stack.append(pair)
+                active.append(pair[0])
+            elif directive.startswith("elif") and stack:
+                active[-1] = bool(negative.search(directive)) and "||" not in directive
+            elif directive.startswith("else") and stack:
+                active[-1] = stack[-1][1]
+            elif directive.startswith("endif") and stack:
+                stack.pop()
+                active.pop()
+            continue
+        if re.search(r"\b" + prefix + r"\w*\s*\(", line) and not any(active):
+            unguarded.append(number)
+    return unguarded
+
+
+def test_native_gl_pbr_owner_stays_in_the_gl_module() -> None:
+    # draw_pbr.cpp (the native OpenGL owner) is built only into renderer-gl.
+    # Any translation unit the Vulkan or OpenGL ES module also compiles must
+    # reach its RB_GLPBR_* entry points only inside a branch that excludes
+    # that module, or the module loses those symbols: the ES module links
+    # with -z defs, and CI never builds it.
+    sources = read(ROOT / "tools/build/meson_sources.py")
+    for name in ("RENDERER_VK_EXCLUDED_SOURCES", "RENDERER_GLES_EXCLUDED_SOURCES"):
+        block = sources.split(name + " = (", 1)[1].split(")", 1)[0]
+        require(block, '"src/renderer/draw_pbr.cpp"', f"{name} excludes the native OpenGL owner")
+    listings = {}
+    for module, macro in (("renderer_vk", "OPENQ4_RENDERER_VK_MODULE"),
+                          ("renderer_gles", "OPENQ4_RENDERER_GLES_MODULE")):
+        listing = subprocess.run([sys.executable, str(ROOT / "tools/build/meson_sources.py"), "--emit", module],
+                                 cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
+        if not listing or "src/renderer/draw_pbr.cpp" in listing:
+            raise AssertionError(f"{module}: source discovery must list sources and exclude draw_pbr.cpp")
+        listings[module] = listing
+        for path in listing:
+            if not path.endswith(".cpp"):
+                continue
+            unguarded = _calls_outside_module_guard(read(ROOT / path), "RB_GLPBR_", macro)
+            if unguarded:
+                raise AssertionError(f"{module}: {path} calls RB_GLPBR_* outside a {macro} exclusion "
+                                     f"at lines {unguarded}")
+    # The baked-grid uniform packing is shared by the native owner and the
+    # modern executor, which the ES module also compiles: it must live in a
+    # translation unit the ES module builds, never in draw_common.cpp.
+    definition = "void RB_LightGridBakedParams( const LightGrid &grid,"
+    owners = [path for path in listings["renderer_gles"]
+              if path.endswith(".cpp") and definition in read(ROOT / path)]
+    if owners != ["src/renderer/ModernGLExecutor.cpp"]:
+        raise AssertionError(f"RB_LightGridBakedParams must be defined once in ModernGLExecutor.cpp, found {owners}")
+    reject(read(ROOT / "src/renderer/draw_common.cpp"), definition, "draw_common.cpp is not built into the ES module")
+    # Negative control: the scan must flag an unguarded call and pass a
+    # guarded one in either branch shape.
+    if _calls_outside_module_guard("void f() {\n\tRB_GLPBR_PrintInfo();\n}\n", "RB_GLPBR_",
+                                   "OPENQ4_RENDERER_GLES_MODULE") != [2]:
+        raise AssertionError("the module-guard scan must flag an unguarded call")
+    guarded = ("#if !defined( OPENQ4_RENDERER_VK_MODULE ) && !defined( OPENQ4_RENDERER_GLES_MODULE )\n"
+               "\tRB_GLPBR_PrintInfo();\n#endif\n#ifdef OPENQ4_RENDERER_GLES_MODULE\n\tGLES();\n#else\n"
+               "\tRB_GLPBR_PrepareFrame( frame );\n#endif\n")
+    if _calls_outside_module_guard(guarded, "RB_GLPBR_", "OPENQ4_RENDERER_GLES_MODULE"):
+        raise AssertionError("the module-guard scan must accept guarded calls")
 
 
 def main() -> int:

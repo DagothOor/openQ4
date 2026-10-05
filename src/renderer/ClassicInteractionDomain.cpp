@@ -3329,7 +3329,10 @@ static bool R_ClassicInteractionDomain_PrepareView(
 		SetError( error, CLASSIC_INTERACTION_FAILURE_CEL_SHADING );
 		return FailView( view, arenaCheckpoint, error );
 	}
-	if ( r_enhancedMaterials.GetBool() || r_pbrMaterials.GetBool()
+	// These reinterpret stock materials. r_pbrMaterials (default on) changes
+	// only PBR-authored materials, and ValidateSurfaceMaterial rejects every
+	// PBR receiver, so a view without one stays eligible.
+	if ( r_enhancedMaterials.GetBool()
 			|| r_pbrInferFromLegacyMaterials.GetBool() ) {
 		SetError( error, CLASSIC_INTERACTION_FAILURE_ENHANCED_MATERIAL );
 		return FailView( view, arenaCheckpoint, error );

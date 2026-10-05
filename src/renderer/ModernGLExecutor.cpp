@@ -4884,6 +4884,37 @@ static void R_ModernGLExecutor_BindMaterialTextures( const modernGLSubmitCommand
 	R_GLStateCache().ActiveTextureUnit( 0 );
 }
 
+/*
+The uBakedGrid[7] block of ModernLightGridGLSL.h: origin/enabled,
+spacing/gamma, bounds/intensity, atlas texel size/tile/border, visibility
+distance/bias/floor/exponent, relocation distance, and the origin the shader's
+positions are relative to (with the contribution cap). Shared by the modern
+executor and the classic-loop PBR owner (draw_pbr.cpp); defined here because
+the OpenGL ES module compiles this file but not draw_common.cpp.
+*/
+void RB_LightGridBakedParams( const LightGrid &grid, const float origin[3], float params[7][4] ) {
+	memset( params, 0, sizeof( float ) * 7 * 4 );
+	for ( int axis = 0; axis < 3; ++axis ) {
+		params[0][axis] = grid.lightGridOrigin[axis];
+		params[1][axis] = grid.lightGridSize[axis];
+		params[2][axis] = static_cast<float>( grid.lightGridBounds[axis] );
+		params[6][axis] = origin[axis];
+	}
+	params[0][3] = 1.0f;
+	params[1][3] = idMath::ClampFloat( 0.25f, 4.0f, r_lightGridIrradianceGamma.GetFloat() );
+	params[2][3] = idMath::ClampFloat( 0.0f, 16.0f, r_lightGridIntensity.GetFloat() );
+	params[3][0] = 1.0f / grid.irradianceImage->GetOpts().width;
+	params[3][1] = 1.0f / grid.irradianceImage->GetOpts().height;
+	params[3][2] = static_cast<float>( grid.imageSingleProbeSize );
+	params[3][3] = static_cast<float>( grid.imageBorderSize );
+	params[4][0] = grid.visibilityMaxDistance > 0.0f ? grid.visibilityMaxDistance : 4096.0f;
+	params[4][1] = 3.0f;
+	params[4][2] = idMath::ClampFloat( 0.0f, 1.0f, r_lightGridVisibilityFloor.GetFloat() );
+	params[4][3] = 2.0f;
+	params[5][0] = grid.relocationMaxDistance > 0.0f ? grid.relocationMaxDistance : 48.0f;
+	params[6][3] = idMath::ClampFloat( 0.0f, 16.0f, r_lightGridMaxContribution.GetFloat() );
+}
+
 static void R_ModernGLExecutor_BindBakedGrid( const modernGLSubmitCommand_t &command ) {
 	if ( command.bakedGridLocation < 0 ) { return; }
 	const LightGrid *grid = R_ModernGLExecutor_CommandBakedGrid( command );

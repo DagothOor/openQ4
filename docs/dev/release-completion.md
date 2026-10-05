@@ -68,6 +68,13 @@
   nothing. Authored reflection probes stay opt-in: they start the modern
   scene-packet pipeline every frame. README, the user guide, the capability
   matrix and the roadmap describe PBR materials as a supported default.
+- [x] PBR promotion cross-module audit: the opt-in shared world-interaction
+  domain no longer rejects every view while `r_pbrMaterials` is on (it
+  rejects PBR-authored receivers only), and the OpenGL ES module no longer
+  loses the native owner's hooks or the baked-grid packing, which the ES
+  module does not build (`tr_backend.cpp` guard; `RB_LightGridBakedParams`
+  moved to `ModernGLExecutor.cpp`). A Linux GCC build and an ES symbol
+  closure confirm it; `renderer_pbr_materials.py` pins the module guards.
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:
