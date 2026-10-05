@@ -532,6 +532,8 @@ bool R_ScenePackets_BuildTemporalViewMotionPolicy( const viewDef_t *viewDef,
 	temporalViewMotionPolicy_t &policy );
 bool R_ScenePackets_TemporalRigidMotionEligible( const drawSurf_t *drawSurf );
 void R_ScenePackets_BuildLegacyCommandStream( const emptyCommand_t *cmds, idScenePacketFrame &packetFrame );
+// True when a view of the command stream draws a PBR-authored material.
+bool R_ScenePackets_CommandStreamHasPBR( const emptyCommand_t *cmds );
 void R_ScenePackets_LogIfVerbose( const idScenePacketFrame &packetFrame );
 bool RendererScenePacket_RunSelfTest( void );
 

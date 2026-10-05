@@ -276,7 +276,7 @@ idCVar r_useLightPortalFlow( "r_useLightPortalFlow", "1", CVAR_RENDERER | CVAR_B
 idCVar r_multiSamples( "r_multiSamples", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "MSAA sample count: 0 = off, 2/4/8/16 = supported quality steps", 0, 16, idCmdSystem::ArgCompletion_String<r_multiSamplesArgs> );
 idCVar r_postAA( "r_postAA", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "post AA mode: 0 = off, 1 = SMAA 1x medium, 2 = SMAA 1x high, 3 = SMAA 1x ultra, 4 = SMAA 1x colour-edge prototype", 0, 4, idCmdSystem::ArgCompletion_Integer<0,4> );
 idCVar r_postAAStatePoisonTest( "r_postAAStatePoisonTest", "0", CVAR_RENDERER | CVAR_BOOL, "intentionally dirty GL texture/client state before SMAA post-AA draws for validation" );
-idCVar r_pbrMaterials( "r_pbrMaterials", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "allow explicitly PBR-authored materials on supported modern renderer paths" );
+idCVar r_pbrMaterials( "r_pbrMaterials", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "draw explicitly PBR-authored materials as PBR; 0 keeps their classic stages. Stock materials are never PBR" );
 idCVar r_vkPBRSpecularAA( "r_vkPBRSpecularAA", "1", CVAR_RENDERER | CVAR_BOOL, "filter native Vulkan PBR roughness by shading-normal variance; disable only for comparison" );
 idCVar r_pbrGeneratedLegacyFallback( "r_pbrGeneratedLegacyFallback", "1", CVAR_RENDERER | CVAR_BOOL, "allow development-only classic fallback generation for PBR-only materials" );
 idCVar r_pbrDebug( "r_pbrDebug", "0", CVAR_RENDERER | CVAR_INTEGER, "PBR debug view: 0=off, 1=albedo, 2=normal, 3=metallic, 4=roughness, 5=AO, 6=emissive, 7=state marker (green=PBR, magenta=contract mismatch)", 0, 7, idCmdSystem::ArgCompletion_Integer<0,7> );
@@ -693,6 +693,7 @@ idCVar r_shadowMapPolygonFactor( "r_shadowMapPolygonFactor", "0.25", CVAR_RENDER
 idCVar r_shadowMapPolygonOffset( "r_shadowMapPolygonOffset", "0.5", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "constant depth bias used when rendering shadow-map casters", 0.0f, 64.0f );
 static idCVar r_shadowMapContactQualityMigrated( "r_shadowMapContactQualityMigrated", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for legacy broad shadow filtering defaults" );
 static idCVar r_shadowMapFilterDefaultsMigrated( "r_shadowMapFilterDefaultsMigrated", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for the legacy fixed-PCF projected shadow filter defaults" );
+static idCVar r_pbrMaterialsDefaultMigrated( "r_pbrMaterialsDefaultMigrated", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for the PBR material default" );
 idCVar r_frontBuffer( "r_frontBuffer", "0", CVAR_RENDERER | CVAR_BOOL, "draw to front buffer for debugging" );
 idCVar r_skipSubviews( "r_skipSubviews", "0", CVAR_RENDERER | CVAR_INTEGER, "1 = don't render any gui elements on surfaces" );
 idCVar r_skipParticles( "r_skipParticles", "0", CVAR_RENDERER | CVAR_INTEGER, "1 = skip all particle systems", 0, 1, idCmdSystem::ArgCompletion_Integer<0,1> );
@@ -5808,6 +5809,27 @@ static void R_MigrateLegacyShadowMapFilterDefaults( void ) {
 }
 
 /*
+==================
+R_MigrateLegacyPBRMaterialsDefault
+
+PBR materials now default on: they change only content that ships
+PBR-authored materials, never stock surfaces. Every archived profile carries
+r_pbrMaterials, so one saved under the old default (0) would never see the
+new one. Turn it on once; a later 0 is a player's choice and is kept.
+==================
+*/
+static void R_MigrateLegacyPBRMaterialsDefault( void ) {
+	if ( r_pbrMaterialsDefaultMigrated.GetBool() ) {
+		return;
+	}
+	if ( !r_pbrMaterials.GetBool() ) {
+		common->Printf( "Migrating the legacy PBR material default: PBR-authored materials on\n" );
+		r_pbrMaterials.SetBool( true );
+	}
+	r_pbrMaterialsDefaultMigrated.SetBool( true );
+}
+
+/*
 =================
 R_InitCommands
 =================
@@ -6243,6 +6265,7 @@ static bool R_InitRendererDevice( bool legacyPolicy, bool forceWindow, char *err
 void idRenderSystemLocal::InitOpenGL( void ) {
 	R_MigrateLegacyShadowMapContactQuality();
 	R_MigrateLegacyShadowMapFilterDefaults();
+	R_MigrateLegacyPBRMaterialsDefault();
 	char error[1024];
 	if ( !R_InitRendererDevice( true, false, error, sizeof( error ) ) ) common->FatalError( "%s", error );
 	r_recoverableRendererRestore = false;

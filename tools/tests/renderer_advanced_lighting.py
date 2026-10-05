@@ -36,7 +36,7 @@ def section(source: str, start_marker: str, end_marker: str) -> str:
 def test_conservative_leaf_defaults_and_master_rollback() -> None:
     init = read("src/renderer/RenderSystem_init.cpp")
     for name, default in (
-        ("r_pbrMaterials", "0"),
+        ("r_pbrMaterials", "1"),
         ("r_rendererModernQuality", "1"),
         ("r_rendererReflectionProbes", "0"),
         ("r_rendererClusteredDecals", "0"),
@@ -51,7 +51,7 @@ def test_conservative_leaf_defaults_and_master_rollback() -> None:
     bootstrap = read("src/renderer/RendererBootstrap.cpp")
     for token in (
         '{ "r_rendererModernQuality", &r_rendererModernQuality, 1 }',
-        '{ "r_pbrMaterials", &r_pbrMaterials, 0 }',
+        '{ "r_pbrMaterials", &r_pbrMaterials, 1 }',
         '{ "r_rendererReflectionProbes", &r_rendererReflectionProbes, 0 }',
         '{ "r_rendererClusteredDecals", &r_rendererClusteredDecals, 0 }',
     ):

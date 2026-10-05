@@ -59,6 +59,15 @@
   the post pass applies only the field's classic factor. Classic pixels are
   unchanged and PBR direct light is never darkened, as paired laboratory
   controls prove on the OpenGL owner and on Vulkan.
+- [x] PBR production readiness, Stage F: `r_pbrMaterials` defaults to 1, with
+  a one-time migration of profiles saved under the old default
+  (`r_pbrMaterialsDefaultMigrated`), and the renderer's default-safety
+  inventory expects it on. Frames that draw no PBR-authored material skip the
+  per-frame scene packets, material table and probe preparation on both
+  backends (`R_ScenePackets_CommandStreamHasPBR`), so stock content pays
+  nothing. Authored reflection probes stay opt-in: they start the modern
+  scene-packet pipeline every frame. README, the user guide, the capability
+  matrix and the roadmap describe PBR materials as a supported default.
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:

@@ -72,7 +72,7 @@ def test_shared_material_abi_and_opt_in_defaults() -> None:
 
     init = read(ROOT / "src/renderer/RenderSystem_init.cpp")
     for name, default in (
-        ("r_pbrMaterials", "0"),
+        ("r_pbrMaterials", "1"),
         ("r_pbrGeneratedLegacyFallback", "1"),
         ("r_pbrDebug", "0"),
         ("r_pbrIBL", "1"),
@@ -1474,6 +1474,32 @@ def test_pbr_ssao_indirect_contract() -> None:
     executor = read(ROOT / "src/renderer/Vulkan/vk_GuiExecutor.cpp")
     require(executor, "if ( worldDepthCaptures != 0 && VK_PostProcess_PrepareSSAOField( viewDef ) ) {",
             "the field is drawn after the prepass, before the lights")
+
+
+def test_pbr_default_promotion_contract() -> None:
+    # PBR materials default on (production readiness, Stage F) with a one-time
+    # migration of profiles saved under the old default, after the archived
+    # configs ran; frames without a PBR material skip every PBR preparation.
+    init = read(ROOT / "src/renderer/RenderSystem_init.cpp")
+    require(init, 'idCVar r_pbrMaterials( "r_pbrMaterials", "1"', "PBR materials default on")
+    require(init, 'idCVar r_rendererReflectionProbes( "r_rendererReflectionProbes", "0"',
+            "authored probes stay opt-in: they start the modern packet pipeline every frame")
+    migrate = function_body(init, "static void R_MigrateLegacyPBRMaterialsDefault(")
+    for token in ("if ( r_pbrMaterialsDefaultMigrated.GetBool() ) {", "if ( !r_pbrMaterials.GetBool() ) {",
+                  "r_pbrMaterials.SetBool( true );", "r_pbrMaterialsDefaultMigrated.SetBool( true );"):
+        require(migrate, token, "one-time PBR default migration")
+    require(init, "R_MigrateLegacyShadowMapFilterDefaults();\n\tR_MigrateLegacyPBRMaterialsDefault();",
+            "the migration runs with the others, after the archived configs")
+    reject(function_body(init, "void R_InitCvars("), "r_pbrMaterialsDefaultMigrated",
+           "the migration must not run before archived configs")
+    bootstrap = read(ROOT / "src/renderer/RendererBootstrap.cpp")
+    require(bootstrap, '{ "r_pbrMaterials", &r_pbrMaterials, 1 }', "default-safety inventory expects PBR on")
+    packets = read(ROOT / "src/renderer/ScenePackets.cpp")
+    require(packets, "bool R_ScenePackets_CommandStreamHasPBR( const emptyCommand_t *cmds ) {", "PBR frame detection")
+    require(read(ROOT / "src/renderer/tr_backend.cpp"), "&& R_ScenePackets_CommandStreamHasPBR( cmds ) ) {",
+            "OpenGL skips PBR preparation in a frame without a PBR material")
+    require(read(ROOT / "src/renderer/Vulkan/vk_Backend.cpp"), "&& R_ScenePackets_CommandStreamHasPBR( cmds ) )",
+            "Vulkan skips PBR preparation in a frame without a PBR material")
 
 
 def main() -> int:

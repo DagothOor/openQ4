@@ -45,7 +45,9 @@ static bool RendererBootstrap_BuildDefaultSafetyReport( idStr &report, idStr &is
 		{ "r_rendererModernAutoPromote", &r_rendererModernAutoPromote, 0 },
 		{ "r_rendererModernVisible", &r_rendererModernVisible, 0 },
 		{ "r_rendererModernQuality", &r_rendererModernQuality, 1 },
-		{ "r_pbrMaterials", &r_pbrMaterials, 0 },
+		// PBR-authored materials are a production default (PBR production
+		// readiness, Stage F); stock content has none.
+		{ "r_pbrMaterials", &r_pbrMaterials, 1 },
 		{ "r_rendererReflectionProbes", &r_rendererReflectionProbes, 0 },
 		{ "r_rendererClusteredDecals", &r_rendererClusteredDecals, 0 },
 		{ "r_rendererFroxelVolumetrics", &r_rendererFroxelVolumetrics, 0 },

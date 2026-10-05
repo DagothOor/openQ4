@@ -1158,8 +1158,10 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 		}
 		R_ModernGLExecutor_SkipFrame();
 		// Native PBR admission (draw_pbr.cpp) reads the material contract
-		// table. Prepare that alone, from the same packets Vulkan uses.
-		if ( r_rendererModernQuality.GetBool() && r_pbrMaterials.GetBool() ) {
+		// table. Prepare that alone, from the same packets Vulkan uses, and
+		// only for a frame that draws a PBR material.
+		if ( r_rendererModernQuality.GetBool() && r_pbrMaterials.GetBool()
+				&& R_ScenePackets_CommandStreamHasPBR( cmds ) ) {
 			const idScenePacketFrame *scenePackets = NULL;
 			if ( R_ScenePackets_FrontEndFrameAvailable() ) {
 				scenePackets = &R_ScenePackets_FrontEndFrame();

@@ -1,7 +1,8 @@
 # Authoring PBR materials
 
-PBR is an opt-in material extension for new openQ4 content. It does not convert
-retail Quake 4 materials automatically. On OpenGL and Vulkan, each PBR surface
+PBR is a material extension for new openQ4 content, on by default. It does not
+convert retail Quake 4 materials, so stock content looks exactly as it always
+has; only materials with a `pbr` block change. On OpenGL and Vulkan, each PBR surface
 is drawn natively inside the regular light loop, so it renders in ordinary
 gameplay next to stock surfaces, and every light keeps its own shadows. A
 material the renderer cannot prove keeps its authored classic stages. See the
@@ -109,10 +110,13 @@ loop, so its lights cannot be shadowed there: in a view where a
 shadow-casting light reaches a translucent surface, every translucent surface
 in that view keeps its classic lighting and blend on both backends.
 
-## Preview and fallback
+## Settings and fallback
 
-PBR rendering requires `r_rendererModernQuality 1` (the default) and
-`r_pbrMaterials 1`. On OpenGL, the classic light loop draws admitted PBR
+PBR materials are on by default (`r_pbrMaterials 1`); a profile saved with the
+former default (0) switches on once, and a later `r_pbrMaterials 0` returns
+every PBR material to its classic stages and is kept. They also need
+`r_rendererModernQuality 1` (the default). A frame that draws no PBR material
+skips all PBR preparation. On OpenGL, the classic light loop draws admitted PBR
 surfaces natively (`r_glPBR`, default 1; 0 returns them to their classic
 stages). The experimental modern visible path (`r_rendererModernVisible 1`)
 still takes whole frames that qualify for it, with its own PBR.
@@ -122,7 +126,9 @@ PBR radiance in a separate linear scene, encoded once per pixel, and with
 `r_hdrToneMap 1` presents the whole view, classic surfaces included, through
 the PBR filmic curve.
 `r_pbrIBL 1` enables environment reflections and diffuse from authored probe
-lights (`r_rendererReflectionProbes 1`); `r_pbrIBLIntensity` scales them. The
+lights; `r_pbrIBLIntensity` scales them. Authored probes stay opt-in
+(`r_rendererReflectionProbes 1`, default 0) because they start the modern
+scene-packet pipeline on every frame. The
 laboratory's analytic studio environment, a bright sky that lights every
 surface whether or not the map has probes, is `r_pbrAnalyticEnvironment 1`
 (default 0, not saved); use it to inspect materials, not to light a level.

@@ -2552,6 +2552,34 @@ bool R_ScenePackets_BuildTemporalViewMotionPolicy( const viewDef_t *viewDef,
 			backendExactMotionDomainMask, policy );
 }
 
+/*
+==================
+R_ScenePackets_CommandStreamHasPBR
+
+PBR materials default on, but stock content has none: the per-frame packet,
+material-table and probe preparation they need is skipped for every frame
+that draws no PBR-authored material.
+==================
+*/
+bool R_ScenePackets_CommandStreamHasPBR( const emptyCommand_t *cmds ) {
+	for ( const emptyCommand_t *cmd = cmds; cmd != NULL; cmd = reinterpret_cast<const emptyCommand_t *>( cmd->next ) ) {
+		if ( cmd->commandId != RC_DRAW_VIEW ) {
+			continue;
+		}
+		const viewDef_t *viewDef = reinterpret_cast<const drawSurfsCommand_t *>( cmd )->viewDef;
+		if ( viewDef == NULL || viewDef->drawSurfs == NULL ) {
+			continue;
+		}
+		for ( int i = 0; i < viewDef->numDrawSurfs; i++ ) {
+			const drawSurf_t *surf = viewDef->drawSurfs[i];
+			if ( surf != NULL && surf->material != NULL && surf->material->HasPBR() ) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 void R_ScenePackets_BuildLegacyCommandStream( const emptyCommand_t *cmds, idScenePacketFrame &packetFrame ) {
 	packetFrame.Clear();
 	packetFrame.MarkBackendDerived();

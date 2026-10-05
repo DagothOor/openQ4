@@ -562,7 +562,10 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 	R_ClassicInteractionDomain_ResetFrame();
 	R_ClassicFogBlendDomain_ResetFrame();
 	R_ClassicSubviewDomain_ResetFrame();
-	if ( ( r_rendererModernQuality.GetBool() && r_pbrMaterials.GetBool() )
+	// PBR needs the packets, material table and probes only for a frame
+	// that draws a PBR-authored material (stock content has none).
+	if ( ( r_rendererModernQuality.GetBool() && r_pbrMaterials.GetBool()
+				&& R_ScenePackets_CommandStreamHasPBR( cmds ) )
 			|| r_rendererSharedGui.GetBool()
 			|| r_rendererSharedInWorldGui.GetBool()
 			|| r_rendererSharedCinematicPost.GetBool()

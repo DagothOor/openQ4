@@ -1,6 +1,7 @@
 # PBR production readiness
 
-Status: in progress (started 2026-10-04).
+Status: complete (2026-10-04 to 2026-10-05). Stages A-F landed; the
+remaining limitations are listed under Stage F.
 
 This plan takes the authored PBR material path from a qualified laboratory
 feature to a production feature. Production means that a mod author can ship
@@ -29,7 +30,7 @@ the decision and the stage that closes it.
 | G4 | OpenGL, the default renderer, draws PBR only when a whole frame qualifies for the modern visible path. That needs six developer cvars, and any weapon, stock specular material, ambient light or stencil shadow sends the frame back to classic. Ordinary gameplay never shows PBR on GL. | Per-surface native PBR inside the classic GL light loop, mirroring native Vulkan. | B |
 | G5 | Presentation: HDR-off PBR radiance is added to the display domain without the sRGB transfer, a PBR surface shows about a fifth of the brightness of the same surface lit classically, and Vulkan's HDR scene linearizes and filmic-maps every view once `r_pbrMaterials` is on, changing stock frames. | Calibrate PBR irradiance to the classic light term and composite every PBR draw in the classic display domain on both backends. Stock pixels stay unchanged, and the tone curve does not depend on whether PBR is in view. The linear scene becomes the explicit laboratory mode `r_pbrLinearScene`. | C |
 | G6 | Environment lighting in real maps: without authored probes every PBR surface reflects the analytic studio sky, even in dark interiors. | Indirect light follows the map: authored ambient lights become uniform environments (diffuse and specular), the studio sky becomes the laboratory mode `r_pbrAnalyticEnvironment`, and baked light grids reach every native owner. | E |
-| G7 | Defaults and UX: `r_pbrMaterials` defaults to 0, GL needs the non-archived `r_rendererModernVisible`, and there is no menu control. | Promote after G4/G5/G6, with menu control and docs. | F |
+| G7 | Defaults and UX: `r_pbrMaterials` defaults to 0, GL needs the non-archived `r_rendererModernVisible`, and there is no menu control. | `r_pbrMaterials` defaults to 1 with a one-time profile migration, and frames without a PBR material skip all PBR work; authored probes stay opt-in. No menu control: the setting changes nothing in stock content (Stage F). | F |
 | G8 | Found by the Stage B parity comparison: every direct-light evaluation (Vulkan, modern GL) returned black where a normal map turned the shading normal away from the viewer, speckling normal-mapped silhouettes, and which pixels went black differed between backends. | Clamp N.V in every direct term (`PBRShadingNoV`). | B |
 
 ## Stage A: complete roughness and AO shading (both backends)
@@ -511,3 +512,48 @@ Windows/NVIDIA, runtime `.tmp/wt-pbr/.tmp/lab-a`, one batch.
 | SSAO, GL native | 8/8: 0 of 182,539 native PBR pixels change under direct light alone; indirect light darkens 3,825 of them, every one within its direct-only and unoccluded values; classic pixels equal the PBR-off frame (92,945 darkened by SSAO); debug view unchanged |
 | SSAO, Vulkan production and laboratory | 8/8 each, with the same results (3,799 and 3,827 indirect pixels darkened); paired with GL native per station, the PBR-off baselines being classic references |
 | Regression | every Stage E suite and pairing passes again: Vulkan, modern GL and GL native direct (73/73 each, Vulkan production included), ambient, IBL, probes, diagnostics (the documented 10-control set), geometry, transparency, cutout, fog, capacity, resources, baked, HDR scene and preview |
+
+## Stage F: promotion (both backends)
+
+With every channel reaching every term on both owners, PBR materials become a
+supported default:
+
+- `r_pbrMaterials` defaults to 1. Stock materials are never PBR, so stock
+  frames are unchanged. Every archived profile carries the cvar, so a profile
+  saved under the old default (0) switches once
+  (`R_MigrateLegacyPBRMaterialsDefault`, flagged by the archived
+  `r_pbrMaterialsDefaultMigrated`, run with the other migrations after the
+  archived configs); a later 0 is a player's choice and is kept. The
+  renderer's default-safety inventory expects it on.
+- A frame that draws no PBR-authored material skips every per-frame PBR
+  preparation on both backends: the scene packets, the material contract
+  table, and the probe atlas and clusters (`R_ScenePackets_CommandStreamHasPBR`
+  walks the frame's draw lists first). Before, `r_pbrMaterials 1` built them on
+  every frame, stock content included.
+- Authored reflection probes stay opt-in (`r_rendererReflectionProbes 0`):
+  enabling them starts the modern scene-packet pipeline, and on OpenGL the
+  modern executor as a sidecar, on every frame. Production PBR takes its
+  environment from ambient lights and baked grids (Stage E); a map or mod that
+  authors probes turns them on.
+- No menu control. The setting changes nothing in stock content, so a menu row
+  would offer players a switch with no visible effect, and the SYSTEM page's
+  settings catalog is frozen against its recovery journal: a field means a new
+  catalog version, a journal upgrade and retained-page state. `r_pbrMaterials
+  0` stays the documented switch for a mod's classic look.
+- README, the user guide, the capability matrix and the roadmap describe PBR
+  materials as a supported default.
+
+Remaining limitations, documented in the user guide: surfaces posed on the
+GPU (`r_gpuSkinning 1`, packed MD5R meshes, both off by default) keep their
+classic stages on OpenGL; the modern visible GL path, a developer path, keeps
+whole-frame SSAO; box-parallax probes and runtime probe capture do not exist;
+qualification is Windows/NVIDIA, with other platforms' release review open.
+
+### Stage F evidence (2026-10-05)
+
+| Check | Result |
+|---|---|
+| Stock map, OpenGL, fresh profile | Air Defense 1 renders normally with no warnings; `PBR materials: effective=1`, `PBR material resources: records=0` (no table built), the native owner admitted nothing and never loaded its programs; default-safety report conservative with `pbr=1 probes=0` |
+| Stock map, Vulkan, fresh profile | renders normally; `records=0`; the default-safety report shows `pbr=1` and its pre-existing `rollback` issue only (Vulkan has no GL legacy bridge) |
+| Migration | a profile with `seta r_pbrMaterials "0"` logs the migration and archives `r_pbrMaterials 1` and the flag; with the flag already set, a deliberate 0 stays 0 (`effective=0`) |
+| Laboratory | the full batch passes on the Stage F build: every Vulkan, modern GL and GL-native suite, every production and SSAO pairing, diagnostics with the documented set. The GL-native probe suite failed once on scene setup under machine load (its specimen spawned twice, a laboratory console-timing race) and passed on rerun with both probe pairings |

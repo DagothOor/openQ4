@@ -60,7 +60,8 @@ It is for players who want the original Quake 4 experience on today's hardware.
 - **Better multiplayer** (experimental): a server browser with sorting, filters and favourites, bots with team objectives and personalities, readable chat with history, Duel queues and spectator match controls.
 - **A demo library and player** with pause, speed, stepping, rewind and fast-forward, plus free-fly playback of full-match recordings.
 - **Single-player and multiplayer in one install** on Windows, Linux, Steam Deck and macOS.
-- **Renderer previews**, all off by default: a Vulkan renderer (a preview on Windows), [temporal anti-aliasing and dynamic resolution](docs/user/temporal-presentation.md), [volumetrics, reflections and indirect light](docs/user/advanced-screen-space-lighting.md), and [PBR materials](docs/user/pbr-materials.md).
+- **Physically based materials for mods.** Maps and mods can ship PBR materials, with metalness, roughness, ambient occlusion, normal maps and glow, that render on OpenGL and Vulkan beside the stock surfaces, lit and shadowed by every light. Stock content looks exactly as before. See the [PBR materials guide](docs/user/pbr-materials.md).
+- **Renderer previews**, all off by default: a Vulkan renderer (a preview on Windows), [temporal anti-aliasing and dynamic resolution](docs/user/temporal-presentation.md), and [volumetrics, reflections and indirect light](docs/user/advanced-screen-space-lighting.md).
 
 See the [Releases page](https://github.com/themuffinator/openQ4/releases) for what changed in each version.
 
@@ -146,7 +147,7 @@ When upgrading, replace the whole openQ4 package rather than individual files.
 - [Cel Shading](docs/user/cel-shading.md) - the cel-shaded look
 - [Temporal AA and Dynamic Resolution](docs/user/temporal-presentation.md) (experimental) - temporal anti-aliasing, upscaling, and automatic resolution scaling
 - [Advanced Screen-Space Lighting](docs/user/advanced-screen-space-lighting.md) (experimental) - volumetrics, reflections, and indirect light
-- [PBR Materials](docs/user/pbr-materials.md) (experimental) - physically based materials and environment lighting
+- [PBR Materials](docs/user/pbr-materials.md) - authoring physically based materials and how they are lit
 - [DDS Texture Replacements](docs/user/texture-replacements.md) - installing texture packs
 - [Level-Load Cache](docs/user/level-load-cache.md) (experimental) - optional local load caches, and how to clear them
 
