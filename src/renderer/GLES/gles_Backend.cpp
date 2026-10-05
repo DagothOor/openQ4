@@ -44,6 +44,7 @@
 
 #include "../tr_local.h"
 #include "../ShadowMapArb2Parity.h"
+#include "../ModernShadowMaps.h"
 #include "../GLStateCache.h"
 #include "../GLES_D3/gles_d3_local.h"
 #include "../GLES_D3/gles_program.h"
@@ -617,6 +618,64 @@ void RB_StampTemporalDepthResolved( idRenderTexture *target, int frameNumber,
 
 ===============================================================================
 */
+
+/*
+===============================================================================
+
+	References added to the kept front end after the port was validated
+	(fb152ae5, c850233d). Same contract as the stubs above: report "not
+	taken" so the caller keeps its classic path. None of these can run on an
+	ES context -- the modern executor is never initialised there.
+
+===============================================================================
+*/
+
+void RB_HDRPrintGfxInfo( void ) {
+	common->Printf( "HDR scene target: not implemented by the OpenGL ES renderer\n" );
+}
+
+void R_ReloadGLSLPrograms_f( const idCmdArgs &args ) {
+	( void )args;
+	common->Printf( "reloadGLSLprograms: material GLSL programs are not available on OpenGL ES\n" );
+}
+
+bool RB_BeginModernSceneScaling( const emptyCommand_t *cmds, int &sceneWidth, int &sceneHeight ) {
+	( void )cmds;
+	sceneWidth = glConfig.vidWidth;
+	sceneHeight = glConfig.vidHeight;
+	return false;
+}
+
+void RB_EndModernSceneScaling( void ) {
+}
+
+bool RB_ModernShadowMapsBegin( const viewDef_t *, int, int, int, int ) { return false; }
+bool RB_ModernShadowMapRender( const viewDef_t *, struct modernShadowLightDescriptor_s & ) { return false; }
+bool RB_ModernShadowMapBindings( rendererShadowTextureBindings_t & ) { return false; }
+
+bool RB_PrepareModernLightGrid( const drawSurf_t *surf, const viewDef_t *viewDef, const LightGrid *&grid ) {
+	( void )surf; ( void )viewDef;
+	grid = NULL;
+	return false;
+}
+
+void RB_DetermineLightScale( void ) {
+	RB_GLESD3_DetermineLightScale();
+}
+
+void RB_CreateSingleDrawInteractions( const drawSurf_t *surf, void ( *DrawInteraction )( const drawInteraction_t * ) ) {
+	( void )surf; ( void )DrawInteraction;
+}
+
+bool RB_ClassicFogBlend_PreflightLinearView( const viewDef_t *viewDef ) {
+	( void )viewDef;
+	return false;
+}
+
+bool RB_ClassicFogBlend_DrawLinearView( const viewDef_t *viewDef, GLuint vertexProgram, GLint mvpLocation, GLint fogLocation ) {
+	( void )viewDef; ( void )vertexProgram; ( void )mvpLocation; ( void )fogLocation;
+	return false;
+}
 
 void GL_SelectTextureNoClient( int unit ) {
 	// The GLES client-texture selector is a no-op, but the sampler unit is real.

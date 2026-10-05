@@ -67,7 +67,8 @@ bool idImage::ReadPixelsRGBA8( idList<byte> &pixels ) {
 	glGetTexLevelParameteriv( GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width );
 	glGetTexLevelParameteriv( GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height );
 	glGetTexLevelParameteriv( GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &format );
-	if ( width != opts.width || height != opts.height || format != GL_RGBA8 ) {
+	if ( width != opts.width || height != opts.height || format != GL_RGBA8
+			|| glGetTexImage == NULL ) {
 		return false;
 	}
 	pixels.SetNum( width * height * 4 );

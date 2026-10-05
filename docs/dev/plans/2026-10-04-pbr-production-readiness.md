@@ -585,9 +585,9 @@ that qualification and are fixed:
   every ES object compiles and the link reports only the twelve OpenGL-only
   symbols that predate this plan, which that branch stubs in
   `gles_Backend.cpp`; before the fix it also reported these three. main's ES
-  module does not compile on desktop Linux by itself, for desktop-GL calls
-  in four shared files that predate this plan; the Android branch fixes
-  them.
+  module did not compile on desktop Linux by itself, for desktop-GL calls in
+  four shared files that predate this plan; see "The OpenGL ES module
+  builds again" below.
 
 CI builds neither the ES module nor this closure, so
 `renderer_pbr_materials.py` scans every translation unit the Vulkan and ES
@@ -643,3 +643,19 @@ re-derives its tangents where the MD5 path skins the authored basis, which
 the MD5R track fixes on `origin/main` (66ebfed8). The engine's ARB2
 receiver self-test now models a packed surface with its primitive batch and
 checks that a classic MD5R surface stays a mapped receiver.
+
+### The OpenGL ES module builds again
+
+Shared renderer code that landed after the Android port was last validated
+(2026-09-08) used desktop-only GL, so main's ES module stopped compiling,
+for Android and desktop GLES alike, and nothing in CI noticed. The Android
+review branch had already fixed it (`claude/gles-android-support-d5763a`,
+3ce8167b0, "Build the OpenGL ES renderer module again"); main now carries
+those changes unchanged, so merging the branch later sees identical hunks:
+the ten ES pixel-store names in `idGLPixelTransferScope`, runtime-resolved
+`glGetTexLevelParameteriv`, refusals where ES has no `glGetTexImage`, ES
+names for the desktop multisample and matrix enums, and "not taken" stubs
+for the twelve OpenGL-only functions the kept front end calls. A Linux GCC
+build with `-Dbuild_renderer_gles=enabled` now compiles and links every
+target, the ES module under `-z defs`, and `ldd -r` finds no undefined symbol
+in the OpenGL, Vulkan or ES module.

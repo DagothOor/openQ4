@@ -10304,7 +10304,8 @@ bool R_ModernGLExecutor_LinearScreenshot( const char *fileName ) {
 			|| scene == NULL || !scene->allocated || scene->texture == 0
 			|| scene->target != GL_TEXTURE_2D || scene->internalFormat != GL_RGBA16F
 			|| scene->width < 1 || scene->height < 1
-			|| scene->width > 8192 || scene->height > 8192 ) {
+			|| scene->width > 8192 || scene->height > 8192
+			|| glGetTexImage == NULL ) {
 		common->Printf( "screenshot linear: no completed modern HDR scene\n" );
 		return false;
 	}

@@ -78,6 +78,9 @@ PFN_glObjectLabel					glObjectLabel = NULL;
 PFN_glPushDebugGroup				glPushDebugGroup = NULL;
 PFN_glPopDebugGroup					glPopDebugGroup = NULL;
 
+typedef void ( GL_APIENTRY *PFN_GLES_GetTexLevelParameteriv )( GLenum target, GLint level, GLenum pname, GLint *params );
+static PFN_GLES_GetTexLevelParameteriv gles_getTexLevelParameteriv = NULL;
+
 // Resolve against the engine-owned SDL GL context. A process-wide dlsym can
 // pick a different GL driver and does not expose EGL-only vendor extensions.
 static void *GLES_LookupEntryPoint( const char *name ) {
@@ -123,6 +126,7 @@ void GLES_ResolveOptionalEntryPoints( void ) {
 	GLES_RESOLVE( es31, PFN_glDispatchCompute, glDispatchCompute, "glDispatchCompute" )
 	GLES_RESOLVE( es31, PFN_glMemoryBarrier, glMemoryBarrier, "glMemoryBarrier" )
 	GLES_RESOLVE( es31, PFN_glGetProgramResourceIndex, glGetProgramResourceIndex, "glGetProgramResourceIndex" )
+	GLES_RESOLVE( es31, PFN_GLES_GetTexLevelParameteriv, gles_getTexLevelParameteriv, "glGetTexLevelParameteriv" )
 
 	GLES_RESOLVE( bufferStorage, PFN_glBufferStorage, glBufferStorage, "glBufferStorageEXT" )
 	GLES_RESOLVE( multiDrawIndirect, PFN_glMultiDrawElementsIndirect, glMultiDrawElementsIndirect, "glMultiDrawElementsIndirectEXT" )
@@ -178,6 +182,14 @@ void GLES_DepthRange( GLclampd zNear, GLclampd zFar ) {
 	glDepthRangef( static_cast<GLfloat>( zNear ), static_cast<GLfloat>( zFar ) );
 }
 
+void GLES_GetTexLevelParameteriv( GLenum target, GLint level, GLenum pname, GLint *params ) {
+	if ( gles_getTexLevelParameteriv != NULL ) {
+		gles_getTexLevelParameteriv( target, level, pname, params );
+	} else if ( params != NULL ) {
+		*params = 0;
+	}
+}
+
 void GLES_DrawBuffer( GLenum buffer ) {
 	// ES has no single-buffer glDrawBuffer. glDrawBuffers is core in ES 3.0 and
 	// accepts GL_NONE and GL_BACK for the default framebuffer, and
@@ -208,6 +220,8 @@ void * GL_APIENTRY glMapBufferARB( GLenum target, GLenum access ) { (void)target
 void GL_APIENTRY glBegin( GLenum mode ) { (void)mode; }
 void GL_APIENTRY glEnd( void ) { }
 void GL_APIENTRY glMatrixMode( GLenum mode ) { (void)mode; }
+void GL_APIENTRY glPushMatrix( void ) { }
+void GL_APIENTRY glPopMatrix( void ) { }
 void GL_APIENTRY glLoadIdentity( void ) { }
 void GL_APIENTRY glEnableClientState( GLenum array ) { (void)array; }
 void GL_APIENTRY glShadeModel( GLenum mode ) { (void)mode; }

@@ -81,6 +81,11 @@
   keeps classic CPU-skinned geometry on OpenGL as on Vulkan, and the GPU-posed
   test reads only primitive batches. New `skin-md5r-*` controls pass on the
   OpenGL owner and Vulkan production.
+- [x] The OpenGL ES module builds again on main: the Android review branch's
+  fix for desktop-only GL in shared renderer code (3ce8167b0) is carried
+  unchanged, so the branch merges cleanly later. A Linux build with the ES
+  module enabled links every target, and no renderer module has an
+  undefined symbol.
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:

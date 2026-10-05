@@ -734,6 +734,9 @@ generation rollover. No image, renderer resource, or GL context is required.
 */
 static bool R_ModernSpecularProbeAtlas_TransferSelfTest( void ) {
 	if ( !glConfig.backendCaps.contextCreated || !glConfig.renderFeatures.modernBaseline ) { return true; }
+	// No texture readback (OpenGL ES): nothing to round-trip, and the atlas
+	// itself reports entry-points-missing on such a context.
+	if ( glGetTexImage == NULL ) { return true; }
 	idGLPixelTransferScope restoreCaller;
 	GLuint texture = 0, buffers[2] = { 0, 0 };
 	glGenTextures( 1, &texture );
@@ -745,9 +748,9 @@ static bool R_ModernSpecularProbeAtlas_TransferSelfTest( void ) {
 	}
 	R_GLStateCache().BindBuffer( GL_PIXEL_PACK_BUFFER, buffers[0] );
 	R_GLStateCache().BindBuffer( GL_PIXEL_UNPACK_BUFFER, buffers[1] );
-	GLint poison[16];
-	for ( int i = 0; i < 16; ++i ) {
-		poison[i] = i % 8 == 0 ? 8 : ( i % 8 >= 6 ? 1 : 7 );
+	GLint poison[idGLPixelTransferScope::NUM_STORES];
+	for ( int i = 0; i < idGLPixelTransferScope::NUM_STORES; ++i ) {
+		poison[i] = idGLPixelTransferScope::IsAlignment( i ) ? 8 : ( i % 8 >= 6 ? 1 : 7 );
 		glPixelStorei( idGLPixelTransferScope::StoreName( i ), poison[i] );
 	}
 	R_GLStateCache().ActiveTextureUnit( 3 );
@@ -760,10 +763,13 @@ static bool R_ModernSpecularProbeAtlas_TransferSelfTest( void ) {
 		glGetTexImage( GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, actual );
 	}
 	bool ok = true;
-	for ( int i = 0; i < 16; ++i ) {
+	for ( int i = 0; i < idGLPixelTransferScope::NUM_STORES; ++i ) {
 		GLint state = 0;
 		glGetIntegerv( idGLPixelTransferScope::StoreName( i ), &state );
-		ok = ok && state == poison[i] && actual[i] == expected[i];
+		ok = ok && state == poison[i];
+	}
+	for ( int i = 0; i < 16; ++i ) {
+		ok = ok && actual[i] == expected[i];
 	}
 	GLint pack = 0, unpack = 0, active = 0;
 	glGetIntegerv( GL_PIXEL_PACK_BUFFER_BINDING, &pack );

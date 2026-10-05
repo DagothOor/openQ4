@@ -175,6 +175,12 @@ typedef void ( GL_APIENTRY *GLDEBUGPROC )( GLenum source, GLenum type, GLuint id
 #define GL_SHADER_STORAGE_BARRIER_BIT		0x00002000
 #define GL_TEXTURE_FETCH_BARRIER_BIT		0x00000008
 #define GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT	0x00000001
+#define GL_MAX_COLOR_TEXTURE_SAMPLES		0x910E
+#define GL_MAX_DEPTH_TEXTURE_SAMPLES		0x910F
+// glGetTexLevelParameteriv queries (ES 3.1); see GLES_GetTexLevelParameteriv
+#define GL_TEXTURE_WIDTH					0x1000
+#define GL_TEXTURE_HEIGHT					0x1001
+#define GL_TEXTURE_INTERNAL_FORMAT			0x1003
 
 // KHR_debug: gl2ext.h carries these with a _KHR suffix.
 #define GL_DEBUG_OUTPUT						GL_DEBUG_OUTPUT_KHR
@@ -260,7 +266,12 @@ typedef void ( GL_APIENTRY *GLDEBUGPROC )( GLenum source, GLenum type, GLuint id
 #define GL_STENCIL_INDEX					0x1901
 #define GL_COMPRESSED_RGBA_BPTC_UNORM		0x8E8C
 #define GL_UNPACK_SWAP_BYTES				0x0CF0
-#define GL_DRAW_BUFFER						0x0C01
+#define GL_MULTISAMPLE						0x809D	// ES multisamples whenever the target does
+#define GL_MATRIX_MODE						0x0BA0
+// glGetIntegerv( GL_DRAW_BUFFER ) is how the shared copy paths save the draw
+// buffer; ES only answers the indexed name, which means the same thing for
+// one draw buffer.
+#define GL_DRAW_BUFFER						GL_DRAW_BUFFER0
 #define GL_CONTEXT_PROFILE_MASK				0x9126
 #define GL_CONTEXT_CORE_PROFILE_BIT			0x00000001
 #define GL_CONTEXT_COMPATIBILITY_PROFILE_BIT	0x00000002
@@ -330,7 +341,13 @@ void GLES_ClearDepth( GLclampd depth );					// -> glClearDepthf
 void GLES_DepthRange( GLclampd zNear, GLclampd zFar );	// -> glDepthRangef
 void GLES_DrawBuffer( GLenum buffer );					// -> glDrawBuffers( 1, &buffer )
 
+// ES 3.1 core, absent from ES 3.0. Forwards to the runtime-resolved entry
+// point when the context has it; otherwise reports 0, which every caller's
+// size/format validation already treats as "no such storage".
+void GLES_GetTexLevelParameteriv( GLenum target, GLint level, GLenum pname, GLint *params );
+
 #define glClearDepth					GLES_ClearDepth
+#define glGetTexLevelParameteriv		GLES_GetTexLevelParameteriv
 #define glDepthRange					GLES_DepthRange
 #define glDrawBuffer					GLES_DrawBuffer
 
@@ -376,6 +393,8 @@ void *		GL_APIENTRY glMapBufferARB( GLenum target, GLenum access );
 void		GL_APIENTRY glBegin( GLenum mode );
 void		GL_APIENTRY glEnd( void );
 void		GL_APIENTRY glMatrixMode( GLenum mode );
+void		GL_APIENTRY glPushMatrix( void );
+void		GL_APIENTRY glPopMatrix( void );
 void		GL_APIENTRY glLoadIdentity( void );
 void		GL_APIENTRY glEnableClientState( GLenum array );
 void		GL_APIENTRY glShadeModel( GLenum mode );
