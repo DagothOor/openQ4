@@ -59,7 +59,8 @@ openQ4's current light-grid path:
 
 Current scope and limits:
 - diffuse-only
-- non-PBR
+- not a PBR bake: [PBR materials](pbr-materials.md) receive its diffuse light,
+  weighted by their metalness and ambient occlusion, on OpenGL and Vulkan
 - LDR bake output
 - writes `.tga` atlas images, not BFG `.exr`
 - intended for openQ4's native bake/load path, not drop-in BFG asset parity
