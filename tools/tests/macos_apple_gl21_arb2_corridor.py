@@ -522,13 +522,13 @@ def validate_corridor_lighting_contract() -> None:
     # deformedSurface is an ownership flag that every CPU-skinned MD5 surface
     # carries; it must not stand in for "GPU-posed".
     gpu_posed_body = function_body(source, "static bool RB_SurfaceUsesGPUPosedGeometry( const drawSurf_t *surf ) {")
-    for token in (
-        "primBatchMesh",
-        "skinToModelTransforms",
-        "numSkinToModelTransforms",
-    ):
-        require(gpu_posed_body, token, "GPU-posed geometry predicate")
+    require(gpu_posed_body, "tri->primBatchMesh != NULL || ambientTri->primBatchMesh != NULL",
+            "GPU-posed geometry predicate")
     reject(gpu_posed_body, "deformedSurface", "GPU-posed predicate must not read the ownership flag")
+    # A classicized MD5R surface keeps the skin-to-model table for GPU
+    # skinning's compute pass, but its vertex stream is already posed.
+    reject(gpu_posed_body, "tri->skinToModelTransforms != NULL",
+           "GPU-posed predicate must not treat the compute palette as packed batches")
 
     # The rebuilt self-test has to model the shape the engine really produces.
     receiver_self_test = function_body(source, "bool RB_ShadowMapArb2ReceiverFallbackSelfTest( void ) {")
@@ -536,6 +536,8 @@ def validate_corridor_lighting_contract() -> None:
         "cpuSkinnedGeo.deformedSurface = true;",
         "RB_SurfaceEligibleForShadowMapReceiver( &skinnedReceiver )",
         "gpuPosedGeo.numSkinToModelTransforms = 1;",
+        "gpuPosedGeo.primBatchMesh = reinterpret_cast<rvMesh *>( &gpuPosedBatchToken );",
+        "RB_SurfaceEligibleForShadowMapReceiver( &classicMD5RReceiver )",
         "expectedGeneratedReason",
     ):
         require(receiver_self_test, token, "CPU-skinned receiver self-test")

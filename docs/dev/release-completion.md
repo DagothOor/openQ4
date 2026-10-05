@@ -75,6 +75,12 @@
   module does not build (`tr_backend.cpp` guard; `RB_LightGridBakedParams`
   moved to `ModernGLExecutor.cpp`). A Linux GCC build and an ES symbol
   closure confirm it; `renderer_pbr_materials.py` pins the module guards.
+- [x] PBR on animated and converted models: `r_gpuSkinning 1` surfaces were
+  already PBR on OpenGL (compute-posed vertex caches), now proven by the
+  skinned laboratory controls; a PBR-authored mesh of an MD5R-converted model
+  keeps classic CPU-skinned geometry on OpenGL as on Vulkan, and the GPU-posed
+  test reads only primitive batches. New `skin-md5r-*` controls pass on the
+  OpenGL owner and Vulkan production.
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:

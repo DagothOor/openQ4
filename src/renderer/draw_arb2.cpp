@@ -9561,11 +9561,11 @@ static bool RB_SurfaceUsesGPUPosedGeometry( const drawSurf_t *surf ) {
 	const srfTriangles_t *tri = surf->geo;
 	const srfTriangles_t *ambientTri = ( tri->ambientSurface != NULL ) ? tri->ambientSurface : tri;
 
+	// A classic (classicized) MD5R surface also carries the skin-to-model table:
+	// GPU skinning's compute pass reads it to write a posed idDrawVert cache.
+	// Its vertex stream is final-pose like any CPU-skinned surface; only the
+	// primitive batches reach the md5r programs.
 	if ( tri->primBatchMesh != NULL || ambientTri->primBatchMesh != NULL ) {
-		return true;
-	}
-	if ( tri->skinToModelTransforms != NULL || tri->numSkinToModelTransforms > 0
-		|| ambientTri->skinToModelTransforms != NULL || ambientTri->numSkinToModelTransforms > 0 ) {
 		return true;
 	}
 #endif
@@ -9880,16 +9880,28 @@ bool RB_ShadowMapArb2ReceiverFallbackSelfTest( void ) {
 
 	// GPU-posed MD5R geometry is the class that genuinely cannot use the
 	// mapped receiver program: its cached vertices are the bind pose and
-	// md5rinteraction.vp moves them.
+	// md5rinteraction.vp moves them. That is a packed surface: primitive
+	// batches plus their skin-to-model table. The predicate only tests the
+	// batch pointer, so a token address stands in for the mesh.
 	float gpuPosedSkinTransform[16];
 	memset( gpuPosedSkinTransform, 0, sizeof( gpuPosedSkinTransform ) );
 	srfTriangles_t gpuPosedGeo;
 	memset( &gpuPosedGeo, 0, sizeof( gpuPosedGeo ) );
 	gpuPosedGeo.numIndexes = 3;
 	gpuPosedGeo.deformedSurface = true;
+	// A classicized MD5R surface keeps the table for GPU skinning's compute
+	// pass but draws a posed vertex stream: a first class mapped receiver.
+	srfTriangles_t classicMD5RGeo;
+	memset( &classicMD5RGeo, 0, sizeof( classicMD5RGeo ) );
+	classicMD5RGeo.numIndexes = 3;
+	classicMD5RGeo.deformedSurface = true;
 #if defined( _MD5R_SUPPORT ) || defined( Q4SDK_MD5R )
+	static int gpuPosedBatchToken;
+	gpuPosedGeo.primBatchMesh = reinterpret_cast<rvMesh *>( &gpuPosedBatchToken );
 	gpuPosedGeo.skinToModelTransforms = gpuPosedSkinTransform;
 	gpuPosedGeo.numSkinToModelTransforms = 1;
+	classicMD5RGeo.skinToModelTransforms = gpuPosedSkinTransform;
+	classicMD5RGeo.numSkinToModelTransforms = 1;
 #endif
 
 	viewEntity_t staticSpace;
@@ -9914,10 +9926,12 @@ bool RB_ShadowMapArb2ReceiverFallbackSelfTest( void ) {
 
 	drawSurf_t eligibleReceiver;
 	drawSurf_t skinnedReceiver;
+	drawSurf_t classicMD5RReceiver;
 	drawSurf_t generatedReceiver;
 	drawSurf_t invalidReceiver;
 	memset( &eligibleReceiver, 0, sizeof( eligibleReceiver ) );
 	memset( &skinnedReceiver, 0, sizeof( skinnedReceiver ) );
+	memset( &classicMD5RReceiver, 0, sizeof( classicMD5RReceiver ) );
 	memset( &generatedReceiver, 0, sizeof( generatedReceiver ) );
 	memset( &invalidReceiver, 0, sizeof( invalidReceiver ) );
 	eligibleReceiver.geo = &receiverGeo;
@@ -9932,7 +9946,12 @@ bool RB_ShadowMapArb2ReceiverFallbackSelfTest( void ) {
 	skinnedReceiver.space = &generatedSpace;
 	skinnedReceiver.material = tr.defaultMaterial;
 	skinnedReceiver.shaderRegisters = shaderRegisters;
-	skinnedReceiver.nextOnLight = &generatedReceiver;
+	skinnedReceiver.nextOnLight = &classicMD5RReceiver;
+	classicMD5RReceiver.geo = &classicMD5RGeo;
+	classicMD5RReceiver.space = &generatedSpace;
+	classicMD5RReceiver.material = tr.defaultMaterial;
+	classicMD5RReceiver.shaderRegisters = shaderRegisters;
+	classicMD5RReceiver.nextOnLight = &generatedReceiver;
 	generatedReceiver.geo = &gpuPosedGeo;
 	generatedReceiver.space = &generatedSpace;
 	generatedReceiver.material = tr.defaultMaterial;
@@ -9947,15 +9966,17 @@ bool RB_ShadowMapArb2ReceiverFallbackSelfTest( void ) {
 	const int fallbackSurfaceCount = RB_CountShadowMapReceiverFallbackSurfaces( &eligibleReceiver, fallbackReasons );
 	if ( !RB_SurfaceEligibleForShadowMapReceiver( &eligibleReceiver )
 		|| !RB_SurfaceEligibleForShadowMapReceiver( &skinnedReceiver )
+		|| !RB_SurfaceEligibleForShadowMapReceiver( &classicMD5RReceiver )
 		|| RB_SurfaceShadowMapReceiverFallbackReason( &generatedReceiver ) != expectedGeneratedReason
 		|| fallbackSurfaceCount != 1 + expectedGeneratedCount
 		|| fallbackReasons[SHADOWMAP_RECEIVER_FALLBACK_GENERATED_GEOMETRY] != expectedGeneratedCount
 		|| fallbackReasons[SHADOWMAP_RECEIVER_FALLBACK_INVALID_SURFACE] != 1
 		|| fallbackReasons[SHADOWMAP_RECEIVER_FALLBACK_CUSTOM_GLSL] != 0 ) {
 		common->Printf(
-			"ARB2 receiver fallback self-test failed: eligible=%d skinnedEligible=%d generatedReason=%s count=%d invalid=%d custom=%d generated=%d\n",
+			"ARB2 receiver fallback self-test failed: eligible=%d skinnedEligible=%d classicMD5REligible=%d generatedReason=%s count=%d invalid=%d custom=%d generated=%d\n",
 			RB_SurfaceEligibleForShadowMapReceiver( &eligibleReceiver ) ? 1 : 0,
 			RB_SurfaceEligibleForShadowMapReceiver( &skinnedReceiver ) ? 1 : 0,
+			RB_SurfaceEligibleForShadowMapReceiver( &classicMD5RReceiver ) ? 1 : 0,
 			RB_ShadowMapReceiverFallbackReasonName( RB_SurfaceShadowMapReceiverFallbackReason( &generatedReceiver ) ),
 			fallbackSurfaceCount,
 			fallbackReasons[SHADOWMAP_RECEIVER_FALLBACK_INVALID_SURFACE],

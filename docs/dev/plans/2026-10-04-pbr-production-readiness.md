@@ -609,3 +609,37 @@ migrations in order.
 | OpenGL owner and Vulkan production | direct 73/73 each, parity 73/73; ambient 40 and 41 controls, oracle and parity pass; environment 27 and 28, parity 27; diagnostics 62/62 each, the documented 10-control whole-frame set; SSAO 8/8 each, parity 8; baked grids 6/6 each, parity 6 |
 | OpenGL owner and the Vulkan laboratory | direct parity 73/73, ambient and environment parity pass, diagnostics the documented set |
 | Modern GL and Vulkan laboratory | Vulkan direct 73/73, ambient 41/41, IBL 28/28 with modern GL 27/27 and parity, diagnostics 62/62 each, baked 6/6 each. Modern GL diagnostics first failed every capture while the PR profile loaded the machine: its specimen spawned twice (the laboratory's console-timing race), the error dropped the client to the menu, and it passed 62/62 on a quiet rerun |
+
+## Remaining limitations, resolved
+
+### Animated and converted models on OpenGL
+
+The listed limitation was half wrong. `r_gpuSkinning 1` never left PBR
+surfaces classic on OpenGL: its compute pass writes a posed `idDrawVert` cache
+that every draw path, the native owner included, reads like CPU-skinned
+geometry. The skinned laboratory controls (`skin-cpu-*`, `skin-gpu-*`, never
+in a batch before) pass 10/10 on the OpenGL owner and on Vulkan production;
+GPU skinning matches the CPU reference and the specimen is PBR-owned.
+
+Packed MD5R was a real gap. A model converted with `r_convertMD5toMD5R`
+draws its primitive batches through the md5r vertex programs, which pose
+rest-pose vertices on the GPU, so the owner declined them
+(`gpu-posed-geometry`). Vulkan never uses packed batches; it CPU-skins
+classic geometry. Now OpenGL does the same for a PBR-authored mesh
+(`R_MD5R_MeshUsesPackedRuntimeSurface`, decided by the authored material so the
+static and both dynamic paths agree), and the GPU-posed test reads only the
+primitive batch: a classic MD5R surface keeps a skin-to-model table for GPU
+skinning's compute pass, but its vertex stream is posed. `printModel` marks
+such a mesh `[classic: PBR]`. A packed surface whose entity skin swaps in a
+PBR material still keeps its classic stages.
+
+New `skin-md5r-*` controls convert the skinned specimen at load (they run as
+their own process). Before the change the OpenGL owner left it classic
+(`MD5R model`, packed batches, ownership failed); after, 5/5 on the OpenGL
+owner and on Vulkan production, with the rest pose and the ownership view
+identical to the unconverted CPU reference. The bent pose differs from it by
+about three bytes on both backends alike: the converted model's CPU path
+re-derives its tangents where the MD5 path skins the authored basis, which
+the MD5R track fixes on `origin/main` (66ebfed8). The engine's ARB2
+receiver self-test now models a packed surface with its primitive batch and
+checks that a classic MD5R surface stays a mapped receiver.

@@ -59,6 +59,23 @@ static ID_INLINE bool R_MD5R_UsePackedRuntimeSurfaces() {
 
 /*
 ========================
+R_MD5R_MeshUsesPackedRuntimeSurface
+
+Packed primitive batches pose on the GPU through the md5r vertex programs of
+the classic interaction path. The OpenGL PBR owner (draw_pbr.cpp) lights an
+idDrawVert stream, so a mesh authored with a PBR material keeps the classic
+geometry Vulkan always uses: CPU- or compute-skinned vertices. The authored
+material decides, not a per-entity skin, because the static surfaces and both
+dynamic-surface paths must make the same choice.
+========================
+*/
+static ID_INLINE bool R_MD5R_MeshUsesPackedRuntimeSurface( const rvMD5RMesh &mesh ) {
+	return R_MD5R_UsePackedRuntimeSurfaces()
+		&& ( mesh.material == NULL || !mesh.material->HasPBR() );
+}
+
+/*
+========================
 R_MD5R_DeferDynamicTangents
 
 Vulkan ambient-only cube/reflection stages can consume the vertex basis before
@@ -4496,7 +4513,8 @@ bool rvRenderModelMD5R::GenerateStaticSurfaces() {
 	if ( R_MD5R_UsePackedRuntimeSurfaces() ) {
 		for ( int meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex ) {
 			rvMD5RMesh &mesh = meshes[ meshIndex ];
-			if ( mesh.surfaceNum < 0 || mesh.surfaceNum >= surfaces.Num() ) {
+			if ( mesh.surfaceNum < 0 || mesh.surfaceNum >= surfaces.Num()
+				|| !R_MD5R_MeshUsesPackedRuntimeSurface( mesh ) ) {
 				continue;
 			}
 
@@ -5233,7 +5251,7 @@ bool rvRenderModelMD5R::UpdateDynamicSurface( const rvMD5RMesh &mesh, const idJo
 		&& mesh.gpuBindPoseVerts.Num() == mesh.numDrawVertices
 		&& mesh.gpuSkinningVerts.Num() == mesh.numDrawVertices;
 	if ( skinScale == 0.0f
-		&& R_MD5R_UsePackedRuntimeSurfaces()
+		&& R_MD5R_MeshUsesPackedRuntimeSurface( mesh )
 		&& R_MD5R_UpdatePackedDynamicSurface( mesh, entJoints, vertexBuffers,
 			indexBuffers, silEdges, joints.Num(), surface, calculateTangents,
 			skipPackedCpuTangents ) ) {
@@ -5397,7 +5415,7 @@ bool rvRenderModelMD5R::GenerateDynamicSurface( idRenderModelStatic &staticModel
 	const float skinScale = ent.shaderParms[ SHADERPARM_MD5_SKINSCALE ];
 #if defined( _MD5R_SUPPORT ) || defined( Q4SDK_MD5R )
 	bool canUsePackedDynamicSurface = skinScale == 0.0f
-		&& R_MD5R_UsePackedRuntimeSurfaces()
+		&& R_MD5R_MeshUsesPackedRuntimeSurface( mesh )
 		&& R_MD5R_CanUsePackedDynamicSurface( mesh, vertexBuffers, indexBuffers );
 #else
 	const bool canUsePackedDynamicSurface = false;
@@ -5843,13 +5861,14 @@ void rvRenderModelMD5R::Print() const {
 		totalPrimBatches += mesh.primBatches.Num();
 
 		common->Printf(
-			"%2i: %3i %4i %5i %5i %s\n",
+			"%2i: %3i %4i %5i %5i %s%s\n",
 			i,
 			mesh.levelOfDetail,
 			mesh.primBatches.Num(),
 			mesh.numDrawVertices,
 			mesh.numDrawPrimitives,
-			materialName );
+			materialName,
+			R_MD5R_UsePackedRuntimeSurfaces() && !R_MD5R_MeshUsesPackedRuntimeSurface( mesh ) ? " [classic: PBR]" : "" );
 	}
 
 	common->Printf( "-----\n" );

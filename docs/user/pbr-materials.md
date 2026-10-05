@@ -142,8 +142,14 @@ classic fallback is visible. On OpenGL its `OpenGL: native PBR:` line counts
 the admitted and declined surfaces, the light, environment, emission and
 translucent draws, and names the last decline reason (`material-contract`,
 `gpu-posed-geometry`, `resources`, `view`) and whether the view owns
-translucency (`translucentView`). Surfaces posed on the GPU (`r_gpuSkinning 1`,
-packed MD5R meshes) keep their classic stages on OpenGL.
+translucency (`translucentView`).
+
+Animated models are PBR on both renderers, CPU-skinned or GPU-skinned
+(`r_gpuSkinning 1`). A model converted to MD5R (`r_convertMD5toMD5R 1`) keeps
+classic geometry for its PBR-authored meshes on OpenGL, as Vulkan does for
+every mesh, so they are PBR too; `printModel` marks such a mesh
+`[classic: PBR]`. Only a packed MD5R surface whose entity skin swaps in a PBR
+material keeps its classic stages (`gpu-posed-geometry`).
 
 The qualified OpenGL HDR path includes point/projected shadows, cutouts,
 ordered source alpha, authored fog/blend lights, and existing baked area

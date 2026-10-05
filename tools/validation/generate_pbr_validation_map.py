@@ -25,6 +25,7 @@ BACKFACE_MODEL = "models/openq4/pbr_lab/backface_receiver.ase"
 CONSTANT_NORMAL_MODEL = "models/openq4/pbr_lab/sphere_constant_normal.ase"
 VERTEX_COLOR_MODEL = "models/openq4/pbr_lab/sphere_vertex_color.ase"
 SKINNING_MODEL = "openq4_pbr_lab_skinned"
+SKINNING_MESH = "models/openq4/pbr_lab/skinned.md5mesh"
 
 
 def rgba_tga(size: int, pixels: list[tuple[int, int, int, int]]) -> bytes:
@@ -193,7 +194,7 @@ baseframe {
 frame 0 { }
 frame 1 { }
 '''
-    model=f'model {SKINNING_MODEL} {{\nmesh models/openq4/pbr_lab/skinned.md5mesh\nanim idle models/openq4/pbr_lab/idle.md5anim\n}}\n'
+    model=f'model {SKINNING_MODEL} {{\nmesh {SKINNING_MESH}\nanim idle models/openq4/pbr_lab/idle.md5anim\n}}\n'
     return '\n'.join(mesh),anim,model
 
 
@@ -289,7 +290,7 @@ def payloads() -> tuple[dict[str, bytes], list[dict]]:
     # so clamp must reach checker(x=63,y=0), whose known value is black.
     add(SAMPLING_MODEL, sphere_ase(uv_scale=16, uv_offset=2.375))
     skin_mesh,skin_anim,skin_def=skinned_sphere()
-    add('models/openq4/pbr_lab/skinned.md5mesh',skin_mesh)
+    add(SKINNING_MESH,skin_mesh)
     add('models/openq4/pbr_lab/idle.md5anim',skin_anim)
     add('def/openq4_pbr_lab.def',skin_def)
 

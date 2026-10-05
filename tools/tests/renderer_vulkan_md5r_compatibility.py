@@ -154,6 +154,22 @@ def validate_runtime_gate_helpers() -> None:
         "MD5R packed-runtime helper",
     )
 
+    # A PBR-authored mesh keeps classic geometry on OpenGL too: the native
+    # PBR owner lights idDrawVert streams, not md5r-program packed batches.
+    mesh_gate = braced_body(
+        source,
+        "static ID_INLINE bool R_MD5R_MeshUsesPackedRuntimeSurface( const rvMD5RMesh &mesh )",
+        "MD5R per-mesh packed-runtime helper",
+    )
+    require_order(
+        mesh_gate,
+        (
+            "return R_MD5R_UsePackedRuntimeSurfaces()",
+            "&& ( mesh.material == NULL || !mesh.material->HasPBR() );",
+        ),
+        "MD5R per-mesh packed-runtime helper",
+    )
+
     tangent_gate = braced_body(
         source,
         "static ID_INLINE bool R_MD5R_DeferDynamicTangents()",
@@ -202,6 +218,8 @@ def validate_static_surface_gate() -> None:
         )
     if gate.count("tri->primBatchMesh =") != assignment_count:
         raise AssertionError("Every static primBatchMesh attachment must remain inside the Vulkan compatibility gate")
+    require(gate, "|| !R_MD5R_MeshUsesPackedRuntimeSurface( mesh ) ) {",
+            "MD5R static packing skips PBR-authored meshes")
 
 
 def validate_dynamic_surface_gate() -> None:
@@ -216,7 +234,7 @@ def validate_dynamic_surface_gate() -> None:
     require(
         update,
         "if ( skinScale == 0.0f\n"
-        "\t\t&& R_MD5R_UsePackedRuntimeSurfaces()\n"
+        "\t\t&& R_MD5R_MeshUsesPackedRuntimeSurface( mesh )\n"
         "\t\t&& R_MD5R_UpdatePackedDynamicSurface(",
         "MD5R packed dynamic updater gate",
     )
@@ -254,7 +272,7 @@ def validate_dynamic_surface_gate() -> None:
     require(
         generate,
         "bool canUsePackedDynamicSurface = skinScale == 0.0f\n"
-        "\t\t&& R_MD5R_UsePackedRuntimeSurfaces()\n"
+        "\t\t&& R_MD5R_MeshUsesPackedRuntimeSurface( mesh )\n"
         "\t\t&& R_MD5R_CanUsePackedDynamicSurface(",
         "MD5R packed dynamic admission gate",
     )

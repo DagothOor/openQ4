@@ -36,6 +36,7 @@ BASE = {
     'r_msaaAlphaToCoverage':'1',
     'r_vkPBRSpecularAA':'1',
     'r_gpuSkinning':'0',
+    'r_convertMD5toMD5R':'0',
     # The overview's key light is three times overbright. Calibrated PBR shows
     # the classic brightness, so at the game's r_lightScale 2 classic and PBR
     # alike saturate 40% of the frame and most stations read white. A quarter
@@ -100,6 +101,12 @@ GL_NATIVE_OVERRIDES = {
 # it. Every PBR draw composes into the display-referred framebuffer, which is
 # how the classic OpenGL owner always draws (--gl-native).
 PRODUCTION_OVERRIDES = {'r_pbrLinearScene': '0'}
+
+# Multi-GPU qualification: OPENQ4_LAB_VK_DEVICE pins r_vkDevice for this and
+# every harness that captures through BASE (on the qualification laptop, 2 is
+# the integrated Intel GPU). OpenGL ignores it.
+if os.environ.get('OPENQ4_LAB_VK_DEVICE', '').strip():
+    BASE['r_vkDevice'] = os.environ['OPENQ4_LAB_VK_DEVICE'].strip()
 
 # Stage D: SSAO occludes native PBR indirect light only. The overview's
 # stations are native PBR in front of a classic room; the laboratory's analytic
@@ -219,8 +226,10 @@ CASES = {
     'full-restart': {},
     'map-reload': {},
     **{f'sampler-{name}': {'r_pbrDebug':'1'} for name in ('nearest','linear','clamp','mips')},
-    **{f'skin-{backend}{pose}': {'r_gpuSkinning':str(int(backend=='gpu')), 'r_pbrDebug':'2' if pose=='-normal' else '7' if pose=='-ownership' else '0', 'r_shadows':'1', 'r_useShadowMap':'1', 'g_showPlayerShadow':'0'}
-       for backend in ('cpu','gpu') for pose in ('','-bent','-restored','-normal','-ownership')},
+    # md5r converts the skinned specimen to a packed MD5R model at load
+    # (r_convertMD5toMD5R), so its controls run as their own process.
+    **{f'skin-{backend}{pose}': {'r_gpuSkinning':str(int(backend=='gpu')), 'r_convertMD5toMD5R':str(int(backend=='md5r')), 'r_pbrDebug':'2' if pose=='-normal' else '7' if pose=='-ownership' else '0', 'r_shadows':'1', 'r_useShadowMap':'1', 'g_showPlayerShadow':'0'}
+       for backend in ('cpu','gpu','md5r') for pose in ('','-bent','-restored','-normal','-ownership')},
 }
 for restart in ('partial','full'):
     CASES[f'skin-gpu-{restart}-restart']=dict(CASES['skin-gpu'])
@@ -870,7 +879,7 @@ def compare_sampler_captures(results: list[dict]) -> None:
 def compare_skinning_captures(results: list[dict]) -> None:
     by_case={r['case']:r for r in results if r['case'].startswith('skin-')}
     images={name:capture_rgb(Path(r['screenshot'])) for name,r in by_case.items()}
-    for backend in ('cpu','gpu'):
+    for backend in ('cpu','gpu','md5r'):
         base,bent,restored=(f'skin-{backend}'+suffix for suffix in ('','-bent','-restored'))
         a,b=images.get(base),images.get(bent)
         if a and b:
@@ -1736,6 +1745,15 @@ def inspect_capture(args: argparse.Namespace, case: str, text: str, shot: Path) 
         gpu=next((line for line in telemetry if line.startswith('GPU skinning:')), '')
         if not re.search(r'\benabled=1\b',gpu) or not re.search(r'\bprepared=[1-9]\d*\b',gpu):
             failures.append('GPU skinning did not consume the specimen')
+    if case.startswith('skin-md5r'):
+        if 'MD5R model.' not in text:
+            failures.append('the skinned specimen was not converted to MD5R')
+        elif args.backend == 'gl' and 'runtime surfaces: packed primitive batches' not in text:
+            failures.append('OpenGL did not report packed MD5R runtime surfaces')
+        elif args.backend == 'gl' and '[classic: PBR]' not in text:
+            # Packed batches pose on the GPU through the md5r programs; the
+            # PBR-authored mesh must keep the classic geometry Vulkan uses.
+            failures.append('the PBR-authored MD5R mesh kept packed GPU-posed geometry on OpenGL')
     if case.startswith('msaa') or '-pbr-msaa' in case:
         if not re.search(r'Renderer AA: MSAA requested=4 effective=4\b',text):
             failures.append('four-sample MSAA was requested but is not effective')
@@ -2065,6 +2083,8 @@ def capture_cases(args: argparse.Namespace, cases: list[str], save: Path) -> lis
         commands += ['wait 20', f'echo "PBRLAB_{case}_BEGIN"']
         if case.startswith('vk-direct-shadow-'):
             commands += ['wait 2']
+        if case.startswith('skin-md5r'):
+            commands += [f'printModel {lab.SKINNING_MESH}']
         commands += ['viewpos', 'gfxInfo', 'rendererMaterialResourceTableDump', f'screenshot "screenshots/{case}.tga"']
         if case=='vk-direct-emission-extreme' and args.backend=='vk':
             commands += ['rendererVulkanHDRInfo']
@@ -2193,6 +2213,9 @@ def main() -> int:
     for prefix in ('multi-','local-global','sampler-','skin-','fog-','blend-','lightgrid-','vk-direct-','ibl-'):
         if args.batch and any(c.startswith(prefix) for c in cases) and not all(c.startswith(prefix) for c in cases):
             parser.error(f'{prefix} cases require a separate scene from other controls')
+    # The specimen converts when it loads: one conversion state per process.
+    if args.batch and len({c.startswith('skin-md5r') for c in cases if c.startswith('skin-')}) > 1:
+        parser.error('skin-md5r cases convert the specimen at load; run them without other skin- cases')
     if args.prepare: prepare(args.runtime_root,args.basepath,args.output_dir,args.timeout)
     if args.update_fixture:
         existing=json.loads((args.runtime_root/'pbr-lab.json').read_text())
