@@ -3455,11 +3455,15 @@ bool R_BakeCurrentLightGrids( const lightGridBakeOptions_t &options, const char 
 	r_showLightGrid.SetInteger( 0 );
 	tr.suppressLevelshotViewModels = true;
 
+	// View rectangles are virtual-screen units: the full screen is the whole
+	// captureSize x captureSize face. Window pixels drew a larger view and kept
+	// only its corner unless the window was 640x480. The synchronous and the
+	// async PBO capture paths both render through this view.
 	renderView_t captureView = tr.primaryView->renderView;
 	captureView.x = 0;
 	captureView.y = 0;
-	captureView.width = glConfig.vidWidth;
-	captureView.height = glConfig.vidHeight;
+	captureView.width = SCREEN_WIDTH;
+	captureView.height = SCREEN_HEIGHT;
 	captureView.fov_x = 90.0f;
 	captureView.fov_y = 90.0f;
 

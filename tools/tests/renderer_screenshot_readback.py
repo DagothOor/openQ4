@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression contract for composited-window screenshot readback."""
 
+import math
 from pathlib import Path
 
 
@@ -292,6 +293,80 @@ def test_capture_center_crops_and_resamples_safely() -> None:
             )
 
 
+def capture_viewport(
+    crop_size: int, view_width: int, view_height: int
+) -> tuple[int, int]:
+    """idRenderSystemLocal::RenderViewToViewport for a crop_size capture crop."""
+    w_ratio = crop_size / 640.0
+    h_ratio = crop_size / 480.0
+    x2 = math.floor(view_width * w_ratio + 0.5) - 1
+    y1 = crop_size - math.floor(view_height * h_ratio + 0.5)
+    return x2 + 1, crop_size - y1
+
+
+def test_cube_face_captures_span_the_virtual_screen() -> None:
+    lightgrid_cpp = read("src/renderer/RenderWorld_lightgrid.cpp")
+    renderer_cpp = read("src/renderer/RenderSystem.cpp")
+    bake = function_body(
+        lightgrid_cpp,
+        "bool R_BakeCurrentLightGrids( const lightGridBakeOptions_t &options, const char *jobName )",
+    )
+    # A render-view rectangle is in SCREEN_WIDTH x SCREEN_HEIGHT units, scaled
+    # by the capture crop BeginFrame takes from tr.tiledViewport. Window pixels
+    # drew each cube face into a larger viewport and the readback kept only its
+    # top-left corner, unless the window was 640x480.
+    require_order(
+        bake,
+        (
+            "renderView_t captureView = tr.primaryView->renderView;",
+            "captureView.width = SCREEN_WIDTH;",
+            "captureView.height = SCREEN_HEIGHT;",
+            "captureView.fov_x = 90.0f;",
+            "captureView.fov_y = 90.0f;",
+        ),
+        "light-grid bake capture view",
+    )
+    reject(bake, "captureView.width = glConfig.vidWidth", "light-grid bake capture view")
+    reject(bake, "captureView.height = glConfig.vidHeight", "light-grid bake capture view")
+    # the synchronous and the async PBO capture paths share that view
+    require(
+        lightgrid_cpp,
+        "readbackPool.IssueReadback( &captureView, job, side );",
+        "async light-grid face capture",
+    )
+    require(
+        lightgrid_cpp,
+        "LightGrid_CaptureProbeFacesSync( task, options, captureView, cubeAxes, *job );",
+        "synchronous light-grid face capture",
+    )
+    # envshot and bakeReflectionProbes capture cube faces the same way
+    init_cpp = read("src/renderer/RenderSystem_init.cpp")
+    for signature, context in (
+        ("void R_EnvShot_f( const idCmdArgs &args )", "envshot face view"),
+        ("static void R_BakeReflectionProbes_f( const idCmdArgs &args )", "reflection-probe face view"),
+    ):
+        body = function_body(init_cpp, signature)
+        require_order(
+            body,
+            ("ref.width = SCREEN_WIDTH;", "ref.height = SCREEN_HEIGHT;", "tr.TakeScreenshot( "),
+            context,
+        )
+        reject(body, "ref.width = glConfig.vidWidth", context)
+    require(renderer_cpp, "windowWidth = tiledViewport[0];", "capture-sized render crop")
+    require(
+        renderer_cpp,
+        "float wRatio = (float)rc->width / SCREEN_WIDTH;",
+        "virtual-screen render-view scaling",
+    )
+
+    for size in (16, 32, 64, 128, 256):
+        if capture_viewport(size, 640, 480) != (size, size):
+            raise AssertionError(f"virtual-screen view does not fill a {size}px face")
+    # the cropped faces before the fix: a 64px face at 1280x800 rendered 128x107
+    if capture_viewport(64, 1280, 800) != (128, 107):
+        raise AssertionError("viewport model no longer matches RenderViewToViewport")
+
+
 def main() -> None:
     test_screenshot_reads_the_unpresented_back_buffer()
     test_capture_defers_only_the_window_present()
@@ -300,6 +375,7 @@ def main() -> None:
     test_save_preview_resamples_a_coherent_full_frame()
     test_capture_skips_rgb_pack_padding()
     test_capture_center_crops_and_resamples_safely()
+    test_cube_face_captures_span_the_virtual_screen()
     print("renderer_screenshot_readback: ok")
 
 

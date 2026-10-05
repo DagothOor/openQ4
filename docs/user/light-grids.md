@@ -393,6 +393,13 @@ Try:
 - checking that the map is using the expected saved files, not stale older bake output
 - confirming `area*_lightgrid_amb.tga`, `area*_lightgrid_vis.tga`, and `area*_lightgrid_pos.tga` exist for each baked area
 
+### A map I baked with 0.13.1 or earlier lights oddly
+
+Bakes made with openQ4 0.13.1 or earlier are only right if the game window was 640x480 while baking. At any other window size, each probe recorded a magnified corner of its surroundings instead of its full view, so its indirect light could come from the wrong direction. From 0.13.2 the window size makes no difference.
+
+Fix:
+- Re-bake the map with `bakeLightGrids force`.
+
 ### I want to turn the feature off completely
 
 ```cfg

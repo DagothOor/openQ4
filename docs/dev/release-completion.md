@@ -936,6 +936,33 @@
   - `mp_match_control_team_join_smoke.py` passes, and fails on a pre-fix
     runtime (revision 19 -> 21, "Committed" while the player stays Marine);
     `competitive_match_layer.py` pins the order, and eight mutants fail it.
+- [x] `bakeLightGrids` captures whole cube faces at any window size. Its
+  capture view took the window's pixel size as its rectangle, but render-view
+  rectangles are virtual-screen units: `RenderViewToViewport` scales them by
+  the capture crop (`tr.tiledViewport`) over 640x480. Outside a 640x480 window
+  each face drew into a larger viewport (128x107 for a `size64` face at
+  1280x800) and the readback kept its top-left corner, stretched over the
+  face. The synchronous and async PBO paths share the view, which now spans
+  `SCREEN_WIDTH` x `SCREEN_HEIGHT` as levelshots, `envshot` and
+  `bakeReflectionProbes` do; `renderer_screenshot_readback.py` pins all three
+  and models the viewport. On mp/q4dm8 with the shipped settings (`size128
+  samples128 bounce3`), fixed bakes at 1280x720, 1280x800 (async and
+  synchronous readback) and 2538x1312 match the 640x480 bake to run-to-run
+  noise (mean difference at most 0.009 levels, 99% of texels identical), where
+  the unfixed build was off by 3.3-3.6 levels (r 0.62-0.77). Whole faces draw
+  more of the map, so a bake takes about twice as long (q4xtourney2: 1.6 to
+  3.2 minutes).
+  - The bundled light grids carry cropped faces. 37 multiplayer grids match
+    bakes logged on 2026-06-19 in a 2560x1334 window, and the unfixed build
+    reproduces the shipped atlases at those windows: q4xtourney2 at 2538x1312
+    (r 0.9996, mean difference 0.8 levels, against 9.4 for a correct bake) and
+    q4dm8, from the unlogged 2026-06-18 batch, at the default 1280x720 window
+    (r 0.997). airdefense2 shares that batch. Re-baking them waits on a
+    decision and on two bake faults: from `.install`, bounces 2+ reload and the
+    pack writer reads the shipped `pak1` atlases, which outrank `fs_savepath`,
+    and captures never reach `R_ToggleSmpFrame`, so frame memory grows about
+    300 KB per face (`r_showMemory 1` counts 3.5 GB after q4dm8's 11,340 faces,
+    enough to wrap its 32-bit total) and larger maps run out of memory.
 
 ## Unreleased — Quake 4: The Awakening (`q4xbase`)
 
