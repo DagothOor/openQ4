@@ -17,6 +17,25 @@ int R_ShadowMapHashFloat( const int hash, const float value ) {
 	return static_cast<int>( ( static_cast<unsigned int>( hash ) ^ bits ) * 16777619u );
 }
 
+/*
+Point lights the size of the sun cover so much space that each cube-map texel
+spans several world units, and small casters lose their shadows entirely.
+Keep such lights on stencil shadow volumes. Every place that decides whether a
+point light uses a shadow map must ask this, so volume generation and map
+rendering always agree.
+*/
+bool R_ShadowMapPointLightAllowed( const idVec3 &lightRadius ) {
+	if ( !r_shadowMapPointLights.GetBool() ) {
+		return false;
+	}
+	const float maxRadius = r_shadowMapPointMaxRadius.GetFloat();
+	if ( maxRadius <= 0.0f ) {
+		return true;
+	}
+	const float extent = Max( Max( idMath::Fabs( lightRadius.x ), idMath::Fabs( lightRadius.y ) ), idMath::Fabs( lightRadius.z ) );
+	return extent <= maxRadius;
+}
+
 static shadowMapLightClass_t R_ShadowMapLightClassForViewLight( const viewLight_t *vLight ) {
 	if ( vLight == NULL ) {
 		return SHADOWMAP_LIGHT_PROJECTED;
