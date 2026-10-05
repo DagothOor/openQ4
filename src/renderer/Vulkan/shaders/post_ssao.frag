@@ -12,6 +12,11 @@
 layout(set = 0, binding = 0) uniform sampler2D Scene;
 layout(set = 1, binding = 0) uniform sampler2D DepthBuffer;
 layout(set = 2, binding = 0) uniform sampler2D FinalDepthBuffer;
+// Native PBR views (vk_PostProcess.cpp VK_PostProcess_PrepareSSAOField): the
+// world depth without native PBR surfaces, and the field this pass wrote
+// before lighting.
+layout(set = 3, binding = 0) uniform sampler2D ClassicDepthBuffer;
+layout(set = 4, binding = 0) uniform sampler2D AOField;
 
 layout(std140, set = 6, binding = 0) uniform SSAOBlock {
     vec4 texInfo;			// xy: invTexSize, z: projectionScale, w: debug view
@@ -19,6 +24,7 @@ layout(std140, set = 6, binding = 0) uniform SSAOBlock {
     vec4 depthInfo;			// x: P[10], y: P[14]
     vec4 params;			// x: radius, y: bias, z: intensity, w: power
     vec4 params2;			// x: max distance, y: sample count
+    vec4 modeInfo;			// x: mode, y: the field's rows run opposite to this target's
 } block;
 
 #define invTexSize			block.texInfo.xy
@@ -32,6 +38,12 @@ layout(std140, set = 6, binding = 0) uniform SSAOBlock {
 #define ssaoPower			block.params.w
 #define ssaoMaxDistance		block.params2.x
 #define ssaoSampleCount		block.params2.y
+// 0 classic: darken the lit scene. 1 field: before lighting, write the
+// occlusion native PBR applies to its indirect light (r) and the factor for
+// classic world pixels (g); b marks pixels with world depth. 2 apply: darken
+// only the classic world pixels with the field's factor.
+#define ssaoMode			block.modeInfo.x
+#define ssaoFieldFlip		block.modeInfo.y
 
 layout(location = 0) in vec2 fragUV;
 layout(location = 0) out vec4 outColor;
@@ -163,8 +175,51 @@ bool PixelIsForeground( vec2 uv, float sourceDepth ) {
 	return finalViewDepth + 1.0 < sourceViewDepth;
 }
 
+void FieldMain( vec2 uv ) {
+	float depth = SampleDepth( uv );
+	if ( depth >= 0.99999 ) {
+		// No world depth (sky): untouched, as the classic pass leaves it.
+		outColor = vec4( 1.0, 1.0, 0.0, 1.0 );
+		return;
+	}
+	if ( PixelIsForeground( uv, depth ) ) {
+		// A model in front of the world: untouched.
+		outColor = vec4( 1.0 );
+		return;
+	}
+	vec3 centerPos = ReconstructViewPosition( uv, depth );
+	float ao = ComputeAmbientOcclusion( uv, centerPos, ReconstructNormal( uv, centerPos ) );
+	// A classic world surface is the visible one where the frame did not
+	// settle in front of the classic-only snapshot.
+	float classicDepth = texture( ClassicDepthBuffer, uv ).x;
+	bool classic = classicDepth < 0.99999 && !PixelIsForeground( uv, classicDepth );
+	outColor = vec4( ao, classic ? ao : 1.0, 1.0, 1.0 );
+}
+
+void ApplyMain( vec2 uv ) {
+	vec4 scene = texture( Scene, uv );
+	ivec2 texel = ivec2( gl_FragCoord.xy );
+	if ( ssaoFieldFlip > 0.5 ) {
+		texel.y = textureSize( AOField, 0 ).y - 1 - texel.y;
+	}
+	vec3 field = texelFetch( AOField, texel, 0 ).rgb;
+	if ( ssaoDebugView > 0.5 ) {
+		outColor = field.b > 0.5 ? vec4( vec3( field.r ), scene.a ) : scene;
+		return;
+	}
+	outColor = vec4( scene.rgb * field.g, scene.a );
+}
+
 void main() {
 	vec2 uv = fragUV;
+	if ( ssaoMode > 1.5 ) {
+		ApplyMain( uv );
+		return;
+	}
+	if ( ssaoMode > 0.5 ) {
+		FieldMain( uv );
+		return;
+	}
 	vec4 scene = texture( Scene, uv );
 	float depth = SampleDepth( uv );
 

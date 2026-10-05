@@ -19,6 +19,8 @@ typedef struct glPBRReceiverUniforms_s {
 	GLint	metallicMap;
 	GLint	aoMap;
 	GLint	transparent;	// x authored stage alpha scale (0: additive), y coverage only
+	GLint	screenAO;		// x SSAO field bound, yz 1 / its size
+	GLint	screenAOMap;
 } glPBRReceiverUniforms_t;
 
 // True when this surface's lighting is owned by the native PBR draws in the

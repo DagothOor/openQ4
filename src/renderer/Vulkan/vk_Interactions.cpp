@@ -101,6 +101,7 @@ static idCVar r_vkPBRBakedFailureAfter( "r_vkPBRBakedFailureAfter", "0", CVAR_RE
 #include "vk_MaterialPrograms.h"
 #include "../RenderWorld_local.h"
 #include <unordered_map>
+bool VK_PostProcess_SSAOField( const viewDef_t *viewDef, idImage **image, bool *flip );
 bool VK_LightGrid_PrepareModern( const viewDef_t *view, const drawSurf_t *surf,
     idImage *images[3], float params[7][4] );
 void VK_PBR_PrepareBakedView( const viewDef_t *view );
@@ -2646,7 +2647,14 @@ static bool VK_PBR_PrepareEnvironment( VkCommandBuffer cmd, const viewDef_t *vie
 	if ( ( illuminated && VK_PBRPrepareFault( 13 ) ) || atlas == NULL || !atlas->IsLoaded() ) {
 		return VK_PBRPrepareFailed( "environment-image" );
 	}
-	idImage *images[6] = { material.metallicImage != NULL ? material.metallicImage : globalImages->whiteImage,
+	// SSAO occludes indirect light: its field takes slot 0 when no separate
+	// metallic map needs it (flag 32, 64 with flipped rows).
+	idImage *screenAO = NULL;
+	bool screenAOFlip = false;
+	const bool screenAOUsed = !transparent && !diagnostic && material.metallicImage == NULL
+		&& VK_PostProcess_SSAOField( viewDef, &screenAO, &screenAOFlip );
+	idImage *images[6] = { material.metallicImage != NULL ? material.metallicImage
+			: screenAOUsed ? screenAO : globalImages->whiteImage,
 		material.normalImage, atlas, ( illuminated || diagnostic || baked != NULL ) && info.ao.present ? info.ao.image : globalImages->whiteImage,
 		material.albedoImage, material.dataImage };
 	VkDescriptorSet *sets = prepared.sets;
@@ -2714,7 +2722,8 @@ static bool VK_PBR_PrepareEnvironment( VkCommandBuffer cmd, const viewDef_t *vie
 	// Weight of the analytic studio environment under authored probes: the
 	// laboratory mode only. Classic draws use b.y for their ambient direction.
 	push.b[1] = r_pbrAnalyticEnvironment.GetBool() ? 1.0f : 0.0f;
-	push.c[0] = float( material.dataFlags | ( info.ao.present ? 8 : 0 ) );
+	push.c[0] = float( material.dataFlags | ( info.ao.present ? 8 : 0 )
+		| ( screenAOUsed ? 32 | ( screenAOFlip ? 64 : 0 ) : 0 ) );
 	push.c[1] = float( material.normalFormat );
 	push.c[2] = diagnostic ? float( debugMode )
 		: baked != NULL && !illuminated ? 0.0f : idMath::ClampFloat( 0.0f, 4.0f, r_pbrIBLIntensity.GetFloat() );
@@ -2870,6 +2879,12 @@ static void VK_PBR_SubmitPrepared( VkCommandBuffer cmd, const vkPBRPreparedDraw_
 	vkCmdSetStencilTestEnable( cmd, VK_FALSE );
 	VK_Device_CountDrawIndexed( prepared.geo->numIndexes, prepared.geo->numVerts );
 	vkCmdDrawIndexed( cmd, uint32_t( prepared.geo->numIndexes ), 1, 0, 0, 0 );
+}
+
+bool VK_PBR_NativeOpaqueSurface( const drawSurf_t *surf ) {
+	vkPBRDirectInteraction_t material;
+	return surf != NULL && surf->material != NULL && surf->material->HasPBR()
+		&& surf->material->Coverage() != MC_TRANSLUCENT && VK_PBRDirectMaterial( surf, material );
 }
 
 bool VK_PBR_GridOwned( const viewDef_t *view, const drawSurf_t *surf ) {
@@ -3331,10 +3346,21 @@ static void VK_DrawSingleInteractionMode( const drawInteraction_t *din,
 		pbrDataFlags = ( pbr.dataFlags & ~4 ) | 16;
 		pbrDataImage = pbr.aoImage;
 	}
+	// An ambient light stands in for indirect light, so SSAO occludes it:
+	// the field takes slot 0 when no separate metallic map needs it.
+	idImage *screenAO = NULL;
+	bool screenAOFlip = false;
+	if ( nativePBR && din->ambientLight && pbr.metallicImage == NULL
+			&& din->surf->material->Coverage() != MC_TRANSLUCENT
+			&& VK_PostProcess_SSAOField( backEnd.viewDef, &screenAO, &screenAOFlip ) ) {
+		pbrDataFlags |= 32 | ( screenAOFlip ? 64 : 0 );
+	}
 	VkDescriptorSet sets[ 8 ];
 	sets[ 0 ] = interPass.specTableSet;
 	if ( nativePBR && pbr.metallicImage != NULL ) {
 		sets[ 0 ] = VK_Exec_ImageDescriptor( pbr.metallicImage->GetDeviceHandle(), true );
+	} else if ( screenAO != NULL ) {
+		sets[ 0 ] = VK_Exec_ImageDescriptor( screenAO->GetDeviceHandle(), true );
 	}
 	sets[ 1 ] = VK_Exec_ImageDescriptor( ( nativePBR ? pbr.normalImage : din->bumpImage )->GetDeviceHandle(), true );
 	sets[ 2 ] = VK_Exec_ImageDescriptor( din->lightFalloffImage->GetDeviceHandle(), true );

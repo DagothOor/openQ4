@@ -217,6 +217,12 @@ typedef struct vkPostMotionEntityHistory_s {
 // World-depth snapshot bits for VK_PostProcess_WorldDepthCaptures
 static const int VK_POST_CAPTURE_CEL_WORLD = 1 << 0;
 static const int VK_POST_CAPTURE_SSAO_WORLD = 1 << 1;
+// The view's native PBR world surfaces fill after the classic ones, with a
+// snapshot between (VK_PostProcess_PrepareSSAOField).
+static const int VK_POST_CAPTURE_SSAO_SPLIT = 1 << 2;
+
+// vk_Interactions.cpp: an opaque or perforated surface native PBR owns.
+bool VK_PBR_NativeOpaqueSurface( const drawSurf_t *surf );
 
 typedef struct vkPostSceneState_s {
 	VkShaderModule		modules[ VK_POST_SCENE_MODULE_COUNT ];
@@ -235,6 +241,16 @@ typedef struct vkPostSceneState_s {
 	int					celWorldDepthFrame;
 	int					celWorldDepthWidth;
 	int					celWorldDepthHeight;
+
+	// Native PBR keeps SSAO off its direct light (VK_PostProcess_PrepareSSAOField)
+	idImage *			ssaoClassicDepth;	// the world depth without native PBR surfaces
+	int					ssaoClassicDepthFrame;
+	idImage *			ssaoFieldDepth;		// the depth right after the prepass
+	idImage *			ssaoField;			// r: native PBR indirect AO, g: classic factor, b: world depth
+	idRenderTexture *	ssaoFieldTarget;
+	const viewDef_t *	ssaoFieldView;
+	int					ssaoFieldFrame;
+	bool				ssaoFieldFlip;		// its rows run opposite to the view's target
 
 	idImage *			bloomImages[ VK_POST_BLOOM_MAX_LEVELS ][ 2 ];
 	idRenderTexture *	bloomTargets[ VK_POST_BLOOM_MAX_LEVELS ][ 2 ];
@@ -491,6 +507,7 @@ void VK_PostProcess_Shutdown( void ) {
 		}
 	}
 	delete vkPostScene.motionVectorTarget;
+	delete vkPostScene.ssaoFieldTarget;
 	delete vkTemporalMotionTarget;
 	vkTemporalMotionTarget = NULL;
 	vkTemporalMotionImage = NULL;
@@ -500,6 +517,8 @@ void VK_PostProcess_Shutdown( void ) {
 	vkPostScene.finalDepthFrame = -1;
 	vkPostScene.ssaoWorldDepthFrame = -1;
 	vkPostScene.celWorldDepthFrame = -1;
+	vkPostScene.ssaoClassicDepthFrame = -1;
+	vkPostScene.ssaoFieldFrame = -1;
 	VK_Post_ResetMotionBlurHistory();
 }
 
@@ -1125,18 +1144,33 @@ draw a filtered depth-only fill, copy depth and clear again before the real
 prepass. Depth writes are order independent, so the Vulkan prepass orders its
 surfaces instead: the ones the cel filter keeps, a copy, the rest of the SSAO
 filter's, a copy, then everything else. The cel filter keeps world surfaces
-only, which the SSAO filter also keeps.
+only, which the SSAO filter also keeps. A view whose native PBR owns world
+surfaces splits the SSAO filter's surfaces: classic ones, a copy, native PBR
+ones, the world copy (draw_common.cpp RB_CaptureSSAOWorldDepthImage).
 ====================
 */
 int VK_PostProcess_WorldDepthCaptures( const viewDef_t *viewDef ) {
 	vkPostScene.ssaoWorldDepthFrame = -1;
 	vkPostScene.celWorldDepthFrame = -1;
+	vkPostScene.ssaoClassicDepthFrame = -1;
+	vkPostScene.ssaoFieldFrame = -1;
+	vkPostScene.ssaoFieldView = NULL;
 	int captures = 0;
 	if ( VK_Post_CelInkRequested( viewDef ) ) {
 		captures |= VK_POST_CAPTURE_CEL_WORLD;
 	}
 	if ( VK_Post_SSAORequested( viewDef ) ) {
 		captures |= VK_POST_CAPTURE_SSAO_WORLD;
+		// The cel world ink keeps the classic whole-frame occlusion.
+		if ( ( captures & VK_POST_CAPTURE_CEL_WORLD ) == 0 ) {
+			for ( int i = 0; i < viewDef->numDrawSurfs; i++ ) {
+				const drawSurf_t *surf = viewDef->drawSurfs[ i ];
+				if ( VK_Post_SSAOWorldDepthSurf( surf ) && VK_PBR_NativeOpaqueSurface( surf ) ) {
+					captures |= VK_POST_CAPTURE_SSAO_SPLIT;
+					break;
+				}
+			}
+		}
 	}
 	return captures;
 }
@@ -1146,15 +1180,15 @@ int VK_PostProcess_DepthFillPhase( const drawSurf_t *surf, int captures ) {
 		return 0;
 	}
 	if ( ( captures & VK_POST_CAPTURE_SSAO_WORLD ) != 0 && VK_Post_SSAOWorldDepthSurf( surf ) ) {
-		return 1;
+		return ( captures & VK_POST_CAPTURE_SSAO_SPLIT ) != 0 && VK_PBR_NativeOpaqueSurface( surf ) ? 2 : 1;
 	}
-	return 2;
+	return 3;
 }
 
-// Runs after prepass phase 0 or 1. phaseDrawn counts the surfaces each phase
+// Runs after prepass phases 0-2. phaseDrawn counts the surfaces each phase
 // drew; the copy restarts rendering, so the caller re-establishes its state.
 void VK_PostProcess_CaptureWorldDepth( const viewDef_t *viewDef, int fillPhase, int captures,
-		const int phaseDrawn[ 3 ] ) {
+		const int phaseDrawn[ 4 ] ) {
 	const int width = VK_Post_ViewWidth( viewDef );
 	const int height = VK_Post_ViewHeight( viewDef );
 	if ( fillPhase == 0 && ( captures & VK_POST_CAPTURE_CEL_WORLD ) != 0 && phaseDrawn[ 0 ] > 0 ) {
@@ -1168,8 +1202,16 @@ void VK_PostProcess_CaptureWorldDepth( const viewDef_t *viewDef, int fillPhase, 
 			&& r_celShadingWorldDebug.GetBool() ) {
 		common->Printf( "cel world outline skipped: no world surfaces passed the depth snapshot filter\n" );
 	}
-	if ( fillPhase == 1 && ( captures & VK_POST_CAPTURE_SSAO_WORLD ) != 0
-			&& phaseDrawn[ 0 ] + phaseDrawn[ 1 ] > 0 ) {
+	const bool split = ( captures & VK_POST_CAPTURE_SSAO_SPLIT ) != 0;
+	if ( fillPhase == 1 && split && ( captures & VK_POST_CAPTURE_SSAO_WORLD ) != 0 ) {
+		// The classic world alone; empty where native PBR is the only world.
+		idImage *image = VK_Post_EnsureImage( vkPostScene.ssaoClassicDepth, "_vkSSAOClassicDepth", VK_Post_DepthImage );
+		if ( VK_Post_CaptureDepth( image, viewDef ) ) {
+			vkPostScene.ssaoClassicDepthFrame = backEnd.frameCount;
+		}
+	}
+	if ( fillPhase == ( split ? 2 : 1 ) && ( captures & VK_POST_CAPTURE_SSAO_WORLD ) != 0
+			&& phaseDrawn[ 0 ] + phaseDrawn[ 1 ] + ( split ? phaseDrawn[ 2 ] : 0 ) > 0 ) {
 		idImage *image = VK_Post_EnsureImage( vkPostScene.ssaoWorldDepth, "_vkSSAOWorldDepth", VK_Post_DepthImage );
 		if ( VK_Post_CaptureDepth( image, viewDef ) ) {
 			vkPostScene.ssaoWorldDepthFrame = backEnd.frameCount;
@@ -1188,7 +1230,42 @@ typedef struct vkPostSSAOBlock_s {
 	float	depthInfo[ 4 ];
 	float	params[ 4 ];
 	float	params2[ 4 ];
+	float	modeInfo[ 4 ];		// x mode (0 classic, 1 field, 2 apply), y field rows flipped
 } vkPostSSAOBlock_t;
+
+static void VK_Post_FillSSAOBlock( vkPostSSAOBlock_t &block, const viewDef_t *viewDef,
+		int width, int height, float mode, bool flip ) {
+	memset( &block, 0, sizeof( block ) );
+	block.texInfo[ 0 ] = 1.0f / (float)width;
+	block.texInfo[ 1 ] = 1.0f / (float)height;
+	block.texInfo[ 2 ] = 0.5f * (float)height * idMath::Fabs( viewDef->projectionMatrix[ 5 ] );
+	block.texInfo[ 3 ] = r_ssaoDebug.GetBool() ? 1.0f : 0.0f;
+	VK_Post_ProjectionInfo( viewDef, block.projection );
+	block.depthInfo[ 0 ] = viewDef->projectionMatrix[ 10 ];
+	block.depthInfo[ 1 ] = viewDef->projectionMatrix[ 14 ];
+	block.params[ 0 ] = r_ssaoRadius.GetFloat();
+	block.params[ 1 ] = r_ssaoBias.GetFloat();
+	block.params[ 2 ] = r_ssaoIntensity.GetFloat();
+	block.params[ 3 ] = r_ssaoPower.GetFloat();
+	block.params2[ 0 ] = r_ssaoMaxDistance.GetFloat();
+	block.params2[ 1 ] = (float)idMath::ClampInt( 4, 32, r_ssaoSamples.GetInteger() );
+	block.modeInfo[ 0 ] = mode;
+	block.modeInfo[ 1 ] = flip ? 1.0f : 0.0f;
+}
+
+static bool VK_Post_SSAOFieldValid( const viewDef_t *viewDef ) {
+	return vkPostScene.ssaoFieldFrame == backEnd.frameCount && vkPostScene.ssaoFieldView == viewDef
+		&& vkPostScene.ssaoField != NULL;
+}
+
+bool VK_PostProcess_SSAOField( const viewDef_t *viewDef, idImage **image, bool *flip ) {
+	if ( !VK_Post_SSAOFieldValid( viewDef ) ) {
+		return false;
+	}
+	*image = vkPostScene.ssaoField;
+	*flip = vkPostScene.ssaoFieldFlip;
+	return true;
+}
 
 static bool VK_Post_DrawSSAO( const viewDef_t *viewDef ) {
 	const VkShaderModule fragModule = VK_Post_SceneModule( VK_POST_MODULE_SSAO );
@@ -1216,29 +1293,80 @@ static bool VK_Post_DrawSSAO( const viewDef_t *viewDef ) {
 		worldDepth = vkPostScene.ssaoWorldDepth;
 	}
 
+	// A view with an occlusion field only applies its classic factor.
+	const bool field = VK_Post_SSAOFieldValid( viewDef );
 	vkPostSSAOBlock_t block;
-	memset( &block, 0, sizeof( block ) );
-	block.texInfo[ 0 ] = 1.0f / (float)width;
-	block.texInfo[ 1 ] = 1.0f / (float)height;
-	block.texInfo[ 2 ] = 0.5f * (float)height * idMath::Fabs( viewDef->projectionMatrix[ 5 ] );
-	block.texInfo[ 3 ] = r_ssaoDebug.GetBool() ? 1.0f : 0.0f;
-	VK_Post_ProjectionInfo( viewDef, block.projection );
-	block.depthInfo[ 0 ] = viewDef->projectionMatrix[ 10 ];
-	block.depthInfo[ 1 ] = viewDef->projectionMatrix[ 14 ];
-	block.params[ 0 ] = r_ssaoRadius.GetFloat();
-	block.params[ 1 ] = r_ssaoBias.GetFloat();
-	block.params[ 2 ] = r_ssaoIntensity.GetFloat();
-	block.params[ 3 ] = r_ssaoPower.GetFloat();
-	block.params2[ 0 ] = r_ssaoMaxDistance.GetFloat();
-	block.params2[ 1 ] = (float)idMath::ClampInt( 4, 32, r_ssaoSamples.GetInteger() );
+	VK_Post_FillSSAOBlock( block, viewDef, width, height, field ? 2.0f : 0.0f, field && vkPostScene.ssaoFieldFlip );
 
-	const VkDescriptorSet sets[ 3 ] = {
-		VK_Post_Descriptor( scene ), VK_Post_Descriptor( worldDepth ), VK_Post_Descriptor( finalDepth )
+	const VkDescriptorSet sets[ 5 ] = {
+		VK_Post_Descriptor( scene ), VK_Post_Descriptor( worldDepth ), VK_Post_Descriptor( finalDepth ),
+		VK_Post_Descriptor( finalDepth ), VK_Post_Descriptor( field ? vkPostScene.ssaoField : globalImages->whiteImage )
 	};
 	const int uniformOffset = VK_Exec_InteractionUniformAlloc( &block, sizeof( block ) );
 	const VkPipeline pipeline = VK_Exec_PostPipeline( VK_POST_SSAO, vkPost.fullscreenVert, fragModule,
 			GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO );
-	return VK_Post_DrawSceneRect( viewDef, pipeline, sets, 3, uniformOffset );
+	return VK_Post_DrawSceneRect( viewDef, pipeline, sets, 5, uniformOffset );
+}
+
+static bool VK_Post_EnsureColorTarget( idImage *&image, idRenderTexture *&target, const char *name,
+		int width, int height, textureFilter_t filter, const char *label );
+
+/*
+====================
+VK_PostProcess_PrepareSSAOField
+
+Right after the depth prepass of a view whose world depth was split, before
+any light draws: the occlusion field native PBR folds into the AO of its
+indirect light, as OpenGL's RB_PrepareSSAOIndirectField. It has the active
+target's size and is drawn at the view's rectangle, so a fragment reads it at
+gl_FragCoord; its rows are flipped when that target is the top-down swapchain.
+The caller re-establishes its draw state afterwards.
+====================
+*/
+bool VK_PostProcess_PrepareSSAOField( const viewDef_t *viewDef ) {
+	vkPostScene.ssaoFieldFrame = -1;
+	vkPostScene.ssaoFieldView = NULL;
+	const int width = VK_Post_ViewWidth( viewDef );
+	const int height = VK_Post_ViewHeight( viewDef );
+	if ( vkPostScene.ssaoClassicDepthFrame != backEnd.frameCount || vkPostScene.ssaoWorldDepthFrame != backEnd.frameCount
+			|| vkPostScene.ssaoWorldDepthWidth != width || vkPostScene.ssaoWorldDepthHeight != height
+			|| width <= 0 || height <= 0 || !VK_Post_EnsureModules() || !VK_Post_ProjectionUsable( viewDef ) ) {
+		return false;
+	}
+	const VkShaderModule fragModule = VK_Post_SceneModule( VK_POST_MODULE_SSAO );
+	idImage *depth = VK_Post_EnsureImage( vkPostScene.ssaoFieldDepth, "_vkSSAOFieldDepth", VK_Post_DepthImage );
+	if ( fragModule == VK_NULL_HANDLE || !VK_Post_CaptureDepth( depth, viewDef ) ) {
+		return false;
+	}
+	idRenderTexture *sceneTarget = VK_Exec_ActiveRenderTexture();
+	const int sceneFace = VK_Exec_ActiveCubeFace();
+	const bool sceneLowerOrigin = VK_Exec_ActiveLowerOrigin();
+	if ( !VK_Post_EnsureColorTarget( vkPostScene.ssaoField, vkPostScene.ssaoFieldTarget, "_vkSSAOField",
+			VK_Exec_ActiveFramebufferWidth(), VK_Exec_ActiveFramebufferHeight(), TF_NEAREST, "SSAO field" ) ) {
+		return false;
+	}
+	bool drawn = false, fieldLowerOrigin = false;
+	if ( VK_Exec_SetRenderTarget( vkPostScene.ssaoFieldTarget ) ) {
+		fieldLowerOrigin = VK_Exec_ActiveLowerOrigin();
+		vkPostSSAOBlock_t block;
+		VK_Post_FillSSAOBlock( block, viewDef, width, height, 1.0f, false );
+		const VkDescriptorSet sets[ 5 ] = {
+			VK_Post_Descriptor( globalImages->whiteImage ), VK_Post_Descriptor( vkPostScene.ssaoWorldDepth ),
+			VK_Post_Descriptor( depth ), VK_Post_Descriptor( vkPostScene.ssaoClassicDepth ),
+			VK_Post_Descriptor( globalImages->whiteImage )
+		};
+		const int uniformOffset = VK_Exec_InteractionUniformAlloc( &block, sizeof( block ) );
+		const VkPipeline pipeline = VK_Exec_PostPipeline( VK_POST_SSAO, vkPost.fullscreenVert, fragModule,
+				GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO );
+		drawn = VK_Post_DrawSceneRect( viewDef, pipeline, sets, 5, uniformOffset );
+	}
+	if ( !VK_Exec_SetRenderTarget( sceneTarget, sceneFace ) || !drawn ) {
+		return false;
+	}
+	vkPostScene.ssaoFieldFlip = fieldLowerOrigin != sceneLowerOrigin;
+	vkPostScene.ssaoFieldFrame = backEnd.frameCount;
+	vkPostScene.ssaoFieldView = viewDef;
+	return true;
 }
 
 // ---- motion blur (RB_STD_MotionBlur) ----

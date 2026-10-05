@@ -55,18 +55,18 @@ CLASSIC_BASELINE = {
 
 # The baselines are classic renderings on both backends: recorded, not judged.
 CLASSIC_REFERENCES = {name: 'classic baseline with PBR off; its differences belong to the classic renderer'
-                      for name in CLASSIC_BASELINE.values()}
+                      for name in (*CLASSIC_BASELINE.values(), 'ssao-classic', 'ssao-debug-classic')}
 
 EDGE_SHIFT_LIMIT = 0.0005
 COVERAGE_FLIP_LIMIT = 16
 
-# Overview controls of the baked light grid are judged per station: each of
-# the 24 specimen means within one byte. Their frames also hold the classic
+# Overview controls of the baked light grid and of SSAO are judged per
+# station: each of the 24 specimen means within one byte. Their frames also hold the classic
 # room, whose texture filtering differs by a byte or two between the APIs, and
 # the laboratory's four-probe DXT1 grid samples differently along thin bands of
 # normal directions on OpenGL (modern and native alike) and Vulkan. Both are
 # recorded, not judged.
-STATION_JUDGED_PREFIXES = ('lightgrid-',)
+STATION_JUDGED_PREFIXES = ('lightgrid-', 'ssao-')
 STATION_LIMIT = 1.0
 
 

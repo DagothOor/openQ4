@@ -1137,7 +1137,7 @@ def test_pbr_energy_and_occlusion_contract() -> None:
     for token in (
         "PBREnergyCompensationColor(f0, PBRSpecularAlbedo(ndotv, roughness))",
         "if ((dataFlags & 16) != 0)",
-        "clamp(aoTexel * pc.b.x, 0.0, 1.0), objectNormal, viewDir, vPBRNormal) * vVertexColor);",
+        "PBRScreenAO(clamp(aoTexel * pc.b.x, 0.0, 1.0), dataFlags), objectNormal, viewDir, vPBRNormal) * vVertexColor);",
     ):
         require(direct, token, "Vulkan direct roughness/AO coverage")
     environment = read(ROOT / "src/renderer/Vulkan/shaders/pbr_environment.glsl")
@@ -1284,7 +1284,7 @@ def test_gl_classic_loop_native_pbr_contract() -> None:
         "glPBRFragmentLibrary += OPENQ4_PBR_SCALAR_GLSL;",
         "PBRClassicLightIrradianceColor(",
         "PBREnergyCompensationColor( f0, PBRSpecularAlbedo( ndotv, roughness ) )",
-        "PBRUniformEnvironmentLight( radiance, albedo, metallic, roughness, data.z,",
+        "PBRUniformEnvironmentLight( radiance, albedo, metallic, roughness, PBRScreenAO( data.z ),",
         "PBRSpecularOcclusion( NoV, ao, roughness )",
         "PBRHorizonOcclusion( dot( reflection, PBREnvironmentWorld( vPBRNormal ) ) )",
         "PBRProbeBlend( vWorldPosition, reflection, n, roughness, prefiltered, irradiance );",
@@ -1430,6 +1430,50 @@ def test_vulkan_production_baked_contract() -> None:
             "display-referred targets use the single-attachment baked shaders")
     require(executor, "&& VK_PBR_EnvironmentVisit( viewDef, drawSurf ) ) ) || shader->IsPortalSky() ) {",
             "the ambient walk visits a grid receiver without environment light")
+
+
+def test_pbr_ssao_indirect_contract() -> None:
+    # SSAO occludes native PBR indirect light only (production readiness,
+    # Stage D): an occlusion field drawn after the depth prepass, folded into
+    # indirect AO as the lesser of the two, and the post pass applying only the
+    # field's classic factor.
+    for path in ("content/baseoq4/pak0/glprogs/ssao.fs", "src/renderer/Vulkan/shaders/post_ssao.frag"):
+        shader = read(ROOT / path)
+        for token in ("void FieldMain(", "void ApplyMain(", "ClassicDepthBuffer", "AOField",
+                      "bool classic = classicDepth < 0.99999 && !PixelIsForeground( uv, classicDepth );"):
+            require(shader, token, path + " SSAO field and apply modes")
+    common = read(ROOT / "src/renderer/draw_common.cpp")
+    for token in ("static void RB_PrepareSSAOIndirectField( void ) {",
+                  "bool RB_SSAOIndirectField( idImage **image, float invSize[2] ) {",
+                  "rendered = RB_STD_FillDepthBufferFiltered( drawSurfs, numDrawSurfs, RB_SSAOClassicWorldDepthSurfFilter );",
+                  "RB_PrepareSSAOIndirectField();\n\tRB_PrepareLightGridDepthTexture();",
+                  "RB_DrawSSAOPass( field ? 2.0f : 0.0f, sceneImage, depthImage, finalDepthImage, NULL,"):
+        require(common, token, "OpenGL SSAO field")
+    owner = read(ROOT / "src/renderer/draw_pbr.cpp")
+    for token in ("static const int GL_PBR_UNIT_SCREEN_AO = 14;",
+                  "static const int GL_PBR_REQUIRED_IMAGE_UNITS = 15;",
+                  "float ao = PBRScreenAO( data.z );",
+                  "const bool screenAO = alphaScale <= 0.0f && !coverageOnly && RB_SSAOIndirectField( &field, invSize );"):
+        require(owner, token, "OpenGL native PBR indirect SSAO")
+    reject(owner, "PBRScreenAO( ndotl", "direct light must never read SSAO")
+    direct = read(ROOT / "src/renderer/Vulkan/shaders/pbr_direct.glsl")
+    require(direct, "float PBRScreenAO(float ao, int dataFlags) {", "Vulkan indirect SSAO")
+    if direct.count("PBRScreenAO(") != 2:
+        raise AssertionError("Vulkan direct shading reads SSAO only for ambient lights")
+    environment = read(ROOT / "src/renderer/Vulkan/shaders/pbr_environment.glsl")
+    require(environment, "ao = PBRScreenAO(clamp(ao, 0.0, 1.0), flags);", "Vulkan environment SSAO")
+    post = read(ROOT / "src/renderer/Vulkan/vk_PostProcess.cpp")
+    for token in ("bool VK_PostProcess_PrepareSSAOField( const viewDef_t *viewDef ) {",
+                  "return ( captures & VK_POST_CAPTURE_SSAO_SPLIT ) != 0 && VK_PBR_NativeOpaqueSurface( surf ) ? 2 : 1;",
+                  "VK_Post_FillSSAOBlock( block, viewDef, width, height, field ? 2.0f : 0.0f, field && vkPostScene.ssaoFieldFlip );"):
+        require(post, token, "Vulkan SSAO field")
+    interactions = read(ROOT / "src/renderer/Vulkan/vk_Interactions.cpp")
+    for token in ("if ( nativePBR && din->ambientLight && pbr.metallicImage == NULL",
+                  "const bool screenAOUsed = !transparent && !diagnostic && material.metallicImage == NULL"):
+        require(interactions, token, "Vulkan binds the field for indirect light only")
+    executor = read(ROOT / "src/renderer/Vulkan/vk_GuiExecutor.cpp")
+    require(executor, "if ( worldDepthCaptures != 0 && VK_PostProcess_PrepareSSAOField( viewDef ) ) {",
+            "the field is drawn after the prepass, before the lights")
 
 
 def main() -> int:

@@ -64,6 +64,7 @@ BASE = {
     # and ambient lights only. The production-environment controls select it.
     'r_pbrAnalyticEnvironment': '1',
     'r_bloom': '0', 'r_ssao': '0', 'r_postAA': '0', 'r_motionBlur': '0',
+    'r_ssaoRadius': '36', 'r_ssaoIntensity': '1.35', 'r_ssaoDebug': '0', 'r_ssaoMaxDistance': '220',
     'r_hdrToneMap': '0', 'r_hdrAutoExposure': '0', 'r_hdrSceneTarget': '1',
     'r_hdrExposure': '1', 'r_hdrHighlightDesaturation': '0', 'r_hdrGamutCompression': '0',
     'r_hdrWhitePoint':'6', 'r_hdrLift':'0', 'r_hdrPostGamma':'1', 'r_hdrGain':'1',
@@ -99,6 +100,15 @@ GL_NATIVE_OVERRIDES = {
 # it. Every PBR draw composes into the display-referred framebuffer, which is
 # how the classic OpenGL owner always draws (--gl-native).
 PRODUCTION_OVERRIDES = {'r_pbrLinearScene': '0'}
+
+# Stage D: SSAO occludes native PBR indirect light only. The overview's
+# stations are native PBR in front of a classic room; the laboratory's analytic
+# environment is their indirect light, its key and fill lights the direct. The
+# room lies beyond SSAO's default fade distance. Every control keeps SSAO on,
+# so OpenGL draws all of them through its scene target; the unoccluded ones
+# fade it out at the nearest distance instead.
+SSAO_SETTINGS = {'r_ssao': '1', 'r_ssaoRadius': '64', 'r_ssaoIntensity': '2', 'r_ssaoMaxDistance': '2048'}
+SSAO_FADED = {**SSAO_SETTINGS, 'r_ssaoMaxDistance': '16'}
 
 CASES = {
     'lit': {},
@@ -144,6 +154,14 @@ CASES = {
     'production-no-scissor': {'r_rendererModernLightingParity':'0','r_useScissor':'0'},
     'production-no-scissor-native': {'r_rendererModernLightingParity':'0','r_useScissor':'0','r_pbrMaterials':'0','r_rendererReflectionProbes':'0'},
     'ownership': {'r_pbrDebug': '7'},
+    'ssao-ownership': {**SSAO_FADED, 'r_pbrDebug': '7'},
+    'ssao-off': dict(SSAO_FADED),
+    'ssao-on': dict(SSAO_SETTINGS),
+    'ssao-direct-off': {**SSAO_FADED, 'r_pbrIBL': '0'},
+    'ssao-direct-on': {**SSAO_SETTINGS, 'r_pbrIBL': '0'},
+    'ssao-classic': {**SSAO_SETTINGS, 'r_pbrMaterials': '0'},
+    'ssao-debug': {**SSAO_SETTINGS, 'r_ssaoDebug': '1'},
+    'ssao-debug-classic': {**SSAO_SETTINGS, 'r_ssaoDebug': '1', 'r_pbrMaterials': '0'},
     'albedo': {'r_pbrDebug': '1'},
     'normals': {'r_pbrDebug': '2'},
     **{f'normal-{name}': {'r_pbrDebug':'2'} for name in ('xyz','rg','agb','zero','flat')},
@@ -264,6 +282,7 @@ LEGACY_CASES.update(('production-no-scissor-native','production-fixed-native','p
 LEGACY_CASES.update(f'{kind}-{mode}' for kind in ('fog','blend') for mode in ('native','off','fallback-native'))
 LEGACY_CASES.update(('lightgrid-native','lightgrid-off'))
 LEGACY_CASES.update(('lightgrid-pbr-master-off','lightgrid-pbr-native'))
+LEGACY_CASES.update(('ssao-classic','ssao-debug-classic'))
 CASE_COMMANDS = {'shader-reload':['rendererShaderLibraryReload'], 'image-reload':['reloadImages all'],
                  'partial-restart':['vid_restart partial','wait 60'], 'full-restart':['vid_restart','wait 60'],
                  # Spawned entities publish their first render definitions on
@@ -954,6 +973,69 @@ def display_referred_owner(row: dict) -> bool:
     """The capture composed PBR into the display-referred frame, as shipped:
     the classic OpenGL owner, or Vulkan with the linear scene off."""
     return native_gl_owner(row) or (row.get('backend') == 'vk' and row.get('pbrLinearScene') == '0')
+
+
+def compare_ssao_captures(results: list[dict]) -> None:
+    """SSAO darkens native PBR indirect light only (Stage D).
+
+    Native PBR pixels (green in the ownership capture) keep their direct light
+    exactly: with the environment off, SSAO changes none of them. With it on,
+    each lies between its direct-only value and its unoccluded value, and some
+    darken. Classic pixels darken exactly as in a frame without native PBR,
+    and the debug view shows the same occlusion with and without it.
+    """
+    by_case = {r['case']: r for r in results}
+    names = ('ssao-ownership', 'ssao-off', 'ssao-on', 'ssao-direct-off', 'ssao-direct-on',
+             'ssao-classic', 'ssao-debug', 'ssao-debug-classic')
+    if not all(name in by_case for name in names):
+        return
+    images = {name: capture_rgb(Path(by_case[name]['screenshot'])) for name in names}
+    if any(image is None for image in images.values()):
+        by_case['ssao-on']['failures'].append('SSAO controls are missing captures')
+        return
+    owner = images['ssao-ownership']
+    # Opaque native PBR shows pure green; translucent native PBR blends its
+    # green over the room and belongs to neither set.
+    owned = [i for i in range(0, len(owner), 3) if owner[i:i + 3] == bytes((0, 255, 0))]
+    classic = [i for i in range(0, len(owner), 3)
+               if not ( owner[i + 1] >= 48 and owner[i + 1] > 2 * owner[i] and owner[i + 1] > 2 * owner[i + 2] )]
+    row = by_case['ssao-on']
+    if len(owned) < 4096:
+        row['failures'].append('the SSAO scene shows too few native PBR pixels')
+        return
+
+    def channels(i):
+        return range(i, i + 3)
+
+    direct_on, direct_off = images['ssao-direct-on'], images['ssao-direct-off']
+    direct_changed = sum(1 for i in owned if any(direct_on[c] != direct_off[c] for c in channels(i)))
+    on, off = images['ssao-on'], images['ssao-off']
+    above = sum(1 for i in owned if any(on[c] > off[c] + 1 for c in channels(i)))
+    below = sum(1 for i in owned if any(on[c] + 1 < direct_on[c] for c in channels(i)))
+    darkened = sum(1 for i in owned if any(on[c] + 2 <= off[c] for c in channels(i)))
+    with_pbr, without_pbr = images['ssao-on'], images['ssao-classic']
+    # The field is stored in half floats: allow the last bit of rounding.
+    classic_changed = sum(1 for i in classic if any(abs(with_pbr[c] - without_pbr[c]) > 1 for c in channels(i)))
+    classic_darkened = sum(1 for i in classic if any(with_pbr[c] + 2 <= images['ssao-off'][c] for c in channels(i)))
+    debug, debug_classic = images['ssao-debug'], images['ssao-debug-classic']
+    debug_changed = sum(1 for i in range(0, len(debug), 3)
+                        if any(abs(debug[c] - debug_classic[c]) > 1 for c in channels(i)))
+    row['ssaoComparisons'] = {'nativePixels': len(owned), 'classicPixels': len(classic),
+        'directChanged': direct_changed, 'aboveUnoccluded': above, 'belowDirect': below,
+        'indirectDarkened': darkened, 'classicChanged': classic_changed,
+        'classicDarkened': classic_darkened, 'debugChanged': debug_changed}
+    if direct_changed:
+        row['failures'].append(f'SSAO changed {direct_changed} native PBR pixels lit only directly')
+    if above or below:
+        row['failures'].append(f'SSAO left native PBR outside its direct/unoccluded bounds ({above} above, {below} below)')
+    if darkened < 64:
+        row['failures'].append(f'SSAO darkened only {darkened} native PBR pixels of indirect light')
+    if classic_changed:
+        row['failures'].append(f'native PBR changed {classic_changed} classic pixels under SSAO')
+    if classic_darkened < 1024:
+        row['failures'].append(f'SSAO darkened only {classic_darkened} classic pixels')
+    if debug_changed:
+        row['failures'].append(f'the SSAO debug view differs on {debug_changed} pixels with native PBR')
 
 
 def compare_native_baked_captures(results: list[dict]) -> None:
@@ -2153,6 +2235,7 @@ def main() -> int:
     compare_skinning_captures(results)
     compare_material_captures(results)
     compare_native_baked_captures(results)
+    compare_ssao_captures(results)
     compare_transparency_captures(results)
     compare_post_captures(results)
     compare_msaa_captures(results)

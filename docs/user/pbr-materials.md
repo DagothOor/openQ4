@@ -72,6 +72,13 @@ derived from AO, roughness and view angle, so smooth surfaces seen head-on keep
 reflections a cavity would remove from rough ones. Reflections that a normal
 map would send below the geometric surface fade out.
 
+Screen-space ambient occlusion (`r_ssao`, off by default) estimates the same
+indirect visibility from the depth buffer. On a PBR surface it darkens only
+the indirect light, as the lesser of its occlusion and the material AO, so it
+never dims a direct light or a highlight and never doubles a crevice the AO
+map already darkens. Classic surfaces keep the classic SSAO, which darkens
+their whole lighting.
+
 PBR surfaces take their indirect light from the map itself. An authored
 ambient light stands in for light bounced from every direction, so PBR treats
 it as a uniform environment: it lights diffuse and specular alike, metals

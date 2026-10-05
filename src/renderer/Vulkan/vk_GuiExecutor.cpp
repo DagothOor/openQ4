@@ -98,7 +98,8 @@ void VK_PostProcess_Shutdown( void );
 int VK_PostProcess_WorldDepthCaptures( const viewDef_t *viewDef );
 int VK_PostProcess_DepthFillPhase( const drawSurf_t *surf, int captures );
 void VK_PostProcess_CaptureWorldDepth( const viewDef_t *viewDef, int fillPhase, int captures,
-		const int phaseDrawn[ 3 ] );
+		const int phaseDrawn[ 4 ] );
+bool VK_PostProcess_PrepareSSAOField( const viewDef_t *viewDef );
 bool VK_PostProcess_DrawSceneEffects( const viewDef_t *viewDef );
 bool VK_SceneEffects_DrawPreFog( const viewDef_t *viewDef, int processed );
 bool VK_PostProcess_DrawUnderwater( const viewDef_t *viewDef );
@@ -13861,8 +13862,8 @@ void VK_GuiExecutor_Draw3DView( const viewDef_t *viewDef ) {
 	// than a separate fill and clear, the fill draws those surfaces first
 	// and vk_PostProcess.cpp copies depth between the phases.
 	const int worldDepthCaptures = VK_PostProcess_WorldDepthCaptures( viewDef );
-	int fillPhaseDrawn[ 3 ] = { 0, 0, 0 };
-	for ( int fillPhase = worldDepthCaptures != 0 ? 0 : 2; fillPhase < 3; fillPhase++ ) {
+	int fillPhaseDrawn[ 4 ] = { 0, 0, 0, 0 };
+	for ( int fillPhase = worldDepthCaptures != 0 ? 0 : 3; fillPhase < 4; fillPhase++ ) {
 		vkCmdSetDepthTestEnable( cmd, VK_TRUE );
 		vkCmdSetDepthWriteEnable( cmd, VK_TRUE );
 		vkCmdSetDepthCompareOp( cmd, VK_COMPARE_OP_LESS_OR_EQUAL );
@@ -14055,7 +14056,7 @@ void VK_GuiExecutor_Draw3DView( const viewDef_t *viewDef ) {
 			}
 		}
 		vkExec.alphaToCoverageSurface = false;
-		if ( fillPhase < 2 ) {
+		if ( fillPhase < 3 ) {
 			// the copy restarts rendering at the 2D baseline; the next phase
 			// re-latches the fill state, the space and the bound objects
 			VK_PostProcess_CaptureWorldDepth( viewDef, fillPhase, worldDepthCaptures, fillPhaseDrawn );
@@ -14063,6 +14064,13 @@ void VK_GuiExecutor_Draw3DView( const viewDef_t *viewDef ) {
 			depthFillBoundPipeline = VK_NULL_HANDLE;
 			depthFillBoundSet = VK_NULL_HANDLE;
 		}
+	}
+
+	// Native PBR keeps SSAO off its direct light: the occlusion field its
+	// indirect light reads is drawn now, from the complete prepass depth.
+	if ( worldDepthCaptures != 0 && VK_PostProcess_PrepareSSAOField( viewDef ) ) {
+		currentSpace = NULL;
+		vkCmdSetViewport( cmd, 0, 1, &viewport );
 	}
 
 	// ---- interactions: per-light bump/diffuse/specular (Phase F1) ----

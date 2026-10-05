@@ -34,6 +34,21 @@ vec3 PBRDirectNormal(vec2 texCoord) {
         ? normal * inversesqrt(lengthSquared) : vec3(0.0, 0.0, 1.0);
 }
 
+// SSAO occludes indirect light only, as the lesser of its occlusion and the
+// material AO: both describe the same crevices. The field sits in slot 0
+// (flag 32), drawn before lighting at this target's size; flag 64 when its
+// rows run opposite to this target's. Direct light never reads it.
+float PBRScreenAO(float ao, int dataFlags) {
+    if ((dataFlags & 32) == 0) {
+        return ao;
+    }
+    ivec2 texel = ivec2(gl_FragCoord.xy);
+    if ((dataFlags & 64) != 0) {
+        texel.y = textureSize(specularTableMap, 0).y - 1 - texel.y;
+    }
+    return min(ao, texelFetch(specularTableMap, texel, 0).r);
+}
+
 // Per-channel wrappers of the shared scalar AO/energy kernel (PBRMath.h).
 vec3 PBRMultiBounceAOColor(float visibility, vec3 albedo) {
     return vec3(PBRMultiBounceAO(visibility, albedo.r),
@@ -136,7 +151,7 @@ vec3 EvaluatePBRDirect(vec3 localNormal, vec2 albedoTexCoord,
             aoTexel = texture(specularMap, dataTexCoord).r;
         }
         return PBRDisplayOutput(PBRUniformEnvironmentLight(radiance, albedo, metallic, roughness,
-            clamp(aoTexel * pc.b.x, 0.0, 1.0), objectNormal, viewDir, vPBRNormal) * vVertexColor);
+            PBRScreenAO(clamp(aoTexel * pc.b.x, 0.0, 1.0), dataFlags), objectNormal, viewDir, vPBRNormal) * vVertexColor);
     }
     vec3 lightDir = SafeNormalize(vLightVector);
     vec3 halfDir = SafeNormalize(lightDir + viewDir);

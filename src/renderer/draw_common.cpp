@@ -2362,6 +2362,8 @@ enum rbSSAOUniformIndex_t {
 	RB_SSAO_UNIFORM_MAX_DISTANCE,
 	RB_SSAO_UNIFORM_SAMPLE_COUNT,
 	RB_SSAO_UNIFORM_DEBUG_VIEW,
+	RB_SSAO_UNIFORM_MODE,
+	RB_SSAO_UNIFORM_FIELD_INV_SIZE,
 	RB_SSAO_UNIFORM_COUNT
 };
 
@@ -2372,6 +2374,47 @@ static idImage *rbSSAOFinalDepthImage = NULL;
 static int rbSSAOWorldDepthFrame = -1;
 static int rbSSAOWorldDepthWidth = 0;
 static int rbSSAOWorldDepthHeight = 0;
+
+/*
+Native PBR keeps SSAO off its direct light (PBR production readiness, Stage
+D). A view with native PBR world surfaces snapshots the world depth twice,
+classic surfaces alone and then with native PBR, and right after the depth
+prepass draws an occlusion field from them: r is the occlusion native PBR
+folds into the AO of its indirect light (draw_pbr.cpp), g the factor the post
+pass gives classic world pixels, b marks pixels with world depth. The post
+pass then applies g instead of computing the occlusion again, so native PBR
+pixels keep their direct light and classic pixels darken exactly as before.
+*/
+static idImage *rbSSAOClassicDepthImage = NULL;
+static idImage *rbSSAOFieldImage = NULL;
+static idRenderTexture *rbSSAOFieldRenderTexture = NULL;
+static const viewDef_t *rbSSAOIndirectView = NULL;
+static const viewDef_t *rbSSAOFieldView = NULL;
+static int rbSSAOFieldFrame = -1;
+static int rbSSAOFieldWidth = 0;
+static int rbSSAOFieldHeight = 0;
+
+static bool RB_SSAOFieldValid( void ) {
+	return rbSSAOFieldFrame == backEnd.frameCount && rbSSAOFieldView == backEnd.viewDef
+		&& rbSSAOFieldImage != NULL && rbSSAOFieldWidth > 0 && rbSSAOFieldHeight > 0;
+}
+
+/*
+==================
+RB_SSAOIndirectField
+
+The field of the view being drawn, for native PBR indirect light.
+==================
+*/
+bool RB_SSAOIndirectField( idImage **image, float invSize[2] ) {
+	if ( !RB_SSAOFieldValid() ) {
+		return false;
+	}
+	*image = rbSSAOFieldImage;
+	invSize[0] = 1.0f / static_cast<float>( rbSSAOFieldWidth );
+	invSize[1] = 1.0f / static_cast<float>( rbSSAOFieldHeight );
+	return true;
+}
 
 static bool RB_SSAORequestedForCurrentView( void ) {
 	if ( r_skipPostProcess.GetBool() || !r_ssao.GetBool() ) {
@@ -2424,7 +2467,9 @@ static void RB_InitSSAOStage( void ) {
 		{ "ssaoPower", 1 },
 		{ "ssaoMaxDistance", 1 },
 		{ "ssaoSampleCount", 1 },
-		{ "ssaoDebugView", 1 }
+		{ "ssaoDebugView", 1 },
+		{ "ssaoMode", 1 },
+		{ "fieldInvSize", 2 }
 	};
 
 	rbSSAOStage.numShaderParms = RB_SSAO_UNIFORM_COUNT;
@@ -2433,12 +2478,248 @@ static void RB_InitSSAOStage( void ) {
 		rbSSAOStage.shaderParmNumRegisters[i] = uniforms[i].components;
 	}
 
-	rbSSAOStage.numShaderTextures = 3;
+	rbSSAOStage.numShaderTextures = 5;
 	idStr::Copynz( rbSSAOStage.shaderTextureNames[0], "Scene", sizeof( rbSSAOStage.shaderTextureNames[0] ) );
 	idStr::Copynz( rbSSAOStage.shaderTextureNames[1], "DepthBuffer", sizeof( rbSSAOStage.shaderTextureNames[1] ) );
 	idStr::Copynz( rbSSAOStage.shaderTextureNames[2], "FinalDepthBuffer", sizeof( rbSSAOStage.shaderTextureNames[2] ) );
+	idStr::Copynz( rbSSAOStage.shaderTextureNames[3], "ClassicDepthBuffer", sizeof( rbSSAOStage.shaderTextureNames[3] ) );
+	idStr::Copynz( rbSSAOStage.shaderTextureNames[4], "AOField", sizeof( rbSSAOStage.shaderTextureNames[4] ) );
 
 	rbSSAOStageInitialized = true;
+}
+
+static void RB_BindSSAODepthImage( int unit, idImage *image ) {
+	GL_SelectTexture( unit );
+	image->Bind();
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE );
+	glTexParameteri( GL_TEXTURE_2D, GL_DEPTH_TEXTURE_MODE, GL_LUMINANCE );
+}
+
+/*
+==================
+RB_DrawSSAOPass
+
+One SSAO draw over the view's scissor into the bound target: mode 0 darkens
+the lit scene, 1 writes the occlusion field before lighting, 2 applies the
+field's classic factor to the lit scene. Unused inputs bind the white image.
+==================
+*/
+static void RB_DrawSSAOPass( float mode, idImage *sceneImage, idImage *depthImage, idImage *finalDepthImage,
+		idImage *classicDepthImage, idImage *fieldImage, int viewportWidth, int viewportHeight,
+		int textureWidth, int textureHeight ) {
+	const GLfloat projX = backEnd.viewDef->projectionMatrix[0];
+	const GLfloat projY = backEnd.viewDef->projectionMatrix[5];
+	const int depthTextureWidth = depthImage->GetOpts().width;
+	const int depthTextureHeight = depthImage->GetOpts().height;
+
+	backEnd.currentScissor = backEnd.viewDef->scissor;
+
+	RB_BeginFullscreenPostProcessPass(
+		backEnd.viewDef->viewport.x1 + backEnd.viewDef->scissor.x1,
+		backEnd.viewDef->viewport.y1 + backEnd.viewDef->scissor.y1,
+		backEnd.viewDef->scissor.x2 - backEnd.viewDef->scissor.x1 + 1,
+		backEnd.viewDef->scissor.y2 - backEnd.viewDef->scissor.y1 + 1 );
+
+	GL_SelectTexture( 0 );
+	( sceneImage != NULL ? sceneImage : globalImages->whiteImage )->Bind();
+	RB_BindSSAODepthImage( 1, depthImage );
+	RB_BindSSAODepthImage( 2, finalDepthImage );
+	RB_BindSSAODepthImage( 3, classicDepthImage != NULL ? classicDepthImage : finalDepthImage );
+	GL_SelectTexture( 4 );
+	( fieldImage != NULL ? fieldImage : globalImages->whiteImage )->Bind();
+	GL_SelectTexture( 0 );
+
+	glUseProgramObjectARB( (GLhandleARB)rbSSAOStage.glslProgramObject );
+
+	for ( int i = 0; i < rbSSAOStage.numShaderTextures; i++ ) {
+		if ( rbSSAOStage.shaderTextureLocations[i] >= 0 ) {
+			glUniform1iARB( rbSSAOStage.shaderTextureLocations[i], i );
+		}
+	}
+
+	const GLfloat radius = r_ssaoRadius.GetFloat();
+	const GLfloat intensity = r_ssaoIntensity.GetFloat();
+	const GLfloat invTexSize[2] = {
+		1.0f / static_cast<GLfloat>( depthTextureWidth ),
+		1.0f / static_cast<GLfloat>( depthTextureHeight )
+	};
+	const GLfloat projectionInfo[4] = {
+		1.0f / projX,
+		1.0f / projY,
+		backEnd.viewDef->projectionMatrix[8],
+		backEnd.viewDef->projectionMatrix[9]
+	};
+	const GLfloat depthProjection[2] = {
+		backEnd.viewDef->projectionMatrix[10],
+		backEnd.viewDef->projectionMatrix[14]
+	};
+	const GLfloat projectionScale = 0.5f * static_cast<GLfloat>( depthTextureHeight ) * idMath::Fabs( projY );
+	const GLfloat bias = r_ssaoBias.GetFloat();
+	const GLfloat power = r_ssaoPower.GetFloat();
+	const GLfloat maxDistance = r_ssaoMaxDistance.GetFloat();
+	const GLfloat sampleCount = static_cast<GLfloat>( idMath::ClampInt( 4, 32, r_ssaoSamples.GetInteger() ) );
+	const GLfloat debugView = r_ssaoDebug.GetBool() ? 1.0f : 0.0f;
+	const GLfloat fieldInvSize[2] = {
+		rbSSAOFieldWidth > 0 ? 1.0f / static_cast<GLfloat>( rbSSAOFieldWidth ) : 0.0f,
+		rbSSAOFieldHeight > 0 ? 1.0f / static_cast<GLfloat>( rbSSAOFieldHeight ) : 0.0f
+	};
+
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_INV_TEX_SIZE] >= 0 ) {
+		glUniform2fvARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_INV_TEX_SIZE], 1, invTexSize );
+	}
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_PROJECTION_INFO] >= 0 ) {
+		glUniform4fvARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_PROJECTION_INFO], 1, projectionInfo );
+	}
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_DEPTH_PROJECTION] >= 0 ) {
+		glUniform2fvARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_DEPTH_PROJECTION], 1, depthProjection );
+	}
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_PROJECTION_SCALE] >= 0 ) {
+		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_PROJECTION_SCALE], projectionScale );
+	}
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_RADIUS] >= 0 ) {
+		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_RADIUS], radius );
+	}
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_BIAS] >= 0 ) {
+		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_BIAS], bias );
+	}
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_INTENSITY] >= 0 ) {
+		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_INTENSITY], intensity );
+	}
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_POWER] >= 0 ) {
+		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_POWER], power );
+	}
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_MAX_DISTANCE] >= 0 ) {
+		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_MAX_DISTANCE], maxDistance );
+	}
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_SAMPLE_COUNT] >= 0 ) {
+		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_SAMPLE_COUNT], sampleCount );
+	}
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_DEBUG_VIEW] >= 0 ) {
+		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_DEBUG_VIEW], debugView );
+	}
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_MODE] >= 0 ) {
+		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_MODE], mode );
+	}
+	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_FIELD_INV_SIZE] >= 0 ) {
+		glUniform2fvARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_FIELD_INV_SIZE], 1, fieldInvSize );
+	}
+
+	RB_DrawFullscreenPostProcessQuad( viewportWidth, viewportHeight, textureWidth, textureHeight );
+
+	glUseProgramObjectARB( 0 );
+	for ( int unit = 4; unit >= 0; unit-- ) {
+		GL_SelectTexture( unit );
+		globalImages->BindNull();
+	}
+	RB_EndFullscreenPostProcessPass();
+}
+
+static bool RB_EnsureSSAOFieldTarget( int width, int height ) {
+	if ( globalImages == NULL || width <= 0 || height <= 0 ) {
+		return false;
+	}
+	idImageOpts opts;
+	opts.textureType = TT_2D;
+	// Half floats, like Vulkan's field: classic pixels keep the precision
+	// the classic pass multiplies them with.
+	opts.format = FMT_RGBA16F;
+	opts.width = width;
+	opts.height = height;
+	opts.numLevels = 1;
+	opts.numMSAASamples = 0;
+	opts.isPersistant = true;
+	rbSSAOFieldImage = globalImages->ScratchImage( "_ssaoField", &opts, TF_NEAREST, TR_CLAMP, TD_DEFAULT );
+	if ( rbSSAOFieldImage == NULL ) {
+		return false;
+	}
+	if ( rbSSAOFieldRenderTexture == NULL ) {
+		rbSSAOFieldRenderTexture = tr.CreateRenderTexture( rbSSAOFieldImage, NULL );
+	} else if ( rbSSAOFieldRenderTexture->GetWidth() != width || rbSSAOFieldRenderTexture->GetHeight() != height ) {
+		tr.ResizeRenderTexture( rbSSAOFieldRenderTexture, width, height );
+	}
+	return rbSSAOFieldRenderTexture != NULL;
+}
+
+/*
+==================
+RB_PrepareSSAOIndirectField
+
+Right after the depth prepass of a view whose world depth was split
+(RB_CaptureSSAOWorldDepthImage), before any light draws: the occlusion field,
+the size of the scene target and drawn at the view's own viewport, so a
+fragment reads it at gl_FragCoord.
+==================
+*/
+static void RB_PrepareSSAOIndirectField( void ) {
+	rbSSAOFieldFrame = -1;
+	rbSSAOFieldView = NULL;
+	if ( rbSSAOIndirectView != backEnd.viewDef || rbSSAOWorldDepthFrame != backEnd.frameCount
+			|| rbSSAOWorldDepthImage == NULL || rbSSAOClassicDepthImage == NULL || backEnd.renderTexture == NULL ) {
+		return;
+	}
+	RB_InitSSAOStage();
+	if ( !R_ValidateGLSLProgram( &rbSSAOStage ) ) {
+		return;
+	}
+	const int viewportWidth = backEnd.viewDef->viewport.x2 - backEnd.viewDef->viewport.x1 + 1;
+	const int viewportHeight = backEnd.viewDef->viewport.y2 - backEnd.viewDef->viewport.y1 + 1;
+	if ( viewportWidth != rbSSAOWorldDepthWidth || viewportHeight != rbSSAOWorldDepthHeight
+			|| idMath::Fabs( backEnd.viewDef->projectionMatrix[0] ) <= 0.00001f
+			|| idMath::Fabs( backEnd.viewDef->projectionMatrix[5] ) <= 0.00001f ) {
+		return;
+	}
+	idImage *finalDepthImage = RB_EnsureSSAODepthScratchImage( rbSSAOFinalDepthImage, "_ssaoFinalDepth", viewportWidth, viewportHeight );
+	if ( finalDepthImage == NULL ) {
+		return;
+	}
+	finalDepthImage->CopyDepthbuffer( backEnd.viewDef->viewport.x1, backEnd.viewDef->viewport.y1, viewportWidth, viewportHeight );
+
+	idRenderTexture *sceneTarget = backEnd.renderTexture;
+	const int targetWidth = sceneTarget->GetWidth();
+	const int targetHeight = sceneTarget->GetHeight();
+	if ( !RB_EnsureSSAOFieldTarget( targetWidth, targetHeight ) ) {
+		return;
+	}
+
+	RB_LogComment( "---------- RB_PrepareSSAOIndirectField ----------\n" );
+
+	GLint viewport[4], scissor[4];
+	GLfloat clearColor[4];
+	glGetIntegerv( GL_VIEWPORT, viewport );
+	glGetIntegerv( GL_SCISSOR_BOX, scissor );
+	glGetFloatv( GL_COLOR_CLEAR_VALUE, clearColor );
+	const GLboolean scissorTest = glIsEnabled( GL_SCISSOR_TEST );
+
+	backEnd.renderTexture = rbSSAOFieldRenderTexture;
+	rbSSAOFieldRenderTexture->MakeCurrent();
+	glViewport( viewport[0], viewport[1], viewport[2], viewport[3] );
+	// Outside the view nothing is occluded.
+	glDisable( GL_SCISSOR_TEST );
+	glClearColor( 1.0f, 1.0f, 0.0f, 1.0f );
+	glClear( GL_COLOR_BUFFER_BIT );
+	rbSSAOFieldWidth = targetWidth;
+	rbSSAOFieldHeight = targetHeight;
+
+	RB_DrawSSAOPass( 1.0f, NULL, rbSSAOWorldDepthImage, finalDepthImage, rbSSAOClassicDepthImage, NULL,
+		viewportWidth, viewportHeight, rbSSAOWorldDepthImage->GetOpts().width, rbSSAOWorldDepthImage->GetOpts().height );
+
+	backEnd.renderTexture = sceneTarget;
+	sceneTarget->MakeCurrent();
+	glViewport( viewport[0], viewport[1], viewport[2], viewport[3] );
+	glScissor( scissor[0], scissor[1], scissor[2], scissor[3] );
+	if ( scissorTest ) {
+		glEnable( GL_SCISSOR_TEST );
+	} else {
+		glDisable( GL_SCISSOR_TEST );
+	}
+	glClearColor( clearColor[0], clearColor[1], clearColor[2], clearColor[3] );
+	glMatrixMode( GL_PROJECTION );
+	glLoadMatrixf( backEnd.viewDef->projectionMatrix );
+	glMatrixMode( GL_MODELVIEW );
+	backEnd.glState.forceGlState = true;
+
+	rbSSAOFieldFrame = backEnd.frameCount;
+	rbSSAOFieldView = backEnd.viewDef;
 }
 
 static void RB_STD_SSAO( void ) {
@@ -2477,6 +2758,7 @@ static void RB_STD_SSAO( void ) {
 		viewportWidth,
 		viewportHeight );
 
+	const bool field = RB_SSAOFieldValid();
 	idImage *depthImage = NULL;
 	if ( rbSSAOWorldDepthFrame == backEnd.frameCount
 		&& rbSSAOWorldDepthWidth == viewportWidth
@@ -2493,8 +2775,11 @@ static void RB_STD_SSAO( void ) {
 		return;
 	}
 
-	idImage *finalDepthImage = RB_EnsureSSAODepthScratchImage( rbSSAOFinalDepthImage, "_ssaoFinalDepth", viewportWidth, viewportHeight );
-	if ( finalDepthImage != NULL ) {
+	idImage *finalDepthImage = field ? rbSSAOFinalDepthImage
+		: RB_EnsureSSAODepthScratchImage( rbSSAOFinalDepthImage, "_ssaoFinalDepth", viewportWidth, viewportHeight );
+	if ( field ) {
+		// The field was drawn before lighting; the apply pass reads only it.
+	} else if ( finalDepthImage != NULL ) {
 		finalDepthImage->CopyDepthbuffer(
 			backEnd.viewDef->viewport.x1,
 			backEnd.viewDef->viewport.y1,
@@ -2506,116 +2791,12 @@ static void RB_STD_SSAO( void ) {
 
 	const int textureWidth = sceneImage->GetOpts().width;
 	const int textureHeight = sceneImage->GetOpts().height;
-	const int depthTextureWidth = depthImage->GetOpts().width;
-	const int depthTextureHeight = depthImage->GetOpts().height;
-	if ( textureWidth <= 0 || textureHeight <= 0 || depthTextureWidth <= 0 || depthTextureHeight <= 0 ) {
+	if ( textureWidth <= 0 || textureHeight <= 0 || depthImage->GetOpts().width <= 0 || depthImage->GetOpts().height <= 0 ) {
 		return;
 	}
 
-	backEnd.currentScissor = backEnd.viewDef->scissor;
-
-	RB_BeginFullscreenPostProcessPass(
-		backEnd.viewDef->viewport.x1 + backEnd.viewDef->scissor.x1,
-		backEnd.viewDef->viewport.y1 + backEnd.viewDef->scissor.y1,
-		backEnd.viewDef->scissor.x2 - backEnd.viewDef->scissor.x1 + 1,
-		backEnd.viewDef->scissor.y2 - backEnd.viewDef->scissor.y1 + 1 );
-
-	GL_SelectTexture( 0 );
-	sceneImage->Bind();
-	GL_SelectTexture( 1 );
-	depthImage->Bind();
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE );
-	glTexParameteri( GL_TEXTURE_2D, GL_DEPTH_TEXTURE_MODE, GL_LUMINANCE );
-	GL_SelectTexture( 2 );
-	finalDepthImage->Bind();
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE );
-	glTexParameteri( GL_TEXTURE_2D, GL_DEPTH_TEXTURE_MODE, GL_LUMINANCE );
-	GL_SelectTexture( 0 );
-
-	glUseProgramObjectARB( (GLhandleARB)rbSSAOStage.glslProgramObject );
-
-	const int sceneLocation = rbSSAOStage.shaderTextureLocations[0];
-	if ( sceneLocation >= 0 ) {
-		glUniform1iARB( sceneLocation, 0 );
-	}
-
-	const int depthLocation = rbSSAOStage.shaderTextureLocations[1];
-	if ( depthLocation >= 0 ) {
-		glUniform1iARB( depthLocation, 1 );
-	}
-
-	const int finalDepthLocation = rbSSAOStage.shaderTextureLocations[2];
-	if ( finalDepthLocation >= 0 ) {
-		glUniform1iARB( finalDepthLocation, 2 );
-	}
-
-	const GLfloat radius = r_ssaoRadius.GetFloat();
-	const GLfloat intensity = r_ssaoIntensity.GetFloat();
-	const GLfloat invTexSize[2] = {
-		1.0f / static_cast<GLfloat>( depthTextureWidth ),
-		1.0f / static_cast<GLfloat>( depthTextureHeight )
-	};
-	const GLfloat projectionInfo[4] = {
-		1.0f / projX,
-		1.0f / projY,
-		backEnd.viewDef->projectionMatrix[8],
-		backEnd.viewDef->projectionMatrix[9]
-	};
-	const GLfloat depthProjection[2] = {
-		backEnd.viewDef->projectionMatrix[10],
-		backEnd.viewDef->projectionMatrix[14]
-	};
-	const GLfloat projectionScale = 0.5f * static_cast<GLfloat>( depthTextureHeight ) * idMath::Fabs( projY );
-	const GLfloat bias = r_ssaoBias.GetFloat();
-	const GLfloat power = r_ssaoPower.GetFloat();
-	const GLfloat maxDistance = r_ssaoMaxDistance.GetFloat();
-	const GLfloat sampleCount = static_cast<GLfloat>( idMath::ClampInt( 4, 32, r_ssaoSamples.GetInteger() ) );
-	const GLfloat debugView = r_ssaoDebug.GetBool() ? 1.0f : 0.0f;
-
-	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_INV_TEX_SIZE] >= 0 ) {
-		glUniform2fvARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_INV_TEX_SIZE], 1, invTexSize );
-	}
-	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_PROJECTION_INFO] >= 0 ) {
-		glUniform4fvARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_PROJECTION_INFO], 1, projectionInfo );
-	}
-	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_DEPTH_PROJECTION] >= 0 ) {
-		glUniform2fvARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_DEPTH_PROJECTION], 1, depthProjection );
-	}
-	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_PROJECTION_SCALE] >= 0 ) {
-		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_PROJECTION_SCALE], projectionScale );
-	}
-	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_RADIUS] >= 0 ) {
-		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_RADIUS], radius );
-	}
-	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_BIAS] >= 0 ) {
-		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_BIAS], bias );
-	}
-	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_INTENSITY] >= 0 ) {
-		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_INTENSITY], intensity );
-	}
-	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_POWER] >= 0 ) {
-		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_POWER], power );
-	}
-	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_MAX_DISTANCE] >= 0 ) {
-		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_MAX_DISTANCE], maxDistance );
-	}
-	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_SAMPLE_COUNT] >= 0 ) {
-		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_SAMPLE_COUNT], sampleCount );
-	}
-	if ( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_DEBUG_VIEW] >= 0 ) {
-		glUniform1fARB( rbSSAOStage.shaderParmLocations[RB_SSAO_UNIFORM_DEBUG_VIEW], debugView );
-	}
-
-	RB_DrawFullscreenPostProcessQuad( viewportWidth, viewportHeight, textureWidth, textureHeight );
-
-	glUseProgramObjectARB( 0 );
-	GL_SelectTexture( 2 );
-	globalImages->BindNull();
-	GL_SelectTexture( 1 );
-	globalImages->BindNull();
-	GL_SelectTexture( 0 );
-	globalImages->BindNull();
-	RB_EndFullscreenPostProcessPass();
+	RB_DrawSSAOPass( field ? 2.0f : 0.0f, sceneImage, depthImage, finalDepthImage, NULL,
+		field ? rbSSAOFieldImage : NULL, viewportWidth, viewportHeight, textureWidth, textureHeight );
 }
 
 /*
@@ -7435,6 +7616,8 @@ void RB_ShutdownScenePostProcess( void ) {
 	RB_ResetMotionBlurHistory();
 	RB_ClearTemporalEntityHistory();
 	RB_DestroyPostProcessRenderTexture( rbMotionVectorRenderTexture );
+	RB_DestroyPostProcessRenderTexture( rbSSAOFieldRenderTexture );
+	rbSSAOFieldFrame = -1;
 	rbMotionVectorImage = NULL;
 	rbMotionVectorPreviousState = NULL;
 	rbMotionVectorDrewSurface = false;
@@ -8556,10 +8739,43 @@ static void RB_RestoreAfterSSAOWorldDepthCapture( void ) {
 	backEnd.glState.forceGlState = true;
 }
 
+static bool RB_SSAONativePBRSurface( const drawSurf_t *surf ) {
+	return surf->material->HasPBR() && RB_GLPBR_SurfaceOwned( surf );
+}
+
+static bool RB_SSAOClassicWorldDepthSurfFilter( const drawSurf_t *surf ) {
+	return RB_SSAOWorldDepthSurfFilter( surf ) && !RB_SSAONativePBRSurface( surf );
+}
+
+static bool RB_SSAONativePBRWorldDepthSurfFilter( const drawSurf_t *surf ) {
+	return RB_SSAOWorldDepthSurfFilter( surf ) && RB_SSAONativePBRSurface( surf );
+}
+
+static bool RB_CelWorldOutlineEnabledForSSAO( void ) {
+	return !r_skipPostProcess.GetBool() && R_CelWorldOutlineEnabled();
+}
+
+// The occlusion field needs the classic/native-PBR split only when native PBR
+// owns a world surface. The cel world ink keeps the classic whole-frame form.
+static bool RB_SSAOIndirectViewRequested( drawSurf_t **drawSurfs, int numDrawSurfs ) {
+	if ( RB_CelWorldOutlineEnabledForSSAO() ) {
+		return false;
+	}
+	for ( int i = 0; i < numDrawSurfs; i++ ) {
+		if ( RB_SSAONativePBRWorldDepthSurfFilter( drawSurfs[i] ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
 static void RB_CaptureSSAOWorldDepthImage( drawSurf_t **drawSurfs, int numDrawSurfs ) {
 	rbSSAOWorldDepthFrame = -1;
 	rbSSAOWorldDepthWidth = 0;
 	rbSSAOWorldDepthHeight = 0;
+	rbSSAOIndirectView = NULL;
+	rbSSAOFieldFrame = -1;
+	rbSSAOFieldView = NULL;
 
 	if ( !RB_SSAORequestedForCurrentView() || globalImages == NULL || backEnd.viewDef == NULL ) {
 		return;
@@ -8575,10 +8791,25 @@ static void RB_CaptureSSAOWorldDepthImage( drawSurf_t **drawSurfs, int numDrawSu
 	RB_LogComment( "---------- RB_CaptureSSAOWorldDepthImage ----------\n" );
 
 	glColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
-	const int rendered = RB_STD_FillDepthBufferFiltered( drawSurfs, numDrawSurfs, RB_SSAOWorldDepthSurfFilter );
+	int rendered = 0;
+	idImage *classicDepthImage = RB_SSAOIndirectViewRequested( drawSurfs, numDrawSurfs )
+		? RB_EnsureSSAODepthScratchImage( rbSSAOClassicDepthImage, "_ssaoClassicDepth", viewportWidth, viewportHeight ) : NULL;
+	if ( classicDepthImage != NULL ) {
+		// Classic world surfaces first, their snapshot, then native PBR on top.
+		rendered = RB_STD_FillDepthBufferFiltered( drawSurfs, numDrawSurfs, RB_SSAOClassicWorldDepthSurfFilter );
+		classicDepthImage->CopyDepthbuffer(
+			backEnd.viewDef->viewport.x1,
+			backEnd.viewDef->viewport.y1,
+			viewportWidth,
+			viewportHeight );
+		rendered += RB_STD_FillDepthBufferFiltered( drawSurfs, numDrawSurfs, RB_SSAONativePBRWorldDepthSurfFilter );
+	} else {
+		rendered = RB_STD_FillDepthBufferFiltered( drawSurfs, numDrawSurfs, RB_SSAOWorldDepthSurfFilter );
+	}
 	glColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
 
 	if ( rendered > 0 ) {
+		rbSSAOIndirectView = classicDepthImage != NULL ? backEnd.viewDef : NULL;
 		worldDepthImage->CopyDepthbuffer(
 			backEnd.viewDef->viewport.x1,
 			backEnd.viewDef->viewport.y1,
@@ -15639,6 +15870,7 @@ void	RB_STD_DrawView( void ) {
 	} else {
 		RB_STD_FillDepthBuffer( drawSurfs, numDrawSurfs );
 	}
+	RB_PrepareSSAOIndirectField();
 	RB_PrepareLightGridDepthTexture();
 	RB_DisplaySpecialEffects( backEnd.viewDef->viewEntitys, false );
 

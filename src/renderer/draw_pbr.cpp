@@ -31,6 +31,8 @@ idCVar r_glPBR( "r_glPBR", "1", CVAR_RENDERER | CVAR_BOOL,
 
 // draw_arb2.cpp
 bool RB_GLSLInteractionVertexCache( const drawSurf_t *surf, idDrawVert *&ambientVertexPointer );
+// draw_common.cpp: the view's SSAO occlusion field, drawn before lighting
+bool RB_SSAOIndirectField( idImage **image, float invSize[2] );
 bool RB_GLSLSurfaceUsesGPUPosedGeometry( const drawSurf_t *surf );
 bool RB_GLSLInteractionsOwnedByModernPath( void );
 
@@ -45,7 +47,8 @@ static const int GL_PBR_UNIT_AO = 10;
 static const int GL_PBR_UNIT_ENVIRONMENT = 11;
 static const int GL_PBR_UNIT_PROBE_RECORDS = 12;
 static const int GL_PBR_UNIT_PROBE_INDICES = 13;
-static const int GL_PBR_REQUIRED_IMAGE_UNITS = 14;
+static const int GL_PBR_UNIT_SCREEN_AO = 14;
+static const int GL_PBR_REQUIRED_IMAGE_UNITS = 15;
 // The environment program reuses the shadow units for the baked light grid.
 static const int GL_PBR_UNIT_BAKED_IRRADIANCE = 5;
 static const int GL_PBR_UNIT_BAKED_VISIBILITY = 6;
@@ -99,6 +102,8 @@ static const char *glPBRVertexLibrary =
 	"uniform vec4 uPBRLayout;\n"	/* packed ORM, metallic map, roughness map, AO map */ \
 	"uniform vec4 uPBRMode;\n"		/* normal encoding, display-referred, specular AA, ambient light */ \
 	"uniform vec4 uPBRTransparent;\n"	/* authored stage alpha scale (0: additive), coverage only */ \
+	"uniform sampler2D uPBRScreenAOMap;\n" \
+	"uniform vec4 uPBRScreenAO;\n"	/* x SSAO field bound, yz 1 / its size */ \
 	"varying vec3 vPBRTangent0;\n" \
 	"varying vec3 vPBRTangent1;\n" \
 	"varying vec3 vPBRNormal;\n" \
@@ -150,6 +155,12 @@ static const char *glPBRVertexLibrary =
 	"	}\n" \
 	"	if ( uPBRLayout.w > 0.5 ) ao *= texture2D( uPBRAOMap, dataTexCoord ).r;\n" \
 	"	return vec3( clamp( metallic, 0.0, 1.0 ), roughness, clamp( ao, 0.0, 1.0 ) );\n" \
+	"}\n" \
+	/* SSAO occludes indirect light only, as the lesser of its occlusion and */ \
+	/* the material AO: both describe the same crevices. Direct light never */ \
+	/* reads it. */ \
+	"float PBRScreenAO( float ao ) {\n" \
+	"	return uPBRScreenAO.x > 0.5 ? min( ao, texture2D( uPBRScreenAOMap, gl_FragCoord.xy * uPBRScreenAO.yz ).r ) : ao;\n" \
 	"}\n" \
 	"vec3 PBRMultiBounceAOColor( float visibility, vec3 albedo ) {\n" \
 	"	return vec3( PBRMultiBounceAO( visibility, albedo.r ),\n" \
@@ -224,7 +235,7 @@ static void RB_GLPBR_BuildFragmentLibrary( void ) {
 		"	}\n"
 		"	vec3 viewDir = PBRSafeNormalize( vViewVector );\n"
 		"	if ( uPBRMode.w > 0.5 ) {\n"
-		"		return PBRDisplayOutput( PBRUniformEnvironmentLight( radiance, albedo, metallic, roughness, data.z,\n"
+		"		return PBRDisplayOutput( PBRUniformEnvironmentLight( radiance, albedo, metallic, roughness, PBRScreenAO( data.z ),\n"
 		"			objectNormal, viewDir, vPBRNormal ) * vVertexColor );\n"
 		"	}\n"
 		"	vec3 lightDir = PBRSafeNormalize( vLightVector );\n"
@@ -452,6 +463,8 @@ void RB_GLPBR_LookupReceiverUniforms( GLhandleARB program, glPBRReceiverUniforms
 	uniforms.metallicMap = glGetUniformLocationARB( program, "uPBRMetallicMap" );
 	uniforms.aoMap = glGetUniformLocationARB( program, "uPBRAOMap" );
 	uniforms.transparent = glGetUniformLocationARB( program, "uPBRTransparent" );
+	uniforms.screenAO = glGetUniformLocationARB( program, "uPBRScreenAO" );
+	uniforms.screenAOMap = glGetUniformLocationARB( program, "uPBRScreenAOMap" );
 	// Sampler units are program state: assign them once, at link.
 	GLhandleARB previous = glGetHandleARB( GL_PROGRAM_OBJECT_ARB );
 	glUseProgramObjectARB( program );
@@ -460,6 +473,9 @@ void RB_GLPBR_LookupReceiverUniforms( GLhandleARB program, glPBRReceiverUniforms
 	}
 	if ( uniforms.aoMap >= 0 ) {
 		glUniform1iARB( uniforms.aoMap, GL_PBR_UNIT_AO );
+	}
+	if ( uniforms.screenAOMap >= 0 ) {
+		glUniform1iARB( uniforms.screenAOMap, GL_PBR_UNIT_SCREEN_AO );
 	}
 	glUseProgramObjectARB( previous );
 }
@@ -808,7 +824,7 @@ static const char *RB_GLPBR_EnvironmentFragment( void ) {
 		"	vec3 data = PBRMaterialData( vSpecularTexCoord );\n"
 		"	float metallic = data.x;\n"
 		"	float roughness = PBRRoughness( data.y );\n"
-		"	float ao = data.z;\n"
+		"	float ao = PBRScreenAO( data.z );\n"
 		"	vec3 objectNormal = PBRObjectNormal( vBumpTexCoord );\n"
 		"	vec3 dx = dFdx( objectNormal ), dy = dFdy( objectNormal );\n"
 		"	if ( uPBRMode.z > 0.5 ) {\n"
@@ -1274,6 +1290,16 @@ static void RB_GLPBR_SetMaterialUniforms( const glPBRReceiverUniforms_t &uniform
 		// this owner serves, with and without HDR tone mapping.
 		glUniform4fARB( uniforms.mode, static_cast<float>( material.normalFormat ), 1.0f, 1.0f, ambientLight ? 1.0f : 0.0f );
 	}
+	if ( uniforms.screenAO >= 0 ) {
+		// The field describes the opaque surface in front: a translucent or
+		// coverage draw never reads it.
+		idImage *field = NULL;
+		float invSize[2] = { 0.0f, 0.0f };
+		const bool screenAO = alphaScale <= 0.0f && !coverageOnly && RB_SSAOIndirectField( &field, invSize );
+		glUniform4fARB( uniforms.screenAO, screenAO ? 1.0f : 0.0f, invSize[0], invSize[1], 0.0f );
+		RB_GLPBR_BindRawUnit( GL_PBR_UNIT_SCREEN_AO, GL_TEXTURE_2D,
+			( screenAO ? field : globalImages->whiteImage )->GetDeviceHandle() );
+	}
 }
 
 static void RB_GLPBR_BindMaterialImages( const pbrNativeMaterial_t &material ) {
@@ -1299,6 +1325,7 @@ const srfTriangles_t *RB_GLPBR_BindReceiverInteraction( const glPBRReceiverUnifo
 void RB_GLPBR_UnbindReceiverUnits( void ) {
 	RB_GLPBR_BindRawUnit( GL_PBR_UNIT_METALLIC, GL_TEXTURE_2D, 0 );
 	RB_GLPBR_BindRawUnit( GL_PBR_UNIT_AO, GL_TEXTURE_2D, 0 );
+	RB_GLPBR_BindRawUnit( GL_PBR_UNIT_SCREEN_AO, GL_TEXTURE_2D, 0 );
 }
 
 static void RB_GLPBR_SetVertexColorParams( GLint location, stageVertexColor_t vertexColor ) {

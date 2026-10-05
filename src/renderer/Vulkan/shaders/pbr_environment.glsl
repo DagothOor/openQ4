@@ -72,7 +72,7 @@ vec3 EvaluatePBREnvironment() {
     }
     metallic = clamp(metallic, 0.0, 1.0);
     roughness = PBRRoughness(roughness);
-    ao = clamp(ao, 0.0, 1.0);
+    ao = PBRScreenAO(clamp(ao, 0.0, 1.0), flags);
     mat3 basis = mat3(SafeNormalize(vPBRTangent0), SafeNormalize(vPBRTangent1), SafeNormalize(vPBRNormal));
     vec3 objectNormal = SafeNormalize(basis * PBRDirectNormal(vBumpTexCoord));
     vec3 dx = dFdx(objectNormal), dy = dFdy(objectNormal);

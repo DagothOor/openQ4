@@ -450,3 +450,64 @@ The laboratory-mode suites of the same batch (Vulkan direct, probes, IBL,
 ambient, diagnostics, geometry, transparency, cutout, fog, capacity,
 resources, baked, HDR scene, preview) and every GL-native pairing pass as in
 Stage E.
+
+## Stage D: SSAO occludes PBR indirect light only (both backends)
+
+Screen-space ambient occlusion (`r_ssao`, off by default) is a whole-frame
+post pass: it multiplied the finished frame, so it darkened a PBR surface's
+direct light as much as its bounced light, and on top of material AO that
+already described the same crevices. Native PBR now treats SSAO as what it
+estimates, visibility of indirect light:
+
+- A view whose native PBR owns world surfaces snapshots the world depth twice
+  before its prepass, classic surfaces alone and then with native PBR, and
+  right after the prepass draws an occlusion field from them (the classic
+  pass's own shader, `ssao.fs` / `post_ssao.frag`, in a field mode). Its red
+  channel is the occlusion native PBR reads; its green channel the factor for
+  classic world pixels; blue marks pixels with world depth.
+- Native PBR folds the field into the AO of its indirect light only, as the
+  lesser of the two: authored ambient lights, environment and probe light and
+  baked grid diffuse, specular occlusion included. Direct lights and emission
+  never read it, and neither do translucent surfaces, which the field does not
+  describe.
+- The post pass then applies the green channel instead of computing the
+  occlusion again, so classic pixels darken exactly as before and native PBR
+  pixels are left alone. A view without native PBR world surfaces, or with the
+  cel world ink on, keeps the classic whole-frame pass unchanged.
+- OpenGL binds the field on image unit 14 (the owner now needs fifteen units).
+  Vulkan's eight-set contract has no free set, so the field takes the
+  material's metallic slot, which packing (Stage E) leaves free; flags 32 and
+  64 select it and its row order. Vulkan's linear laboratory scene declines
+  SSAO as before, so SSAO frames are always display-referred.
+
+The modern visible GL path, a developer path, keeps the whole-frame pass.
+
+### Stage D laboratory controls
+
+Eight overview captures per owner (`ssao-*`), every one with SSAO on so that
+OpenGL draws all of them through its scene target, which alone moves classic
+pixels by a byte. The unoccluded controls fade SSAO out at the nearest
+distance (`r_ssaoMaxDistance 16`) instead of turning it off, and the occluded
+ones use 2048: the laboratory room lies beyond the default 220-unit fade, so
+SSAO had computed no occlusion there at all.
+
+- Native PBR pixels (pure green in the ownership capture) lit only directly
+  do not change.
+- With the environment as their indirect light, every native pixel lies
+  between its direct-only and its unoccluded value, and thousands darken.
+- Classic pixels equal, within the last bit of the half-float field, the
+  classic pass of the same frame with PBR off; the debug view
+  (`r_ssaoDebug 1`) is identical with and without native PBR.
+- The OpenGL owner and Vulkan agree per station; the PBR-off baselines are
+  classic references.
+
+### Stage D laboratory evidence (2026-10-05)
+
+Private build of Stage E (with the Vulkan production grid) plus Stage D,
+Windows/NVIDIA, runtime `.tmp/wt-pbr/.tmp/lab-a`, one batch.
+
+| Suite | Result |
+|---|---|
+| SSAO, GL native | 8/8: 0 of 182,539 native PBR pixels change under direct light alone; indirect light darkens 3,825 of them, every one within its direct-only and unoccluded values; classic pixels equal the PBR-off frame (92,945 darkened by SSAO); debug view unchanged |
+| SSAO, Vulkan production and laboratory | 8/8 each, with the same results (3,799 and 3,827 indirect pixels darkened); paired with GL native per station, the PBR-off baselines being classic references |
+| Regression | every Stage E suite and pairing passes again: Vulkan, modern GL and GL native direct (73/73 each, Vulkan production included), ambient, IBL, probes, diagnostics (the documented 10-control set), geometry, transparency, cutout, fog, capacity, resources, baked, HDR scene and preview |

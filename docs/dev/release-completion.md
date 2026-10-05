@@ -51,6 +51,14 @@
   receivers, and PBR always decodes the atlas. `--production` runs the Vulkan
   laboratory suites with the linear scene off, paired with the OpenGL owner;
   every pairing passes.
+- [x] PBR production readiness, Stage D: SSAO occludes native PBR indirect
+  light only, on both backends. A view with native PBR world surfaces
+  snapshots the classic and the complete world depth and draws an occlusion
+  field right after its depth prepass; native PBR folds it into the AO of
+  ambient, environment, probe and baked light as the lesser of the two, and
+  the post pass applies only the field's classic factor. Classic pixels are
+  unchanged and PBR direct light is never darkened, as paired laboratory
+  controls prove on the OpenGL owner and on Vulkan.
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:
