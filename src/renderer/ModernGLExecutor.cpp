@@ -3717,8 +3717,11 @@ static void R_ModernGLExecutor_SetPBRIBL( int location, bool useMemo = false ) {
 	// 0 = encoded preview, 1 = linear, 2 = linear with the exact shared fog phase,
 	// -2 = encoded preview with that same exact phase. A negative value keeps
 	// classic preview colors encoded while disabling clustered fog evaluation.
+	// The first component also selects the environment's base: 1 lights PBR
+	// with the analytic studio environment (r_pbrAnalyticEnvironment, the
+	// laboratory mode), 2 with authored probes over black.
 	const float value[4] = {
-		r_pbrIBL.GetBool() ? 1.0f : 0.0f,
+		r_pbrIBL.GetBool() ? ( r_pbrAnalyticEnvironment.GetBool() ? 1.0f : 2.0f ) : 0.0f,
 		idMath::ClampFloat( 0.0f, 4.0f, r_pbrIBLIntensity.GetFloat() ),
 		R_ModernGLExecutor_PBRLinearSceneRequested() ? ( rg_modernGLLinearFogBlendView != NULL ? 2.0f : 1.0f )
 			: ( rg_modernGLLinearFogBlendView != NULL ? -2.0f : 0.0f ),
@@ -4886,25 +4889,7 @@ static void R_ModernGLExecutor_BindBakedGrid( const modernGLSubmitCommand_t &com
 	const LightGrid *grid = R_ModernGLExecutor_CommandBakedGrid( command );
 	float params[7][4] = {};
 	if ( grid != NULL ) {
-		for ( int axis = 0; axis < 3; ++axis ) {
-			params[0][axis] = grid->lightGridOrigin[axis];
-			params[1][axis] = grid->lightGridSize[axis];
-			params[2][axis] = static_cast<float>( grid->lightGridBounds[axis] );
-			params[6][axis] = command.viewDef->renderView.vieworg[axis];
-		}
-		params[0][3] = 1.0f;
-		params[1][3] = idMath::ClampFloat( 0.25f, 4.0f, r_lightGridIrradianceGamma.GetFloat() );
-		params[2][3] = idMath::ClampFloat( 0.0f, 16.0f, r_lightGridIntensity.GetFloat() );
-		params[3][0] = 1.0f / grid->irradianceImage->GetOpts().width;
-		params[3][1] = 1.0f / grid->irradianceImage->GetOpts().height;
-		params[3][2] = static_cast<float>( grid->imageSingleProbeSize );
-		params[3][3] = static_cast<float>( grid->imageBorderSize );
-		params[4][0] = grid->visibilityMaxDistance > 0.0f ? grid->visibilityMaxDistance : 4096.0f;
-		params[4][1] = 3.0f;
-		params[4][2] = idMath::ClampFloat( 0.0f, 1.0f, r_lightGridVisibilityFloor.GetFloat() );
-		params[4][3] = 2.0f;
-		params[5][0] = grid->relocationMaxDistance > 0.0f ? grid->relocationMaxDistance : 48.0f;
-		params[6][3] = idMath::ClampFloat( 0.0f, 16.0f, r_lightGridMaxContribution.GetFloat() );
+		RB_LightGridBakedParams( *grid, command.viewDef->renderView.vieworg.ToFloatPtr(), params );
 		idImage *images[] = { grid->irradianceImage, grid->visibilityImage, grid->probeImage };
 		for ( int i = 0; i < 3; ++i ) {
 			R_GLStateCache().BindTexture( 7 + i, GL_TEXTURE_2D, images[i]->GetDeviceHandle() );

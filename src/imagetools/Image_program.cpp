@@ -587,6 +587,75 @@ static bool R_ParseImageProgram_r(idLexer& src, byte** pic, int* width, int* hei
 	}
 	// jmarshall end
 
+	// openQ4: one material-data image from three single-channel maps, so a PBR
+	// material with separate occlusion, roughness and metallic maps shades
+	// from one texture on every backend. Red = occlusion, green = roughness,
+	// blue = metallic, each from its source's red channel, at the largest
+	// source size; _white stands for a missing map.
+	if (!token.Icmp("packORM")) {
+		byte* sources[3] = { NULL, NULL, NULL };
+		int		widths[3] = { 0, 0, 0 };
+		int		heights[3] = { 0, 0, 0 };
+		bool	parsed = true;
+
+		MatchAndAppendToken(src, "(");
+		for (int i = 0; parsed && i < 3; i++) {
+			if (i > 0) {
+				MatchAndAppendToken(src, ",");
+			}
+			idToken source;
+			if (src.ReadToken(&source) && !source.Icmp("_white")) {
+				AppendToken(source);
+				continue;
+			}
+			src.UnreadToken(&source);
+			parsed = R_ParseImageProgram_r(src, pic ? &sources[i] : NULL, &widths[i], &heights[i], timestamps, usage);
+		}
+
+		if (parsed && pic) {
+			int outWidth = 0, outHeight = 0;
+			for (int i = 0; i < 3; i++) {
+				if (sources[i] != NULL) {
+					outWidth = Max(outWidth, widths[i]);
+					outHeight = Max(outHeight, heights[i]);
+				}
+			}
+			for (int i = 0; parsed && i < 3; i++) {
+				if (sources[i] != NULL && (widths[i] != outWidth || heights[i] != outHeight)) {
+					byte* resampled = R_ResampleTexture(sources[i], widths[i], heights[i], outWidth, outHeight);
+					R_StaticFree(sources[i]);
+					sources[i] = resampled;
+					parsed = resampled != NULL;
+				}
+			}
+			if (parsed && outWidth > 0 && outHeight > 0) {
+				*pic = (byte*)R_StaticAlloc(outWidth * outHeight * 4);
+				for (int p = 0; p < outWidth * outHeight; p++) {
+					for (int c = 0; c < 3; c++) {
+						(*pic)[p * 4 + c] = sources[c] != NULL ? sources[c][p * 4] : 255;
+					}
+					(*pic)[p * 4 + 3] = 255;
+				}
+				*width = outWidth;
+				*height = outHeight;
+			} else {
+				// three _white maps carry nothing to pack; the caller keeps them
+				parsed = false;
+			}
+		}
+		for (int i = 0; i < 3; i++) {
+			if (sources[i] != NULL) {
+				R_StaticFree(sources[i]);
+			}
+		}
+		if (!parsed) {
+			return false;
+		}
+
+		MatchAndAppendToken(src, ")");
+		return true;
+	}
+
 	if (!token.Icmp("makeAlpha")) {
 		int		i;
 

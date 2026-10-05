@@ -96,6 +96,30 @@ OPENQ4_PBR_INLINE float PBRSpecularAlbedo(float NoV, float perceptualRoughness) 
 OPENQ4_PBR_INLINE float PBREnergyCompensation(float f0, float specularAlbedo) { \
     return 1.0 + PBRClamp(f0, 0.0, 1.0) * (1.0 / PBRClamp(specularAlbedo, 0.3, 1.0) - 1.0); \
 } \
+/* The split-sum bias B, the F90 part of A + B = PBRSpecularAlbedo, so a     \
+   pass without the table can evaluate f0 * A + B. 30-term fit in r and      \
+   sqrt(NoV) over NoV in [0.1, 1], within 0.0095 of IntegrateBRDF. */        \
+OPENQ4_PBR_INLINE float PBRSpecularBias(float NoV, float perceptualRoughness) { \
+    float r = PBRRoughness(perceptualRoughness); \
+    float u = sqrt(PBRClamp(NoV, 0.1, 1.0)); \
+    float c0 = 1.86122463 + u * (-5.8115519 + u * (6.04423784 + u * (-2.09929099 + u * 0.00579774298))); \
+    float c1 = -10.18743 + u * (89.0484333 + u * (-235.623025 + u * (248.992105 + u * (-92.3278808)))); \
+    float c2 = 5.56878037 + u * (-249.036709 + u * (878.661836 + u * (-1056.69664 + u * 422.086637))); \
+    float c3 = 44.7441308 + u * (190.739295 + u * (-1169.02785 + u * (1638.08811 + u * (-705.807224)))); \
+    float c4 = -78.0086265 + u * (56.2170228 + u * (581.732087 + u * (-1066.83411 + u * 508.070166))); \
+    float c5 = 36.1835707 + u * (-81.8335126 + u * (-60.7151143 + u * (237.799529 + u * (-131.834229)))); \
+    float bias = c0 + r * (c1 + r * (c2 + r * (c3 + r * (c4 + r * c5)))); \
+    return PBRClamp(bias, 0.0, PBRSpecularAlbedo(NoV, perceptualRoughness)); \
+} \
+/* One F0 channel's reflection of a uniform environment of unit radiance:   \
+   the energy-compensated split sum f0 * A + B = f0 * E + (1 - f0) * B. A    \
+   white conductor reflects exactly one. An authored ambient light is such   \
+   an environment (it stands in for bounced light from every direction). */  \
+OPENQ4_PBR_INLINE float PBRUniformEnvironmentSpecular(float f0, float NoV, float perceptualRoughness) { \
+    float albedo = PBRSpecularAlbedo(NoV, perceptualRoughness); \
+    float f = PBRClamp(f0, 0.0, 1.0); \
+    return (f * albedo + (1.0 - f) * PBRSpecularBias(NoV, perceptualRoughness)) * PBREnergyCompensation(f, albedo); \
+} \
 /* Specular occlusion derived from ambient occlusion (Lagarde and de         \
    Rousiers 2014): rough lobes follow the AO, smooth lobes viewed head-on    \
    escape most of it, and grazing views are occluded more. AO 0 stays 0. */  \

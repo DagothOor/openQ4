@@ -2,12 +2,12 @@
 """Check HDR map images against independent radiance and optional GL captures."""
 import argparse
 import json
-import math
 from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageFilter
 
+import pbr_reference as reference
 import renderer_vulkan_hdr_scene as capture
 
 
@@ -66,23 +66,36 @@ def compare_ambient(path):
         if error > 1.1:
             failures.append(f'{name}: independent radiance/composition error {error}')
 
-    def irradiance(rgb=(188, 188, 188), metallic=0, stages=1):
-        return np.asarray([capture.decode(c) for c in rgb]) * (1 - metallic) * (.96 / math.pi) * np.asarray((1, .5, .25)) * stages
+    # An authored ambient light is a uniform environment (pbr_reference): view
+    # dependent, so it is predicted per pixel of the specimen sphere where
+    # N.V is at least 0.6. The data specimens carry AO 192/255.
+    nov, variance = reference.sampling_sphere()
+    nov = np.nan_to_num(nov, nan=-1.0)
+    variance = np.nan_to_num(variance)
+    flat = mask & (nov >= 0.6)
+    light = reference.decode(np.asarray((1, .5, .25)))
 
-    for name, count in (('scalar', 1), ('packed', 1), ('separate', 1), ('ao-zero', 1), ('two', 2), ('two-stages', 2), ('restored', 1)):
-        check(name, tone(irradiance(metallic=102 / 255, stages=count)))
-    check('dark', (0, 0, 0))
+    def radiance(rgb=(188, 188, 188), metallic=0.0, rough=0.5, ao=1.0, stages=1):
+        return reference.uniform_environment(light, reference.byte_decode(rgb), metallic,
+                                             reference.filtered_roughness(rough, variance), ao, nov) * stages
+
+    data = dict(metallic=102 / 255, rough=128 / 255, ao=192 / 255)
+    for name, count in (('scalar', 1), ('packed', 1), ('separate', 1), ('two', 2), ('two-stages', 2), ('restored', 1)):
+        check(name, tone(radiance(stages=count, **data)), flat)
+    for name in ('ao-zero', 'dark'):
+        check(name, (0, 0, 0))
     for name in ('owned', 'owned-two'):
         check(name, tone((0, 1, 0)))
-    for name in ('normal-xyz', 'normal-rg', 'normal-agb', 'normal-zero', 'rotated', 'dielectric-0', 'dielectric-5'):
-        check(name, tone(irradiance()))
-    for name in ('metal-0', 'metal-5'):
-        check(name, (0, 0, 0))
+    for kind in ('dielectric', 'metal'):
+        for index, rough in ((0, 0.045), (5, 1.0)):
+            check(f'{kind}-{index}', tone(radiance((245, 160, 105) if kind == 'metal' else (188, 188, 188),
+                                                   metallic=float(kind == 'metal'), rough=rough)), flat)
+    check('normal-zero', tone(radiance()), flat)
     for name in ('emission-dark', 'emission', 'emission-two'):
         check(name, tone([capture.decode(c) * 4 for c in (30, 200, 255)]))
-    cutout = interior(images['cutout-owned'])
+    cutout = interior(images['cutout-owned']) & flat
     assert np.count_nonzero(cutout) > 1000
-    check('cutout', tone(irradiance()), cutout)
+    check('cutout', tone(radiance(rough=0.25)), cutout)
     alpha = 112 / 255
     for suffix, stages in (('dark', 0), ('one', 1), ('two', 2), ('stages', 2), ('owned', -1)):
         background = images['background-' + ('one' if stages < 0 else suffix)]
@@ -90,11 +103,12 @@ def compare_ambient(path):
         # complete half-byte interval through the inverse curve; do not treat
         # an encoded screenshot value as a linear blend operand.
         assert np.max(background[mask]) < 255
-        foreground = np.asarray((0, 1, 0)) if stages < 0 else irradiance((50, 180, 255), stages=stages)
+        foreground = np.asarray((0, 1, 0)) if stages < 0 else radiance((50, 180, 255), rough=0.2, stages=stages)
         low = tone(inverse_tone(background - .5) * (1 - alpha) + foreground * alpha)
         high = tone(inverse_tone(background + .5) * (1 - alpha) + foreground * alpha)
-        check('alpha-' + suffix, low, high=high)
-    pairs = [('scalar', name) for name in ('packed', 'separate', 'ao-zero', 'restored')]
+        check('alpha-' + suffix, low, flat, high=high)
+    pairs = [('scalar', name) for name in ('packed', 'separate', 'restored')]
+    pairs += [('normal-xyz', 'normal-agb')]
     pairs += [('alpha-one', 'alpha-' + name) for name in ('restored', 'image-reload', 'partial-restart', 'full-restart')]
     pairs += [('two', 'two-stages'), ('alpha-classic', 'alpha-fault'), ('restored', 'linear-bloom-restored')]
     for left, right in pairs:

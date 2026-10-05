@@ -111,8 +111,11 @@ in `.tmp/vulkan-gap-closure/scene-scale/checkpoint-v30-scene-scale.json`; broade
 material, multi-view and platform qualification remain separate.
 
 The `ibl` suite isolates analytic environment lighting by disabling all direct
-lights. It covers 27 native Vulkan controls and 26 common OpenGL controls at
-0x/4x MSAA, including negative controls and image/video lifecycle restoration.
+lights. The laboratory pins `r_pbrAnalyticEnvironment 1`, the studio
+environment its expectations were qualified against; the `ibl-production`
+control turns it off and must draw no environment at all. It covers 28 native
+Vulkan controls and 27 common OpenGL controls at 0x/4x MSAA, including negative
+controls and image/video lifecycle restoration.
 `renderer_pbr_environment_parity.py` compares the same package and fixture with
 retained image/log hashes and bounded specimen error. The extra shared-ambient
 control is Vulkan-only; OpenGL deliberately excludes that combination from its

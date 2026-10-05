@@ -1118,7 +1118,7 @@ def test_pbr_energy_and_occlusion_contract() -> None:
     gl = read(ROOT / "src/renderer/ModernGLShaderLibrary.cpp")
     for token in (
         "float metallic, float roughness, float ao, out float attenuation",
-        "ModernPBRMultiBounceAO(ao, diffuseColor); }",
+        "return ModernPBRUniformEnvironmentLight(radiance, baseColor, metallic, roughness, ao, normal, viewDir, geometricNormal); }",
         "ModernPBREnergyCompensation(f0, PBRSpecularAlbedo(ndotv, roughness))",
         "specularAlbedo = brdf.x + brdf.y;",
         "PBRSpecularOcclusion(ndotv, ao, roughness)",
@@ -1137,7 +1137,7 @@ def test_pbr_energy_and_occlusion_contract() -> None:
     for token in (
         "PBREnergyCompensationColor(f0, PBRSpecularAlbedo(ndotv, roughness))",
         "if ((dataFlags & 16) != 0)",
-        "PBRMultiBounceAOColor(clamp(aoTexel * pc.b.x, 0.0, 1.0), diffuseColor)",
+        "clamp(aoTexel * pc.b.x, 0.0, 1.0), objectNormal, viewDir, vPBRNormal) * vVertexColor);",
     ):
         require(direct, token, "Vulkan direct roughness/AO coverage")
     environment = read(ROOT / "src/renderer/Vulkan/shaders/pbr_environment.glsl")
@@ -1284,7 +1284,7 @@ def test_gl_classic_loop_native_pbr_contract() -> None:
         "glPBRFragmentLibrary += OPENQ4_PBR_SCALAR_GLSL;",
         "PBRClassicLightIrradianceColor(",
         "PBREnergyCompensationColor( f0, PBRSpecularAlbedo( ndotv, roughness ) )",
-        "PBRMultiBounceAOColor( data.z, diffuseColor )",
+        "PBRUniformEnvironmentLight( radiance, albedo, metallic, roughness, data.z,",
         "PBRSpecularOcclusion( NoV, ao, roughness )",
         "PBRHorizonOcclusion( dot( reflection, PBREnvironmentWorld( vPBRNormal ) ) )",
         "PBRProbeBlend( vWorldPosition, reflection, n, roughness, prefiltered, irradiance );",
@@ -1336,6 +1336,75 @@ def test_gl_classic_loop_native_pbr_contract() -> None:
         require(fragment, "float OpenQ4PBRAlpha();", f"{name} translucent coverage")
         if fragment.count("gl_FragColor = vec4( OpenQ4PBRDirect(") != fragment.count("), OpenQ4PBRAlpha() );"):
             raise AssertionError(f"{name}: every PBR output carries the translucent coverage alpha")
+
+
+def test_pbr_production_environment_contract() -> None:
+    """Environment lighting in real maps follows the map on every backend.
+
+    Authored ambient lights are uniform environments (diffuse and split-sum
+    specular, AO-occluded), the analytic studio environment is the laboratory
+    mode r_pbrAnalyticEnvironment, separate material-data maps pack into one
+    ORM image, and the OpenGL owner composes baked light grids like the other
+    owners while the classic grid pass leaves its surfaces alone.
+    """
+    kernel = read(ROOT / "src/renderer/PBRMath.h")
+    for token in ("OPENQ4_PBR_INLINE float PBRSpecularBias(float NoV, float perceptualRoughness) {",
+                  "OPENQ4_PBR_INLINE float PBRUniformEnvironmentSpecular(float f0, float NoV, float perceptualRoughness) {",
+                  "return (f * albedo + (1.0 - f) * PBRSpecularBias(NoV, perceptualRoughness)) * PBREnergyCompensation(f, albedo);"):
+        require(kernel, token, "uniform environment kernel")
+    shading = {
+        "src/renderer/Vulkan/shaders/pbr_direct.glsl": ("vec3 PBRUniformEnvironmentLight(vec3 irradiance", "PBRUniformEnvironmentSpecular(f0.r, NoV, roughness)",
+            "PBRMultiBounceAOColor(PBRSpecularOcclusion(NoV, ao, roughness), f0)", "PBRHorizonOcclusion(dot(reflect(-v, n), SafeNormalize(vertexNormal)))"),
+        "src/renderer/draw_pbr.cpp": ("vec3 PBRUniformEnvironmentLight( vec3 irradiance", "PBRUniformEnvironmentSpecular( f0.r, NoV, roughness )",
+            "PBRMultiBounceAOColor( PBRSpecularOcclusion( NoV, ao, roughness ), f0 )", "PBRHorizonOcclusion( dot( reflect( -v, n ), PBRSafeNormalize( vertexNormal ) ) )"),
+        "src/renderer/ModernGLShaderLibrary.cpp": ("vec3 ModernPBRUniformEnvironmentLight(vec3 irradiance", "PBRUniformEnvironmentSpecular(f0.r, NoV, roughness)",
+            "ModernPBRMultiBounceAO(PBRSpecularOcclusion(NoV, ao, roughness), f0)", "PBRHorizonOcclusion(dot(reflect(-v, n), normalize(geometricNormal)))"),
+    }
+    for relative_path, tokens in shading.items():
+        source = read(ROOT / relative_path)
+        for token in tokens:
+            require(source, token, f"ambient uniform environment in {relative_path}")
+        reject(source, "0.96 / 3.14159265", f"{relative_path} must not keep the isotropic ambient approximation")
+    init = read(ROOT / "src/renderer/RenderSystem_init.cpp")
+    require(init, 'idCVar r_pbrAnalyticEnvironment( "r_pbrAnalyticEnvironment", "0", CVAR_RENDERER | CVAR_BOOL,',
+            "analytic studio environment is a laboratory mode")
+    analytic = {
+        "src/renderer/draw_pbr.cpp": ("fract( lod ) ) * uPBREnvironment.w;", "oct * 0.5 + 0.5, 32.0 ) * uPBREnvironment.w;",
+                                      "r_pbrAnalyticEnvironment.GetBool() || RB_GLPBR_ProbeView( backEnd.viewDef ) != NULL"),
+        "src/renderer/Vulkan/shaders/pbr_environment.glsl": ("fract(lod)) * pc.b.y;", "oct * 0.5 + 0.5, 32.0) * pc.b.y;"),
+        "src/renderer/Vulkan/vk_Interactions.cpp": ("push.b[1] = r_pbrAnalyticEnvironment.GetBool() ? 1.0f : 0.0f;",
+                                                     "&& VK_PBR_EnvironmentSourcesView( viewDef );"),
+        "src/renderer/ModernGLShaderLibrary.cpp": ("float analytic = abs(uPBRIBL.x - 1.0) < 0.5 ? 1.0 : 0.0;",
+                                                    "prefiltered *= analytic; irradiance *= analytic;"),
+        "src/renderer/ModernGLExecutor.cpp": ("r_pbrIBL.GetBool() ? ( r_pbrAnalyticEnvironment.GetBool() ? 1.0f : 2.0f ) : 0.0f,",),
+    }
+    for relative_path, tokens in analytic.items():
+        source = read(ROOT / relative_path)
+        for token in tokens:
+            require(source, token, f"production environment sources in {relative_path}")
+    require(read(ROOT / "tools/tests/renderer_pbr_laboratory.py"), "'r_pbrAnalyticEnvironment': '1',",
+            "the laboratory keeps its analytic reference lighting")
+    program = read(ROOT / "src/imagetools/Image_program.cpp")
+    for token in ('if (!token.Icmp("packORM")) {', 'if (src.ReadToken(&source) && !source.Icmp("_white")) {',
+                  "(*pic)[p * 4 + c] = sources[c] != NULL ? sources[c][p * 4] : 255;"):
+        require(program, token, "packORM image program")
+    require(read(ROOT / "src/imagetools/Image_files.cpp"), '!token.Icmp( "packORM" );', "packORM is a program operator")
+    material = read(ROOT / "src/renderer/Material.cpp")
+    for token in ('pbrMaterialTexture_t *channels[3] = { &pbrInfo.ao, &pbrInfo.roughness, &pbrInfo.metallic };',
+                  'idStr program = "packORM( ";', "pbrInfo.packedSeparateData = true;"):
+        require(material, token, "separate material-data maps pack into one ORM image")
+    grid = read(ROOT / "src/renderer/ModernLightGridGLSL.h")
+    require(grid, "if (pbr) sampleColor = ModernBakedLinear(sampleColor);", "PBR always decodes baked texels")
+    reject(grid, "if (pbr) sampleColor = ModernClassicSceneColor(sampleColor);",
+           "the linear-scene gate double-encoded production baked diffuse")
+    owner = read(ROOT / "src/renderer/draw_pbr.cpp")
+    for token in ("glPBREnvironmentFragment += modernLightGridGLSL;",
+                  "vec4 baked = ModernBakedIrradiance( vWorldPosition, n, true );",
+                  "RB_LightGridBakedParams( *grid, worldOrigin, bakedGrid );"):
+        require(owner, token, "OpenGL owner baked light-grid composition")
+    passes = function_body(read(ROOT / "src/renderer/draw_common.cpp"), "static bool RB_STD_DrawLightGridSurface(")
+    require(passes, "if ( shader->HasPBR() && RB_GLPBR_SurfaceOwned( surf ) ) {",
+            "the classic grid pass leaves owned PBR surfaces to their environment pass")
 
 
 def main() -> int:

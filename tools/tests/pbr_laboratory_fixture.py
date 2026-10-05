@@ -537,7 +537,7 @@ def test_ibl_parity_provenance(root: Path) -> None:
         rows=[]
         for name in runner.IBL_MATERIALS:
             if backend=='gl' and name=='shared': continue
-            value=0 if name in ('off','ao-zero','zero','alpha-off','cutout-off','master-off','legacy') else 20
+            value=0 if name in ('off','ao-zero','zero','alpha-off','cutout-off','master-off','legacy','production') else 20
             value={'rough-low':10,'rough-high':30,'double':40}.get(name,value)
             if name.startswith('normal-'): value=22
             shot=coverage if name.endswith('coverage') else shots[value]

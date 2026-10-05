@@ -28,7 +28,7 @@ the decision and the stage that closes it.
 | G3b | GL's deferred `r_pbrDebug 4` showed filtered roughness, forward showed authored roughness. | Both show authored roughness. | A |
 | G4 | OpenGL, the default renderer, draws PBR only when a whole frame qualifies for the modern visible path. That needs six developer cvars, and any weapon, stock specular material, ambient light or stencil shadow sends the frame back to classic. Ordinary gameplay never shows PBR on GL. | Per-surface native PBR inside the classic GL light loop, mirroring native Vulkan. | B |
 | G5 | Presentation: HDR-off PBR radiance is added to the display domain without the sRGB transfer, a PBR surface shows about a fifth of the brightness of the same surface lit classically, and Vulkan's HDR scene linearizes and filmic-maps every view once `r_pbrMaterials` is on, changing stock frames. | Calibrate PBR irradiance to the classic light term and composite every PBR draw in the classic display domain on both backends. Stock pixels stay unchanged, and the tone curve does not depend on whether PBR is in view. The linear scene becomes the explicit laboratory mode `r_pbrLinearScene`. | C |
-| G6 | Environment lighting in real maps: without authored probes every PBR surface reflects the analytic studio sky, even in dark interiors. | To be decided after G4/G5 measurements. | E |
+| G6 | Environment lighting in real maps: without authored probes every PBR surface reflects the analytic studio sky, even in dark interiors. | Indirect light follows the map: authored ambient lights become uniform environments (diffuse and specular), the studio sky becomes the laboratory mode `r_pbrAnalyticEnvironment`, and baked light grids reach every native owner. | E |
 | G7 | Defaults and UX: `r_pbrMaterials` defaults to 0, GL needs the non-archived `r_rendererModernVisible`, and there is no menu control. | Promote after G4/G5/G6, with menu control and docs. | F |
 | G8 | Found by the Stage B parity comparison: every direct-light evaluation (Vulkan, modern GL) returned black where a normal map turned the shading normal away from the viewer, speckling normal-mapped silhouettes, and which pixels went black differed between backends. | Clamp N.V in every direct term (`PBRShadingNoV`). | B |
 
@@ -317,3 +317,91 @@ same batch from the same runtime and harness.
 | GL native geometry | 11/11; backface parity with Vulkan passes |
 | GL native overview (`lit,ownership,no-probes,direct,legacy,master-off`) | 6/6 |
 | Modern GL and Vulkan regression suites | Vulkan map 4/4, GL HDR 7/7, GL core 6/6, probes 46/46 and 40/40 with parity, diagnostics 62/62 per backend (same documented set), geometry 11/11 per backend with parity, transparency 25/25, cutout pass, fog 7/7, capacity 18/18, resources 44/44, baked 6/6, HDR scene composition/ambient/recovery pass, HDR-off preview at 4x passes on both backends |
+
+## Stage E: environment lighting in real maps (both backends)
+
+Without authored probes every PBR surface reflected the analytic studio
+environment: a bright sky gradient with a key lobe, chosen to qualify the
+filtering, not to light a level. In a dark Quake 4 interior it lit every PBR
+surface from nowhere, and metals glowed. Quake 4 maps are lit by their lights,
+and their authored ambient lights stand in for bounced light. Production
+environment lighting now follows the map:
+
+- Authored ambient lights are uniform environments. An ambient light of
+  calibrated irradiance E is an environment of radiance E / pi in every
+  direction, so it reaches diffuse and specular exactly as the environment
+  term does: Fresnel-weighted diffuse with multi-bounce AO, and the split-sum
+  specular f0 * A + B with energy compensation, specular occlusion and horizon
+  occlusion. A white rough surface still matches the classic ambient term at
+  normal incidence; metals now reflect the ambient light instead of going
+  black. Per-light passes bind no split-sum table, so the bias B has its own
+  fit (`PBRSpecularBias`, a 30-term polynomial in sqrt(N.V) and roughness,
+  within 0.0095 of the integrated table; the common analytic approximation was
+  0.28 off) beside the existing directional albedo A.
+  `PBRUniformEnvironmentSpecular` composes them; a white conductor reflects
+  exactly one.
+- The analytic studio environment is the laboratory mode
+  `r_pbrAnalyticEnvironment` (default 0, not saved), as the linear scene became
+  `r_pbrLinearScene` in Stage C. The laboratory pins it on. With it off,
+  `r_pbrIBL` draws only authored probes, blended over black, and a view without
+  probe records draws no environment pass at all.
+- Baked light grids light the OpenGL owner as they light modern GL and
+  Vulkan's laboratory linear scene. The owner's environment pass replaces environment diffuse with PBR-weighted
+  baked diffuse (Fresnel-weighted, AO-occluded, clamped to the grid's maximum
+  contribution), keeps the environment's specular, and the classic grid pass
+  skips owned surfaces, so a grid adds its light once. This closes the gap
+  Stage B left open. Vulkan's production (display-referred) frame does not yet
+  compose grids for PBR; its PBR receivers keep the classic grid pass. The same work found a modern GL defect: baked samples
+  were decoded to linear light only in the linear-scene laboratory mode, so
+  once Stage C composed each draw in the display domain, production frames
+  encoded baked PBR diffuse twice. PBR receivers now always decode them.
+- Separate metallic, roughness and AO maps are packed at load into one
+  generated ORM image (`packORM( ao, roughness, metallic )`, an image-program
+  operator), so every backend shades one material-data texture and every
+  channel reaches every term. Vulkan's per-light layout had no slot for three
+  data maps beside the light's own images, which an ambient light's new
+  specular term needs. Maps keep their exact values; differing sizes resample
+  to the largest.
+
+### Independent shading oracle
+
+`tools/tests/pbr_reference.py` writes the shading kernel out again in NumPy,
+so a regression in the shared C++/GLSL source cannot hide in the oracle that
+checks it. Fitted polynomials are copied as definitions; their accuracy is
+tested natively (`PBRMathTest`). The module also models the specimen sphere as
+the sampling camera sees it (the eye 400 units from a 72-unit sphere, the
+16:10 view's focal length), so the ambient oracle predicts the view-dependent
+uniform-environment response pixel by pixel instead of at the patch centre.
+It compares every pixel with N.V of at least 0.6, where the tessellated
+sphere's interpolated normals follow the analytic sphere. The HDR-scene
+ambient check and its GL/Vulkan comparison use the same model.
+
+### Laboratory consequences of production environments
+
+The laboratory pins `r_pbrAnalyticEnvironment 1`, so its captures keep the
+studio environment its expectations were qualified against. Production is
+proved by controls that turn it off: the IBL suite's production control
+(no probes) must draw no environment at all, and the probe suite's production
+controls prove that authored probes still light a receiver over black.
+
+### Stage E laboratory evidence (2026-10-05)
+
+Private build of Stage B plus Stage E, Windows/NVIDIA, runtime
+`.tmp/wt-pbr/.tmp/lab-a`; each GL-native suite is paired with the Vulkan suite
+captured in the same batch from the same runtime.
+
+| Suite | Result |
+|---|---|
+| Native math | pass, including the uniform environment: the fitted bias within 0.012 of the integrated table between its fitting points, a white conductor reflecting exactly one, monotonic in F0 |
+| Material contracts (`renderer_pbr_materials.py`) | pass, including the production-environment contract |
+| Vulkan ambient | 41/41; independent per-pixel oracle within 0.57 bytes for one draw, 1.0 for composites |
+| GL native ambient | 40/40; oracle within 0.68 bytes for one draw and 1.46 for three rounded draws (each further draw into the 8-bit frame may add half a byte); paired with Vulkan the interiors agree within one byte, and 6-16 grazing silhouette pixels shift as edges (allowance 0.05% of the frame) |
+| IBL | Vulkan 28/28 and OpenGL 27/27 with parity on 27 controls; the production control (no studio environment, no probes) draws no environment |
+| GL native IBL | 27/27; parity with Vulkan on 27 controls |
+| Probes | Vulkan 48/48 and OpenGL 42/42 with parity, including the production controls (authored probes over black) |
+| GL native probes | 42/42; probe proof and parity with Vulkan pass |
+| GL native baked grid | 6/6: grid diffuse on every dielectric station (6-19 bytes), none on metals or zero AO, more at double intensity, drawn in the owner's environment pass |
+| Direct | Vulkan 73/73, GL native 73/73, parity on all 73 controls |
+| Diagnostics | 62/62 on Vulkan, modern GL and GL native; the whole-frame comparison keeps the documented 10-control set |
+| Geometry | 11/11 on every owner; backface parity passes |
+| Other regression suites | Vulkan map 4/4, GL HDR 7/7, GL core 6/6, GL native core 6/6, transparency 25/25, cutout pass, fog 7/7, capacity 18/18, resources 44/44, baked 6/6 GL with the Vulkan baked proof, HDR scene composition (GL/Vulkan compare), ambient and recovery pass, HDR-off preview at 4x passes on both backends (40 controls each) |

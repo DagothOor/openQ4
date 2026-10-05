@@ -65,6 +65,26 @@ vec3 PBREnergyCompensationColor(vec3 f0, float specularAlbedo) {
         PBREnergyCompensation(f0.g, specularAlbedo), PBREnergyCompensation(f0.b, specularAlbedo));
 }
 
+// An authored ambient light stands in for bounced light from every
+// direction: a uniform environment of radiance E / pi. It is the environment
+// term (pbr_environment.glsl) with prefiltered radiance and irradiance both
+// E / pi, so metals reflect it; the split sum needs no table
+// (PBRUniformEnvironmentSpecular). Material AO is its indirect visibility.
+vec3 PBRUniformEnvironmentLight(vec3 irradiance, vec3 albedo, float metallic, float roughness,
+        float ao, vec3 n, vec3 v, vec3 vertexNormal) {
+    float NoV = PBRShadingNoV(dot(n, v));
+    vec3 f0 = mix(vec3(0.04), albedo, metallic);
+    vec3 diffuseColor = albedo * (1.0 - metallic);
+    vec3 fresnel = f0 + (max(vec3(1.0 - roughness), f0) - f0) * PBRFresnelWeight(NoV);
+    vec3 specular = vec3(PBRUniformEnvironmentSpecular(f0.r, NoV, roughness),
+            PBRUniformEnvironmentSpecular(f0.g, NoV, roughness),
+            PBRUniformEnvironmentSpecular(f0.b, NoV, roughness))
+        * PBRMultiBounceAOColor(PBRSpecularOcclusion(NoV, ao, roughness), f0)
+        * PBRHorizonOcclusion(dot(reflect(-v, n), SafeNormalize(vertexNormal)));
+    vec3 diffuse = (vec3(1.0) - fresnel) * diffuseColor * PBRMultiBounceAOColor(ao, diffuseColor);
+    return (diffuse + specular) * irradiance * (1.0 / 3.14159265);
+}
+
 vec3 EvaluatePBRDirect(vec3 localNormal, vec2 albedoTexCoord,
         vec2 dataTexCoord, float shadowFactor) {
     // Color uses sRGB storage and decodes before filtering. Data stays linear.
@@ -89,23 +109,6 @@ vec3 EvaluatePBRDirect(vec3 localNormal, vec2 albedoTexCoord,
         textureProj(lightFalloffMap, vLightFalloffTexCoord).rgb
         * textureProj(lightProjectionMap, vLightProjectionTexCoord).rgb
         * inter.diffuseColor.rgb) * shadowFactor;
-    if (pc.a.z > 0.5) {
-        // Authored ambient lights are an isotropic diffuse source, matching
-        // ModernClusterEvaluatePBRLight. They have neither the classic
-        // tangent-space ambient direction nor a view-dependent specular lobe;
-        // metallic response belongs to the environment. They stand in for
-        // bounced light, so material AO occludes them like environment
-        // diffuse: pc.b.x is the AO scalar, and the texel comes from the ORM
-        // red channel or, for this light stage only, a separate AO map bound
-        // in place of the unused roughness map (flag 16).
-        if ((dataFlags & 16) != 0) {
-            aoTexel = texture(specularMap, dataTexCoord).r;
-        }
-        vec3 diffuseColor = albedo * (1.0 - metallic);
-        return PBRDisplayOutput(radiance * diffuseColor * (0.96 / 3.14159265)
-            * PBRMultiBounceAOColor(clamp(aoTexel * pc.b.x, 0.0, 1.0), diffuseColor)
-            * vVertexColor);
-    }
     float roughness = PBRRoughness(materialData.y * pc.d.z);
     // A flat tangent-space normal still varies across a curved surface.
     // Measure the final normal in object space; rigid model rotation leaves
@@ -121,8 +124,21 @@ vec3 EvaluatePBRDirect(vec3 localNormal, vec2 albedoTexCoord,
         roughness = PBRFilteredRoughness(roughness,
             0.5 * (dot(normalDx, normalDx) + dot(normalDy, normalDy)));
     }
-    vec3 lightDir = SafeNormalize(vLightVector);
     vec3 viewDir = SafeNormalize(vViewVector);
+    if (pc.a.z > 0.5) {
+        // An authored ambient light is a uniform environment, matching
+        // ModernClusterEvaluatePBRLight and the OpenGL owner. pc.b.x is the
+        // AO scalar; the texel comes from the ORM red channel or, when
+        // separate maps could not be packed, a separate AO map bound in place
+        // of the roughness map for this light stage only (flag 16), which
+        // then leaves the scalar roughness.
+        if ((dataFlags & 16) != 0) {
+            aoTexel = texture(specularMap, dataTexCoord).r;
+        }
+        return PBRDisplayOutput(PBRUniformEnvironmentLight(radiance, albedo, metallic, roughness,
+            clamp(aoTexel * pc.b.x, 0.0, 1.0), objectNormal, viewDir, vPBRNormal) * vVertexColor);
+    }
+    vec3 lightDir = SafeNormalize(vLightVector);
     vec3 halfDir = SafeNormalize(lightDir + viewDir);
     float ndotl = max(dot(objectNormal, lightDir), 0.0);
     float ndotv = PBRShadingNoV(dot(objectNormal, viewDir));

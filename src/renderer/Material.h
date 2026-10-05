@@ -95,6 +95,8 @@ typedef struct {
 	bool				usesGeneratedLegacyFallback;
 	bool				usesApproximateLegacyFallback;
 	bool				legacyFallbackMissing;
+	// Separate metallic/roughness/AO maps were packed into `orm` (packORM).
+	bool				packedSeparateData;
 } pbrMaterialInfo_t;
 
 // An authored specular probe is renderer metadata carried by a light material.

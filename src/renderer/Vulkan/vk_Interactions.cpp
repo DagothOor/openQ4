@@ -2568,11 +2568,24 @@ struct vkPBRPreparedDraw_t {
 	vkInteractionPush_t push;
 };
 
+// Production environment lighting is the map's own (authored probes; baked
+// grids have their own receiver path). The analytic studio environment lights
+// only the laboratory (r_pbrAnalyticEnvironment). A probe resource failure
+// still reaches preparation, which reports it.
+static bool VK_PBR_EnvironmentSourcesView( const viewDef_t *viewDef ) {
+	if ( r_pbrAnalyticEnvironment.GetBool() ) {
+		return true;
+	}
+	VkDescriptorSet probeSet = VK_NULL_HANDLE;
+	return !VK_PBRProbes_ForView( viewDef, probeSet ) || probeSet != VK_NULL_HANDLE;
+}
+
 static bool VK_PBR_EnvironmentEnabled( const viewDef_t *viewDef, const drawSurf_t *surf,
 		float alphaScale, bool composite ) {
 	return !( alphaScale > 0.0f && composite )
 		&& r_pbrIBL.GetBool() && r_pbrIBLIntensity.GetFloat() > 0.0f
-		&& r_pbrDebug.GetInteger() == 0 && !VK_LightGrid_SurfaceRequestsBakedDiffuse( viewDef, surf );
+		&& r_pbrDebug.GetInteger() == 0 && !VK_LightGrid_SurfaceRequestsBakedDiffuse( viewDef, surf )
+		&& VK_PBR_EnvironmentSourcesView( viewDef );
 }
 
 static bool VK_PBR_PrepareEnvironment( VkCommandBuffer cmd, const viewDef_t *viewDef,
@@ -2692,6 +2705,9 @@ static bool VK_PBR_PrepareEnvironment( VkCommandBuffer cmd, const viewDef_t *vie
 	push.a[1] = vertexColor == SVC_MODULATE ? 0.0f : 1.0f;
 	push.a[3] = alphaScale;
 	push.b[0] = idMath::ClampFloat( 0.0f, 1.0f, VK_PBRRegisterValue( surf, info.aoRegister, 1.0f ) );
+	// Weight of the analytic studio environment under authored probes: the
+	// laboratory mode only. Classic draws use b.y for their ambient direction.
+	push.b[1] = r_pbrAnalyticEnvironment.GetBool() ? 1.0f : 0.0f;
 	push.c[0] = float( material.dataFlags | ( info.ao.present ? 8 : 0 ) );
 	push.c[1] = float( material.normalFormat );
 	push.c[2] = diagnostic ? float( debugMode )

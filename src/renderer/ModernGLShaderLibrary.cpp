@@ -844,7 +844,20 @@ static void R_ModernGLShaderLibrary_BuildFragmentBody( int glslVersion, modernGL
 		"vec3 ModernPBREnergyCompensation(vec3 f0, float specularAlbedo) {\n"
 		"    return vec3(PBREnergyCompensation(f0.r, specularAlbedo), PBREnergyCompensation(f0.g, specularAlbedo), PBREnergyCompensation(f0.b, specularAlbedo));\n"
 		"}\n"
-		"vec3 ModernClusterEvaluatePBRLight(ModernClusterLightRecord light, vec3 viewPosition, vec3 normal, vec3 baseColor, float metallic, float roughness, float ao, out float attenuation) {\n"
+		// An authored ambient light stands in for bounced light from every
+		// direction: a uniform environment of radiance E / pi, the environment
+		// term with prefiltered radiance and irradiance both E / pi
+		// (pbr_direct.glsl PBRUniformEnvironmentLight).
+		"vec3 ModernPBRUniformEnvironmentLight(vec3 irradiance, vec3 baseColor, float metallic, float roughness, float ao, vec3 n, vec3 v, vec3 geometricNormal) {\n"
+		"    float NoV = PBRShadingNoV(dot(n, v));\n"
+		"    vec3 f0 = mix(vec3(0.04), baseColor, metallic); vec3 diffuseColor = baseColor * (1.0 - metallic);\n"
+		"    vec3 fresnel = f0 + (max(vec3(1.0 - roughness), f0) - f0) * PBRFresnelWeight(NoV);\n"
+		"    vec3 specular = vec3(PBRUniformEnvironmentSpecular(f0.r, NoV, roughness), PBRUniformEnvironmentSpecular(f0.g, NoV, roughness), PBRUniformEnvironmentSpecular(f0.b, NoV, roughness))\n"
+		"        * ModernPBRMultiBounceAO(PBRSpecularOcclusion(NoV, ao, roughness), f0) * PBRHorizonOcclusion(dot(reflect(-v, n), normalize(geometricNormal)));\n"
+		"    vec3 diffuse = (vec3(1.0) - fresnel) * diffuseColor * ModernPBRMultiBounceAO(ao, diffuseColor);\n"
+		"    return (diffuse + specular) * irradiance * (1.0 / 3.14159265);\n"
+		"}\n"
+		"vec3 ModernClusterEvaluatePBRLight(ModernClusterLightRecord light, vec3 viewPosition, vec3 normal, vec3 geometricNormal, vec3 baseColor, float metallic, float roughness, float ao, out float attenuation) {\n"
 		"    int type = int(floor(light.colorType.w + 0.5));\n"
 		"    bool projected = type == 1; bool point = type == 0; bool ambient = type == 3;\n"
 		"    vec3 toLight = light.positionRadius.xyz - viewPosition; float dist = length(toLight);\n"
@@ -853,13 +866,10 @@ static void R_ModernGLShaderLibrary_BuildFragmentBody( int glslVersion, modernGL
 		"    vec3 projection = (point || projected || ambient) ? ModernClusterProjectionColor(light, viewPosition) : vec3(1.0);\n"
 		"    vec3 lightTerm = light.colorType.rgb * projection * ModernClusterFalloffColor(light, viewPosition, radial);\n"
 		"    vec3 radiance = vec3(PBRClassicLightIrradiance(lightTerm.r), PBRClassicLightIrradiance(lightTerm.g), PBRClassicLightIrradiance(lightTerm.b));\n"
-		// An authored ambient light stands in for bounced light, so material
-		// AO occludes it exactly like environment diffuse. It has no direction
-		// and no specular lobe; metallic response belongs to the environment.
 		"    vec3 diffuseColor = baseColor * (1.0 - metallic);\n"
-		"    if (ambient) { attenuation = max(max(radiance.r, radiance.g), radiance.b); return radiance * diffuseColor * (0.96 / 3.14159265) * ModernPBRMultiBounceAO(ao, diffuseColor); }\n"
-		"    if (!(point || projected)) { attenuation = 0.0; return vec3(0.0); }\n"
 		"    vec3 viewDir = length(viewPosition) > 0.0001 ? normalize(-viewPosition) : vec3(0.0, 0.0, -1.0);\n"
+		"    if (ambient) { attenuation = max(max(radiance.r, radiance.g), radiance.b); return ModernPBRUniformEnvironmentLight(radiance, baseColor, metallic, roughness, ao, normal, viewDir, geometricNormal); }\n"
+		"    if (!(point || projected)) { attenuation = 0.0; return vec3(0.0); }\n"
 		"    float ndotl = max(dot(normal, lightDir), 0.0); float ndotv = PBRShadingNoV(dot(normal, viewDir));\n"
 		"    vec3 halfVector = lightDir + viewDir; float halfLength2 = dot(halfVector, halfVector);\n"
 		"    if (ndotl <= 0.0 || halfLength2 <= 0.00000001) { attenuation = 0.0; return vec3(0.0); }\n"
@@ -1045,6 +1055,11 @@ static void R_ModernGLShaderLibrary_BuildFragmentBody( int glslVersion, modernGL
 		"        brdf = ModernProbeTile(63, vec2(ndotv, roughness), 128.0).rg;\n"
 		"        specularAlbedo = brdf.x + brdf.y;\n"
 		"    }\n"
+		// The analytic studio environment lights only the laboratory
+		// (uPBRIBL.x 1, r_pbrAnalyticEnvironment); production (2) starts from
+		// black and takes its environment from authored probes.
+		"    float analytic = abs(uPBRIBL.x - 1.0) < 0.5 ? 1.0 : 0.0;\n"
+		"    prefiltered *= analytic; irradiance *= analytic;\n"
 		"    vec3 probeEnvironment = vec3(0.0); vec3 probeDiffuse = vec3(0.0); float probeCoverage = 0.0;\n"
 		"    if (ModernSpecularProbeEnvironment(clusterRange, viewPosition, reflection, n, roughness, probeEnvironment, probeDiffuse, probeCoverage)) {\n"
 		"        prefiltered = mix(prefiltered, probeEnvironment, probeCoverage);\n"
@@ -1612,7 +1627,7 @@ static void R_ModernGLShaderLibrary_BuildFragmentBody( int glslVersion, modernGL
 			"        float inY = step(light.scissorDepth.y, pixel.y) * step(pixel.y, light.scissorDepth.w + 1.0);\n"
 		"        float shadowVisibility = ModernClusterShadowVisibility(light, viewPosition, geometricNormal);\n"
 			"        float attenuation = 0.0;\n"
-			"        vec3 contribution = pbr ? ModernClusterEvaluatePBRLight(light, viewPosition, normal, albedo.rgb, material.r, material.g, material.b, attenuation) : ModernClusterEvaluateLight(light, viewPosition, normal, material.g, material.a, attenuation);\n"
+			"        vec3 contribution = pbr ? ModernClusterEvaluatePBRLight(light, viewPosition, normal, geometricNormal, albedo.rgb, material.r, material.g, material.b, attenuation) : ModernClusterEvaluateLight(light, viewPosition, normal, material.g, material.a, attenuation);\n"
 			"        attenuation = supported ? attenuation * inX * inY * shadowVisibility : 0.0;\n"
 			"        lightAccum += pbr ? ModernPBRSceneColor(contribution * inX * inY * shadowVisibility) : contribution * inX * inY * shadowVisibility;\n"
 			"        contributingLights += attenuation > 0.001 ? 1 : 0;\n"
@@ -1713,7 +1728,7 @@ static void R_ModernGLShaderLibrary_BuildFragmentBody( int glslVersion, modernGL
 			"        float inY = step(light.scissorDepth.y, gl_FragCoord.y) * step(gl_FragCoord.y, light.scissorDepth.w + 1.0);\n"
 		"        float shadowVisibility = ModernClusterShadowVisibility(light, clusterPosition, ModernClusterFromEyeSpace(ModernSafeNormal(vViewNormal)));\n"
 			"        float attenuation = 0.0;\n"
-			"        vec3 contribution = pbr ? ModernClusterEvaluatePBRLight(light, clusterPosition, materialNormal, baseColor, pbrData.x, filteredRoughness, pbrData.z, attenuation) : ModernClusterEvaluateLight(light, clusterPosition, materialNormal, specular, ModernMaterialFresnel(), attenuation);\n"
+			"        vec3 contribution = pbr ? ModernClusterEvaluatePBRLight(light, clusterPosition, materialNormal, ModernClusterFromEyeSpace(ModernSafeNormal(vViewNormal)), baseColor, pbrData.x, filteredRoughness, pbrData.z, attenuation) : ModernClusterEvaluateLight(light, clusterPosition, materialNormal, specular, ModernMaterialFresnel(), attenuation);\n"
 			"        vec3 lightTerm = contribution * inX * inY * shadowVisibility;\n"
 			"        lightAccum += supported ? (pbr ? ModernPBRSceneColor(lightTerm) : lightTerm) : vec3(0.0);\n"
 			"        scannedLights++;\n"
@@ -1785,7 +1800,7 @@ static void R_ModernGLShaderLibrary_BuildFragmentBody( int glslVersion, modernGL
 			"        int type = int(floor(light.colorType.w + 0.5));\n"
 		"        float shadowVisibility = ModernClusterShadowVisibility(light, clusterPosition, ModernClusterFromEyeSpace(ModernSafeNormal(vViewNormal)));\n"
 			"        float attenuation = 0.0;\n"
-			"        vec3 contribution = pbr ? ModernClusterEvaluatePBRLight(light, clusterPosition, materialNormal, baseColor, pbrData.x, filteredRoughness, pbrData.z, attenuation) : ModernClusterEvaluateLight(light, clusterPosition, materialNormal, specular, ModernMaterialFresnel(), attenuation);\n"
+			"        vec3 contribution = pbr ? ModernClusterEvaluatePBRLight(light, clusterPosition, materialNormal, ModernClusterFromEyeSpace(ModernSafeNormal(vViewNormal)), baseColor, pbrData.x, filteredRoughness, pbrData.z, attenuation) : ModernClusterEvaluateLight(light, clusterPosition, materialNormal, specular, ModernMaterialFresnel(), attenuation);\n"
 			"        if (type == 0 || type == 1 || type == 3) { lightAccum += pbr ? ModernPBRSceneColor(contribution * shadowVisibility) : contribution * shadowVisibility; }\n"
 			"    }\n"
 			"    vec3 transparentColor = pbr ? ModernPBRSceneColor(ModernPBRIndirect(clusterPosition, materialNormal, ModernClusterFromEyeSpace(ModernSafeNormal(vViewNormal)), baseColor, pbrData.x, filteredRoughness, pbrData.z, clusterRange)) + lightAccum + ModernPBRSceneColor(emissive) : baseColor + lightAccum + emissive;\n"
@@ -2986,9 +3001,13 @@ static bool R_ModernGLShaderLibrary_CreateProgram( int glslVersion, modernGLShad
 		info.permutation.tier );
 
 	char vertexSource[16384];
-	char fragmentSource[73728];
+	// The clustered fragment programs embed the whole PBR kernel; keep their
+	// source off the stack.
+	static const int fragmentSourceSize = 131072;
+	idTempArray<char> fragmentSourceStorage( fragmentSourceSize );
+	char *fragmentSource = fragmentSourceStorage.Ptr();
 	R_ModernGLShaderLibrary_BuildVertexSource( glslVersion, kind, vertexSource, sizeof( vertexSource ) );
-	R_ModernGLShaderLibrary_BuildFragmentSource( glslVersion, kind, fragmentSource, sizeof( fragmentSource ) );
+	R_ModernGLShaderLibrary_BuildFragmentSource( glslVersion, kind, fragmentSource, fragmentSourceSize );
 
 	GLuint vertexShader = R_ModernGLShaderLibrary_CompileShader( GL_VERTEX_SHADER, vertexSource, programContext );
 	if ( vertexShader == 0 ) {

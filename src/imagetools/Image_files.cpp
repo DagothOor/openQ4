@@ -953,7 +953,8 @@ static bool R_ImageNameIsProgramOperator( const idToken &token ) {
 		!token.Icmp( "invertColor" ) ||
 		!token.Icmp( "makeIntensity" ) ||
 		!token.Icmp( "downsize" ) ||
-		!token.Icmp( "makeAlpha" );
+		!token.Icmp( "makeAlpha" ) ||
+		!token.Icmp( "packORM" );
 }
 
 static bool R_IsPlainImageSourceName( const char *imageName ) {

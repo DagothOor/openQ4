@@ -30,6 +30,13 @@ vec2 ModernBakedAtlasUV(vec3 cell, vec2 oct) {
     vec2 origin = vec2(index, cell.y) * uBakedGrid[3].z;
     return (origin + uBakedGrid[3].w * 0.5 + oct * (uBakedGrid[3].z - uBakedGrid[3].w)) * uBakedGrid[3].xy;
 }
+// Legacy atlas texels are display-encoded. PBR shades in linear light whether
+// it composes each draw into the display-referred frame or accumulates the
+// laboratory linear scene, so a PBR receiver always decodes them.
+vec3 ModernBakedLinear(vec3 color) {
+    vec3 c = max(color, vec3(0.0));
+    return mix(c / 12.92, pow((c + vec3(0.055)) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+}
 vec3 ModernBakedToWorld(vec3 v) {
     return uClusterGrid.viewToWorldX.xyz * v.x + uClusterGrid.viewToWorldY.xyz * v.y + uClusterGrid.viewToWorldZ.xyz * v.z;
 }
@@ -67,10 +74,10 @@ vec4 ModernBakedIrradiance(vec3 position, vec3 normal, bool pbr) {
         vec3 sampleCell = cell + corner;
         vec3 sampleColor = pow(max(texture(uBakedIrradiance, ModernBakedAtlasUV(sampleCell, oct)).rgb, vec3(0.0)), vec3(uBakedGrid[1].w));
         if (dot(sampleColor, vec3(1.0)) < 0.0001) continue;
-        // Legacy atlas texels are display-encoded. Decode each contributing
-        // probe before interpolation for linear PBR transport. Black/invalid
-        // handling and visibility weights retain the existing bake contract.
-        if (pbr) sampleColor = ModernClassicSceneColor(sampleColor);
+        // Decode each contributing probe before interpolation for linear PBR
+        // transport. Black/invalid handling and visibility weights retain the
+        // existing bake contract.
+        if (pbr) sampleColor = ModernBakedLinear(sampleColor);
         irradiance += sampleColor * weight * ModernBakedVisibility(sampleCell, worldPosition, worldNormal);
         validWeight += weight;
     }

@@ -108,6 +108,38 @@ static void EnergyCompensationTests() {
     Require(kernel::PBRSpecularAlbedo(1.0f, 0.0f) == kernel::PBRSpecularAlbedo(1.0f, 0.045f), "roughness floor");
 }
 
+// A per-light pass binds no split-sum table: the fitted bias must stand in
+// for it off the fit grid, and a uniform environment (an ambient light) must
+// keep a white furnace while F0 only ever adds reflection.
+static void UniformEnvironmentTests() {
+    using namespace openq4PBR;
+    double worstBias = 0, worstDielectric = 0;
+    for (int ri = 0; ri < 23; ++ri) {
+        const float r = 0.045f + (1.0f - 0.045f) * (ri + 0.37f) / 23.0f;
+        for (int vi = 0; vi < 19; ++vi) {
+            const float v = 0.1f + 0.9f * (vi + 0.41f) / 19.0f;
+            const auto ab = IntegrateBRDF(v, r, 4096);
+            const float albedo = kernel::PBRSpecularAlbedo(v, r);
+            const float bias = kernel::PBRSpecularBias(v, r);
+            Require(bias >= 0.0f && bias <= albedo, "split-sum bias within the directional albedo");
+            worstBias = std::fmax(worstBias, std::fabs(bias - ab[1]));
+            const double dielectric = 0.04 * (albedo - bias) + bias;
+            worstDielectric = std::fmax(worstDielectric, std::fabs(dielectric - (0.04 * ab[0] + ab[1])));
+            Require(std::fabs(kernel::PBRUniformEnvironmentSpecular(1.0f, v, r) - 1.0f) < 1e-5f,
+                "a white conductor reflects all of a uniform environment");
+            float previous = 0.0f;
+            for (float f0 : {0.0f, 0.04f, 0.25f, 0.5f, 0.75f, 1.0f}) {
+                const float reflected = kernel::PBRUniformEnvironmentSpecular(f0, v, r);
+                Require(reflected >= previous - 1e-6f && reflected <= 1.0f + 1e-5f,
+                    "uniform reflection grows with F0 and never exceeds one");
+                previous = reflected;
+            }
+        }
+    }
+    Require(worstBias < 0.012, "fitted split-sum bias accuracy");
+    Require(worstDielectric < 0.012, "dielectric uniform reflection accuracy");
+}
+
 // The extended transfer pair must equal the clamped one on [0, 1], continue
 // smoothly above white, and the classic light calibration must reproduce a
 // white classic surface's display value at normal incidence.
@@ -261,8 +293,9 @@ int main() {
     }
     EnvironmentTests();
     EnergyCompensationTests();
+    UniformEnvironmentTests();
     OcclusionTests();
     ClassicCalibrationTests();
-    std::puts("PBRMathTest: passed sRGB, mirror peaks, Smith reference, reciprocity, 24 white furnaces, probe convolution, HDR, seams, irradiance, split-sum integration, energy compensation, specular/multi-bounce/horizon occlusion, extended transfer and classic light calibration");
+    std::puts("PBRMathTest: passed sRGB, mirror peaks, Smith reference, reciprocity, 24 white furnaces, probe convolution, HDR, seams, irradiance, split-sum integration, energy compensation, split-sum bias and uniform environments, specular/multi-bounce/horizon occlusion, extended transfer and classic light calibration");
     return 0;
 }

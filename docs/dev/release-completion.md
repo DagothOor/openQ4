@@ -32,6 +32,16 @@
   OpenGL owner matches Vulkan on every paired direct, ambient, environment,
   probe, diagnostic and geometry control under the documented classic and
   edge exclusions.
+- [x] PBR production readiness, Stage E: environment lighting in real maps.
+  Authored ambient lights are uniform environments for PBR (Fresnel-weighted
+  diffuse and the split-sum specular, with a fitted bias term,
+  `PBRSpecularBias`), so metals reflect them and AO occludes both. The
+  analytic studio environment is the laboratory mode `r_pbrAnalyticEnvironment`
+  (default 0). The OpenGL owner composes baked light grids as Vulkan and
+  modern GL do, and modern GL no longer encodes baked PBR diffuse twice.
+  Separate metallic, roughness and AO maps pack at load (`packORM`). The
+  ambient oracles evaluate an independent NumPy reference
+  (`tools/tests/pbr_reference.py`) pixel by pixel over the specimen sphere.
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:

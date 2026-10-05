@@ -46,7 +46,7 @@ that a raw RGB normal and an A/G/B-swizzled normal contain the same channels.
 | `albedoMap` | sRGB color; alpha remains linear coverage. Do not bake lighting into it. |
 | `emissiveMap` | sRGB color, multiplied by linear `emissiveColor r, g, b`. Values above one retain HDR energy. |
 | `ormMap` | Linear data: red = occlusion, green = perceptual roughness, blue = metallic. |
-| `metallicMap`, `roughnessMap`, `aoMap` | Separate linear data maps, used instead of packed ORM. |
+| `metallicMap`, `roughnessMap`, `aoMap` | Separate linear data maps (each map's red channel), used instead of packed ORM. The engine packs them into one ORM texture at load, sampled like the first map, so they shade exactly like the packed form; maps of different sizes are resampled to the largest. |
 | `normalFormat tangentXYZ` | Signed tangent-space XYZ reconstructed from RGB. |
 | `normalFormat tangentRG` | Signed tangent-space XY from red/green; positive Z is reconstructed. |
 | `normalFormat quake4AGB` | The Quake 4 alpha/green/blue channel convention. |
@@ -71,6 +71,14 @@ darkens less than dark albedo. Environment specular uses specular occlusion
 derived from AO, roughness and view angle, so smooth surfaces seen head-on keep
 reflections a cavity would remove from rough ones. Reflections that a normal
 map would send below the geometric surface fade out.
+
+PBR surfaces take their indirect light from the map itself. An authored
+ambient light stands in for light bounced from every direction, so PBR treats
+it as a uniform environment: it lights diffuse and specular alike, metals
+reflect it in their own color, and AO occludes both. Authored probes add local
+reflections, and a baked light grid replaces environment diffuse with its own
+irradiance while the reflections stay. Where a map has none of these, PBR
+surfaces receive only their direct lights, as classic surfaces do.
 
 PBR surfaces are lit at the level of the map's classic lighting. A light that
 makes a white classic surface show a given brightness gives a white, rough PBR
@@ -106,9 +114,12 @@ laboratory mode `r_pbrLinearScene 1` (default 0, not saved) instead accumulates
 PBR radiance in a separate linear scene, encoded once per pixel, and with
 `r_hdrToneMap 1` presents the whole view, classic surfaces included, through
 the PBR filmic curve.
-`r_pbrIBL 1` supplies filtered environment lighting; `r_rendererReflectionProbes 1`
-allows explicitly authored probe lights. `r_pbrIBLIntensity` changes indirect
-lighting only. `r_rendererModernQuality 0` restores classic ownership.
+`r_pbrIBL 1` enables environment reflections and diffuse from authored probe
+lights (`r_rendererReflectionProbes 1`); `r_pbrIBLIntensity` scales them. The
+laboratory's analytic studio environment, a bright sky that lights every
+surface whether or not the map has probes, is `r_pbrAnalyticEnvironment 1`
+(default 0, not saved); use it to inspect materials, not to light a level.
+`r_rendererModernQuality 0` restores classic ownership.
 
 `r_pbrDebug` exposes albedo (1), normals (2), metallic (3), roughness (4), AO (5),
 emissive (6) and ownership (7). In ownership mode, green identifies PBR draws;
@@ -200,17 +211,19 @@ native lighting and authored alpha survive the intervening fog pass.
 checks complete classic fallback and native recovery when transparent PBR
 resources cannot be prepared, including across image and video reloads.
 
-Authored ambient lights now supply isotropic PBR diffuse lighting, including
-through source-alpha transparency. Material AO occludes them like environment
-diffuse. Metallic surfaces receive their reflections from environment lighting;
-ambient lights do not add a diffuse metallic glow.
+Authored ambient lights are uniform PBR environments on every backend,
+including through source-alpha transparency: Fresnel-weighted diffuse and the
+split-sum specular, both occluded by material AO, so metals reflect them. The
+laboratory's ambient oracle predicts that view-dependent response pixel by
+pixel over the specimen sphere (`tools/tests/pbr_reference.py`).
 The [ambient-light qualification](../dev/vulkan-pbr-ambient.md) records numerical,
 capacity and recovery controls. Both capacity and resource harnesses accept
 `--ambient-lights` to exercise those light stages.
 
 Mismatched masks/glows and unsupported stage combinations keep classic
-ownership. Vulkan now supplies filtered analytic environment reflections and
-diffuse irradiance through `r_pbrIBL`, with material AO and roughness. The default
+ownership. Vulkan filters environment reflections and diffuse irradiance
+through `r_pbrIBL`, with material AO and roughness, from authored probes (and
+the analytic studio environment in the laboratory mode). The default
 light-grid setting preserves this lighting when no baked grid applies to the
 receiver. Experimental authored
 reflection probes now have [local LDR/0x/4x qualification](../dev/vulkan-pbr-probes.md)

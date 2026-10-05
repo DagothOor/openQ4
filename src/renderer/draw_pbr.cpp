@@ -24,6 +24,7 @@
 #include "PBRNativeContract.h"
 #include "ModernSpecularProbeAtlas.h"
 #include "ModernClusteredLighting.h"
+#include "ModernLightGridGLSL.h"
 
 idCVar r_glPBR( "r_glPBR", "1", CVAR_RENDERER | CVAR_BOOL,
 	"draw admitted PBR materials natively in the classic OpenGL light loop; 0 keeps their classic stages" );
@@ -45,6 +46,10 @@ static const int GL_PBR_UNIT_ENVIRONMENT = 11;
 static const int GL_PBR_UNIT_PROBE_RECORDS = 12;
 static const int GL_PBR_UNIT_PROBE_INDICES = 13;
 static const int GL_PBR_REQUIRED_IMAGE_UNITS = 14;
+// The environment program reuses the shadow units for the baked light grid.
+static const int GL_PBR_UNIT_BAKED_IRRADIANCE = 5;
+static const int GL_PBR_UNIT_BAKED_VISIBILITY = 6;
+static const int GL_PBR_UNIT_BAKED_RELOCATION = 7;
 // Cluster index pairs are stored row-major in a float texture this wide.
 static const int GL_PBR_PROBE_INDEX_WIDTH = 1024;
 
@@ -181,6 +186,24 @@ static void RB_GLPBR_BuildFragmentLibrary( void ) {
 		"	return vec3( PBRClassicLightIrradiance( lightTerm.r ),\n"
 		"		PBRClassicLightIrradiance( lightTerm.g ), PBRClassicLightIrradiance( lightTerm.b ) );\n"
 		"}\n"
+		// An authored ambient light stands in for bounced light from every
+		// direction: a uniform environment of radiance E / pi, the environment
+		// term with prefiltered radiance and irradiance both E / pi
+		// (pbr_direct.glsl PBRUniformEnvironmentLight).
+		"vec3 PBRUniformEnvironmentLight( vec3 irradiance, vec3 albedo, float metallic, float roughness,\n"
+		"		float ao, vec3 n, vec3 v, vec3 vertexNormal ) {\n"
+		"	float NoV = PBRShadingNoV( dot( n, v ) );\n"
+		"	vec3 f0 = mix( vec3( 0.04 ), albedo, metallic );\n"
+		"	vec3 diffuseColor = albedo * ( 1.0 - metallic );\n"
+		"	vec3 fresnel = f0 + ( max( vec3( 1.0 - roughness ), f0 ) - f0 ) * PBRFresnelWeight( NoV );\n"
+		"	vec3 specular = vec3( PBRUniformEnvironmentSpecular( f0.r, NoV, roughness ),\n"
+		"			PBRUniformEnvironmentSpecular( f0.g, NoV, roughness ),\n"
+		"			PBRUniformEnvironmentSpecular( f0.b, NoV, roughness ) )\n"
+		"		* PBRMultiBounceAOColor( PBRSpecularOcclusion( NoV, ao, roughness ), f0 )\n"
+		"		* PBRHorizonOcclusion( dot( reflect( -v, n ), PBRSafeNormalize( vertexNormal ) ) );\n"
+		"	vec3 diffuse = ( vec3( 1.0 ) - fresnel ) * diffuseColor * PBRMultiBounceAOColor( ao, diffuseColor );\n"
+		"	return ( diffuse + specular ) * irradiance * ( 1.0 / 3.14159265 );\n"
+		"}\n"
 		"vec3 OpenQ4PBRDirect( vec3 shadow ) {\n"
 		// Color uses sRGB storage and decodes before filtering. Data stays linear.
 		"	vec3 albedo = texture2D( uDiffuseMap, vDiffuseTexCoord ).rgb;\n"
@@ -190,13 +213,6 @@ static void RB_GLPBR_BuildFragmentLibrary( void ) {
 		"		texture2DProj( uLightFalloffMap, vLightFalloffTexCoord ).rgb\n"
 		"		* texture2DProj( uLightProjectionMap, vLightProjectionTexCoord ).rgb\n"
 		"		* uDiffuseColor.rgb ) * shadow;\n"
-		"	if ( uPBRMode.w > 0.5 ) {\n"
-		// An authored ambient light is an isotropic diffuse source standing in
-		// for bounced light: material AO occludes it like environment diffuse.
-		"		vec3 diffuseColor = albedo * ( 1.0 - metallic );\n"
-		"		return PBRDisplayOutput( radiance * diffuseColor * ( 0.96 / 3.14159265 )\n"
-		"			* PBRMultiBounceAOColor( data.z, diffuseColor ) * vVertexColor );\n"
-		"	}\n"
 		"	float roughness = PBRRoughness( data.y );\n"
 		// A flat tangent-space normal still varies across a curved surface:
 		// measure the final normal in object space for specular AA.
@@ -206,8 +222,12 @@ static void RB_GLPBR_BuildFragmentLibrary( void ) {
 		"	if ( uPBRMode.z > 0.5 ) {\n"
 		"		roughness = PBRFilteredRoughness( roughness, 0.5 * ( dot( normalDx, normalDx ) + dot( normalDy, normalDy ) ) );\n"
 		"	}\n"
-		"	vec3 lightDir = PBRSafeNormalize( vLightVector );\n"
 		"	vec3 viewDir = PBRSafeNormalize( vViewVector );\n"
+		"	if ( uPBRMode.w > 0.5 ) {\n"
+		"		return PBRDisplayOutput( PBRUniformEnvironmentLight( radiance, albedo, metallic, roughness, data.z,\n"
+		"			objectNormal, viewDir, vPBRNormal ) * vVertexColor );\n"
+		"	}\n"
+		"	vec3 lightDir = PBRSafeNormalize( vLightVector );\n"
 		"	vec3 halfDir = PBRSafeNormalize( lightDir + viewDir );\n"
 		"	float ndotl = max( dot( objectNormal, lightDir ), 0.0 );\n"
 		"	float ndotv = PBRShadingNoV( dot( objectNormal, viewDir ) );\n"
@@ -261,6 +281,7 @@ typedef struct {
 	int		emission;			// native emission draws
 	int		transparent;		// translucent surfaces composited at their blend stage
 	int		transparentLights;	// light draws replayed through a translucent coverage
+	int		baked;				// environment draws that took a baked light grid's diffuse
 	const char *lastDecline;
 	const char *translucentView;	// why the last view did or did not own translucency
 } glPBRFrameStats_t;
@@ -325,6 +346,7 @@ typedef struct {
 	GLint		textureMatrixT;
 	GLint		modelMatrixRow[3];
 	GLint		probeHeader;
+	GLint		bakedGrid;
 } glPBRProgram_t;
 
 static glPBRProgram_t g_glPBRUnshadowed;
@@ -469,6 +491,7 @@ static void RB_GLPBR_LookupInteractionUniforms( glPBRProgram_t &program ) {
 	program.modelMatrixRow[1] = glGetUniformLocationARB( object, "uModelMatrixRow1" );
 	program.modelMatrixRow[2] = glGetUniformLocationARB( object, "uModelMatrixRow2" );
 	program.probeHeader = glGetUniformLocationARB( object, "uProbeHeader[0]" );
+	program.bakedGrid = glGetUniformLocationARB( object, "uBakedGrid[0]" );
 	RB_GLPBR_LookupReceiverUniforms( object, program.pbr );
 
 	static const struct { const char *name; int unit; } samplers[] = {
@@ -481,6 +504,10 @@ static void RB_GLPBR_LookupInteractionUniforms( glPBRProgram_t &program ) {
 		// distinct units keep sampler types from colliding.
 		{ "uShadowMap", 5 }, { "uTranslucentShadowMapR", 6 }, { "uTranslucentShadowMapG", 7 },
 		{ "uTranslucentShadowMapB", 8 },
+		// The environment program has no shadow maps: its baked light-grid
+		// atlases take those units.
+		{ "uBakedIrradiance", GL_PBR_UNIT_BAKED_IRRADIANCE }, { "uBakedVisibility", GL_PBR_UNIT_BAKED_VISIBILITY },
+		{ "uBakedRelocation", GL_PBR_UNIT_BAKED_RELOCATION },
 	};
 	GLhandleARB previous = glGetHandleARB( GL_PROGRAM_OBJECT_ARB );
 	glUseProgramObjectARB( object );
@@ -597,7 +624,7 @@ static const char *RB_GLPBR_EnvironmentFragment( void ) {
 		"uniform vec3 uObjectToWorld0;\n"
 		"uniform vec3 uObjectToWorld1;\n"
 		"uniform vec3 uObjectToWorld2;\n"
-		"uniform vec4 uPBREnvironment;\n"	// intensity, diagnostic mode, atlas ready, unused
+		"uniform vec4 uPBREnvironment;\n"	// intensity, diagnostic mode, atlas ready, analytic weight
 		"varying vec2 vBumpTexCoord;\n"
 		"varying vec2 vDiffuseTexCoord;\n"
 		"varying vec2 vSpecularTexCoord;\n"
@@ -612,6 +639,16 @@ static const char *RB_GLPBR_EnvironmentFragment( void ) {
 	glPBREnvironmentFragment += OPENQ4_PBR_SCALAR_GLSL;
 	glPBREnvironmentFragment += "\n";
 	glPBREnvironmentFragment += GL_PBR_MATERIAL_GLSL;
+	// The baked light grid, sampled exactly as the modern path and Vulkan do
+	// (ModernLightGridGLSL.h). That source maps view-relative positions to
+	// the world; this program passes world positions, so its basis is the
+	// identity and uBakedGrid[6] carries a zero origin.
+	glPBREnvironmentFragment +=
+		"#define MODERN_HAS_TEXTURE_TABLE 0\n"
+		"struct OpenQ4BakedBasis { vec4 viewToWorldX; vec4 viewToWorldY; vec4 viewToWorldZ; };\n"
+		"const OpenQ4BakedBasis uClusterGrid = OpenQ4BakedBasis( vec4( 1.0, 0.0, 0.0, 0.0 ),\n"
+		"	vec4( 0.0, 1.0, 0.0, 0.0 ), vec4( 0.0, 0.0, 1.0, 0.0 ) );\n";
+	glPBREnvironmentFragment += modernLightGridGLSL;
 	glPBREnvironmentFragment +=
 		"vec3 PBREnvironmentWorld( vec3 objectDirection ) {\n"
 		"	return PBRSafeNormalize( vec3( dot( uObjectToWorld0, objectDirection ),\n"
@@ -783,14 +820,17 @@ static const char *RB_GLPBR_EnvironmentFragment( void ) {
 		"	vec3 reflection = reflect( -v, n );\n"
 		"	float lod = roughness * 6.0;\n"
 		"	int low = int( floor( lod ) );\n"
+		// The analytic studio environment lights only the laboratory
+		// (r_pbrAnalyticEnvironment); production starts from black and takes
+		// its environment from authored probes and baked light grids.
 		"	vec3 prefiltered = mix( PBREnvironmentLevel( 8, reflection, low ),\n"
-		"		PBREnvironmentLevel( 8, reflection, min( low + 1, 6 ) ), fract( lod ) );\n"
+		"		PBREnvironmentLevel( 8, reflection, min( low + 1, 6 ) ), fract( lod ) ) * uPBREnvironment.w;\n"
 		"	vec3 octNormal = n / max( abs( n.x ) + abs( n.y ) + abs( n.z ), 1.0e-6 );\n"
 		"	vec2 oct = octNormal.xy;\n"
 		"	if ( n.z < 0.0 ) {\n"
 		"		oct = ( 1.0 - abs( octNormal.yx ) ) * vec2( n.x >= 0.0 ? 1.0 : -1.0, n.y >= 0.0 ? 1.0 : -1.0 );\n"
 		"	}\n"
-		"	vec3 irradiance = PBREnvironmentTile( 54 + 8, oct * 0.5 + 0.5, 32.0 );\n"
+		"	vec3 irradiance = PBREnvironmentTile( 54 + 8, oct * 0.5 + 0.5, 32.0 ) * uPBREnvironment.w;\n"
 		"	PBRProbeBlend( vWorldPosition, reflection, n, roughness, prefiltered, irradiance );\n"
 		"	vec2 brdf = PBREnvironmentTile( 63, vec2( NoV, roughness ), 128.0 ).rg;\n"
 		"	vec3 f0 = mix( vec3( 0.04 ), albedo, metallic );\n"
@@ -805,6 +845,14 @@ static const char *RB_GLPBR_EnvironmentFragment( void ) {
 		"	vec3 diffuse = ( 1.0 - fresnel ) * diffuseColor * irradiance * diffuseAO;\n"
 		"	vec3 specular = prefiltered * ( f0 * brdf.x + brdf.y )\n"
 		"		* PBREnergyCompensationColor( f0, brdf.x + brdf.y ) * specularAO;\n"
+		// A baked light grid replaces environment diffuse with its own
+		// irradiance and keeps the reflections (pbr_environment.glsl).
+		"	vec4 baked = ModernBakedIrradiance( vWorldPosition, n, true );\n"
+		"	if ( baked.x >= 0.0 ) {\n"
+		"		diffuse = ModernBakedClamp( ( 1.0 - fresnel ) * diffuseColor * baked.rgb * diffuseAO * vVertexColor, baked.w );\n"
+		"		gl_FragColor = vec4( PBRDisplayOutput( diffuse + specular * uPBREnvironment.x * vVertexColor ), alpha );\n"
+		"		return;\n"
+		"	}\n"
 		"	gl_FragColor = vec4( PBRDisplayOutput( ( diffuse + specular ) * uPBREnvironment.x * vVertexColor ), alpha );\n"
 		"}\n";
 	return glPBREnvironmentFragment.c_str();
@@ -1431,8 +1479,26 @@ static int RB_GLPBR_DiagnosticView( void ) {
 	return ( diagnostic >= 1 && diagnostic <= 5 ) || diagnostic == 7 ? diagnostic : 0;
 }
 
+/*
+Production environment lighting is the map's own: authored probes, and a baked
+light grid's irradiance in place of environment diffuse. The analytic studio
+environment lights only the laboratory (r_pbrAnalyticEnvironment). A surface
+with none of them draws no environment pass at all.
+*/
 static bool RB_GLPBR_Illuminated( void ) {
-	return r_pbrIBL.GetBool() && r_pbrIBLIntensity.GetFloat() > 0.0f;
+	return r_pbrIBL.GetBool() && r_pbrIBLIntensity.GetFloat() > 0.0f
+		&& ( r_pbrAnalyticEnvironment.GetBool() || RB_GLPBR_ProbeView( backEnd.viewDef ) != NULL );
+}
+
+static const LightGrid *RB_GLPBR_SurfaceGrid( const drawSurf_t *surf ) {
+	if ( !r_useLightGrid.GetBool() || r_skipDiffuse.GetBool() || r_pbrDebug.GetInteger() != 0 ) {
+		return NULL;
+	}
+	// The modern receiver contract: no grid (or a rejected one, such as a
+	// surface beside a blending portal or a depth-hacked weapon) leaves the
+	// environment diffuse, never the classic grid pass.
+	const LightGrid *grid = NULL;
+	return RB_PrepareModernLightGrid( surf, backEnd.viewDef, grid ) ? grid : NULL;
 }
 
 /*
@@ -1442,10 +1508,12 @@ translucent surface, its coverage alone. alphaScale > 0 composites through the
 authored coverage under the given blend; zero keeps the additive contract.
 */
 static void RB_GLPBR_EnvironmentPass( const drawSurf_t *surf, const pbrNativeMaterial_t &material, idDrawVert *ac,
-		int diagnostic, bool coverageOnly, float alphaScale, int stateBits ) {
+		int diagnostic, bool coverageOnly, float alphaScale, int stateBits, const LightGrid *grid = NULL ) {
 	const glPBRProgram_t &program = g_glPBREnvironment;
 	const bool diagnosticView = diagnostic != 0;
 	const bool lit = !diagnosticView && !coverageOnly;
+	const bool illuminated = lit && RB_GLPBR_Illuminated();
+	grid = lit ? grid : NULL;
 	GL_State( stateBits );
 	glDisable( GL_VERTEX_PROGRAM_ARB );
 	glDisable( GL_FRAGMENT_PROGRAM_ARB );
@@ -1474,7 +1542,7 @@ static void RB_GLPBR_EnvironmentPass( const drawSurf_t *surf, const pbrNativeMat
 	}
 	float probeHeader[7][4];
 	memset( probeHeader, 0, sizeof( probeHeader ) );
-	const rendererSpecularProbeView_t *probeView = lit ? RB_GLPBR_ProbeView( backEnd.viewDef ) : NULL;
+	const rendererSpecularProbeView_t *probeView = illuminated ? RB_GLPBR_ProbeView( backEnd.viewDef ) : NULL;
 	if ( probeView != NULL && RB_GLPBR_UploadProbeView( *probeView ) ) {
 		memcpy( probeHeader[0], probeView->grid, sizeof( probeHeader[0] ) );
 		memcpy( probeHeader[1], probeView->depth, sizeof( probeHeader[1] ) );
@@ -1498,10 +1566,26 @@ static void RB_GLPBR_EnvironmentPass( const drawSurf_t *surf, const pbrNativeMat
 	RB_GLPBR_SetVertexColorParams( program.vertexColorParams, vertexColor );
 	RB_GLPBR_SetMaterialUniforms( program.pbr, material, false, alphaScale, coverageOnly );
 	if ( program.environment >= 0 ) {
-		glUniform4fARB( program.environment, idMath::ClampFloat( 0.0f, 4.0f, r_pbrIBLIntensity.GetFloat() ),
-			diagnosticView ? static_cast<float>( diagnostic ) : 0.0f, 1.0f, 0.0f );
+		// A grid-only pass keeps its baked diffuse and adds no reflection.
+		glUniform4fARB( program.environment,
+			illuminated || diagnosticView ? idMath::ClampFloat( 0.0f, 4.0f, r_pbrIBLIntensity.GetFloat() ) : 0.0f,
+			diagnosticView ? static_cast<float>( diagnostic ) : 0.0f, 1.0f, r_pbrAnalyticEnvironment.GetBool() ? 1.0f : 0.0f );
 	}
-	RB_GLPBR_BindRawUnit( GL_PBR_UNIT_ENVIRONMENT, GL_TEXTURE_2D, lit ? R_ModernSpecularProbeAtlas_Texture() : 0 );
+	float bakedGrid[7][4];
+	memset( bakedGrid, 0, sizeof( bakedGrid ) );
+	if ( grid != NULL ) {
+		// This program passes world positions: a zero origin.
+		const float worldOrigin[3] = { 0.0f, 0.0f, 0.0f };
+		RB_LightGridBakedParams( *grid, worldOrigin, bakedGrid );
+		RB_GLPBR_BindImage( GL_PBR_UNIT_BAKED_IRRADIANCE, grid->irradianceImage );
+		RB_GLPBR_BindImage( GL_PBR_UNIT_BAKED_VISIBILITY, grid->visibilityImage );
+		RB_GLPBR_BindImage( GL_PBR_UNIT_BAKED_RELOCATION, grid->probeImage );
+	}
+	if ( program.bakedGrid >= 0 ) {
+		// Program state persists: a draw without a grid disables it.
+		glUniform4fvARB( program.bakedGrid, 7, bakedGrid[0] );
+	}
+	RB_GLPBR_BindRawUnit( GL_PBR_UNIT_ENVIRONMENT, GL_TEXTURE_2D, illuminated || grid != NULL ? R_ModernSpecularProbeAtlas_Texture() : 0 );
 	RB_GLPBR_BindMaterialImages( material );
 
 	RB_GLPBR_EnableVertexArrays( true );
@@ -1512,6 +1596,15 @@ static void RB_GLPBR_EnvironmentPass( const drawSurf_t *surf, const pbrNativeMat
 	RB_GLPBR_BindRawUnit( GL_PBR_UNIT_ENVIRONMENT, GL_TEXTURE_2D, 0 );
 	RB_GLPBR_BindRawUnit( GL_PBR_UNIT_PROBE_RECORDS, GL_TEXTURE_2D, 0 );
 	RB_GLPBR_BindRawUnit( GL_PBR_UNIT_PROBE_INDICES, GL_TEXTURE_2D, 0 );
+	if ( grid != NULL ) {
+		// Tracked units: unbinding also disables them for the fixed-function
+		// stages that follow in the walk.
+		for ( int unit = GL_PBR_UNIT_BAKED_RELOCATION; unit >= GL_PBR_UNIT_BAKED_IRRADIANCE; --unit ) {
+			GL_SelectTextureNoClient( unit );
+			globalImages->BindNull();
+		}
+		g_glPBRStats.baked++;
+	}
 	RB_GLPBR_ReleaseProgramState();
 	g_glPBRStats.environment++;
 }
@@ -1519,13 +1612,18 @@ static void RB_GLPBR_EnvironmentPass( const drawSurf_t *surf, const pbrNativeMat
 void RB_GLPBR_DrawEnvironment( const drawSurf_t *surf ) {
 	const int diagnostic = RB_GLPBR_DiagnosticView();
 	if ( surf == NULL || surf->material == NULL || !surf->material->HasPBR()
-			|| ( diagnostic == 0 && ( !RB_GLPBR_Illuminated() || r_pbrDebug.GetInteger() != 0 ) )
+			|| ( diagnostic == 0 && r_pbrDebug.GetInteger() != 0 )
 			|| surf->material->GetSort() >= SS_POST_PROCESS || RB_GLPBR_Translucent( surf )
 			|| !RB_GLPBR_SurfaceOwned( surf ) ) {
 		// A translucent owner composites everything at its blend stage.
 		return;
 	}
-	if ( !RB_GLPBR_LoadEnvironmentProgram() || ( diagnostic == 0 && !RB_GLPBR_EnvironmentAtlasReady() ) ) {
+	const bool illuminated = diagnostic == 0 && RB_GLPBR_Illuminated();
+	const LightGrid *grid = diagnostic == 0 ? RB_GLPBR_SurfaceGrid( surf ) : NULL;
+	if ( diagnostic == 0 && !illuminated && grid == NULL ) {
+		return;
+	}
+	if ( !RB_GLPBR_LoadEnvironmentProgram() || ( illuminated && !RB_GLPBR_EnvironmentAtlasReady() ) ) {
 		return;
 	}
 	pbrNativeMaterial_t material;
@@ -1536,7 +1634,7 @@ void RB_GLPBR_DrawEnvironment( const drawSurf_t *surf ) {
 	}
 	const int previousTmu = backEnd.glState.currenttmu;
 	RB_GLPBR_EnvironmentPass( surf, material, ac, diagnostic, false, 0.0f,
-		GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHMASK | GLS_DEPTHFUNC_EQUAL );
+		GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHMASK | GLS_DEPTHFUNC_EQUAL, grid );
 	// The ambient walk set the fixed-function texcoord pointer for its stages.
 	glTexCoordPointer( 2, GL_FLOAT, sizeof( idDrawVert ), RB_DrawVertAttributePointer( ac, DRAWVERT_ST_OFFSET ) );
 	if ( previousTmu >= 0 ) {
@@ -1743,11 +1841,12 @@ idImage *RB_GLPBR_DepthCoverageImage( const drawSurf_t *surf, const shaderStage_
 
 void RB_GLPBR_PrintInfo( void ) {
 	const glPBRFrameStats_t &stats = g_glPBRLastStats.frame != 0 ? g_glPBRLastStats : g_glPBRStats;
-	common->Printf( "OpenGL: native PBR: enabled=%d program=%d environment=%d emission=%d admitted=%d declined=%d interactions=%d mapped=%d environmentDraws=%d emissionDraws=%d transparent=%d transparentLights=%d probeViews=%d lastDecline=%s translucentView=%s\n",
+	common->Printf( "OpenGL: native PBR: enabled=%d program=%d environment=%d emission=%d admitted=%d declined=%d interactions=%d mapped=%d environmentDraws=%d emissionDraws=%d transparent=%d transparentLights=%d baked=%d analytic=%d probeViews=%d lastDecline=%s translucentView=%s\n",
 		r_glPBR.GetBool() && r_pbrMaterials.GetBool() && r_rendererModernQuality.GetBool() ? 1 : 0,
 		g_glPBRUnshadowed.valid ? 1 : 0, g_glPBREnvironment.valid ? 1 : 0, g_glPBREmission.valid ? 1 : 0,
 		stats.admitted, stats.declined, stats.interactions, stats.mappedInteractions,
-		stats.environment, stats.emission, stats.transparent, stats.transparentLights, g_glPBRProbeFrameViews,
+		stats.environment, stats.emission, stats.transparent, stats.transparentLights, stats.baked,
+		r_pbrAnalyticEnvironment.GetBool() ? 1 : 0, g_glPBRProbeFrameViews,
 		stats.lastDecline != NULL ? stats.lastDecline : "none",
 		stats.translucentView != NULL ? stats.translucentView : "none" );
 }

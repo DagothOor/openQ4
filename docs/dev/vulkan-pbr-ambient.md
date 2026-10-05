@@ -1,33 +1,39 @@
 # Native Vulkan PBR ambient lights
 
-Status: implemented; 41 lighting, 18 capacity and 44 resource controls pass at
-each of 0x/4x MSAA on Windows/NVIDIA. Both 68-case direct-light regressions pass.
-This is authored `ambientLight` material lighting, separate from analytic IBL,
-reflection probes and baked light grids. Vulkan and PBR remain experimental.
+Status: implemented; 41 lighting, 18 capacity and 44 resource controls pass on
+Windows/NVIDIA (the counts below are from the v26 qualification; the current
+evidence is in the production-readiness plan). This is authored `ambientLight`
+material lighting, separate from analytic IBL, reflection probes and baked
+light grids.
 
-Eligible PBR receivers now evaluate an ambient light in the same linear material
-domain as their point and projected lights. The source is isotropic diffuse:
-E × linear albedo × (1 − metallic) × 0.96/π, where the irradiance E is π times
-the sRGB-decoded classic light term (projection × falloff × light color,
-`PBRClassicLightIrradiance`, since Stage C of the
-[production-readiness plan](plans/2026-10-04-pbr-production-readiness.md)).
-Each light stage is one draw whose radiance is encoded into the display-referred
-framebuffer on its own, like a classic interaction, so a white receiver under
-one ambient light shows 0.96 of the classic light term's decoded energy.
-It has no normal-direction or roughness dependence and contributes no metallic
-specular lobe. Environment lighting retains that responsibility. An authored
-ambient light stands in for bounced light, so since 2026-10-04 material AO
-occludes it exactly like environment diffuse, through the shared multi-bounce
-form `PBRMultiBounceAO(ao, (1 - metallic) albedo)` on both backends. The AO
-scalar travels in `pc.b.x`, which the classic ambient direction occupies for
-classic draws only. The texel comes from the ORM red channel or, for an ambient
-stage only, from a separate AO map bound in the slot that holds the roughness
-map the stage never reads (`dataFlags & 16`). The parity oracle models the
-same factor, the per-stage encoding and the framebuffer's white limit;
-`ao_zero` is black under an ambient light. OpenGL's modern clustered path now
-builds one record per ambient stage like other additive lights, matching this
-per-draw composition, although its whole-frame owner still declines scenes
-with ambient lights (below).
+Eligible PBR receivers evaluate an ambient light in the same linear material
+domain as their point and projected lights. Since Stage E of the
+[production-readiness plan](plans/2026-10-04-pbr-production-readiness.md) an
+authored ambient light is a uniform environment: an irradiance E (pi times the
+sRGB-decoded classic light term, projection x falloff x light color,
+`PBRClassicLightIrradiance`) is radiance E/pi from every direction. It reaches
+Fresnel-weighted diffuse, (1 - F) x linear albedo x (1 - metallic) x E/pi with
+F the roughness-aware Fresnel at N.V, and the split-sum specular
+(f0 A + (1 - f0) B) x E/pi with energy compensation
+(`PBRUniformEnvironmentSpecular`), so metals reflect it. Per-light passes bind
+no split-sum table, so the bias B has its own fit (`PBRSpecularBias`). Material
+AO occludes both terms, as for environment light: the multi-bounce form
+`PBRMultiBounceAO(ao, (1 - metallic) albedo)` on diffuse, specular occlusion
+and horizon occlusion on specular. Each light stage is one draw whose radiance
+is encoded into the display-referred framebuffer on its own, like a classic
+interaction; a white rough dielectric seen head-on returns 0.97 of the classic
+term and a white conductor all of it. The AO scalar travels in `pc.b.x`, which
+the classic ambient direction occupies for classic draws only. Separate
+metallic, roughness and AO maps are packed into one ORM image at load
+(`packORM`), so the stage reads all three channels from the slot that holds
+material data. The parity oracle (`renderer_pbr_ambient_parity.py`, with the
+NumPy reference `pbr_reference.py`) predicts the view-dependent response pixel
+by pixel over the specimen sphere, with the per-stage encoding and the
+framebuffer's white limit; `ao_zero` is black under an ambient light. OpenGL's
+classic light loop owns the same evaluation (Stage B), and the modern
+clustered path builds one record per ambient stage like other additive lights,
+although its whole-frame owner still declines scenes with ambient lights
+(below).
 Material diagnostics and emission retain their once-per-surface owner.
 
 Previously, `VK_PBRDirectInteraction` rejected ambient lights. Opaque PBR

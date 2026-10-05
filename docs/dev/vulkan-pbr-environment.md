@@ -2,7 +2,11 @@
 
 Status: implemented and locally qualified at 0x/4x MSAA on Windows/NVIDIA.
 This records the analytic environment contribution for admitted authored PBR
-surfaces. [Authored reflection probes](vulkan-pbr-probes.md) also have local
+surfaces. Since Stage E of the
+[production-readiness plan](plans/2026-10-04-pbr-production-readiness.md) the
+analytic studio environment lights only the laboratory
+(`r_pbrAnalyticEnvironment 1`); production environment light comes from
+authored probes, baked light grids and ambient lights. [Authored reflection probes](vulkan-pbr-probes.md) also have local
 LDR qualification at 0x/4x. Baked PBR diffuse composition and full scene
 color parity remain open; Vulkan remains experimental.
 

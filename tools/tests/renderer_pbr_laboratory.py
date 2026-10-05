@@ -59,6 +59,10 @@ BASE = {
     # machinery under test. Production (0) composites each PBR draw into the
     # display-referred framebuffer; the composite-* controls select it.
     'r_pbrLinearScene': '1',
+    # The analytic studio environment is the laboratory's reference lighting;
+    # production (0) takes environment light from authored probes, baked grids
+    # and ambient lights only. The production-environment controls select it.
+    'r_pbrAnalyticEnvironment': '1',
     'r_bloom': '0', 'r_ssao': '0', 'r_postAA': '0', 'r_motionBlur': '0',
     'r_hdrToneMap': '0', 'r_hdrAutoExposure': '0', 'r_hdrSceneTarget': '1',
     'r_hdrExposure': '1', 'r_hdrHighlightDesaturation': '0', 'r_hdrGamutCompression': '0',
@@ -410,6 +414,8 @@ IBL_MATERIALS = {
     'alpha':'source_alpha', 'alpha-off':'source_alpha', 'alpha-restored':'source_alpha',
     'image-reload':'data_scalar', 'partial-restart':'data_scalar', 'full-restart':'data_scalar',
     'shared':'data_scalar', 'master-off':'data_scalar', 'legacy':'data_scalar',
+    # Production environment lighting: no analytic studio and no probe here.
+    'production':'data_scalar',
 }
 for suffix in IBL_MATERIALS:
     case='ibl-'+suffix
@@ -421,6 +427,7 @@ for suffix in IBL_MATERIALS:
     if suffix in ('image-reload','partial-restart','full-restart'):
         CASE_COMMANDS[case]=CASE_COMMANDS[suffix]
 CASES['ibl-shared']['r_rendererSharedWorldAmbient']='1'
+CASES['ibl-production']['r_pbrAnalyticEnvironment']='0'
 for name in ('cutout-coverage','cutout-hard-coverage'):
     CASES['ibl-'+name]['r_pbrDebug']='7'
 CASES['ibl-cutout-hard-coverage']['r_msaaAlphaToCoverage']='0'
@@ -529,7 +536,9 @@ def compare_ibl_captures(results: list[dict], patches: dict[str,bytes] | None = 
                 row['failures'].append('cutout ownership does not measure four-sample coverage')
             if name=='cutout-hard-coverage' and any(v not in (0,255) for v in green):
                 row['failures'].append('hard cutout coverage contains partial interior pixels')
-        elif name in ('off','zero','ao-zero','alpha-off'):
+        elif name in ('off','zero','ao-zero','alpha-off','production'):
+            # Production takes environment light only from the map's probes
+            # and grids; this scene has neither.
             if max(patch)>0: row['failures'].append('disabled or fully occluded environment still illuminates opaque material')
         elif name not in ('legacy','master-off','cutout-off','alpha-off'):
             if sum(patch)/len(patch)<0.5 or row['environmentProof']['clippedFraction']>0.05:
@@ -929,6 +938,45 @@ def stock_display_transfer(value: float, settings: dict[str,str]) -> float:
     return min(max(x,0.0),1.0)
 
 
+def native_gl_owner(row: dict) -> bool:
+    """The classic OpenGL light loop owned the capture's PBR (--gl-native)."""
+    return any(line.startswith('OpenGL: native PBR:') and re.search(r'\badmitted=[1-9]', line)
+               for line in row.get('telemetry', []))
+
+
+def compare_native_baked_captures(results: list[dict]) -> None:
+    """The classic OpenGL owner's baked light grid, from display captures.
+
+    It is display-referred on every path (it has no linear export), so the
+    linear grid checks above cannot see it. A grid adds diffuse to every
+    dielectric station, never to a metal or a zero-AO material (their diffuse
+    is zero), scales with the grid intensity, and draws in the environment
+    pass, which the owner reports.
+    """
+    by_case = {r['case']: r for r in results}
+    rows = [by_case.get('lightgrid-pbr' + suffix) for suffix in ('-clear', '', '-double')]
+    if not all(row is not None for row in rows) or not native_gl_owner(rows[1]):
+        return
+    native = next((line for line in rows[1].get('telemetry', []) if line.startswith('OpenGL: native PBR:')), '')
+    if int(dict(re.findall(r'(\w+)=([^\s]+)', native)).get('baked', '0')) <= 0:
+        rows[1]['failures'].append('native OpenGL PBR drew no baked light-grid receiver')
+    clear, grid, double = [row.get('image', {}).get('stationRGB', {}) for row in rows]
+    rows[1]['nativeBakedComparisons'] = {}
+    for name, a in clear.items():
+        if name not in grid or name not in double or name in ('source_alpha', 'cutout', 'emissive'):
+            continue
+        added = [y - x for x, y in zip(a, grid[name])]
+        doubled = [y - x for x, y in zip(a, double[name])]
+        zero_diffuse = name.startswith('metal_') or name in ('ao_zero', 'normal_zero', 'normal_xyz', 'normal_rg', 'normal_agb')
+        rows[1]['nativeBakedComparisons'][name] = {'added': added, 'doubled': doubled}
+        if zero_diffuse and max(abs(d) for d in added) > 1:
+            rows[1]['failures'].append(f'{name}: metalness or AO did not suppress baked diffuse')
+        if not zero_diffuse and max(added) < 2:
+            rows[1]['failures'].append(f'{name}: baked diffuse contributed no light')
+        if not zero_diffuse and max(doubled) <= max(added):
+            rows[1]['failures'].append(f'{name}: doubling the grid intensity added no light')
+
+
 def compare_material_captures(results: list[dict]) -> None:
     """Use changed controls as an oracle, including controls that must do nothing."""
     by_case = {r['case']: r for r in results if
@@ -985,7 +1033,7 @@ def compare_material_captures(results: list[dict]) -> None:
             by_case[left]['failures'].append(f'{left}/{right}: equivalent controls changed linear radiance')
     for grid_variant in ('','-msaa'):
         grid_rows=[by_case.get('lightgrid-pbr'+grid_variant+suffix) for suffix in ('-clear','','-double')]
-        if not all(row is not None for row in grid_rows): continue
+        if not all(row is not None for row in grid_rows) or native_gl_owner(grid_rows[1]): continue
         before,after,doubled=[row.get('linearImage',{}).get('stationRGB',{}) for row in grid_rows]
         grid_rows[1]['bakedMaterialComparisons']={}
         for name,a in before.items():
@@ -2024,7 +2072,9 @@ def main() -> int:
             parser.error('--samples requires only IBL or native vk-direct controls')
         for case in cases:
             CASES[case]={**CASES[case],'r_multiSamples':str(args.samples)}
-    if args.backend=='gl' and any(c in ('msaa-partial-restart','msaa-full-restart') or '-pbr' in c for c in cases):
+    # The classic OpenGL owner composes into the display-referred frame and
+    # has no linear export; compare_native_baked_captures judges its grid.
+    if args.backend=='gl' and not args.gl_native and any(c in ('msaa-partial-restart','msaa-full-restart') or '-pbr' in c for c in cases):
         args.linear=True
     if args.batch and len({CASES[c].get('r_multiSamples',BASE['r_multiSamples']) for c in cases})>1:
         parser.error('MSAA sample count must stay fixed for a batch; use separate processes for other counts')
@@ -2072,6 +2122,7 @@ def main() -> int:
     compare_sampler_captures(results)
     compare_skinning_captures(results)
     compare_material_captures(results)
+    compare_native_baked_captures(results)
     compare_transparency_captures(results)
     compare_post_captures(results)
     compare_msaa_captures(results)

@@ -13421,6 +13421,36 @@ bool RB_LightGridSurfaceModernRepresentable( const drawSurf_t *surf, const viewD
 	return blockReason == NULL;
 }
 
+/*
+The uBakedGrid[7] block of ModernLightGridGLSL.h: origin/enabled,
+spacing/gamma, bounds/intensity, atlas texel size/tile/border, visibility
+distance/bias/floor/exponent, relocation distance, and the origin the shader's
+positions are relative to (with the contribution cap). Shared by the modern
+executor and the classic-loop PBR owner.
+*/
+void RB_LightGridBakedParams( const LightGrid &grid, const float origin[3], float params[7][4] ) {
+	memset( params, 0, sizeof( float ) * 7 * 4 );
+	for ( int axis = 0; axis < 3; ++axis ) {
+		params[0][axis] = grid.lightGridOrigin[axis];
+		params[1][axis] = grid.lightGridSize[axis];
+		params[2][axis] = static_cast<float>( grid.lightGridBounds[axis] );
+		params[6][axis] = origin[axis];
+	}
+	params[0][3] = 1.0f;
+	params[1][3] = idMath::ClampFloat( 0.25f, 4.0f, r_lightGridIrradianceGamma.GetFloat() );
+	params[2][3] = idMath::ClampFloat( 0.0f, 16.0f, r_lightGridIntensity.GetFloat() );
+	params[3][0] = 1.0f / grid.irradianceImage->GetOpts().width;
+	params[3][1] = 1.0f / grid.irradianceImage->GetOpts().height;
+	params[3][2] = static_cast<float>( grid.imageSingleProbeSize );
+	params[3][3] = static_cast<float>( grid.imageBorderSize );
+	params[4][0] = grid.visibilityMaxDistance > 0.0f ? grid.visibilityMaxDistance : 4096.0f;
+	params[4][1] = 3.0f;
+	params[4][2] = idMath::ClampFloat( 0.0f, 1.0f, r_lightGridVisibilityFloor.GetFloat() );
+	params[4][3] = 2.0f;
+	params[5][0] = grid.relocationMaxDistance > 0.0f ? grid.relocationMaxDistance : 48.0f;
+	params[6][3] = idMath::ClampFloat( 0.0f, 16.0f, r_lightGridMaxContribution.GetFloat() );
+}
+
 bool RB_PrepareModernLightGrid( const drawSurf_t *surf, const viewDef_t *viewDef, const LightGrid *&grid ) {
 	grid = NULL;
 	if ( surf == NULL || surf->material == NULL || surf->space == NULL || surf->geo == NULL
@@ -13841,6 +13871,12 @@ static bool RB_STD_DrawLightGridSurface( const drawSurf_t *surf, const LightGrid
 		if ( drawStats != NULL ) {
 			drawStats->nullInput++;
 		}
+		return false;
+	}
+	// A native PBR surface takes the grid in its environment pass, as PBR
+	// diffuse in place of environment diffuse (draw_pbr.cpp); its classic
+	// stages must not add classic grid diffuse on top.
+	if ( shader->HasPBR() && RB_GLPBR_SurfaceOwned( surf ) ) {
 		return false;
 	}
 	if ( !receiverOnlySubmission && !RB_LightGridHasActiveAlbedoStage( shader, regs ) ) {

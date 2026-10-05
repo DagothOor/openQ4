@@ -399,12 +399,13 @@ Add separate PBR controls instead of overloading enhanced materials:
 |---|---:|---|
 | `r_rendererModernQuality` | `1` | Master permit for Milestone F quality domains. Set to `0` for one-setting rollback of PBR, authored specular probes, and clustered decals even if their leaf controls are enabled. |
 | `r_pbrMaterials` | `0` initially | Allows modern PBR shader ownership for PBR-authored materials when the modern renderer gates also pass. |
-| `r_rendererReflectionProbes` | `0` | Enables the authored bounded OpenGL specular-probe consumer for eligible PBR views. Incomplete probe ownership falls back to analytic PBR environment lighting. |
+| `r_rendererReflectionProbes` | `0` | Enables the authored bounded OpenGL specular-probe consumer for eligible PBR views. Incomplete probe ownership falls back to the remaining environment sources (the analytic studio environment only in the laboratory mode). |
 | `r_rendererClusteredDecals` | `0` | Enables atomic bounded OpenGL clustered-decal ownership for complete eligible subsets. Rejected transactions remain entirely classic. |
 | `r_pbrGeneratedLegacyFallback` | `1` | Allows approximate generated classic fallback stages for development/test PBR materials. Authored classic stages and explicit legacy fallback maps remain valid regardless of this cvar. |
 | `r_pbrDebug` | `0` | Debug overlay: albedo, normal, metallic, roughness, AO, emissive, fallback state; mode `7` is a state marker (green = PBR shader, magenta = contract mismatch). |
-| `r_pbrIBL` | `1` | Enables the content-free analytic environment contribution for explicitly PBR-authored materials. It never changes stock material interpretation. |
-| `r_pbrIBLIntensity` | `1` | Scales that analytic PBR environment contribution from `0` to `4`. |
+| `r_pbrIBL` | `1` | Enables environment lighting (authored probes) for explicitly PBR-authored materials. It never changes stock material interpretation. |
+| `r_pbrIBLIntensity` | `1` | Scales that PBR environment contribution from `0` to `4`. |
+| `r_pbrAnalyticEnvironment` | `0` | Laboratory mode (not saved): adds the content-free analytic studio environment under `r_pbrIBL`, the reference lighting of the PBR laboratory. Production environment light comes from authored probes, baked grids and ambient lights (production-readiness Stage E). |
 | `r_pbrInferFromLegacyMaterials` | `0` | Experimental legacy material reinterpretation for research only. Never required for stock support. |
 
 `r_pbrMaterials 0` must not change existing rendering. `r_pbrMaterials 1` should affect only materials whose parsed metadata says PBR is enabled, and it is necessary but not sufficient: `r_rendererModernQuality`, `r_rendererModernVisible`, G-buffer/deferred/forward+ readiness, material-table readiness, geometry readiness, shadow policy, and pass-owner gates still decide visible ownership. The probe and decal leaf cvars follow the same master gate. Setting `r_rendererModernQuality 0` must restore classic ownership for all three Milestone F domains without requiring a list of settings.

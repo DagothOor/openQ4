@@ -85,15 +85,18 @@ vec3 EvaluatePBREnvironment() {
     vec3 reflection = reflect(-v, n);
     float lod = roughness * 6.0;
     int low = int(floor(lod));
+    // The analytic studio environment lights only the laboratory
+    // (r_pbrAnalyticEnvironment, pc.b.y); production starts from black and
+    // takes its environment from authored probes and baked light grids.
     vec3 prefiltered = mix(PBREnvironmentLevel(8, reflection, low),
-        PBREnvironmentLevel(8, reflection, min(low + 1, 6)), fract(lod));
+        PBREnvironmentLevel(8, reflection, min(low + 1, 6)), fract(lod)) * pc.b.y;
     vec3 octNormal = n / max(abs(n.x) + abs(n.y) + abs(n.z), 1.0e-6);
     vec2 oct = octNormal.xy;
     if (n.z < 0.0) {
         oct = (1.0 - abs(octNormal.yx))
             * vec2(n.x >= 0.0 ? 1.0 : -1.0, n.y >= 0.0 ? 1.0 : -1.0);
     }
-    vec3 irradiance = PBREnvironmentTile(54 + 8, oct * 0.5 + 0.5, 32.0);
+    vec3 irradiance = PBREnvironmentTile(54 + 8, oct * 0.5 + 0.5, 32.0) * pc.b.y;
 #ifdef PBR_AUTHORED_PROBES
     PBRProbeBlend(vLightProjectionTexCoord.xyw, reflection, n, roughness, prefiltered, irradiance);
 #endif

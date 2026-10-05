@@ -57,7 +57,7 @@ def configure(manifest: dict, samples: int, backend: str, selected: set[str] | N
     def add(name, sources=('warm','cool'), material='data_scalar', enabled=True, radius='600 600 600',
             origin='0 -700 380', angle=0, rotation=None, failure=0, boundary=None, reference=None,
             valid=True, pbr=True, debug=0, tolerance=0, probe_origins=None,
-            specimen_origin='0 -700 380', specimen_angle=0, specimen_rotation=None):
+            specimen_origin='0 -700 380', specimen_angle=0, specimen_rotation=None, analytic=True):
         nonlocal previous_count
         if selected is not None and name not in selected: return
         case='probes-'+name
@@ -82,7 +82,9 @@ def configure(manifest: dict, samples: int, backend: str, selected: set[str] | N
         previous_count=len(sources)
         settings={'r_rendererReflectionProbes':str(int(enabled)), 'r_pbrIBL':'1', 'r_pbrIBLIntensity':'0.35',
                   'r_multiSamples':str(samples),'r_vkPBRProbeFailure':str(failure), 'r_pbrDebug':str(debug),
-                  'r_pbrMaterials':str(int(pbr))}
+                  'r_pbrMaterials':str(int(pbr)),
+                  # Production (0) blends probes over black, not the studio.
+                  'r_pbrAnalyticEnvironment':str(int(analytic))}
         lab.CASES[case]=settings
         lab.CASE_COMMANDS[case]=commands
         lab.CASE_CAMERAS[case]='sampling'
@@ -93,6 +95,8 @@ def configure(manifest: dict, samples: int, backend: str, selected: set[str] | N
 
     add('analytic',enabled=False)
     add('both')
+    add('analytic-production',enabled=False,analytic=False)
+    add('both-production',analytic=False)
     add('warm',sources=('warm',))
     add('cool',sources=('cool',))
     add('rotated',angle=90)
@@ -204,7 +208,10 @@ def inspect(report: dict, profile: dict, backend: str, samples: int) -> dict:
             maximum=max(abs(x-y) for x,y in zip(a,b))
             checks[name]={'reference':reference,'maximumError':maximum,'tolerance':spec['tolerance']}
             if maximum>spec['tolerance']: failures.append(f'{name}: full-frame fallback/restoration differs by {maximum}')
-    for a,b in (('both','analytic'),('warm','cool'),('both','rotated'),('both','fade'),
+    production=patches.get('probes-analytic-production')
+    if production and max(production)>0:
+        failures.append('probes-analytic-production: production lit the specimen without probes')
+    for a,b in (('both','analytic'),('both-production','analytic-production'),('warm','cool'),('both','rotated'),('both','fade'),
                 ('warm','tinted'),('priority-low','priority-high'),('rough-low','rough-high'),
                 ('both','normal'),('transparent','transparent-analytic'),('cutout','cutout-analytic'),
                 ('rough-low','yaw-90'),('rough-low','yaw-180'),('rough-low','yaw-270'),

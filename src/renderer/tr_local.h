@@ -1154,6 +1154,7 @@ extern idCVar r_pbrGeneratedLegacyFallback;	// allow development-only generated 
 extern idCVar r_pbrDebug;				// PBR attachment/fallback debug view
 extern idCVar r_pbrIBL;				// opt-in PBR-only analytic environment contribution
 extern idCVar r_pbrIBLIntensity;		// PBR analytic environment intensity
+extern idCVar r_pbrAnalyticEnvironment;	// laboratory: analytic studio environment under authored probes
 extern idCVar r_pbrInferFromLegacyMaterials;	// research-only classic-material inference
 extern idCVar r_bloom;					// enable bloom post-process
 extern idCVar r_bloomThreshold;			// bloom bright-pass threshold
@@ -2046,6 +2047,8 @@ bool RB_LightGridSurfaceModernRepresentable( const drawSurf_t *surf, const viewD
 // True with a null grid is an intentional native non-receiver, not missing work.
 class LightGrid;
 bool RB_PrepareModernLightGrid( const drawSurf_t *surf, const viewDef_t *viewDef, const LightGrid *&grid );
+// ModernLightGridGLSL.h's uBakedGrid[7], with positions relative to origin.
+void RB_LightGridBakedParams( const LightGrid &grid, const float origin[3], float params[7][4] );
 bool RB_FlatDiffuseSweepActive( const drawSurf_t *surf );
 void RB_GetFlatDiffuseParams( const drawSurf_t *surf, idVec4 &params );
 void RB_ApplyFlatDiffuseStage( const drawSurf_t *surf, idImage **diffuseImage, float diffuseColor[4], idVec4 &params );

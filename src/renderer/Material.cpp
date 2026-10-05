@@ -2907,6 +2907,49 @@ bool idMaterial::ParsePBRBlock( idLexer &src, const textureRepeat_t trpDefault )
 			TD_MATERIAL_DATA, CF_2D, normal.allowPicmip, normalFlags );
 	}
 
+	if ( !pbrInfo.orm.present && ( pbrInfo.metallic.present || pbrInfo.roughness.present || pbrInfo.ao.present ) ) {
+		// Every native owner shades one material-data texture: separate maps
+		// pack into a generated ORM image (packORM), so each channel reaches
+		// every lighting term on every backend. Vulkan's per-light layout has
+		// no slot for three data maps beside the light's own images. The maps
+		// share one set of texture coordinates; the first map's sampling
+		// serves all three.
+		pbrMaterialTexture_t *channels[3] = { &pbrInfo.ao, &pbrInfo.roughness, &pbrInfo.metallic };
+		const pbrMaterialTexture_t *reference = NULL;
+		idStr program = "packORM( ";
+		for ( int i = 0; i < 3; ++i ) {
+			const pbrMaterialTexture_t &channel = *channels[i];
+			program += i > 0 ? ", " : "";
+			if ( !channel.present || channel.image == NULL ) {
+				program += "_white";
+				continue;
+			}
+			if ( reference == NULL ) {
+				reference = &channel;
+			} else if ( channel.filter != reference->filter || channel.repeat != reference->repeat
+					|| channel.noMips != reference->noMips ) {
+				src.Warning( "PBR material '%s' packs separate material-data maps with differing sampling; the first map's sampling serves all three", GetName() );
+			}
+			program += channel.image->GetName();
+		}
+		program += " )";
+		if ( reference != NULL && program.Length() < MAX_IMAGE_NAME ) {
+			const unsigned int flags = reference->noMips ? R_ResolveMaterialNoMipFlags( pd->qualityInputs, 0 ) : 0;
+			idImage *packed = R_LoadMaterialImage( program.c_str(), static_cast<textureFilter_t>( reference->filter ),
+				static_cast<textureRepeat_t>( reference->repeat ), TD_MATERIAL_DATA, CF_2D, reference->allowPicmip, flags );
+			if ( packed != NULL && packed != globalImages->defaultImage ) {
+				pbrInfo.orm = *reference;
+				pbrInfo.orm.image = packed;
+				pbrInfo.orm.present = true;
+				for ( int i = 0; i < 3; ++i ) {
+					channels[i]->present = false;
+					channels[i]->image = NULL;
+				}
+				pbrInfo.packedSeparateData = true;
+			}
+		}
+	}
+
 	pbrInfo.hasExplicitLegacyFallback = pbrInfo.legacyBump.present ||
 		pbrInfo.legacyDiffuse.present || pbrInfo.legacySpecular.present ||
 		pbrInfo.legacyEmissive.present;
