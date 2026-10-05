@@ -5416,7 +5416,7 @@ def validate_fail_closed_target_and_stencil_behavior() -> None:
             "!r_shadows.GetBool()",
             "!r_useShadowMap.GetBool()",
             "lightDef->parms.pointLight",
-            "!r_shadowMapPointLights.GetBool()",
+            "!R_ShadowMapPointLightAllowed( lightDef->parms )",
             "return false;",
             "return true;",
         ),
@@ -7055,7 +7055,7 @@ def validate_map_investigation_repairs() -> None:
     require_compact(interaction, """
         const bool shadowMapCasterPolicyActive =
             r_shadows.GetBool() && r_useShadowMap.GetBool() &&
-            ( !vLight->pointLight || vLight->parallel || r_shadowMapPointLights.GetBool() );
+            ( !vLight->pointLight || vLight->parallel || R_ShadowMapPointLightAllowed( vLight ) );
         """, "shadows-off frames must not latch missing-caster fallback")
     executor = read("src/renderer/Vulkan/vk_GuiExecutor.cpp")
     point_pipeline = braced_body(executor, "VkPipeline VK_Exec_PointCasterPipeline(", "point caster pipeline")
