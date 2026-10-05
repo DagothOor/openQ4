@@ -564,7 +564,7 @@ The stages were qualified on Windows, where MSVC links every module. A Linux
 GCC build of the promoted tree with CI's options (debug, forcefallback,
 native tests) compiles and links the client, the dedicated server, both game
 modules, both renderer modules and the native tests, and the renderer
-modules resolve every symbol (`ldd -r`). Three regressions surfaced outside
+modules resolve every symbol (`ldd -r`). Two regressions surfaced outside
 that qualification and are fixed:
 
 - The shared world-interaction domain (`r_rendererSharedWorldInteraction`,
@@ -586,10 +586,26 @@ that qualification and are fixed:
   symbols that predate this plan, which that branch stubs in
   `gles_Backend.cpp`; before the fix it also reported these three. main's ES
   module does not compile on desktop Linux by itself, for desktop-GL calls
-  in three shared files that predate this plan; the Android branch fixes
+  in four shared files that predate this plan; the Android branch fixes
   them.
-- CI builds neither the ES module nor this closure, so
-  `renderer_pbr_materials.py` scans every translation unit the Vulkan and ES
-  modules compile for `RB_GLPBR_*` calls outside a branch that excludes the
-  module (with a negative control), and pins the baked-grid helper to
-  `ModernGLExecutor.cpp`.
+
+CI builds neither the ES module nor this closure, so
+`renderer_pbr_materials.py` scans every translation unit the Vulkan and ES
+modules compile for `RB_GLPBR_*` calls outside a branch that excludes the
+module (with a negative control), and pins the baked-grid helper to
+`ModernGLExecutor.cpp`. A libc++ (clang 18) syntax pass over every C++ file
+the plan touched, 52 compile commands across the client, both renderer
+modules and the native tests, is clean, and the PBR math test passes against
+both libstdc++ and libc++.
+
+The PR validation profile on the promoted tree failed one check: the
+vid_restart route harness compiles `InitOpenGL` with stubs and had none for
+the new migration. The harness now stubs it and expects the three
+migrations in order.
+
+| Check on the fixed build | Result |
+|---|---|
+| Shared world interaction, Air Defense 1, PBR on | owns the view on OpenGL and Vulkan (`ready=1 lights=5 surfaces=183`), as with PBR off; on the PBR laboratory map it falls back at the first PBR receiver (`failure=enhancedMaterial`, with its draw packet) |
+| OpenGL owner and Vulkan production | direct 73/73 each, parity 73/73; ambient 40 and 41 controls, oracle and parity pass; environment 27 and 28, parity 27; diagnostics 62/62 each, the documented 10-control whole-frame set; SSAO 8/8 each, parity 8; baked grids 6/6 each, parity 6 |
+| OpenGL owner and the Vulkan laboratory | direct parity 73/73, ambient and environment parity pass, diagnostics the documented set |
+| Modern GL and Vulkan laboratory | Vulkan direct 73/73, ambient 41/41, IBL 28/28 with modern GL 27/27 and parity, diagnostics 62/62 each, baked 6/6 each. Modern GL diagnostics first failed every capture while the PR profile loaded the machine: its specimen spawned twice (the laboratory's console-timing race), the error dropped the client to the menu, and it passed 62/62 on a quiet rerun |
