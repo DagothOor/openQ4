@@ -1,5 +1,21 @@
 <a id="top"></a>
 
+> [!IMPORTANT]
+> **Unofficial fork: openQ4 Light.** This is not the official openQ4. It is
+> [themuffinator/openQ4](https://github.com/themuffinator/openQ4) with lighting changes on top.
+> Please report problems with these builds **here**, not to the openQ4 author.
+>
+> Changes in this fork (engine and `content/baseoq4/pak0`):
+> - eye adaptation (auto exposure) on the classic renderer: `r_hdrAutoExposureClassic`, metered every `r_hdrAutoExposureInterval` frames;
+> - light-grid bake: fixed unbounded memory growth, portal sky now captured on the async path;
+> - baked bounce light: no flat grey on surfaces without a texture stage, diffuse map preferred as surface colour, minimum level `r_lightGridShadowFloor`, physical AO mode `r_lightGridAO`;
+> - GTAO as the default SSAO with automatic fallback to the stock shader (`r_ssaoGTAO`);
+> - sun-sized point lights keep stencil shadows when shadow maps are on (`r_shadowMapPointMaxRadius`);
+> - `listRenderLightDefs` prints each light's radius, centre, origin and type;
+> - light presets `light_physical.cfg`, `light_classic.cfg`, `light_stock.cfg`; Windows x64 build workflow; bake scripts in `extras/openq4_light`.
+>
+> Неофициальная сборка openQ4 с доработками освещения. Об ошибках в ней сообщайте здесь, а не автору openQ4.
+
 <div align="center">
 
 <img src="assets/docs/img/banner.png" alt="openQ4 banner">
