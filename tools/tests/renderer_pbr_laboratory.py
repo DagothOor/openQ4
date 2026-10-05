@@ -717,7 +717,7 @@ def compare_vulkan_direct_captures(results: list[dict]) -> None:
                                        f'{pbr[peak]} at the classic peak {classic[peak]}, expected {predicted:.1f}')
     if 'emission-dark' in patches and max(patches['emission-dark'])!=0:
         by_case['emission-dark']['failures'].append('emission leaked through the disabled ambient owner')
-    if 'emission-extreme' in patches and by_case['emission-extreme'].get('backend')=='vk':
+    if 'emission-extreme' in patches and by_case['emission-extreme'].get('backend')!='gl':
         # A Vulkan float-HDR control: OpenGL's auto exposure follows the
         # modern visible post path, so the classic owner only records it.
         # Red stays unclipped while the two other channels intentionally
@@ -736,7 +736,7 @@ def compare_vulkan_direct_captures(results: list[dict]) -> None:
         names=['aa-'+shape+suffix for suffix in ('','-off','-owned')]
         if not all(name in by_case for name in names): continue
         row=by_case[names[0]]
-        if row.get('backend')!='vk':
+        if row.get('backend')=='gl':
             # r_vkPBRSpecularAA is Vulkan's switch; OpenGL always filters and
             # is held to Vulkan's filtered result by the paired comparison.
             continue

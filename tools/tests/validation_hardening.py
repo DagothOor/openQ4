@@ -665,6 +665,7 @@ def validate_validation_wiring() -> None:
         "renderer_pbr_environment_parity.py",
         "renderer_pbr_geometry_parity.py",
         "renderer_pbr_laboratory.py",
+        "renderer_pbr_native_gl_parity.py",
         "renderer_pbr_preview.py",
         "renderer_pbr_probe_parity.py",
         "renderer_render_target_lifetime.py",
