@@ -1,0 +1,72 @@
+name: openQ4 Light dev Windows build
+
+# Builds a Windows x64 client package from this branch (openQ4 Light changes on
+# top of the current upstream main) and publishes it as a downloadable artifact
+# (Actions tab -> this run -> Artifacts).
+
+on:
+  push:
+    branches: [ openq4-light-dev ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 90
+    env:
+      # Upstream main builds the game modules from the in-tree sources.
+      OPENQ4_GAMELIBS_REPO: ${{ github.workspace }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      - name: Install Meson and Ninja
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install --upgrade pip
+          python -m pip install meson ninja
+
+      - name: Prepare OpenAL Soft
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $outputRoot = Join-Path $env:GITHUB_WORKSPACE ".tmp/openal-soft-x64"
+          $env:OPENQ4_VS_TARGET_ARCH = "x64"
+          powershell -ExecutionPolicy Bypass -File tools/build/prepare_windows_openal.ps1 -Architecture "x64" -OutputRoot $outputRoot
+          "OPENQ4_OPENAL_ROOT=$outputRoot" >> $env:GITHUB_ENV
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          powershell -ExecutionPolicy Bypass -File tools/build/meson_setup.ps1 setup builddir . --backend ninja --buildtype=debugoptimized -Db_ndebug=true --wrap-mode=forcefallback
+
+      - name: Compile
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          powershell -ExecutionPolicy Bypass -File tools/build/meson_setup.ps1 compile -C builddir
+
+      - name: Stage package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          powershell -ExecutionPolicy Bypass -File tools/build/meson_setup.ps1 install -C builddir --no-rebuild --skip-subprojects
+
+      - name: Upload Windows x64 package
+        uses: actions/upload-artifact@v7
+        with:
+          name: openq4-light-dev-windows-x64
+          path: .install
+          if-no-files-found: error
+          retention-days: 30
+          include-hidden-files: true
