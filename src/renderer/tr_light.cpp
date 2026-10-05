@@ -1605,7 +1605,7 @@ bool R_ShadowMapLightWillUseShadowMaps( const idRenderLightLocal *lightDef ) {
 		return false;
 	}
 	if ( pointLightPath ) {
-		if ( !R_ShadowMapPointLightAllowed( lightDef->parms.lightRadius ) || !glConfig.cubeMapAvailable ) {
+		if ( !R_ShadowMapPointLightAllowed( lightDef->parms ) || !glConfig.cubeMapAvailable ) {
 			return false;
 		}
 	}

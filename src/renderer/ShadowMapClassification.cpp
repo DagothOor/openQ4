@@ -24,16 +24,28 @@ Keep such lights on stencil shadow volumes. Every place that decides whether a
 point light uses a shadow map must ask this, so volume generation and map
 rendering always agree.
 */
-bool R_ShadowMapPointLightAllowed( const idVec3 &lightRadius ) {
+bool R_ShadowMapPointLightAllowed( const renderLight_t &parms ) {
 	if ( !r_shadowMapPointLights.GetBool() ) {
 		return false;
+	}
+	// Distant off-centre sources already render through a synthesized
+	// projection instead of a cube map, so the cube-map size limit does not apply.
+	if ( R_ShadowMapUsesDistantPointProjection( parms ) ) {
+		return true;
 	}
 	const float maxRadius = r_shadowMapPointMaxRadius.GetFloat();
 	if ( maxRadius <= 0.0f ) {
 		return true;
 	}
-	const float extent = Max( Max( idMath::Fabs( lightRadius.x ), idMath::Fabs( lightRadius.y ) ), idMath::Fabs( lightRadius.z ) );
+	const float extent = Max( Max( idMath::Fabs( parms.lightRadius.x ), idMath::Fabs( parms.lightRadius.y ) ), idMath::Fabs( parms.lightRadius.z ) );
 	return extent <= maxRadius;
+}
+
+bool R_ShadowMapPointLightAllowed( const viewLight_t *vLight ) {
+	if ( vLight != NULL && vLight->lightDef != NULL ) {
+		return R_ShadowMapPointLightAllowed( vLight->lightDef->parms );
+	}
+	return r_shadowMapPointLights.GetBool();
 }
 
 static shadowMapLightClass_t R_ShadowMapLightClassForViewLight( const viewLight_t *vLight ) {

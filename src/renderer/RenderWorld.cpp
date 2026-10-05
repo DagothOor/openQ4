@@ -30,6 +30,7 @@ If you have questions concerning this license or the applicable additional terms
 
 
 #include "tr_local.h"
+#include "ShadowMapClassification.h"
 
 /*
 ===================
@@ -72,13 +73,14 @@ void R_ListRenderLightDefs_f( const idCmdArgs &args ) {
 		// shape of the light, to tell sun-like lights from ordinary lamps
 		const renderLight_t &parms = ldef->parms;
 		if ( parms.pointLight ) {
-			common->Printf( "      %s radius=( %.0f %.0f %.0f ) center=( %.0f %.0f %.0f ) origin=( %.0f %.0f %.0f )%s%s\n",
+			common->Printf( "      %s radius=( %.0f %.0f %.0f ) center=( %.0f %.0f %.0f ) origin=( %.0f %.0f %.0f )%s%s%s\n",
 				parms.parallel ? "parallel" : "point",
 				parms.lightRadius.x, parms.lightRadius.y, parms.lightRadius.z,
 				parms.lightCenter.x, parms.lightCenter.y, parms.lightCenter.z,
 				parms.origin.x, parms.origin.y, parms.origin.z,
 				parms.noShadows ? " noShadows" : "",
-				( !parms.parallel && !parms.noShadows && !R_ShadowMapPointLightAllowed( parms.lightRadius ) ) ? " stencil(too-large)" : "" );
+				R_ShadowMapUsesDistantPointProjection( parms ) ? " distant(sun-like)" : "",
+				( !parms.parallel && !parms.noShadows && !R_ShadowMapPointLightAllowed( parms ) ) ? " stencil(too-large)" : "" );
 		} else {
 			common->Printf( "      projected origin=( %.0f %.0f %.0f )%s\n",
 				parms.origin.x, parms.origin.y, parms.origin.z, parms.noShadows ? " noShadows" : "" );

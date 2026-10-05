@@ -2017,7 +2017,7 @@ static bool BuildShadowMapPasses(
 	const shadowMapLightClassification_t classification =
 		R_ClassifyShadowMapLight( viewLight );
 	const bool classSupported = !classification.pointLight
-		|| R_ShadowMapPointLightAllowed( viewLight->lightRadius );
+		|| R_ShadowMapPointLightAllowed( viewLight );
 	classicInteractionDomainShadowProjectedState_t projected;
 	std::memset( &projected, 0, sizeof( projected ) );
 	R_ShadowMapResetProjectedLightState( projected.state );
