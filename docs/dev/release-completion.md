@@ -883,6 +883,11 @@
   - a save/load voice count (1, 2, 3 before; 1, 1, 1 after);
   - a six-bot multiplayer match;
   - the related contract tests.
+- [x] Effect sounds pick a random variation again, as in retail 1.4.2, so bullet
+  impacts, ricochets and rocket and grenade explosions no longer repeat their first
+  sample. Emile Belanger found the fixed diversity first
+  ([emileb/openQ4@71af0c11](https://github.com/emileb/openQ4/commit/71af0c115f4e99fd1a9b5d49bd74d5eba6eb9413)),
+  and `bse_retail_parity.py` now pins both sound starts.
 - [x] Match Control's team join and the player's own team agree again. Joining a
   side from Match Control (the stock page and the retained card send the same
   `team_join_*` token) committed the session's side. `idPlayer::UserInfoChanged`

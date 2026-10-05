@@ -571,6 +571,14 @@ Segments (`BSE_Segment.cpp`, `BSE_SegmentRuntime.cpp`):
 - Sound segments set volume, frequency shift and emitter position before
   starting. One-shot sounds play once per loop; looping sounds latch with
   `SSF_LOOPING`.
+- Both sound starts pass `rvRandom::flrand(0, 1)` as the diversity (retail
+  calls at `0x101cc5fe` and `0x101cc643`), so multi-sample shaders pick a
+  random entry. The fixed 0.0 used before played entry 0 every time. In the
+  retail paks, 311 of the 502 effects with sound segments use a multi-sample
+  shader. They include machinegun, shotgun, nailgun, hyperblaster, blaster and
+  gauntlet impacts, ricochets, bullet whiz-bys and rocket and grenade
+  explosions. Emile Belanger found the fixed value first
+  ([emileb/openQ4@71af0c11](https://github.com/emileb/openQ4/commit/71af0c115f4e99fd1a9b5d49bd74d5eba6eb9413)).
 - Child effect segments play only when the owner is in a connected area, and
   pass no end origin.
 - The spawn look-ahead is 0.016 s. Interval attenuation interpolates in
@@ -666,7 +674,8 @@ Engine, renderer and game:
 - **Build and tests:** the Windows debugoptimized build is clean.
   `bse_retail_parity.py` passes, and a mutation run confirmed that it fails for
   each of nine reverted pins. The BSE, renderer, savegame and UI contract tests
-  that read these files pass.
+  that read these files pass. The sound-diversity pin was added on 2026-10-05
+  and fails when either sound start reverts to a fixed diversity.
 - **Fixed-pose captures:** hangar1 captures used looping `func_fx` entities and
   no input, comparing a pre-change baseline with the candidate.
   - Electric arcs regain their bright forked look.

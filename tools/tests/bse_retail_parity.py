@@ -13,6 +13,10 @@ effects look or sound, with no warning anywhere:
     client effect keeps its saved handle.  Clearing the handle on restore
     orphaned the restored emitter, so every load stacked another copy of each
     looping effect sound.
+  * Sound segments start with a random diversity, rvRandom::flrand(0, 1), for
+    one-shot and looping sounds alike.  A fixed 0.0 made every multi-sample
+    shader play its first sample, so bullet impacts, ricochets, blaster hits
+    and rocket and grenade explosions sounded the same every time.
   * Particle envelopes run at the rate fixed at spawn.  Infinite-duration
     segments push mEndTime forward every frame, so reading the live duration
     slowed their envelopes to a crawl.
@@ -87,6 +91,24 @@ def validate_sound_emitter_ownership() -> None:
                "orphans the restored emitter and doubles looping effect sounds after every load")
 
 
+def validate_sound_segment_diversity() -> None:
+    segment = read("src", "bse", "BSE_Segment.cpp")
+    check = body_of(segment, "bool rvSegment::Check(rvBSE* effect, float time, float offset) {", "BSE_Segment.cpp")
+    start = check.find("case SEG_SOUND: {")
+    if start == -1:
+        raise AssertionError("Missing the SEG_SOUND case in rvSegment::Check")
+    end = check.find("\n\tcase ", start + 1)
+    sound = check[start:end if end != -1 else len(check)]
+    for kind, flags in (("one-shot", "0"), ("looping", "SSF_LOOPING")):
+        needle = f"emitter->StartSound(st->mSoundShader, channel, rvRandom::flrand(0.0f, 1.0f), {flags}, false);"
+        if needle not in sound:
+            raise AssertionError(
+                f"rvSegment::Check must start {kind} sound segments with {needle!r}; retail 1.4.2 passes "
+                "rvRandom::flrand(0, 1) as the diversity, and a fixed value makes every multi-sample shader "
+                "(impacts, ricochets, explosions) repeat one sample"
+            )
+
+
 def validate_envelope_rate() -> None:
     header = read("src", "bse", "BSE_Particle.h")
     require(header, "mOneOverDuration;", "BSE_Particle.h")
@@ -155,6 +177,7 @@ def main() -> int:
     try:
         validate_single_value_tables()
         validate_sound_emitter_ownership()
+        validate_sound_segment_diversity()
         validate_envelope_rate()
         validate_vertex_colour()
         validate_effect_timing_and_order()
