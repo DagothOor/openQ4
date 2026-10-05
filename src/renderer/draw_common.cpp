@@ -14314,44 +14314,56 @@ static bool RB_LightGridFindRepresentativeAlbedo( const drawSurf_t *surf, rbLigh
 		return false;
 	}
 
+	// Prefer the material's real diffuse texture. Only when there is none fall back to an
+	// opaque ambient stage: taking the first qualifying stage could pick a helper layer
+	// (glow, mask, light underlay) placed before the diffuse map and wash the model out.
 	const int stageCount = shader->GetNumStages();
-	for ( int stageIndex = 0; stageIndex < stageCount; stageIndex++ ) {
+	int chosenStageIndex = -1;
+	for ( int stageIndex = 0; stageIndex < stageCount && chosenStageIndex < 0; stageIndex++ ) {
 		const shaderStage_t *stage = shader->GetStage( stageIndex );
-		if ( !RB_LightGridStageCanProvideAlbedo( shader, stage, regs ) ) {
-			continue;
+		if ( stage != NULL && stage->lighting == SL_DIFFUSE && RB_LightGridMaterialStageIsActive( stage, regs ) ) {
+			chosenStageIndex = stageIndex;
 		}
+	}
+	for ( int stageIndex = 0; stageIndex < stageCount && chosenStageIndex < 0; stageIndex++ ) {
+		if ( RB_LightGridAmbientStageCanProvideAlbedo( shader, shader->GetStage( stageIndex ), regs ) ) {
+			chosenStageIndex = stageIndex;
+		}
+	}
+	if ( chosenStageIndex < 0 ) {
+		return false;
+	}
+	const int stageIndex = chosenStageIndex;
+	const shaderStage_t *stage = shader->GetStage( stageIndex );
 
-		idImage *diffuseImage = globalImages->whiteImage;
-		idVec4 diffuseMatrix[2];
-		float diffuseColor[4];
-		R_SetDrawInteraction( stage, regs, &diffuseImage, diffuseMatrix, diffuseColor );
-		if ( diffuseImage == NULL ) {
-			diffuseImage = globalImages->whiteImage;
-		}
-		if ( diffuseColor[0] <= 0.0f && diffuseColor[1] <= 0.0f && diffuseColor[2] <= 0.0f ) {
-			diffuseColor[0] = 1.0f;
-			diffuseColor[1] = 1.0f;
-			diffuseColor[2] = 1.0f;
-		}
-
-		binding.stage = stage;
-		binding.stageIndex = stageIndex;
-		binding.image = diffuseImage;
-		binding.matrix[0] = diffuseMatrix[0];
-		binding.matrix[1] = diffuseMatrix[1];
-		binding.color[0] = diffuseColor[0];
-		binding.color[1] = diffuseColor[1];
-		binding.color[2] = diffuseColor[2];
-		binding.color[3] = diffuseColor[3];
-		RB_LightGridVertexColorParams( stage->vertexColor, binding.vertexColorParams );
-		if ( stage->lighting == SL_DIFFUSE ) {
-			idVec4 flatDiffuseParams;
-			RB_ApplyFlatDiffuseStage( surf, &binding.image, binding.color, flatDiffuseParams );
-		}
-		return true;
+	idImage *diffuseImage = globalImages->whiteImage;
+	idVec4 diffuseMatrix[2];
+	float diffuseColor[4];
+	R_SetDrawInteraction( stage, regs, &diffuseImage, diffuseMatrix, diffuseColor );
+	if ( diffuseImage == NULL ) {
+		diffuseImage = globalImages->whiteImage;
+	}
+	if ( diffuseColor[0] <= 0.0f && diffuseColor[1] <= 0.0f && diffuseColor[2] <= 0.0f ) {
+		diffuseColor[0] = 1.0f;
+		diffuseColor[1] = 1.0f;
+		diffuseColor[2] = 1.0f;
 	}
 
-	return false;
+	binding.stage = stage;
+	binding.stageIndex = stageIndex;
+	binding.image = diffuseImage;
+	binding.matrix[0] = diffuseMatrix[0];
+	binding.matrix[1] = diffuseMatrix[1];
+	binding.color[0] = diffuseColor[0];
+	binding.color[1] = diffuseColor[1];
+	binding.color[2] = diffuseColor[2];
+	binding.color[3] = diffuseColor[3];
+	RB_LightGridVertexColorParams( stage->vertexColor, binding.vertexColorParams );
+	if ( stage->lighting == SL_DIFFUSE ) {
+		idVec4 flatDiffuseParams;
+		RB_ApplyFlatDiffuseStage( surf, &binding.image, binding.color, flatDiffuseParams );
+	}
+	return true;
 }
 
 static bool RB_STD_DrawLightGridAlbedoStage( const drawSurf_t *surf, const shaderStage_t *albedoStage, int albedoStageIndex, idImage *bumpImage, const idVec4 bumpMatrix[2], const float *regs, const srfTriangles_t *tri, idDrawVert *ac ) {
