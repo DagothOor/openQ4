@@ -706,8 +706,13 @@ Writing it found that `envshot`, whose capture path the command reuses, sized
 its view in window pixels where view rectangles are virtual-screen units: a
 128-pixel capture in a 1280x800 window drew a 256x213 view and kept its
 corner. Both now use the 640x480 virtual screen, as levelshots do. The
-light-grid bake shared the sizing; its fix, and whether to re-bake the grids
-shipped in `pak1`, are handled separately.
+light-grid bake shared the sizing; its fix (55abaa03), and whether to re-bake
+the grids shipped in `pak1`, are handled separately. With whole faces the
+laboratory's own grid varies more with direction: the baked controls still
+pass 6/6 on every owner, and the documented band difference between the APIs'
+DXT1 sampling grows to 1.12 bytes on one station mean (1.33 with the doubled
+grid), so baked-grid stations are now judged within 1.5 bytes; SSAO stations
+keep one byte.
 
 The `baked` control bakes two probes at 128 pixels: one in the dark
 laboratory room, holding a red and a blue unlit marker behind the camera, and
@@ -762,3 +767,18 @@ prints the note once and declines every PBR surface (`declined=115
 lastDecline=resources`). Its only warnings are the two the PBR-off controls
 also print: the `gl45` tier falls back to the legacy one, and vertex arrays
 live in system memory.
+
+### Other GPUs and platforms
+
+The stages were qualified on an NVIDIA RTX 4060 Laptop GPU on Windows. The
+same suites then ran on three more stacks, each OpenGL run paired with a
+Vulkan run of the same build and runtime:
+
+| Stack | Result |
+|---|---|
+| Windows, Intel Iris Xe (Vulkan production on the integrated GPU, `r_vkDevice 2`; OpenGL owner on NVIDIA for the cross-vendor pairs) | direct 73/73, ambient 41/41 and its oracle, environment 28/28, diagnostics 62/62, baked grids 6/6, skinned 10/10, converted MD5R 5/5; direct parity 73/73 and environment parity 27/27 across vendors. SSAO passes 7 of 8: `ssao-on` changes 6 of 833,291 classic pixels and 9 debug-view pixels with native PBR, deterministically (NVIDIA: none) |
+| Linux Mesa 25.2.8 (WSL2 Ubuntu 24.04 under Xvfb): the OpenGL owner on llvmpipe (LLVM 20.1.2), Vulkan production on lavapipe | direct 73/73 each, parity 73/73; probes 50/50 and 56/56 (box and baked controls included), parity passes; SSAO 8/8 each, parity 8/8; environment 27/27 and 28/28, parity 27/27; ambient 40/40 and 41/41, with the oracle and parity passing every check but one: on lavapipe one pixel of 1,024,000 differs by one byte between the scalar material and its packed and separate texture forms, where the check demands byte equality (llvmpipe and the Windows GPUs are exact) |
+| Apple's GL 2.1 legacy context, emulated on the same Mesa (see above) | PBR materials keep their classic stages without warnings of their own; the frame matches the PBR-off controls |
+
+Mac hardware was not available. Vulkan on macOS runs through MoltenVK, which
+these suites have not exercised.

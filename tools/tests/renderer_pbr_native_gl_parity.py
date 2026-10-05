@@ -68,6 +68,15 @@ COVERAGE_FLIP_LIMIT = 16
 # recorded, not judged.
 STATION_JUDGED_PREFIXES = ('lightgrid-', 'ssao-')
 STATION_LIMIT = 1.0
+# Since the light-grid bake captures whole cube faces (55abaa03, 2026-10-05)
+# the laboratory grid varies more with direction, so the DXT1 band difference
+# reaches 1.12 bytes on one station mean (1.33 with the doubled grid), all of
+# it in those bands on dielectric and material-data stations.
+BAKED_STATION_LIMIT = 1.5
+
+
+def station_limit(name: str) -> float:
+    return BAKED_STATION_LIMIT if name.startswith('lightgrid-') else STATION_LIMIT
 
 
 def alpha_tested(name: str) -> bool:
@@ -199,8 +208,8 @@ def compare(gl: dict, vk: dict) -> dict:
             errors = {station: max(abs(x - y) for x, y in zip(rgb, means[1][station]))
                       for station, rgb in means[0].items() if station in means[1]}
             stations = {'maximumError': max(errors.values(), default=None), 'stations': len(errors),
-                        'limit': STATION_LIMIT, 'errors': errors}
-            ok = len(errors) == 24 and stations['maximumError'] <= STATION_LIMIT
+                        'limit': station_limit(name), 'errors': errors}
+            ok = len(errors) == 24 and stations['maximumError'] <= station_limit(name)
         else:
             ok = (patch['maximumError'] <= 2 and within_encoded_allowance(full['maximumError'], full['fractionAbove2'])
                   and exclusions['edgeShiftedFraction'] <= EDGE_SHIFT_LIMIT)

@@ -109,6 +109,12 @@
   of being admitted with no environment program. Under an emulated Apple GL
   2.1 context the old path crashed the client in Mesa's shader compiler; now
   its PBR controls render like the PBR-off ones.
+- [x] PBR qualification beyond Windows/NVIDIA: Vulkan on Intel Iris Xe passes
+  every suite but one SSAO control (6 of 833,291 classic pixels move,
+  deterministically), and on Linux Mesa (llvmpipe and lavapipe) the direct,
+  probe, SSAO, environment and ambient suites pass on both backends with
+  OpenGL/Vulkan parity, apart from one lavapipe pixel off by one byte in the
+  ambient material-layout check. Mac hardware review remains open.
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:
