@@ -9,10 +9,14 @@
 	frame by running RB_ApplyCRTToBackBuffer and then
 	RB_ApplyColorMappingsToBackBuffer over the whole back buffer, HUD and
 	menus included, and screenshots read the result. The Vulkan backend
-	draws straight into the swapchain image, so each pass copies that image
-	out with VK_Exec_CopyRender and draws the copy back through a full-screen
-	shader. vk_Backend.cpp runs them from the RC_SWAP_BUFFERS handler, before
-	the frame is presented or read back.
+	draws straight into the swapchain image, so the CRT pass copies that
+	image out with VK_Exec_CopyRender and draws the copy back through a
+	full-screen shader. vk_Backend.cpp runs it from the RC_SWAP_BUFFERS
+	handler, before the frame is presented or read back. r_brightness and
+	r_gamma have no pass here: the executor's display mapping
+	(VK_DisplayColorMapping_Apply, vk_GuiExecutor.cpp) applies them once per
+	composition, after CRT, at presentation or screenshot readback. A pass
+	here as well would map every frame twice.
 
 	Scene passes: RB_STD_DrawView runs SSAO, motion blur, bloom with the HDR
 	tone map, and the cel world ink over the main 3D view after the post-fog
@@ -63,8 +67,6 @@
 #include "shaders/post_shaders_spv.h"
 #include "shaders/hdr_luminance_spv.h"
 
-extern idCVar r_brightness;
-extern idCVar r_gamma;
 extern idCVar r_skipPostProcess;
 extern idCVar r_crt;
 extern idCVar r_crtAmount;
@@ -130,8 +132,7 @@ extern idCVar r_underwaterVisibility;
 // pipeline cache keys for VK_Exec_PostPipeline / VK_Exec_ExtraPipeline.
 // vk_SceneEffects.cpp and vk_DebugTools.cpp use 32 and up.
 enum vkPostPassKind_t {
-	VK_POST_COLOR_MAPPING = 1,
-	VK_POST_CRT,
+	VK_POST_CRT = 1,
 	VK_POST_SSAO,
 	VK_POST_BLOOM_EXTRACT,
 	VK_POST_BLOOM_DOWNSAMPLE,
@@ -366,7 +367,6 @@ void VK_PostProcess_PrintTemporalMotion( void ) {
 
 typedef struct vkPostState_s {
 	VkShaderModule	fullscreenVert;
-	VkShaderModule	colorMappingFrag;
 	VkShaderModule	crtFrag;
 	bool			modulesFailed;	// creation failed once; do not retry every frame
 	idImage *		backBufferCopy;
@@ -388,11 +388,6 @@ static struct vkLinearCapture_t {
 void VK_PostProcess_ResetLinearCapture() {
 	vkLinearCapture.valid = false;
 }
-
-// std140 layout of ColorMappingBlock in post_color_mapping.frag
-typedef struct vkPostColorMappingBlock_s {
-	float	params[ 4 ];	// x: brightness, y: gamma
-} vkPostColorMappingBlock_t;
 
 // std140 layout of CRTBlock in post_crt.frag
 typedef struct vkPostCRTBlock_s {
@@ -417,8 +412,7 @@ static VkShaderModule VK_Post_CreateModule( const unsigned char *code, unsigned 
 }
 
 static bool VK_Post_EnsureModules( void ) {
-	if ( vkPost.fullscreenVert != VK_NULL_HANDLE && vkPost.colorMappingFrag != VK_NULL_HANDLE
-			&& vkPost.crtFrag != VK_NULL_HANDLE ) {
+	if ( vkPost.fullscreenVert != VK_NULL_HANDLE && vkPost.crtFrag != VK_NULL_HANDLE ) {
 		return true;
 	}
 	if ( vkPost.modulesFailed || vkCtx.device == VK_NULL_HANDLE ) {
@@ -428,16 +422,11 @@ static bool VK_Post_EnsureModules( void ) {
 		vkPost.fullscreenVert = VK_Post_CreateModule( vk_post_fullscreen_vert_spv,
 				vk_post_fullscreen_vert_spv_size, "post full-screen vertex" );
 	}
-	if ( vkPost.colorMappingFrag == VK_NULL_HANDLE ) {
-		vkPost.colorMappingFrag = VK_Post_CreateModule( vk_post_color_mapping_frag_spv,
-				vk_post_color_mapping_frag_spv_size, "post colour mapping fragment" );
-	}
 	if ( vkPost.crtFrag == VK_NULL_HANDLE ) {
 		vkPost.crtFrag = VK_Post_CreateModule( vk_post_crt_frag_spv,
 				vk_post_crt_frag_spv_size, "post CRT fragment" );
 	}
-	if ( vkPost.fullscreenVert == VK_NULL_HANDLE || vkPost.colorMappingFrag == VK_NULL_HANDLE
-			|| vkPost.crtFrag == VK_NULL_HANDLE ) {
+	if ( vkPost.fullscreenVert == VK_NULL_HANDLE || vkPost.crtFrag == VK_NULL_HANDLE ) {
 		vkPost.modulesFailed = true;
 		return false;
 	}
@@ -494,7 +483,6 @@ void VK_PostProcess_Shutdown( void ) {
 	vkPortalSkyTarget = NULL;
 	VK_Post_ResetHDRExposure();
 	VK_Post_DestroyModule( vkPost.fullscreenVert );
-	VK_Post_DestroyModule( vkPost.colorMappingFrag );
 	VK_Post_DestroyModule( vkPost.crtFrag );
 	memset( &vkPost, 0, sizeof( vkPost ) );
 
@@ -618,26 +606,6 @@ static VkDescriptorSet VK_Post_CaptureBackBuffer( void ) {
 	return VK_Exec_ImageDescriptor( copy->GetDeviceHandle(), true );
 }
 
-static bool VK_Post_ColorMappingsAreNeutral( float brightness, float gamma ) {
-	return idMath::Fabs( brightness - 1.0f ) <= 0.0001f
-		&& idMath::Fabs( gamma - 1.0f ) <= 0.0001f;
-}
-
-static bool VK_Post_DrawColorMapping( float brightness, float gamma ) {
-	const VkDescriptorSet sceneSet = VK_Post_CaptureBackBuffer();
-	if ( sceneSet == VK_NULL_HANDLE ) {
-		return false;
-	}
-	vkPostColorMappingBlock_t block;
-	memset( &block, 0, sizeof( block ) );
-	block.params[ 0 ] = brightness;
-	block.params[ 1 ] = gamma;
-	const int uniformOffset = VK_Exec_InteractionUniformAlloc( &block, sizeof( block ) );
-	const VkPipeline pipeline = VK_Exec_PostPipeline( VK_POST_COLOR_MAPPING,
-			vkPost.fullscreenVert, vkPost.colorMappingFrag, GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO );
-	return VK_Post_DrawFullscreen( pipeline, &sceneSet, 1, uniformOffset );
-}
-
 // RB_ApplyCRTToBackBuffer: same clamps and frame-based clock as OpenGL.
 static float VK_Post_CRTAmount( void ) {
 	return idMath::ClampFloat( 0.0f, 1.0f, r_crtAmount.GetFloat() );
@@ -671,8 +639,10 @@ static bool VK_Post_DrawCRT( void ) {
 ====================
 VK_PostProcess_ApplyBackBuffer
 
-The Vulkan counterpart of the tail of RB_SwapBuffers: CRT, then the
-r_brightness/r_gamma mapping, over the finished frame.
+The Vulkan counterpart of RB_ApplyCRTToBackBuffer at the tail of
+RB_SwapBuffers. RB_ApplyColorMappingsToBackBuffer's counterpart is the
+executor's display mapping, which runs after this when the frame is presented
+or read back.
 ====================
 */
 void VK_PostProcess_ApplyBackBuffer( void ) {
@@ -681,24 +651,14 @@ void VK_PostProcess_ApplyBackBuffer( void ) {
 	}
 	const bool crt = !r_skipPostProcess.GetBool() && r_crt.GetBool()
 			&& VK_Post_CRTAmount() > 0.001f;
-	const float brightness = idMath::ClampFloat( 0.0f, 16.0f, r_brightness.GetFloat() );
-	const float gamma = Max( r_gamma.GetFloat(), 0.001f );
-	const bool colorMapping = !VK_Post_ColorMappingsAreNeutral( brightness, gamma );
-	if ( ( !crt && !colorMapping ) || !VK_Post_EnsureModules() ) {
+	if ( !crt || !VK_Post_EnsureModules() ) {
 		return;
 	}
-	if ( crt && !VK_Post_DrawCRT() ) {
+	if ( !VK_Post_DrawCRT() ) {
 		static bool crtWarned = false;
 		if ( !crtWarned ) {
 			common->Warning( "Vulkan: r_crt pass could not run this frame" );
 			crtWarned = true;
-		}
-	}
-	if ( colorMapping && !VK_Post_DrawColorMapping( brightness, gamma ) ) {
-		static bool warned = false;
-		if ( !warned ) {
-			common->Warning( "Vulkan: r_brightness/r_gamma pass could not run this frame" );
-			warned = true;
 		}
 	}
 }

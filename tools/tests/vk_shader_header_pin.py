@@ -110,7 +110,6 @@ POST_COMMITTED = REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "post_s
 POST_GUARD = "__VK_POST_SHADERS_SPV_H__"
 POST_SHADERS = [
     REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "post_fullscreen.vert",
-    REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "post_color_mapping.frag",
     REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "post_crt.frag",
     REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "post_ssao.frag",
     REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "post_bloom_extract.frag",

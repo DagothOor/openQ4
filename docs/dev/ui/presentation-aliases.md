@@ -195,6 +195,13 @@ retirement; frame state prevents repeated correction. GLSL source and its
 generated SPIR-V header are checked together. Production-controller tests cover
 neutral bypass, reuse, reset, failure diagnostics, copy orientation and math.
 
+This is the only Vulkan pass that applies these settings. From 2026-09-18 to
+2026-10-05 the `RC_SWAP_BUFFERS` back-buffer pass applied them as well, so
+non-neutral frames and screenshots were corrected twice; `r_gamma 2` gave Air
+Defense 1 a mean luma of 127 on Vulkan against 77 on OpenGL. That pass now runs
+CRT only, and `tools/tests/vk_display_color_mapping.py` fails if any other
+Vulkan code reads `r_brightness` or `r_gamma`.
+
 On the tested RTX 4060 Laptop GPU (Vulkan 1.4.325), neutral OpenGL/Vulkan captures
 differ by one 8-bit value in just three color channels over the entire image.
 Corrected captures differ by at most one value over 876 channels. The native

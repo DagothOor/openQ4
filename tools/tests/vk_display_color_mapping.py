@@ -4,8 +4,11 @@
 No Vulkan device or game is created. Real driver/validation and screenshot
 parity remain integration gates; this checks production control flow, shader
 math/orientation, neutral bypass, resource reuse, and reported failure paths.
+It also pins this pass as the only Vulkan code that applies r_brightness and
+r_gamma, so a frame cannot be mapped twice.
 """
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -221,8 +224,36 @@ int main(){
 '''
 
 
+def check_single_display_mapping(source):
+    # OpenGL maps r_brightness/r_gamma once (RB_ApplyColorMappingsToBackBuffer).
+    # On Vulkan the display mapping is that one pass. The RC_SWAP_BUFFERS
+    # back-buffer pass also applied them until 2026-10-05, so every presented
+    # frame and screenshot with non-neutral settings was mapped twice.
+    reads = re.compile(r'\br_(?:brightness|gamma)\s*\.\s*Get\w*\s*\(|"r_(?:brightness|gamma)"')
+    signature = 'static bool VK_DisplayColorMapping_Apply('
+    start = source.index(signature)
+    end = start + len(function_body(source, signature))
+    for cvar in ('r_brightness', 'r_gamma'):
+        assert len(re.findall(rf'\b{cvar}\s*\.\s*Get\w*\s*\(', source[start:end])) == 1, \
+            f'VK_DisplayColorMapping_Apply must read {cvar} exactly once'
+    stray = []
+    for path in sorted((ROOT / 'src/renderer/Vulkan').rglob('*')):
+        if path.suffix not in ('.cpp', '.h'):
+            continue
+        text = source if path.name == 'vk_GuiExecutor.cpp' else path.read_text(encoding='utf-8', errors='replace')
+        for match in reads.finditer(text):
+            if path.name != 'vk_GuiExecutor.cpp' or not start <= match.start() < end:
+                stray.append(f'{path.relative_to(ROOT).as_posix()}:{text.count(chr(10), 0, match.start()) + 1}')
+    assert not stray, ('r_brightness/r_gamma must reach a Vulkan frame only through VK_DisplayColorMapping_Apply, '
+                       'which runs once per composition; another reader maps the frame twice: ' + ', '.join(stray))
+    post = (ROOT / 'src/renderer/Vulkan/vk_PostProcess.cpp').read_text(encoding='utf-8')
+    back_buffer = function_body(post, 'void VK_PostProcess_ApplyBackBuffer( void ) {')
+    assert 'ColorMapping' not in back_buffer, 'the RC_SWAP_BUFFERS back-buffer pass must leave r_brightness/r_gamma to the display mapping'
+
+
 def main():
     source = (ROOT / 'src/renderer/Vulkan/vk_GuiExecutor.cpp').read_text()
+    check_single_display_mapping(source)
     shader = (ROOT / 'src/renderer/Vulkan/shaders/display_color_mapping.frag').read_text()
     readback = function_body(source, 'bool VK_GuiExecutor_ReadPixels(')
     order = ['VK_TemporalPresentation_CompositePendingScene()',

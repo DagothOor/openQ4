@@ -219,6 +219,21 @@
   [shadow movers](shadowmapping-movers-2026-09-05.md#composed-vulkan-hits-drew-moving-casters-without-their-alpha-image)
   and the [world ambient domain](classic-world-ambient-domain-modernization.md#backend-execution).
 
+- [x] Apply `r_brightness` and `r_gamma` once on Vulkan, as OpenGL does. The
+  `RC_SWAP_BUFFERS` back-buffer pass added on 2026-09-18 mapped every frame,
+  then the executor's display mapping (2026-09-09) mapped it again at
+  presentation and screenshot readback, so any non-neutral value was applied
+  twice. The display mapping is now the only pass: it runs after CRT, covers
+  native and shared GUI draws and skips neutral settings. At two frozen Air
+  Defense 1 poses, `r_gamma 2` gave Vulkan a mean luma of 127.1 and 149.2
+  against OpenGL's 76.7 and 94.8, and Vulkan's pixels matched two applications
+  of the curve to its own neutral frame. After the fix Vulkan gives 77.4 and
+  95.3 against OpenGL's 77.0 and 95.4, every `r_gamma 2`, `r_brightness 1.5`
+  and CRT-plus-gamma capture on both renderers matches a single application,
+  and Vulkan's `r_gamma 2` pixels sit within 2 levels of it everywhere.
+  `vk_display_color_mapping.py` now fails if any other Vulkan code reads
+  either cvar, and the unused post colour-mapping shader is gone.
+
 - [x] Make the experimental Vulkan renderer survive what used to stop it:
   a GPU or driver reset during play now restarts the renderer automatically
   and carries on (three times per session, `r_vkPresentationRecoveries`)
