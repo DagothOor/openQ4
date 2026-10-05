@@ -86,6 +86,20 @@
   unchanged, so the branch merges cleanly later. A Linux build with the ES
   module enabled links every target, and no renderer module has an
   undefined symbol.
+- [x] Box-projected parallax reflection probes: `boxParallax` makes a probe's
+  light volume the room box its cubemap shows, with per-axis `light_radius`.
+  The shared kernel (`PBRBoxParallaxDistance`, `PBRBoxInfluence`) runs on
+  Vulkan, the OpenGL owner and the modern GL path; the probe record grew to
+  seven vec4s. Seven probe controls prove on all four owners that reflections
+  follow the box (sign tests), per-axis extents, face-based blending and an
+  exact analytic frame outside the box.
+- [x] In-engine probe capture: `bakeReflectionProbes` captures every
+  native-cube probe from its light and reloads its image. `envshot` and the
+  capture now size their views in virtual-screen units; window pixels had
+  cropped every capture at window sizes other than 640x480. The `baked`
+  control checks GL's cube convention in the written faces and in the
+  reflection on all four owners. The light-grid bake shared the old sizing
+  and is fixed separately.
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:

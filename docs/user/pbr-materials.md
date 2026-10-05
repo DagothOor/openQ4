@@ -166,8 +166,24 @@ complete classic frame. This is not general classic-renderer parity.
 Authored probes use the existing `openQ4SpecularProbe` light-material block.
 The current atlas holds eight authored cubemaps plus the analytic environment,
 with at most 32 frame records and two selected probes per cluster. It filters
-rough reflections and diffuse irradiance; it does not capture the scene at
-runtime or apply box-projected parallax correction.
+rough reflections and diffuse irradiance.
+
+Add `boxParallax` to the block of a probe that shows a room: its light volume
+becomes that room's box, so reflected walls stay where they are as you and the
+surface move instead of sliding along, and its `light_radius` may differ per
+axis (a plain probe is a sphere and needs equal radii). Its influence fades in
+from the box faces over `blendFraction` of the smallest half extent.
+
+`bakeReflectionProbes [size] [blends]` (a cheat command) captures every probe
+of the loaded map from its light, in the light's axes, writes the six faces
+its `cubeMap` names (`<name>_px.tga` to `_nz.tga`, 256 pixels by default) to
+your save folder and reloads them, so the probes show the capture at once.
+The capture leaves out display filters, the view weapon, mirrors and other
+probes' reflections, so baking the same scene again gives the same faces.
+openQ4 reads the save folder last: if another copy of those faces exists in
+the game or install folders, it still loads, and the command warns. Ship the
+baked faces with your map; probes are captured on request, not while playing.
+Give each probe light its own probe material, since a shared one is skipped.
 
 ## Reproduce the laboratory
 

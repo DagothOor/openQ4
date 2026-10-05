@@ -659,3 +659,68 @@ for the twelve OpenGL-only functions the kept front end calls. A Linux GCC
 build with `-Dbuild_renderer_gles=enabled` now compiles and links every
 target, the ES module under `-z defs`, and `ldd -r` finds no undefined symbol
 in the OpenGL, Vulkan or ES module.
+
+### Box-projected parallax probes
+
+A probe flagged `boxParallax` is a box, not a sphere: its light volume
+(`light_radius` half extents along the light's axes, around its origin) is
+the room its cubemap shows. Each owner looks a reflection up where it leaves
+the box (`PBRBoxParallaxDistance`) and weighs the probe by its distance inside
+the faces over `blendFraction` of the smallest half extent (`PBRBoxInfluence`).
+Both come from the shared kernel in `PBRMath.h`, so Vulkan, the OpenGL owner
+and the modern GL path evaluate one formula, and `PBRMathTest` sweeps them
+against a slab-intersection reference. The probe record carries the half
+extents as a seventh vec4 (112 bytes; the OpenGL owner's record texture is
+seven texels wide). A box may have unequal half extents; a sphere probe still
+needs equal radii, and its bounding sphere still selects it per cluster.
+
+The probe suite adds seven controls on a mirror sphere reflecting the warm
+room's far-wall stripe:
+
+- A box probe moved 150 units to +X moves the reflected stripe to screen
+  right, a mirrored probe moves it left, and a plain probe at the same offset
+  keeps it centred: the mean right-minus-left brightness of the specimen
+  patch is +24.7, -24.8 and +0.9 (the check requires twice the plain value).
+- A shallower box (`light_radius 600 300 600`, accepted where the sphere
+  control `invalid-volume` rejects it) moves the stripe further.
+- Its blend margin is measured from the box faces (`box-fade` against a
+  narrow-margin `box-hard`).
+- Outside the box, within its bounding sphere, the probe is published and
+  selected but has no weight: the frame equals the analytic control exactly.
+
+### Probes captured in the engine
+
+`bakeReflectionProbes [size] [blends]` captures every native-cube probe of
+the loaded map from its light origin, in the light's axes, writes the faces
+its `cubeMap` names under `fs_savepath` and reloads the image, so the probes
+use the capture at once on either backend. The capture leaves out post
+process and glow stages, subviews, view models, bloom, motion blur, tone
+mapping, exposure, CRT filtering, gamma/brightness and authored probes,
+restoring them afterwards. openQ4 searches `fs_savepath` last, so the command
+warns when another copy of the faces would still load. `cameraCubeMap` probes,
+non-point lights and cube images shared by several probe lights are skipped.
+
+Writing it found that `envshot`, whose capture path the command reuses, sized
+its view in window pixels where view rectangles are virtual-screen units: a
+128-pixel capture in a 1280x800 window drew a 256x213 view and kept its
+corner. Both now use the 640x480 virtual screen, as levelshots do. The
+light-grid bake shared the sizing; its fix, and whether to re-bake the grids
+shipped in `pak1`, are handled separately.
+
+The `baked` control bakes two probes at 128 pixels: one in the dark
+laboratory room, holding a red and a blue unlit marker behind the camera, and
+one far from the specimen, so a single command captures several. The `-Y` face must
+show red at the top right and blue at the bottom left, where GL's cube
+convention puts them (measured centroids 0.74/0.34 and 0.28/0.66, predicted
+0.73/0.35 and 0.29/0.65), and the mirror sphere must reflect red above and
+right of its centre and blue below and left (measured within three pixels of
+the prediction). The face check pins the capture to the convention authored
+cubemaps use; the reflection check pins the atlas lookup to it. The markers
+are textured: the modern GL path drops a stage's color modulation.
+
+| Suite | Result |
+|---|---|
+| Probes, Vulkan laboratory and production | 56/56 each, probe proof passes |
+| Probes, modern GL and the OpenGL owner | 50/50 each (Vulkan's failure-injection controls are Vulkan-only), probe proof passes |
+| Probe parity | modern GL/Vulkan, OpenGL owner/Vulkan and Vulkan production/OpenGL owner pass; the box and baked controls agree within two bytes |
+| Box and baked measurements | identical on all four owners |

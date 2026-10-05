@@ -483,9 +483,10 @@ def test_scene_packet_and_resource_table_drive_the_guarded_visible_path() -> Non
         "probeIndex = candidate == 0 ? clusterRange.z : clusterRange.w",
         "probeIndex >= probeCount",
         "ModernSpecularProbeExactInteger(probe.axisZSlot.w",
-        "dot(reflectionDirection, normalize(probe.axisXPriority.xyz))",
-        "dot(reflectionDirection, normalize(probe.axisYBlend.xyz))",
-        "dot(reflectionDirection, normalize(probe.axisZSlot.xyz))",
+        "vec3 axisX = normalize(probe.axisXPriority.xyz), axisY = normalize(probe.axisYBlend.xyz), axisZ = normalize(probe.axisZSlot.xyz);",
+        "dot(reflectionDirection, axisX)",
+        "dot(reflectionDirection, axisY)",
+        "dot(reflectionDirection, axisZ)",
         "weight = clamp((radius - distanceToProbe) / blendWidth, 0.0, 1.0)",
         "environment /= totalWeight",
         "textureLod(uModernSpecularProbeAtlas, atlasUV, float(level))",
@@ -1180,6 +1181,38 @@ def test_vulkan_environment_mip_chain_sampler() -> None:
     environment = read(ROOT / "src/renderer/Vulkan/shaders/pbr_environment.glsl")
     require(environment, "textureLod(lightFalloffMap, texel / float(2048 >> level), float(level))",
             "explicit-LOD environment level sampling")
+
+
+def test_box_parallax_and_probe_capture_contract() -> None:
+    """Box probes share one kernel on every owner; probes bake in the engine."""
+    kernel = read(ROOT / "src/renderer/PBRMath.h")
+    for token in ("OPENQ4_PBR_INLINE float PBRBoxParallaxDistance(", "OPENQ4_PBR_INLINE float PBRBoxInfluence("):
+        require(kernel, token, "box-projected parallax kernel")
+    owners = {
+        "src/renderer/Vulkan/shaders/pbr_probes.glsl": ("vec4 boxExtents;", "localReflection = localPosition + localReflection * exitDistance;"),
+        "src/renderer/draw_pbr.cpp": ("PBRProbeField( record, 6 )",),
+        "src/renderer/ModernGLShaderLibrary.cpp": ("vec4 boxExtents;", "localDirection = localPosition + localDirection * exitDistance;"),
+    }
+    for relative_path, tokens in owners.items():
+        source = read(ROOT / relative_path)
+        for token in ("PBRBoxInfluence(", "PBRBoxParallaxDistance(", *tokens):
+            require(source, token, f"box-projected parallax in {relative_path}")
+    lighting = read(ROOT / "src/renderer/ModernClusteredLighting.cpp")
+    for token in ("( !info.boxParallax && radiusMax - radiusMin > Max( 0.01f, radiusMax * 0.01f ) )",
+                  "assert_offsetof( modernSpecularProbeGpuRecord_t, boxExtents, 96 );"):
+        require(lighting, token, "box probes keep their per-axis light volume")
+    require(read(ROOT / "src/renderer/ModernClusteredLighting.h"), "float boxExtents[4];", "seven-vec4 probe record")
+    require(read(ROOT / "src/renderer/Material.cpp"), 'if ( !token.Icmp( "boxParallax" ) ) {', "boxParallax probe flag")
+    init = read(ROOT / "src/renderer/RenderSystem_init.cpp")
+    for token in ('cmdSystem->AddCommand( "bakeReflectionProbes", R_BakeReflectionProbes_f, CMD_FL_RENDERER | CMD_FL_CHEAT,',
+                  "ref.viewaxis = faceAxes[face] * light->parms.axis;",
+                  "ref.vieworg = light->globalLightOrigin;",
+                  "if ( !R_SavedFileLoads( firstFace ) ) {",
+                  "info.cubeImage->Reload( true );"):
+        require(init, token, "in-engine reflection probe capture")
+    # View rectangles are virtual-screen units; window pixels cropped captures.
+    if init.count("ref.width = SCREEN_WIDTH;") < 3 or "ref.width = glConfig.vidWidth;" in init:
+        raise AssertionError("envshot and probe captures must size their view in virtual-screen units")
 
 
 def test_pbr_display_calibration_contract() -> None:

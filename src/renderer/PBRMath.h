@@ -143,6 +143,39 @@ OPENQ4_PBR_INLINE float PBRMultiBounceAO(float visibility, float albedo) { \
 OPENQ4_PBR_INLINE float PBRHorizonOcclusion(float RoN) { \
     float h = PBRClamp(1.0 + RoN, 0.0, 1.0); \
     return h * h; \
+} \
+/* Box-projected parallax (Lagarde and Zanuttini 2012). A probe captured at   \
+   the centre of a box volume shows that box's walls at their real distance,  \
+   so a fragment away from the centre must look up the direction to where its \
+   reflection ray leaves the box, not the ray's own direction. In the box     \
+   frame (centre at the origin, half extents e) the result is the distance t  \
+   to the exit point p + t r, or -1 when p lies outside the box. An axis the  \
+   ray runs parallel to never bounds it. */ \
+OPENQ4_PBR_INLINE float PBRBoxExitAxis(float p, float r, float e) { \
+    return r > 1.0e-6 ? (e - p) / r : (r < -1.0e-6 ? (-e - p) / r : 3.0e38); \
+} \
+OPENQ4_PBR_INLINE float PBRBoxParallaxDistance(float px, float py, float pz, \
+        float rx, float ry, float rz, float ex, float ey, float ez) { \
+    if (px > ex || px < -ex || py > ey || py < -ey || pz > ez || pz < -ez) return -1.0; \
+    float t = PBRBoxExitAxis(px, rx, ex); \
+    float ty = PBRBoxExitAxis(py, ry, ey); \
+    float tz = PBRBoxExitAxis(pz, rz, ez); \
+    t = ty < t ? ty : t; \
+    return tz < t ? tz : t; \
+} \
+/* A box probe's weight: one inside, falling to zero across the blend margin  \
+   (blendFraction of the smallest half extent) inside each face. */ \
+OPENQ4_PBR_INLINE float PBRBoxInfluence(float px, float py, float pz, \
+        float ex, float ey, float ez, float blendFraction) { \
+    float d = ex - (px < 0.0 ? -px : px); \
+    float dy = ey - (py < 0.0 ? -py : py); \
+    float dz = ez - (pz < 0.0 ? -pz : pz); \
+    d = dy < d ? dy : d; \
+    d = dz < d ? dz : d; \
+    float m = ex < ey ? ex : ey; \
+    m = ez < m ? ez : m; \
+    float margin = m * blendFraction; \
+    return PBRClamp(d / (margin > 1.0e-6 ? margin : 1.0e-6), 0.0, 1.0); \
 }
 
 #ifdef __cplusplus

@@ -41,6 +41,9 @@ struct rendererSpecularProbeRecord_t {
 	float axisYBlend[4];
 	float axisZSlot[4];
 	float identity[4];
+	// xyz: half extents along the axes; w: 1 for a box-parallax probe
+	// (positionRadius.w is then its bounding-sphere radius), 0 for a sphere.
+	float boxExtents[4];
 };
 
 struct rendererSpecularProbeView_t {

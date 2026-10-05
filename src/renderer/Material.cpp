@@ -3127,6 +3127,17 @@ bool idMaterial::ParseSpecularProbeBlock( idLexer &src ) {
 			continue;
 		}
 
+		if ( !token.Icmp( "boxParallax" ) ) {
+			// A flag: a value after it is an unknown parameter below.
+			if ( parsed.boxParallax ) {
+				src.Warning( "openQ4SpecularProbe boxParallax is duplicated in material '%s'", GetName() );
+				SetMaterialFlag( MF_DEFAULTED );
+				return false;
+			}
+			parsed.boxParallax = true;
+			continue;
+		}
+
 		src.Warning( "unknown openQ4SpecularProbe parameter '%s' in material '%s'", token.c_str(), GetName() );
 		SetMaterialFlag( MF_DEFAULTED );
 		return false;
@@ -5108,6 +5119,7 @@ bool R_SpecularProbeMaterialParserSelfTest( void ) {
 		"  intensity 2\n"
 		"  blendFraction 0.4\n"
 		"  priority 17\n"
+		"  boxParallax\n"
 		" }\n"
 		" {\n"
 		"  map _white\n"
@@ -5132,6 +5144,7 @@ bool R_SpecularProbeMaterialParserSelfTest( void ) {
 			&& idMath::Fabs( info.intensity - 2.0f ) < 0.0001f
 			&& idMath::Fabs( info.blendFraction - 0.4f ) < 0.0001f
 			&& info.priority == 17
+			&& info.boxParallax
 			&& valid->GetNumStages() == 1
 			&& valid->GetStage( 0 )->texture.image == globalImages->whiteImage;
 	}
@@ -5159,7 +5172,7 @@ bool R_SpecularProbeMaterialParserSelfTest( void ) {
 		const specularProbeMaterialInfo_t &info = defaults->GetSpecularProbeInfo();
 		ok = info.enabled && info.tint[0] == 1.0f && info.tint[1] == 1.0f
 			&& info.tint[2] == 1.0f && info.intensity == 1.0f
-			&& info.blendFraction == 0.25f && info.priority == 0;
+			&& info.blendFraction == 0.25f && info.priority == 0 && !info.boxParallax;
 	}
 	DeclManager_FreeAllocatedDecl( defaultDecl );
 	if ( !ok ) {
@@ -5208,8 +5221,18 @@ bool R_SpecularProbeMaterialParserSelfTest( void ) {
 		"material _specular_probe_selftest_priority {\n"
 		" openQ4SpecularProbe { cubeMap normalCubeMap\n priority 1.5\n }\n"
 		"}\n";
+	static const char duplicateParallax[] =
+		"material _specular_probe_selftest_parallax {\n"
+		" openQ4SpecularProbe { cubeMap normalCubeMap\n boxParallax\n boxParallax\n }\n"
+		"}\n";
+	static const char valuedParallax[] =
+		"material _specular_probe_selftest_parallax_value {\n"
+		" openQ4SpecularProbe { cubeMap normalCubeMap\n boxParallax 1\n }\n"
+		"}\n";
 
 	return rejectsProbeDeclaration( duplicateBlock, "R_SpecularProbeMaterialParserSelfTest duplicate" )
+		&& rejectsProbeDeclaration( duplicateParallax, "R_SpecularProbeMaterialParserSelfTest duplicate boxParallax" )
+		&& rejectsProbeDeclaration( valuedParallax, "R_SpecularProbeMaterialParserSelfTest valued boxParallax" )
 		&& rejectsProbeDeclaration( missingCube, "R_SpecularProbeMaterialParserSelfTest missing cube" )
 		&& rejectsProbeDeclaration( twoDimensionalImage, "R_SpecularProbeMaterialParserSelfTest 2D image" )
 		&& rejectsProbeDeclaration( mutableImage, "R_SpecularProbeMaterialParserSelfTest mutable image" )

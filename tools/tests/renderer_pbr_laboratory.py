@@ -1351,13 +1351,13 @@ def compare_material_captures(results: list[dict]) -> None:
                 extreme['failures'].append('unclipped extreme HDR channel lost emission linearity')
 
 
-def capture_rgb(path: Path) -> bytes | None:
+def capture_rgb(path: Path, size: tuple[int,int] = (1280,800)) -> bytes | None:
     if not path.is_file(): return None
     raw=path.read_bytes()
     if len(raw)<18 or raw[2]!=2: return None
     width,height,bits=struct.unpack_from('<HHB',raw,12)
     stride=bits//8
-    if (width,height)!=(1280,800) or stride not in (3,4): return None
+    if (width,height)!=size or stride not in (3,4): return None
     pixels=raw[18+raw[0]:]
     if len(pixels)!=width*height*stride: return None
     rows=[]
@@ -1939,6 +1939,12 @@ def capture_cases(args: argparse.Namespace, cases: list[str], save: Path) -> lis
     cfg = save/'baseoq4/pbr_lab_capture.cfg'
     cfg.parent.mkdir()
     manifest = json.loads((args.runtime_root/'pbr-lab.json').read_text())
+    # Runtime files a fixture copies into each run's fresh save path, keyed by
+    # path under it: placeholder images a capture command overwrites in place.
+    for relative,source in manifest.get('saveSeeds',{}).items():
+        target = fixture.validate_contained_target(save, save/relative)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(fixture.validate_contained_target(args.runtime_root, args.runtime_root/source).read_bytes())
     camera = manifest['cameras'][args.camera]
     cvars = {**BASE, 'r_renderApi': 'vulkan' if args.backend == 'vk' else 'gl', 'r_glTier': args.tier}
     if args.backend == 'vk':

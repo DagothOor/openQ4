@@ -205,6 +205,62 @@ static void OcclusionTests() {
         "horizon fade below the geometric surface");
 }
 
+// Box-projected parallax: the exit distance against an independent slab
+// intersection, and the box influence's margin.
+static void BoxParallaxTests() {
+    auto exitDistance = [](float px, float py, float pz, float rx, float ry, float rz, float ex, float ey, float ez) {
+        return kernel::PBRBoxParallaxDistance(px, py, pz, rx, ry, rz, ex, ey, ez);
+    };
+    Require(exitDistance(0, 0, 0, 1, 0, 0, 2, 3, 4) == 2.0f, "centre exit along +x");
+    Require(exitDistance(1, 0, 0, 1, 0, 0, 2, 2, 2) == 1.0f && exitDistance(1, 0, 0, -1, 0, 0, 2, 2, 2) == 3.0f,
+        "exit distance runs to the face the ray points at");
+    Require(exitDistance(0.5f, 0.5f, 0, 0, 0, 1, 1, 1, 1) == 1.0f, "an axis parallel to the ray never bounds it");
+    Require(exitDistance(3, 0, 0, 1, 0, 0, 2, 2, 2) == -1.0f && exitDistance(0, 0, -5, 0, 0, 1, 2, 2, 2) == -1.0f,
+        "a fragment outside the box has no exit");
+    const float s = 1.0f / std::sqrt(2.0f);
+    const float diagonal = exitDistance(0, 0, 0, s, s, 0, 1, 2, 2);
+    Require(std::fabs(diagonal - std::sqrt(2.0f)) < 1e-6f, "the nearest face bounds a diagonal ray");
+    // Independent reference: slab method on a sweep of points and rays.
+    int checked = 0;
+    for (int i = 0; i < 4096; ++i) {
+        const double u = (i * 0.6180339887) - std::floor(i * 0.6180339887);
+        const double v = (i * 0.7548776662) - std::floor(i * 0.7548776662);
+        const double w = (i * 0.5698402910) - std::floor(i * 0.5698402910);
+        const double e[3] = {64.0 + 448.0 * u, 32.0 + 224.0 * v, 96.0 + 160.0 * w};
+        const double p[3] = {(2 * v - 1) * e[0] * 0.95, (2 * w - 1) * e[1] * 0.95, (2 * u - 1) * e[2] * 0.95};
+        const double theta = 2.0 * 3.141592653589793 * u, z = 2.0 * w - 1.0, rr = std::sqrt(1.0 - z * z);
+        const double r[3] = {rr * std::cos(theta), rr * std::sin(theta), z};
+        double reference = 1e300;
+        for (int axis = 0; axis < 3; ++axis) {
+            if (std::fabs(r[axis]) > 1e-6) {
+                reference = std::fmin(reference, ((r[axis] > 0 ? e[axis] : -e[axis]) - p[axis]) / r[axis]);
+            }
+        }
+        const float t = exitDistance(float(p[0]), float(p[1]), float(p[2]), float(r[0]), float(r[1]), float(r[2]),
+            float(e[0]), float(e[1]), float(e[2]));
+        Require(t > 0 && RelativeError(t, reference) < 1e-4, "slab-method exit distance");
+        // The exit point lies on the box surface.
+        double face = 0;
+        for (int axis = 0; axis < 3; ++axis) {
+            face = std::fmax(face, std::fabs(p[axis] + t * r[axis]) / e[axis]);
+        }
+        Require(std::fabs(face - 1.0) < 1e-4, "the exit point lies on a face");
+        ++checked;
+    }
+    Require(checked == 4096, "every sampled ray checked");
+    // At the centre the corrected direction is the ray itself.
+    const float t = exitDistance(0, 0, 0, 0.6f, 0.0f, 0.8f, 50, 50, 50);
+    Require(std::fabs(t - 62.5f) < 1e-4f, "the capture point exits through its nearest face");
+
+    Require(kernel::PBRBoxInfluence(0, 0, 0, 10, 10, 10, 0.2f) == 1.0f, "full weight inside the margin");
+    Require(std::fabs(kernel::PBRBoxInfluence(9, 0, 0, 10, 10, 10, 0.2f) - 0.5f) < 1e-6f,
+        "weight falls across the margin");
+    Require(kernel::PBRBoxInfluence(10, 0, 0, 10, 10, 10, 0.2f) == 0.0f
+        && kernel::PBRBoxInfluence(0, -12, 0, 10, 10, 10, 0.2f) == 0.0f, "no weight on or outside a face");
+    Require(std::fabs(kernel::PBRBoxInfluence(0, 0, 3, 100, 100, 4, 0.5f) - 0.5f) < 1e-6f,
+        "the smallest half extent sets the margin");
+}
+
 int main() {
     const double pi = 3.141592653589793;
     const float roughnesses[] = {0.045f, 0.08f, 0.2f, 0.5f, 0.8f, 1.0f};
@@ -296,6 +352,7 @@ int main() {
     UniformEnvironmentTests();
     OcclusionTests();
     ClassicCalibrationTests();
-    std::puts("PBRMathTest: passed sRGB, mirror peaks, Smith reference, reciprocity, 24 white furnaces, probe convolution, HDR, seams, irradiance, split-sum integration, energy compensation, split-sum bias and uniform environments, specular/multi-bounce/horizon occlusion, extended transfer and classic light calibration");
+    BoxParallaxTests();
+    std::puts("PBRMathTest: passed sRGB, mirror peaks, Smith reference, reciprocity, 24 white furnaces, probe convolution, HDR, seams, irradiance, split-sum integration, energy compensation, split-sum bias and uniform environments, specular/multi-bounce/horizon occlusion, extended transfer, classic light calibration and box-projected parallax");
     return 0;
 }

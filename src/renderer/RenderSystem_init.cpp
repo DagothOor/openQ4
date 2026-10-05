@@ -3961,15 +3961,50 @@ void R_StencilShot( void ) {
 	Mem_Free( byteBuffer );	
 }
 
-/* 
-================== 
+/*
+==================
+R_SetNativeCubeAxes
+
+View axes of the six faces of a native cube map (_px, _nx, _py, _ny, _pz,
+_nz), each in the orientation cubeMap loads it.
+==================
+*/
+static void R_SetNativeCubeAxes( idMat3 axis[6] ) {
+	memset( axis, 0, sizeof( idMat3 ) * 6 );
+	axis[0][0][0] = 1;
+	axis[0][1][2] = 1;
+	axis[0][2][1] = 1;
+
+	axis[1][0][0] = -1;
+	axis[1][1][2] = -1;
+	axis[1][2][1] = 1;
+
+	axis[2][0][1] = 1;
+	axis[2][1][0] = -1;
+	axis[2][2][2] = -1;
+
+	axis[3][0][1] = -1;
+	axis[3][1][0] = -1;
+	axis[3][2][2] = 1;
+
+	axis[4][0][2] = 1;
+	axis[4][1][0] = -1;
+	axis[4][2][1] = 1;
+
+	axis[5][0][2] = -1;
+	axis[5][1][0] = 1;
+	axis[5][2][1] = 1;
+}
+
+/*
+==================
 R_EnvShot_f
 
 envshot <basename>
 
 Saves out env/<basename>_ft.tga, etc
-================== 
-*/  
+==================
+*/
 void R_EnvShot_f( const idCmdArgs &args ) {
 	idStr		fullname;
 	const char	*baseName;
@@ -4020,37 +4055,17 @@ void R_EnvShot_f( const idCmdArgs &args ) {
 
 	primary = *tr.primaryView;
 
-	memset( &axis, 0, sizeof( axis ) );
-	axis[0][0][0] = 1;
-	axis[0][1][2] = 1;
-	axis[0][2][1] = 1;
-
-	axis[1][0][0] = -1;
-	axis[1][1][2] = -1;
-	axis[1][2][1] = 1;
-
-	axis[2][0][1] = 1;
-	axis[2][1][0] = -1;
-	axis[2][2][2] = -1;
-
-	axis[3][0][1] = -1;
-	axis[3][1][0] = -1;
-	axis[3][2][2] = 1;
-
-	axis[4][0][2] = 1;
-	axis[4][1][0] = -1;
-	axis[4][2][1] = 1;
-
-	axis[5][0][2] = -1;
-	axis[5][1][0] = 1;
-	axis[5][2][1] = 1;
+	R_SetNativeCubeAxes( axis );
 
 	for ( i = 0 ; i < 6 ; i++ ) {
 		ref = primary.renderView;
 		ref.x = ref.y = 0;
 		ref.fov_x = ref.fov_y = 90;
-		ref.width = glConfig.vidWidth;
-		ref.height = glConfig.vidHeight;
+		// View rectangles are virtual-screen units: the full screen is the
+		// whole size x size capture. Window pixels drew a larger view and
+		// kept only its corner unless the window was 640x480.
+		ref.width = SCREEN_WIDTH;
+		ref.height = SCREEN_HEIGHT;
 		ref.viewaxis = axis[i];
 		fullname = "env/";
 		fullname += baseName;
@@ -4059,7 +4074,156 @@ void R_EnvShot_f( const idCmdArgs &args ) {
 	}
 
 	common->Printf( "Wrote %s, etc\n", fullname.c_str() );
-} 
+}
+
+/*
+==================
+R_SavedFileLoads
+
+True when a load of relativePath reads the copy in the save path. openQ4
+searches the save path last, so a copy in the game or install tree wins.
+==================
+*/
+static bool R_SavedFileLoads( const char *relativePath ) {
+	idFile *saved = fileSystem->OpenExplicitFileRead( fileSystem->RelativePathToOSPath( relativePath, "fs_savepath" ) );
+	if ( saved == NULL ) {
+		return false;
+	}
+	void *loaded = NULL;
+	const int length = fileSystem->ReadFile( relativePath, &loaded );
+	bool same = length >= 0 && length == saved->Length();
+	if ( same && length > 0 ) {
+		idTempArray<byte> bytes( length );
+		same = saved->Read( bytes.Ptr(), length ) == length && memcmp( bytes.Ptr(), loaded, length ) == 0;
+	}
+	fileSystem->CloseFile( saved );
+	if ( loaded != NULL ) {
+		fileSystem->FreeFile( loaded );
+	}
+	return same;
+}
+
+/*
+==================
+R_BakeReflectionProbes_f
+
+bakeReflectionProbes [size] [blends]
+
+Captures each authored reflection probe of the current map from its light
+origin, in the light's own axes, and writes the six faces its cubeMap loads
+(<cubeMap>_px.tga .. _nz.tga) under the save path. Each image then reloads,
+so the probes reflect the capture at once. The capture is the scene alone:
+display filters, view weapons, subviews and existing probe reflections are
+left out, so baking again from the same scene writes the same faces.
+==================
+*/
+static void R_BakeReflectionProbes_f( const idCmdArgs &args ) {
+	static const char *suffixes[6] = { "_px.tga", "_nx.tga", "_py.tga", "_ny.tga", "_pz.tga", "_nz.tga" };
+	if ( args.Argc() > 3 ) {
+		common->Printf( "usage: bakeReflectionProbes [size] [blends]\n" );
+		return;
+	}
+	const int size = args.Argc() > 1 ? atoi( args.Argv( 1 ) ) : MODERN_SPECULAR_PROBE_ATLAS_FACE_SIZE;
+	if ( size < 16 || size > MODERN_SPECULAR_PROBE_ATLAS_FACE_SIZE || ( size & ( size - 1 ) ) != 0 ) {
+		common->Printf( "bakeReflectionProbes: size must be a power of two from 16 to %i\n",
+			MODERN_SPECULAR_PROBE_ATLAS_FACE_SIZE );
+		return;
+	}
+	const int blends = idMath::ClampInt( 1, MAX_BLENDS, args.Argc() > 2 ? atoi( args.Argv( 2 ) ) : 1 );
+	if ( tr.primaryWorld == NULL || tr.primaryView == NULL ) {
+		common->Printf( "bakeReflectionProbes: no map is being rendered\n" );
+		return;
+	}
+
+	idList<const idRenderLightLocal *> probes;
+	const idRenderWorldLocal *world = tr.primaryWorld;
+	for ( int i = 0; i < world->lightDefs.Num(); ++i ) {
+		const idRenderLightLocal *light = world->lightDefs[i];
+		if ( light != NULL && light->lightShader != NULL && light->lightShader->HasSpecularProbe() ) {
+			probes.Append( light );
+		}
+	}
+	if ( probes.Num() == 0 ) {
+		common->Printf( "bakeReflectionProbes: the map has no reflection probe lights\n" );
+		return;
+	}
+
+	struct captureSetting_t {
+		idCVar *		cvar;
+		const char *	value;
+		idStr			saved;
+	};
+	captureSetting_t settings[] = {
+		{ &r_skipPostProcess, "1" }, { &r_skipGlowOverlay, "1" }, { &r_skipSubviews, "1" },
+		{ &r_rendererReflectionProbes, "0" }, { &r_hdrToneMap, "0" }, { &r_hdrAutoExposure, "0" },
+		{ &r_hdrExposure, "1" }, { &r_bloom, "0" }, { &r_motionBlur, "0" }, { &r_crt, "0" },
+		{ &r_gamma, "1" }, { &r_brightness, "1" },
+	};
+	for ( int i = 0; i < (int)( sizeof( settings ) / sizeof( settings[0] ) ); ++i ) {
+		settings[i].saved = settings[i].cvar->GetString();
+		settings[i].cvar->SetString( settings[i].value );
+	}
+	const bool oldSuppressViewModels = tr.suppressLevelshotViewModels;
+	tr.suppressLevelshotViewModels = true;
+
+	// Copy the view before capturing: each capture starts frames that reuse
+	// the memory tr.primaryView points into.
+	const renderView_t primary = tr.primaryView->renderView;
+	idMat3 faceAxes[6];
+	R_SetNativeCubeAxes( faceAxes );
+	int baked = 0;
+	for ( int i = 0; i < probes.Num(); ++i ) {
+		const idRenderLightLocal *light = probes[i];
+		const specularProbeMaterialInfo_t &info = light->lightShader->GetSpecularProbeInfo();
+		const char *material = light->lightShader->GetName();
+		if ( info.cubeImage == NULL || info.cubeConvention != SPECULAR_PROBE_CUBE_NATIVE ) {
+			common->Printf( "bakeReflectionProbes: skipped %s: only a cubeMap probe can be baked\n", material );
+			continue;
+		}
+		if ( !light->parms.pointLight ) {
+			common->Printf( "bakeReflectionProbes: skipped %s: a probe is a point light\n", material );
+			continue;
+		}
+		// A probe owns its cube image: probe lights sharing one would
+		// overwrite each other's capture, so none of them is baked.
+		int users = 0;
+		for ( int j = 0; j < probes.Num(); ++j ) {
+			if ( probes[j]->lightShader->GetSpecularProbeInfo().cubeImage == info.cubeImage ) {
+				++users;
+			}
+		}
+		if ( users > 1 ) {
+			common->Printf( "bakeReflectionProbes: skipped %s: %i probe lights share its cube map\n", material, users );
+			continue;
+		}
+		renderView_t ref = primary;
+		ref.x = ref.y = 0;
+		ref.fov_x = ref.fov_y = 90;
+		ref.width = SCREEN_WIDTH;
+		ref.height = SCREEN_HEIGHT;
+		ref.vieworg = light->globalLightOrigin;
+		for ( int face = 0; face < 6; ++face ) {
+			ref.viewaxis = faceAxes[face] * light->parms.axis;
+			tr.TakeScreenshot( size, size, va( "%s%s", info.cubeImage->GetName(), suffixes[face] ), blends, &ref );
+		}
+		const idStr firstFace = va( "%s%s", info.cubeImage->GetName(), suffixes[0] );
+		if ( !R_SavedFileLoads( firstFace ) ) {
+			common->Warning( "bakeReflectionProbes: %s does not load from the bake at %s: another copy loads first, or the save path is not writable",
+				firstFace.c_str(), fileSystem->RelativePathToOSPath( firstFace, "fs_savepath" ) );
+		}
+		info.cubeImage->Reload( true );
+		common->Printf( "bakeReflectionProbes: %s at (%.1f %.1f %.1f) -> %s_*.tga\n", material,
+			light->globalLightOrigin.x, light->globalLightOrigin.y, light->globalLightOrigin.z,
+			info.cubeImage->GetName() );
+		++baked;
+	}
+
+	tr.suppressLevelshotViewModels = oldSuppressViewModels;
+	for ( int i = 0; i < (int)( sizeof( settings ) / sizeof( settings[0] ) ); ++i ) {
+		settings[i].cvar->SetString( settings[i].saved );
+	}
+	common->Printf( "bakeReflectionProbes: baked %i of %i probes at %ix%i\n", baked, probes.Num(), size, size );
+}
 
 //============================================================================
 
@@ -5845,6 +6009,7 @@ void R_InitCommands( void ) {
 	cmdSystem->AddCommand( "levelshot", R_LevelShot_f, CMD_FL_RENDERER | CMD_FL_CHEAT, "captures a 5-tile levelshot set" );
 	cmdSystem->AddCommand( "levelshotProbe", R_LevelShotProbe_f, CMD_FL_RENDERER | CMD_FL_CHEAT, "renders the camera probes queued in a request file, for levelshot pose tools" );
 	cmdSystem->AddCommand( "envshot", R_EnvShot_f, CMD_FL_RENDERER, "takes an environment shot" );
+	cmdSystem->AddCommand( "bakeReflectionProbes", R_BakeReflectionProbes_f, CMD_FL_RENDERER | CMD_FL_CHEAT, "captures each reflection probe light's cube map from the current map and reloads it: [size 16-256] [blends]" );
 	cmdSystem->AddCommand( "makeAmbientMap", R_MakeAmbientMap_f, CMD_FL_RENDERER|CMD_FL_CHEAT, "makes an ambient map" );
 	cmdSystem->AddCommand( "benchmark", R_Benchmark_f, CMD_FL_RENDERER, "benchmark" );
 	cmdSystem->AddCommand( "gfxInfo", GfxInfo_f, CMD_FL_RENDERER, "show graphics info" );

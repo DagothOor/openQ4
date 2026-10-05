@@ -17,6 +17,7 @@ REQUIRED = {
     'cutout','cutout-analytic','cutout-owned','eight','nine','evicted',
     'spatial-x','spatial-x-swapped','spatial-z','spatial-z-swapped','translated','rotated-model',
     'record-overflow','invalid-volume','restored','image-reload','partial-restart','full-restart',
+    'box-plain','box','box-mirrored','box-deep','box-fade','box-hard','box-outside','baked',
 }
 
 

@@ -22,7 +22,7 @@ same atlas layout, CPU convolution and cluster selection as OpenGL.
   execute on the graphics queue after earlier submitted reads. Reloaded images
   keep the existing deferred image/descriptor lifetime rules.
 - `R_ModernClusteredLighting_PrepareProbes` is a CPU-only export with a resident
-  atlas callback. It reuses the existing spherical-volume/material validation,
+  atlas callback. It reuses the existing sphere/box-volume and material validation,
   grid policy and deterministic priority/weight/stable-identity top-two binning.
   Vulkan does not call the GL upload or binding entry point.
 - Each view publishes at most 32 packed records and two indices per cluster.
@@ -34,7 +34,7 @@ same atlas layout, CPU convolution and cluster selection as OpenGL.
   environment. A native view-resource failure declines environment admission;
   ordered transparent rendering rolls back its whole prepared view before
   taking framebuffer ownership.
-- Shader evaluation preserves probe rotation, tint/intensity, spherical fade,
+- Shader evaluation preserves probe rotation, tint/intensity, spherical or box fade,
   normalized overlap, roughness filtering, AO and the analytic remainder.
   Projection before Vulkan's Y flip addresses the shared bottom-origin grid.
 
@@ -42,6 +42,17 @@ The ordinary analytic pipeline remains available when no authored records are
 published. Eligible baked HDR receivers now use a [combined baked/probe
 path](vulkan-pbr-baked.md), replacing environment diffuse while retaining probe
 specular. Other baked views retain their existing exclusion.
+
+## Box probes and in-engine capture (2026-10-05)
+
+A `boxParallax` probe's record carries its half extents in a seventh vec4
+(`boxExtents`, w 1; 112-byte records). `pbr_probes.glsl` weighs it with the
+shared `PBRBoxInfluence` and looks each reflection up where it leaves the box
+(`PBRBoxParallaxDistance`), exactly as the OpenGL owner and the modern GL path
+do. `bakeReflectionProbes` fills a probe's cubemap from the running map on
+either backend; the readback, filtering and residency of a reloaded image are
+the ones described above. See the [production-readiness
+plan](plans/2026-10-04-pbr-production-readiness.md) for the controls.
 
 ## Qualification
 

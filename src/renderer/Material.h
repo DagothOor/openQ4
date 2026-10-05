@@ -117,6 +117,10 @@ typedef struct {
 	float					intensity;
 	float					blendFraction;
 	int						priority;
+	// The light's volume is a box room the cube map was captured inside:
+	// reflections are parallax-corrected against it and its weight falls off
+	// at its faces, so its light_radius may differ per axis.
+	bool					boxParallax;
 } specularProbeMaterialInfo_t;
 
 // moved from image.h for default parm

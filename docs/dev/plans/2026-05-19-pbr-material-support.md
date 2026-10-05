@@ -12,7 +12,7 @@ As of 2026-08-23, openQ4 has an **experimental, default-off Milestone F implemen
 
 This is deliberately a guarded renderer capability, not a promoted whole-frame renderer: `r_pbrMaterials`, `r_rendererReflectionProbes`, and `r_rendererClusteredDecals` default to `0`; PBR never reinterprets stock materials; unsupported workflows, dynamic images, custom programs, unsafe geometry, unusual blend expressions, or unavailable modern resources retain classic ownership. The current implementation supports a packed glTF-style ORM map, separate metallic/roughness/AO maps, or scalar-only material values. Separate maps use dedicated direct samplers after the four-entry classic material table and are admitted only when the complete resource/shader contract is available. Visible OpenGL PBR and probe evaluation additionally requires `r_rendererModernVisible 1`; enabling a PBR or probe leaf alone does not promote a visible PBR frame. `r_pbrIBL 1` supplies a neutral analytic environment for explicitly PBR-authored materials without requiring a new content asset; `r_pbrIBLIntensity` controls only that contribution. A conventional one-stage `blend blend` source-alpha declaration is admitted to the ordered PBR forward path, while complex transparency stays classic. `r_rendererModernQuality 0` is the one-setting rollback for PBR, authored probes, and clustered decals regardless of their leaf cvars. The legacy frame owner remains authoritative whenever its complete transaction cannot be replaced, and `MODERN_LIGHTING_PARITY_PROVEN_DOMAINS` remains `0`, so this is not a player-facing stock-map visual or GPU-driven-lighting promotion.
 
-The OpenGL probe path accepts explicitly authored light-material metadata into a fixed eight-cubemap atlas and no more than 32 frame records, then selects at most two probes for each cluster deterministically. The September PBR audit adds linear HDR storage, GGX-prefiltered specular mip levels, diffuse irradiance and a split-sum BRDF integration table. The analytic environment uses the same filtering and stays fixed in world space. Missing images, stale generations or exhausted capacity retain the analytic fallback. Probe lights are metadata and never contribute ordinary additive lighting, including when precomputed interactions exist. Box parallax, runtime probe capture and a Vulkan probe consumer remain unavailable. The clustered-decal path is also OpenGL-only: an atomic prepare/seal transaction publishes at most 1,024 records and 65,536 cluster references, while malformed, stale, incomplete, or overflowing input publishes no ownership and leaves the complete affected subset classic.
+The OpenGL probe path accepts explicitly authored light-material metadata into a fixed eight-cubemap atlas and no more than 32 frame records, then selects at most two probes for each cluster deterministically. The September PBR audit adds linear HDR storage, GGX-prefiltered specular mip levels, diffuse irradiance and a split-sum BRDF integration table. The analytic environment uses the same filtering and stays fixed in world space. Missing images, stale generations or exhausted capacity retain the analytic fallback. Probe lights are metadata and never contribute ordinary additive lighting, including when precomputed interactions exist. The [production-readiness plan](2026-10-04-pbr-production-readiness.md) later added box-projected probes (`boxParallax`) and in-engine capture (`bakeReflectionProbes`); Vulkan has its own [native consumer](../vulkan-pbr-probes.md). The clustered-decal path is also OpenGL-only: an atomic prepare/seal transaction publishes at most 1,024 records and 65,536 cluster references, while malformed, stale, incomplete, or overflowing input publishes no ownership and leaves the complete affected subset classic.
 
 Current implementation and qualification evidence is tracked in the [September PBR audit](2026-09-20-pbr-rendering-audit.md). Its original 24-station laboratory adds scalar/packed/separate comparisons, all normal encodings, cutout/source-alpha coverage, emissive float captures, moving and multiple shadow casters, MSAA, tone-map references and fail-closed resource controls. This broader audit remains in progress; the earlier Milestone F exit does not establish production admission or complete backend parity.
 
@@ -191,6 +191,25 @@ mutable images, and 2D images fail the complete declaration. `tint` defaults to
 and accepts `(0,64]`; `blendFraction` defaults to `0.25` and accepts `(0,1]` as
 the fraction of the point-light radius used at the volume edge; `priority`
 defaults to `0` and accepts an integer from `0` through `255`.
+
+`boxParallax` (a flag, no value) makes the probe a box instead of a sphere:
+its light volume, the light's `light_radius` half extents along its axes
+around its origin, is the room the cubemap shows. Each reflection is looked up
+where it leaves that box (box-projected parallax correction), so it lines up
+with the room's walls for every receiver, and the weight fades in from the
+box faces over `blendFraction` of the smallest half extent. A box may have
+unequal half extents; a spherical probe still requires equal radii. Capture
+the cubemap from the light origin, which `bakeReflectionProbes` does: for
+every probe light of the loaded map with a native `cubeMap` it renders the six
+faces from the light origin in the light's axes and writes them to
+`<cubeMap>_px.tga` .. `_nz.tga` under `fs_savepath`, then reloads the image.
+The capture omits post-process and glow stages, subviews, view models,
+bloom, motion blur, tone mapping, exposure, CRT filtering, gamma/brightness
+and authored probes, so it is repeatable. `cameraCubeMap` probes, non-point
+lights and cube images shared by several probe lights are skipped. openQ4
+searches `fs_savepath` last, so the command warns when another copy of the
+faces would still load. Leave `light_center` at zero on probe lights: it
+moves the probe and its box away from the light volume's scissor.
 
 The probe light is metadata-only and never contributes an additive classic
 light, even if ordinary light stages are present in the same material. Keep it
@@ -503,7 +522,7 @@ Run the generated material windowed on stock `maps/tools/mv2`, retain only engin
 
 - [x] Add a PBR-only analytic diffuse/specular environment baseline behind `r_pbrIBL` and `r_pbrIBLIntensity`; it needs no content asset and does not alter legacy materials.
 - [x] Add guarded authored OpenGL specular-probe support with a fixed eight-cubemap atlas, at most 32 records, deterministic top-two-per-cluster selection, and analytic fallback.
-- [x] Replace the original base-mip approximation with GGX-filtered specular, diffuse irradiance and split-sum integration in the September audit. Box parallax, runtime capture and Vulkan probe support remain unimplemented.
+- [x] Replace the original base-mip approximation with GGX-filtered specular, diffuse irradiance and split-sum integration in the September audit. Box-projected parallax, in-engine capture and the native Vulkan consumer followed later.
 - [x] Add guarded atomic OpenGL clustered-decal ownership bounded to 1,024 records and 65,536 cluster references, with zero published ownership on a rejected transaction.
 - [x] Pass current-source dependency-light and engine contracts for probe atlas packing, bounded top-two selection, analytic fallback, and atomic malformed/stale/capacity decal rejection.
 - [ ] Consider clearcoat, sheen, anisotropy, height/parallax, and detail normals as later material extensions.
@@ -622,7 +641,7 @@ PBR support is complete enough to ship when:
 - New PBR-authored materials parse, load, reload, reference-count, validate, and dump correctly.
 - PBR-authored materials have a working ARB2 fallback, and shipped PBR materials use authored classic stages or explicit legacy fallback maps rather than approximate generation.
 - Modern PBR G-buffer, deferred, and forward+ paths are cvar-gated, fail closed, and covered by self-tests.
-- Authored OpenGL probes stay within eight cubemaps and 32 records, publish no more than two deterministic indices per cluster, and fall back to a world-anchored analytic environment. Both use GGX-filtered specular, diffuse irradiance and split-sum integration; parallax and runtime capture remain outside this contract.
+- Authored OpenGL probes stay within eight cubemaps and 32 records, publish no more than two deterministic indices per cluster, and fall back to a world-anchored analytic environment. Both use GGX-filtered specular, diffuse irradiance and split-sum integration; box-projected parallax (`boxParallax`) and in-engine capture (`bakeReflectionProbes`) joined this contract in the production-readiness plan.
 - OpenGL clustered decals publish only a completely prepared and sealed transaction within the 1,024-record and 65,536-reference limits; every rejected transaction retains classic ownership.
 - `MODERN_LIGHTING_PARITY_PROVEN_DOMAINS` remains `0` until its separate visible-lighting parity gate is proven, and `r_rendererModernQuality 0` restores classic ownership for every Milestone F domain.
 - PBR debug overlays show albedo, normal, metallic, roughness, AO, emissive, and fallback state.

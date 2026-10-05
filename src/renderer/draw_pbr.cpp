@@ -717,6 +717,9 @@ static const char *RB_GLPBR_EnvironmentFragment( void ) {
 		"	vec4 axisYBlend = PBRProbeField( record, 3 );\n"
 		"	vec4 axisZSlot = PBRProbeField( record, 4 );\n"
 		"	vec4 identity = PBRProbeField( record, 5 );\n"
+		"	vec4 box = PBRProbeField( record, 6 );\n"
+		"	if ( ( box.w != 0.0 && box.w != 1.0 ) || ( box.w == 1.0 && ( !PBRProbeFinite( box.xyz )\n"
+		"			|| any( lessThanEqual( box.xyz, vec3( 0.0 ) ) ) ) ) ) return false;\n"
 		"	if ( !PBRProbeExact( uProbeHeader[1].w, 1.0, 16777215.0 ) || !PBRProbeExact( identity.x, 0.0, 16777215.0 )\n"
 		"			|| !PBRProbeExact( identity.y, 1.0, 16777215.0 ) || !PBRProbeExact( identity.z, 1.0, 16777215.0 )\n"
 		"			|| identity.w != uProbeHeader[1].w ) return false;\n"
@@ -776,11 +779,21 @@ static const char *RB_GLPBR_EnvironmentFragment( void ) {
 		"		vec4 axisXPriority = PBRProbeField( index, 2 );\n"
 		"		vec4 axisYBlend = PBRProbeField( index, 3 );\n"
 		"		vec4 axisZSlot = PBRProbeField( index, 4 );\n"
-		"		float weight = clamp( ( positionRadius.w - length( position - positionRadius.xyz ) )\n"
-		"			/ max( positionRadius.w * axisYBlend.w, 1.0e-6 ), 0.0, 1.0 );\n"
-		"		if ( weight <= 0.0 ) continue;\n"
+		"		vec4 box = PBRProbeField( index, 6 );\n"
 		"		mat3 orientation = transpose( mat3( normalize( axisXPriority.xyz ), normalize( axisYBlend.xyz ), normalize( axisZSlot.xyz ) ) );\n"
+		"		vec3 localPosition = orientation * ( position - positionRadius.xyz );\n"
+		"		float weight = box.w > 0.5\n"
+		"			? PBRBoxInfluence( localPosition.x, localPosition.y, localPosition.z, box.x, box.y, box.z, axisYBlend.w )\n"
+		"			: clamp( ( positionRadius.w - length( position - positionRadius.xyz ) )\n"
+		"				/ max( positionRadius.w * axisYBlend.w, 1.0e-6 ), 0.0, 1.0 );\n"
+		"		if ( weight <= 0.0 ) continue;\n"
 		"		vec3 localReflection = orientation * reflection;\n"
+		// Box-projected parallax: look up where the reflection leaves the room.
+		"		if ( box.w > 0.5 ) {\n"
+		"			float exitDistance = PBRBoxParallaxDistance( localPosition.x, localPosition.y, localPosition.z,\n"
+		"				localReflection.x, localReflection.y, localReflection.z, box.x, box.y, box.z );\n"
+		"			if ( exitDistance > 0.0 ) localReflection = localPosition + localReflection * exitDistance;\n"
+		"		}\n"
 		"		float lod = roughness * 6.0;\n"
 		"		int low = int( floor( lod ) ), slot = int( axisZSlot.w );\n"
 		"		vec3 tint = tintIntensity.rgb * tintIntensity.w;\n"
@@ -1040,7 +1053,7 @@ static bool RB_GLPBR_UploadProbeView( const rendererSpecularProbeView_t &view ) 
 	if ( g_glPBRProbeRecordTexture == 0 || g_glPBRProbeIndexTexture == 0 ) {
 		return false;
 	}
-	static_assert( sizeof( rendererSpecularProbeRecord_t ) == 6 * 4 * sizeof( float ), "six texels per probe record" );
+	static_assert( sizeof( rendererSpecularProbeRecord_t ) == 7 * 4 * sizeof( float ), "seven texels per probe record" );
 	const int pairs = static_cast<int>( view.indices.size() );
 	const int width = GL_PBR_PROBE_INDEX_WIDTH;
 	const int height = Max( 1, ( pairs + width - 1 ) / width );
@@ -1054,7 +1067,7 @@ static bool RB_GLPBR_UploadProbeView( const rendererSpecularProbeView_t &view ) 
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0 );
-	glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA32F, 6, RENDERER_CLUSTER_SPECULAR_PROBE_MAX_RECORDS, 0,
+	glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA32F, 7, RENDERER_CLUSTER_SPECULAR_PROBE_MAX_RECORDS, 0,
 		GL_RGBA, GL_FLOAT, view.records );
 	glActiveTextureARB( GL_TEXTURE0_ARB + GL_PBR_UNIT_PROBE_INDICES );
 	glBindTexture( GL_TEXTURE_2D, g_glPBRProbeIndexTexture );

@@ -660,9 +660,10 @@ promotion work rather than implementation blockers.
    incorporating external assets.
 2. **Implemented and locally contract-validated; broader authored-scene evidence pending:** authored OpenGL specular probes
    use a fixed eight-cubemap atlas, at most 32 frame records, and deterministic
-   top-two selection per cluster. Sampling is base-mip specular approximation
-   with analytic fallback; it does not claim box parallax, diffuse irradiance,
-   runtime capture, or Vulkan support.
+   top-two selection per cluster. Sampling now uses GGX-filtered specular,
+   diffuse irradiance and box-projected parallax (`boxParallax`) with analytic
+   fallback, probes can be captured in the engine (`bakeReflectionProbes`), and
+   Vulkan has a native consumer.
 3. **Implemented and locally contract-validated; broader authored-scene evidence pending:** eligible OpenGL clustered decals
    transfer ownership only through one prepare/seal transaction bounded to
    1,024 records and 65,536 cluster references. Any malformed, stale,

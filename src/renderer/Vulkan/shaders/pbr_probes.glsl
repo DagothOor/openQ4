@@ -7,6 +7,7 @@ struct PBRProbeRecord {
     vec4 axisYBlend;
     vec4 axisZSlot;
     vec4 identity;
+    vec4 boxExtents; // xyz half extents, w 1 for box parallax
 };
 layout(set = 7, binding = 0, std430) readonly buffer PBRProbeBlock {
     vec4 grid;
@@ -49,6 +50,9 @@ bool PBRProbeValid(PBRProbeRecord probe) {
             || isnan(probe.axisYBlend.w) || isinf(probe.axisYBlend.w)
             || probe.axisYBlend.w <= 0.0 || probe.axisYBlend.w > 1.0
             || !PBRProbeExact(probe.axisZSlot.w, 0.0, 7.0)) return false;
+    if ((probe.boxExtents.w != 0.0 && probe.boxExtents.w != 1.0)
+            || (probe.boxExtents.w == 1.0 && (!PBRProbeFinite(probe.boxExtents.xyz)
+                || any(lessThanEqual(probe.boxExtents.xyz, vec3(0.0)))))) return false;
     float x = dot(probe.axisXPriority.xyz, probe.axisXPriority.xyz);
     float y = dot(probe.axisYBlend.xyz, probe.axisYBlend.xyz);
     float z = dot(probe.axisZSlot.xyz, probe.axisZSlot.xyz);
@@ -94,12 +98,22 @@ void PBRProbeBlend(vec3 worldPosition, vec3 worldReflection, vec3 worldNormal, f
         if (index >= uint(probes.grid.w) || index >= 32u || (i == 1 && index == first)) continue;
         PBRProbeRecord probe = probes.records[index];
         if (!PBRProbeValid(probe)) continue;
-        float weight = clamp((probe.positionRadius.w - length(position - probe.positionRadius.xyz))
-            / max(probe.positionRadius.w * probe.axisYBlend.w, 1.0e-6), 0.0, 1.0);
-        if (weight <= 0.0) continue;
         mat3 orientation = transpose(mat3(normalize(probe.axisXPriority.xyz),
             normalize(probe.axisYBlend.xyz), normalize(probe.axisZSlot.xyz)));
+        vec3 localPosition = orientation * (position - probe.positionRadius.xyz);
+        vec4 box = probe.boxExtents;
+        float weight = box.w > 0.5
+            ? PBRBoxInfluence(localPosition.x, localPosition.y, localPosition.z, box.x, box.y, box.z, probe.axisYBlend.w)
+            : clamp((probe.positionRadius.w - length(position - probe.positionRadius.xyz))
+                / max(probe.positionRadius.w * probe.axisYBlend.w, 1.0e-6), 0.0, 1.0);
+        if (weight <= 0.0) continue;
         vec3 localReflection = orientation * reflection;
+        // Box-projected parallax: look up where the reflection leaves the room.
+        if (box.w > 0.5) {
+            float exitDistance = PBRBoxParallaxDistance(localPosition.x, localPosition.y, localPosition.z,
+                localReflection.x, localReflection.y, localReflection.z, box.x, box.y, box.z);
+            if (exitDistance > 0.0) localReflection = localPosition + localReflection * exitDistance;
+        }
         float lod = roughness * 6.0;
         int low = int(floor(lod)), slot = int(probe.axisZSlot.w);
         vec3 tint = probe.tintIntensity.rgb * probe.tintIntensity.w;
