@@ -155,7 +155,7 @@ bool R_ShadowMapsNeedPerSurfaceStencilVolumes(
 		return false;
 	}
 	if ( lightDef->parms.pointLight && !lightDef->parms.parallel &&
-		!r_shadowMapPointLights.GetBool() ) {
+		!R_ShadowMapPointLightAllowed( lightDef->parms.lightRadius ) ) {
 		return false;
 	}
 	return true;
@@ -1766,7 +1766,7 @@ void idInteraction::CreateInteraction( const idRenderModel *model ) {
 			shadowMapsEnabledForInteraction &&
 			lightDef->parms.pointLight &&
 			!lightDef->parms.parallel &&
-			r_shadowMapPointLights.GetBool();
+			R_ShadowMapPointLightAllowed( lightDef->parms.lightRadius );
 		const bool forcePointEmitterStencilGeneration =
 			pointMapPolicyActive &&
 			sint->shadowStencilEligible &&
@@ -1936,7 +1936,7 @@ void idInteraction::AddActiveInteraction( void ) {
 		R_ShadowMapConservativeCastersEnabled() &&
 		// parallel (sun) lights render through the projected path and depend on
 		// off-screen casters more than any other light class
-		( vLight == NULL || !vLight->pointLight || vLight->parallel || r_shadowMapPointLights.GetBool() );
+		( vLight == NULL || !vLight->pointLight || vLight->parallel || R_ShadowMapPointLightAllowed( vLight->lightRadius ) );
 
 	if ( shadowMapConservativeCandidate && !R_ShadowMapEntityTouchesConnectedArea( entityDef ) ) {
 		R_RecordShadowMapRejectedCaster( vLight, SHADOWMAP_CASTER_REJECT_AREA_DISCONNECTED );
@@ -2026,7 +2026,7 @@ void idInteraction::AddActiveInteraction( void ) {
 	// that as failed admission and poison the light's sticky fallback state.
 	const bool shadowMapCasterPolicyActive =
 		r_shadows.GetBool() && r_useShadowMap.GetBool() &&
-		( !vLight->pointLight || vLight->parallel || r_shadowMapPointLights.GetBool() );
+		( !vLight->pointLight || vLight->parallel || R_ShadowMapPointLightAllowed( vLight->lightRadius ) );
 	const bool isViewOnlyEntity =
 		( entityDef->parms.allowSurfaceInViewID != 0 &&
 			entityDef->parms.allowSurfaceInViewID == tr.viewDef->renderView.viewID ) ||

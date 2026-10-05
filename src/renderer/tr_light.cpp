@@ -1566,7 +1566,7 @@ bool R_ShadowMapLightWillUseShadowMaps( const idRenderLightLocal *lightDef ) {
 	// path with a synthesized orthographic projection (see shadow classification)
 	const bool pointLightPath = lightDef->parms.pointLight && !lightDef->parms.parallel;
 	if ( pointLightPath ) {
-		if ( !r_shadowMapPointLights.GetBool() || !glConfig.cubeMapAvailable ) {
+		if ( !R_ShadowMapPointLightAllowed( lightDef->parms.lightRadius ) || !glConfig.cubeMapAvailable ) {
 			return false;
 		}
 	}

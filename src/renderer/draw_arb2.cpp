@@ -6382,7 +6382,7 @@ static shadowMapLightSupportReason_t RB_ShadowMapLightSupportReason( const viewL
 	// parallel lights carry pointLight=true but render through the projected
 	// path with a synthesized orthographic projection
 	if ( R_ClassifyShadowMapLight( vLight ).pointLight ) {
-		if ( !r_shadowMapPointLights.GetBool() ) {
+		if ( !R_ShadowMapPointLightAllowed( vLight->lightRadius ) ) {
 			return SHADOWMAP_SUPPORT_POINT_DISABLED;
 		}
 		if ( !glConfig.cubeMapAvailable ) {
@@ -9864,7 +9864,7 @@ bool RB_ShadowMapEstimateArb2CacheOwnership( const viewLight_t *vLight, const vi
 		return false;
 	}
 	if ( estimatePointLight ) {
-		if ( !r_shadowMapPointLights.GetBool() || !glConfig.cubeMapAvailable ) {
+		if ( !R_ShadowMapPointLightAllowed( vLight->lightRadius ) || !glConfig.cubeMapAvailable ) {
 			return false;
 		}
 	}
