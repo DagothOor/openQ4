@@ -7,8 +7,9 @@ surfaces. Since Stage E of the
 analytic studio environment lights only the laboratory
 (`r_pbrAnalyticEnvironment 1`); production environment light comes from
 authored probes, baked light grids and ambient lights. [Authored reflection probes](vulkan-pbr-probes.md) also have local
-LDR qualification at 0x/4x. Baked PBR diffuse composition and full scene
-color parity remain open; Vulkan remains experimental.
+LDR qualification at 0x/4x. Baked PBR diffuse composes in the environment
+pass ([baked lighting](vulkan-pbr-baked.md)); full scene color parity remains
+open; Vulkan remains experimental.
 
 The existing `r_pbrIBL` and `r_pbrIBLIntensity` controls now drive a native
 once-per-surface pass. Its lazily generated RGBA16F atlas uses the same analytic
@@ -70,10 +71,12 @@ probes, metal, cutouts and transparency all remain byte-identical when the grid
 switch is enabled and restored. The v19 negative fails the four opaque cases.
 The 60 captures and 40 exact comparisons are pinned in
 `.tmp/vulkan-gap-closure/pbr-grid-default/checkpoint-v21.json`.
-Eligible HDR baked receivers now use a [combined baked/environment
+Baked receivers use a [combined baked/environment
 owner](vulkan-pbr-baked.md). It replaces classic grid and environment diffuse
-with PBR baked diffuse, preserving environment specular. Unsupported views keep
-the existing grid path. Transparent surfaces do not receive the classic grid
+with PBR baked diffuse, preserving environment specular: per surface in an
+ordinary display-referred frame, and prepared for the whole view in the
+laboratory's linear HDR scene, where unsupported views keep the existing grid
+path. Transparent surfaces do not receive the classic grid
 and keep their environment pass.
 
 ## Qualification

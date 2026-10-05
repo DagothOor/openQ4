@@ -394,6 +394,8 @@ typedef struct vkGuiExecutor_s {
 	VkShaderModule		interactionVertModule;
 	VkShaderModule		interactionFragModule;
 	VkShaderModule		probeEnvironmentFragModule;
+	VkShaderModule		bakedEnvironmentFragModule;
+	VkShaderModule		bakedProbeEnvironmentFragModule;
 	VkShaderModule		interactionShadowVertModule;
 	VkShaderModule		interactionShadowFragModule;
 	VkShaderModule		interactionShadowPointVertModule;
@@ -1614,7 +1616,7 @@ VkPipelineLayout VK_Exec_BakedEnvironmentPipelineLayout() { return vkBakedPipeli
 
 VkPipeline VK_Exec_BakedEnvironmentPipeline( bool probes ) {
 	const vkPipelineTarget_t target = VK_Exec_CurrentPipelineTarget();
-	if ( !target.hdrAccumulation || vkBakedPipelineLayout == VK_NULL_HANDLE ) { return VK_NULL_HANDLE; }
+	if ( vkBakedPipelineLayout == VK_NULL_HANDLE ) { return VK_NULL_HANDLE; }
 	const vkSpecialPipelineKind_t kind = probes ? VK_SPECIAL_BAKED_PROBE_ENVIRONMENT : VK_SPECIAL_BAKED_ENVIRONMENT;
 	VkPipeline cached = VK_Exec_FindSpecialPipeline( kind, target );
 	if ( cached != VK_NULL_HANDLE ) { return cached; }
@@ -1622,7 +1624,11 @@ VkPipeline VK_Exec_BakedEnvironmentPipeline( bool probes ) {
 	VkVertexInputAttributeDescription attrs[6];
 	VkPipelineVertexInputStateCreateInfo vertexInput;
 	VK_Exec_InteractionVertexInput( binding, attrs, vertexInput );
-	const VkShaderModule fragment = VK_HDRScene_Shader( probes ? VK_HDR_BAKED_PROBE_ENVIRONMENT : VK_HDR_BAKED_ENVIRONMENT );
+	// The laboratory linear scene splits PBR into its own attachment; a
+	// production frame composes every draw into the display-referred target.
+	const VkShaderModule fragment = target.hdrAccumulation
+		? VK_HDRScene_Shader( probes ? VK_HDR_BAKED_PROBE_ENVIRONMENT : VK_HDR_BAKED_ENVIRONMENT )
+		: ( probes ? vkExec.bakedProbeEnvironmentFragModule : vkExec.bakedEnvironmentFragModule );
 	if ( fragment == VK_NULL_HANDLE ) { return VK_NULL_HANDLE; }
 	return VK_Exec_StoreSpecialPipeline( kind, target,
 		VK_Exec_CreatePipeline( vkExec.interactionVertModule, fragment, &vertexInput,
@@ -3163,6 +3169,18 @@ static bool VK_GuiExecutor_Init( void ) {
 		common->Warning( "Vulkan: probe environment shader creation failed" );
 		return false;
 	}
+	smci.codeSize = vk_pbr_baked_environment_frag_spv_size;
+	smci.pCode = (const uint32_t *)vk_pbr_baked_environment_frag_spv;
+	if ( vkCreateShaderModule( vkCtx.device, &smci, NULL, &vkExec.bakedEnvironmentFragModule ) != VK_SUCCESS ) {
+		common->Warning( "Vulkan: baked environment shader creation failed" );
+		return false;
+	}
+	smci.codeSize = vk_pbr_baked_probe_environment_frag_spv_size;
+	smci.pCode = (const uint32_t *)vk_pbr_baked_probe_environment_frag_spv;
+	if ( vkCreateShaderModule( vkCtx.device, &smci, NULL, &vkExec.bakedProbeEnvironmentFragModule ) != VK_SUCCESS ) {
+		common->Warning( "Vulkan: baked probe environment shader creation failed" );
+		return false;
+	}
 	smci.codeSize = vk_interaction_shadow_vert_spv_size;
 	smci.pCode = (const uint32_t *)vk_interaction_shadow_vert_spv;
 	if ( vkCreateShaderModule( vkCtx.device, &smci, NULL, &vkExec.interactionShadowVertModule ) != VK_SUCCESS ) {
@@ -3792,6 +3810,12 @@ void VK_GuiExecutor_Shutdown( void ) {
 	}
 	if ( vkExec.probeEnvironmentFragModule != VK_NULL_HANDLE ) {
 		vkDestroyShaderModule( vkCtx.device, vkExec.probeEnvironmentFragModule, NULL );
+	}
+	if ( vkExec.bakedEnvironmentFragModule != VK_NULL_HANDLE ) {
+		vkDestroyShaderModule( vkCtx.device, vkExec.bakedEnvironmentFragModule, NULL );
+	}
+	if ( vkExec.bakedProbeEnvironmentFragModule != VK_NULL_HANDLE ) {
+		vkDestroyShaderModule( vkCtx.device, vkExec.bakedProbeEnvironmentFragModule, NULL );
 	}
 	if ( vkExec.interactionFragModule != VK_NULL_HANDLE ) {
 		vkDestroyShaderModule( vkCtx.device, vkExec.interactionFragModule, NULL );
@@ -14252,7 +14276,7 @@ void VK_GuiExecutor_Draw3DView( const viewDef_t *viewDef ) {
 				const idMaterial *shader = drawSurf->material;
 				if ( shader == NULL || ( !shader->HasAmbient() && !VK_PBR_BakedSurfaceOwned( viewDef, drawSurf ) && !( shader->HasPBR()
 						&& r_rendererModernQuality.GetBool() && r_pbrMaterials.GetBool()
-						&& ( r_pbrIBL.GetBool() || r_pbrDebug.GetInteger() != 0 ) ) ) || shader->IsPortalSky() ) {
+						&& VK_PBR_EnvironmentVisit( viewDef, drawSurf ) ) ) || shader->IsPortalSky() ) {
 					continue;
 				}
 				if ( shader->SuppressInSubview() ) {

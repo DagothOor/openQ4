@@ -77,6 +77,8 @@ SHADERS = [
     REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "interaction.vert",
     REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "interaction.frag",
     REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "pbr_probe_environment.frag",
+    REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "pbr_baked_environment.frag",
+    REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "pbr_baked_probe_environment.frag",
     REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "interaction_shadow.vert",
     REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "interaction_shadow.frag",
     REPO_ROOT / "src" / "renderer" / "Vulkan" / "shaders" / "interaction_shadow_point.vert",

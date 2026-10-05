@@ -95,6 +95,11 @@ GL_NATIVE_OVERRIDES = {
     'r_rendererForwardPlus': '0', 'r_rendererModernVisible': '0', 'r_glPBR': '1',
 }
 
+# --production: Vulkan with the laboratory linear scene off, as players run
+# it. Every PBR draw composes into the display-referred framebuffer, which is
+# how the classic OpenGL owner always draws (--gl-native).
+PRODUCTION_OVERRIDES = {'r_pbrLinearScene': '0'}
+
 CASES = {
     'lit': {},
     'forced-parity': {'r_rendererModernLightingParity':'15'},
@@ -571,14 +576,15 @@ def compare_ibl_captures(results: list[dict], patches: dict[str,bytes] | None = 
 def extreme_emission_reference(linear_scene: bool) -> tuple[float,float,float]:
     """Display BGR of the faint (1,30,200) texture at a million-strength emission.
 
-    Exposure is r_hdrExposure 0.1 times the fixed 0.01 automatic exposure, so
-    red (byte 1, decoded 1/255/12.92) lands at 0.3035 while green and blue
-    saturate; FP16 storage bounds blue at 65504. The stock tone map leaves
-    values below its 0.5 shoulder unchanged: red 77.4. A committed linear HDR
-    scene, which owns this view since the Vulkan HDR scene ownership work,
-    applies the filmic curve normalised by the reference white and encodes
-    sRGB once: red 178.1. BASE disables highlight desaturation and gamut
-    compression, which this reference does not model.
+    Exposure is r_hdrExposure 0.1 times the fixed 0.01 automatic exposure;
+    FP16 bounds the blue radiance at 65504. A committed linear HDR scene (the
+    laboratory mode) exposes the linear radiance, applies the filmic curve
+    normalised by the reference white and encodes sRGB once: red 178.1. A
+    production frame (r_pbrLinearScene 0) composes the draw into the
+    display-referred frame on its own: the extended sRGB encode of the
+    radiance, then the stock exposure, whose tone map leaves values below its
+    0.5 shoulder unchanged: BGR 27.3, 13.9, 2.9. BASE disables highlight
+    desaturation and gamut compression, which this reference does not model.
     """
     settings={**BASE,**CASES['vk-direct-emission-extreme']}
     if float(settings['r_hdrHighlightDesaturation']) or float(settings['r_hdrGamutCompression']):
@@ -587,15 +593,15 @@ def extreme_emission_reference(linear_scene: bool) -> tuple[float,float,float]:
     def decode(byte: int) -> float:
         value=byte/255
         return value/12.92 if value<=0.04045 else ((value+0.055)/1.055)**2.4
-    radiance=[min(decode(byte)*1000000,65504)*exposure for byte in (200,30,1)]
-    if not linear_scene:
-        return tuple(255*min(value,1) for value in radiance)
-    def filmic(x: float) -> float:
-        return x*(2.51*x+0.03)/(x*(2.43*x+0.59)+0.14)
     def encode(value: float) -> float:
         return value*12.92 if value<0.0031308 else 1.055*value**(1/2.4)-0.055
+    radiance=[min(decode(byte)*1000000,65504) for byte in (200,30,1)]
+    if not linear_scene:
+        return tuple(255*min(encode(value)*exposure,1) for value in radiance)
+    def filmic(x: float) -> float:
+        return x*(2.51*x+0.03)/(x*(2.43*x+0.59)+0.14)
     white=filmic(float(settings['r_hdrWhitePoint']))
-    return tuple(255*encode(min(max(filmic(value)/white,0),1)) for value in radiance)
+    return tuple(255*encode(min(max(filmic(value*exposure)/white,0),1)) for value in radiance)
 
 
 def compare_vulkan_direct_captures(results: list[dict]) -> None:
@@ -944,22 +950,34 @@ def native_gl_owner(row: dict) -> bool:
                for line in row.get('telemetry', []))
 
 
-def compare_native_baked_captures(results: list[dict]) -> None:
-    """The classic OpenGL owner's baked light grid, from display captures.
+def display_referred_owner(row: dict) -> bool:
+    """The capture composed PBR into the display-referred frame, as shipped:
+    the classic OpenGL owner, or Vulkan with the linear scene off."""
+    return native_gl_owner(row) or (row.get('backend') == 'vk' and row.get('pbrLinearScene') == '0')
 
-    It is display-referred on every path (it has no linear export), so the
-    linear grid checks above cannot see it. A grid adds diffuse to every
+
+def compare_native_baked_captures(results: list[dict]) -> None:
+    """A display-referred owner's baked light grid, from display captures.
+
+    The classic OpenGL owner and Vulkan with the linear scene off compose each
+    draw into the display-referred frame and have no linear export, so the
+    linear grid checks above cannot see them. A grid adds diffuse to every
     dielectric station, never to a metal or a zero-AO material (their diffuse
-    is zero), scales with the grid intensity, and draws in the environment
-    pass, which the owner reports.
+    is zero), scales with the grid intensity, and draws in the owner's
+    environment pass, which the owner reports.
     """
     by_case = {r['case']: r for r in results}
     rows = [by_case.get('lightgrid-pbr' + suffix) for suffix in ('-clear', '', '-double')]
-    if not all(row is not None for row in rows) or not native_gl_owner(rows[1]):
+    if not all(row is not None for row in rows) or not display_referred_owner(rows[1]):
         return
-    native = next((line for line in rows[1].get('telemetry', []) if line.startswith('OpenGL: native PBR:')), '')
-    if int(dict(re.findall(r'(\w+)=([^\s]+)', native)).get('baked', '0')) <= 0:
-        rows[1]['failures'].append('native OpenGL PBR drew no baked light-grid receiver')
+    if native_gl_owner(rows[1]):
+        native = next((line for line in rows[1].get('telemetry', []) if line.startswith('OpenGL: native PBR:')), '')
+        drawn = int(dict(re.findall(r'(\w+)=([^\s]+)', native)).get('baked', '0'))
+    else:
+        native = next((line for line in rows[1].get('telemetry', []) if line.startswith('Vulkan baked lighting:')), '')
+        drawn = int(dict(re.findall(r'(\w+)=([^\s]+)', native)).get('production', '0'))
+    if drawn <= 0:
+        rows[1]['failures'].append('the native PBR owner drew no baked light-grid receiver')
     clear, grid, double = [row.get('image', {}).get('stationRGB', {}) for row in rows]
     rows[1]['nativeBakedComparisons'] = {}
     for name, a in clear.items():
@@ -1033,7 +1051,7 @@ def compare_material_captures(results: list[dict]) -> None:
             by_case[left]['failures'].append(f'{left}/{right}: equivalent controls changed linear radiance')
     for grid_variant in ('','-msaa'):
         grid_rows=[by_case.get('lightgrid-pbr'+grid_variant+suffix) for suffix in ('-clear','','-double')]
-        if not all(row is not None for row in grid_rows) or native_gl_owner(grid_rows[1]): continue
+        if not all(row is not None for row in grid_rows) or display_referred_owner(grid_rows[1]): continue
         before,after,doubled=[row.get('linearImage',{}).get('stationRGB',{}) for row in grid_rows]
         grid_rows[1]['bakedMaterialComparisons']={}
         for name,a in before.items():
@@ -1599,7 +1617,7 @@ def inspect_capture(args: argparse.Namespace, case: str, text: str, shot: Path) 
     if not shot.is_file(): failures.append('engine screenshot missing')
     diagnostics = diagnostic_lines(text)
     if diagnostics: failures.append('engine diagnostics require review')
-    telemetry = [line for line in text.splitlines() if line.startswith(('OpenGL: native PBR:', 'PBR material resources:', 'Modern GL executor:', 'Modern visible frame:', 'Modern classic lighting:', 'Modern forward+:', 'Modern current shadow map:', 'Modern scene MSAA:', 'Renderer AA:', 'Modern specular probe atlas:', 'Modern clustered specular probes:', 'Vulkan: native PBR', 'Vulkan PBR probes:', 'Vulkan HDR scene ownership:', 'Vulkan PBR preview:', 'GPU skinning:', 'modernLightingOwnership'))]
+    telemetry = [line for line in text.splitlines() if line.startswith(('OpenGL: native PBR:', 'PBR material resources:', 'Modern GL executor:', 'Modern visible frame:', 'Modern classic lighting:', 'Modern forward+:', 'Modern current shadow map:', 'Modern scene MSAA:', 'Renderer AA:', 'Modern specular probe atlas:', 'Modern clustered specular probes:', 'Vulkan: native PBR', 'Vulkan PBR probes:', 'Vulkan HDR scene ownership:', 'Vulkan PBR preview:', 'Vulkan baked lighting:', 'GPU skinning:', 'modernLightingOwnership'))]
     if case.startswith(('vk-direct-','ibl-')):
         samples=CASES[case].get('r_multiSamples',BASE['r_multiSamples'])
         if not re.search(rf'Renderer AA: MSAA requested={samples} effective={samples}\b',text):
@@ -1615,8 +1633,12 @@ def inspect_capture(args: argparse.Namespace, case: str, text: str, shot: Path) 
         except ValueError:
             valid=False
         if not valid: failures.append('extreme emission requires completed float-HDR exposure evidence')
-        if state.get('linearScene')!='1':
-            failures.append('extreme emission was not composed in the committed linear HDR scene')
+        # The laboratory's linear scene owns this view; a production run
+        # (--production) composes it into the display-referred frame.
+        linear_expected={**BASE,**CASES[case]}.get('r_pbrLinearScene')=='1'
+        if state.get('linearScene')!=('1' if linear_expected else '0'):
+            failures.append('extreme emission was not composed in the committed linear HDR scene' if linear_expected
+                            else 'extreme emission entered a linear scene the case did not request')
     if case in ('production-fixed','production-fixed-bump','production-fixed-colored','production-fixed-restored','production-fixed-image-reload','production-fixed-shader-reload','production-fixed-partial-restart','production-fixed-full-restart','production-fixed-resize','production-fixed-minimal','production-fixed-bright') and not re.search(r'Modern classic lighting: ready=1 executed=1 primitives=[1-9]\d*',text):
         failures.append('classic compatibility lighting was not submitted')
     if case.startswith('production-fixed-msaa') and not re.search(r'Renderer AA: MSAA requested=4 effective=4\b',text):
@@ -1790,7 +1812,8 @@ def inspect_capture(args: argparse.Namespace, case: str, text: str, shot: Path) 
                         failures.append('AO incorrectly extinguishes direct light, or direct lighting missing')
     hdr_line=next((line for line in text.splitlines() if line.startswith('OpenGL HDR:')), '')
     hdr_state={k:float(v) for k,v in re.findall(r'(\w+)=(-?[\d.]+)',hdr_line)}
-    result = {'case':case, 'backend':args.backend, 'camera':args.camera, 'tier':args.tier, 'failures':failures, 'diagnostics':diagnostics, 'telemetry':telemetry, 'hdrState':hdr_state, 'image':image, 'screenshot':str(shot), 'sha256': {'screenshot':digest(shot) if shot.is_file() else None}}
+    result = {'case':case, 'backend':args.backend, 'camera':args.camera, 'tier':args.tier,
+              'pbrLinearScene':{**BASE, **CASES.get(case, {})}.get('r_pbrLinearScene'), 'failures':failures, 'diagnostics':diagnostics, 'telemetry':telemetry, 'hdrState':hdr_state, 'image':image, 'screenshot':str(shot), 'sha256': {'screenshot':digest(shot) if shot.is_file() else None}}
     return result
 
 
@@ -2041,6 +2064,7 @@ def main() -> int:
     parser.add_argument('--camera',default='overview',help='camera name in pbr-lab.json; station-NAME centres a station')
     parser.add_argument('--backend',choices=('gl','vk'),default='gl')
     parser.add_argument('--gl-native',action='store_true',help='OpenGL with the modern visible path off: the classic light loop draws PBR (draw_pbr.cpp)')
+    parser.add_argument('--production',action='store_true',help='Vulkan with the laboratory linear scene off: every PBR draw composes into the display-referred frame, as shipped')
     parser.add_argument('--tier',default='gl45')
     parser.add_argument('--timeout',type=int,default=180)
     parser.add_argument('--samples',type=int,choices=(0,4),help='override sample count for vk-direct or IBL controls')
@@ -2049,6 +2073,12 @@ def main() -> int:
         if args.backend != 'gl':
             parser.error('--gl-native selects the classic OpenGL owner')
         BASE.update(GL_NATIVE_OVERRIDES)
+    if args.production:
+        if args.backend != 'vk':
+            parser.error('--production qualifies Vulkan; the OpenGL owner always composes this way (--gl-native)')
+        BASE.update(PRODUCTION_OVERRIDES)
+        for settings in CASES.values():
+            settings.pop('r_pbrLinearScene', None)
     args.runtime_root = fixture.validate_runtime_root(args.runtime_root)
     args.output_dir = fixture.validate_runtime_root(args.output_dir)
     args.basepath = args.basepath.resolve()

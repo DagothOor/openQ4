@@ -39,7 +39,32 @@ ranges, baked diagnostics, unsupported classic bump/ambient/program combinations
 and the other whole-view HDR exclusions. Classic receivers currently require
 three static explicit bump/diffuse/specular stages and the engine flat normal.
 HDR-off baked PBR previews remain outside this scope, matching the existing
-OpenGL restriction; they keep their established fallback.
+OpenGL restriction; they keep their established fallback, which is the
+production composition below.
+
+## Production composition
+
+The whole-view preparation above belongs to the laboratory's linear HDR scene
+(`r_pbrLinearScene 1`). In an ordinary display-referred frame, as players run
+it, a native PBR receiver composes its grid in its own environment pass, like
+the OpenGL owner (stage E of the
+[production-readiness plan](plans/2026-10-04-pbr-production-readiness.md)): the
+same grid contract (`VK_LightGrid_PrepareModern`) and shader, decoding each
+atlas sample to linear light and encoding the draw once into the frame. The
+classic grid pass skips every native PBR receiver (`VK_PBR_GridOwned`), so a
+grid adds its light once and never lights a PBR surface through its legacy
+diffuse stage; a receiver the grid contract declines keeps its environment
+pass alone, as on OpenGL. Classic receivers keep the classic grid pass.
+`gfxInfo` counts these draws as `production` on its `Vulkan baked lighting:`
+line.
+
+Paired with the OpenGL owner in the laboratory (`--production`), every one of
+the 24 stations agrees within one display value, metals and zero-AO surfaces
+receive no grid diffuse on either backend, and doubling the grid intensity adds
+the same light. The room's frame differs only along thin bands of normal
+directions on grid-lit spheres (up to 16 display values, a few hundred pixels):
+the laboratory's four-probe DXT1 atlas samples differently there on OpenGL and
+Vulkan, and modern GL shows the same band against Vulkan's linear scene.
 
 ## Diagnostics and qualification
 

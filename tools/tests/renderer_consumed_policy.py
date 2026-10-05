@@ -337,7 +337,8 @@ def main():
     assert 'image_ignoreHighQuality.GetBool()' not in method(material, 'textureUsage_t R_ResolveMaterialHighQualityUsage(')
     assert 'R_ApplyMaterialHighQualityUsage(' not in material and 'R_ApplyMaterialNoMipFlags(' not in material
     assert material.count('R_ResolveMaterialHighQualityUsage( pd->qualityInputs,') == 6
-    assert material.count('R_ResolveMaterialNoMipFlags( pd->qualityInputs,') == 5
+    # Four stage paths, the PBR normal map and the packed ORM image (packORM).
+    assert material.count('R_ResolveMaterialNoMipFlags( pd->qualityInputs,') == 6
     actual_load = method(load, 'void idImage::ActuallyLoadImage(')
     assert 'R_GetImageDownsizePolicy(' not in actual_load
     assert actual_load.count('flags, &consumedDownsize );') == 2

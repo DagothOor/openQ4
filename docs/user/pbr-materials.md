@@ -227,9 +227,10 @@ the analytic studio environment in the laboratory mode). The default
 light-grid setting preserves this lighting when no baked grid applies to the
 receiver. Experimental authored
 reflection probes now have [local LDR/0x/4x qualification](../dev/vulkan-pbr-probes.md)
-through `r_rendererReflectionProbes`. Eligible Vulkan HDR views now receive
-[baked PBR diffuse](../dev/vulkan-pbr-baked.md) while retaining environment
-specular; broader grid/material coverage and full image parity remain in progress. Environment light
+through `r_rendererReflectionProbes`. A baked light grid lights admitted PBR
+surfaces on Vulkan as on OpenGL: [PBR-weighted baked diffuse](../dev/vulkan-pbr-baked.md)
+beside the environment specular, in ordinary frames and in the laboratory's
+linear HDR scene. Environment light
 also participates in the ordered transparent composite when no direct lights
 are present. See [native environment lighting](../dev/vulkan-pbr-environment.md)
 for its exact scope and qualification. Native material diagnostics now draw

@@ -17,6 +17,7 @@ parser.add_argument('--basepath', type=Path, required=True)
 parser.add_argument('--backend', choices=('gl','vk'), required=True)
 parser.add_argument('--samples', type=int, choices=(0,4), default=0)
 parser.add_argument('--gl-native', action='store_true', help='OpenGL with the classic light loop owning PBR (draw_pbr.cpp)')
+parser.add_argument('--production', action='store_true', help='Vulkan with the laboratory linear scene off: every PBR draw composes into the display-referred frame, as shipped')
 parser.add_argument('--timeout', type=int, default=600)
 args = parser.parse_args()
 source_hash = lab.digest(Path(__file__))
@@ -69,6 +70,8 @@ if args.gl_native:
     if args.backend != 'gl':
         parser.error('--gl-native selects the classic OpenGL owner')
     sys.argv.append('--gl-native')
+if args.production:
+    sys.argv.append('--production')
 code = lab.main()
 path = args.output_dir/'report.json'
 report = json.loads(path.read_text())

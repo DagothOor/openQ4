@@ -1152,7 +1152,7 @@ extern idCVar r_pbrMaterials;			// allow explicitly PBR-authored materials on mo
 extern idCVar r_pbrLinearScene;		// laboratory linear PBR scene instead of display-referred composition
 extern idCVar r_pbrGeneratedLegacyFallback;	// allow development-only generated classic fallbacks
 extern idCVar r_pbrDebug;				// PBR attachment/fallback debug view
-extern idCVar r_pbrIBL;				// opt-in PBR-only analytic environment contribution
+extern idCVar r_pbrIBL;				// PBR-only environment light from authored probes
 extern idCVar r_pbrIBLIntensity;		// PBR analytic environment intensity
 extern idCVar r_pbrAnalyticEnvironment;	// laboratory: analytic studio environment under authored probes
 extern idCVar r_pbrInferFromLegacyMaterials;	// research-only classic-material inference

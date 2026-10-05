@@ -350,8 +350,8 @@ environment lighting now follows the map:
   baked diffuse (Fresnel-weighted, AO-occluded, clamped to the grid's maximum
   contribution), keeps the environment's specular, and the classic grid pass
   skips owned surfaces, so a grid adds its light once. This closes the gap
-  Stage B left open. Vulkan's production (display-referred) frame does not yet
-  compose grids for PBR; its PBR receivers keep the classic grid pass. The same work found a modern GL defect: baked samples
+  Stage B left open. Vulkan's production frame does the same since the
+  follow-up below. The same work found a modern GL defect: baked samples
   were decoded to linear light only in the linear-scene laboratory mode, so
   once Stage C composed each draw in the display domain, production frames
   encoded baked PBR diffuse twice. PBR receivers now always decode them.
@@ -405,3 +405,48 @@ captured in the same batch from the same runtime.
 | Diagnostics | 62/62 on Vulkan, modern GL and GL native; the whole-frame comparison keeps the documented 10-control set |
 | Geometry | 11/11 on every owner; backface parity passes |
 | Other regression suites | Vulkan map 4/4, GL HDR 7/7, GL core 6/6, GL native core 6/6, transparency 25/25, cutout pass, fog 7/7, capacity 18/18, resources 44/44, baked 6/6 GL with the Vulkan baked proof, HDR scene composition (GL/Vulkan compare), ambient and recovery pass, HDR-off preview at 4x passes on both backends (40 controls each) |
+
+### Vulkan as shipped (2026-10-05)
+
+The laboratory pins `r_pbrLinearScene 1`, so most Vulkan suites had qualified
+the linear scene and float preview rather than the display-referred frame
+players see. That gap hid a production defect: Vulkan composed baked grids for
+PBR only inside the linear scene, so in an ordinary frame a PBR receiver in a
+grid lost its environment pass and took the classic grid pass through its
+legacy diffuse stage, metals included.
+
+- The display-referred frame composes a native receiver's grid in its
+  environment pass, as the OpenGL owner does: the same grid contract and
+  shader, with single-attachment variants of the baked environment shaders for
+  display targets. The classic grid pass skips native PBR receivers
+  (`VK_PBR_GridOwned`); a receiver the grid contract declines keeps its
+  environment pass alone. The baked shaders decode the atlas for PBR in every
+  mode; they decoded it only under `r_hdrToneMap`, which the linear scene
+  requires.
+- `--production` runs a Vulkan suite with the linear scene off. Each
+  production suite is paired with the GL-native suite of the same batch: both
+  compose every draw into the display-referred frame, so they are compared
+  directly. Overview grid controls are judged per station: their frames hold
+  the classic room, whose texture filtering differs by a byte or two between
+  the APIs, and the laboratory's four-probe DXT1 grid samples differently
+  along thin bands of normal directions on OpenGL (modern and native alike)
+  and on Vulkan, up to 16 display values on a few hundred pixels, while every
+  station agrees within one.
+- The extreme-emission control's production reference now models Stage C's
+  per-draw encode (display BGR 27.3/13.9/2.9 against the captured 27/14/3);
+  it had still modelled the unencoded pre-Stage C composition.
+
+| Suite (Vulkan with `--production`, paired with GL native) | Result |
+|---|---|
+| Direct | 73/73 with the production emission reference; parity with GL native on all 73 controls |
+| Ambient | 41/41; independent oracle passes; paired with GL native |
+| IBL | 28/28; environment parity on 27 controls |
+| Probes | 48/48; probe proof and parity pass |
+| Diagnostics | 62/62; the documented 10-control whole-frame set, as in every pairing |
+| Geometry | 11/11; backface parity passes |
+| Baked grid | 6/6: 23 receivers composed per view, grid diffuse on every dielectric station and none on metals or zero AO, more at double intensity; every station within 0.96 of GL native |
+
+The laboratory-mode suites of the same batch (Vulkan direct, probes, IBL,
+ambient, diagnostics, geometry, transparency, cutout, fog, capacity,
+resources, baked, HDR scene, preview) and every GL-native pairing pass as in
+Stage E.

@@ -739,6 +739,11 @@ static bool VK_LightGrid_DrawSurface( vkLightGridPassState_t &pass, const drawSu
 		}
 		return false;
 	}
+	// A native PBR receiver takes the grid in its environment pass, PBR
+	// weighted, as on OpenGL; the classic pass would light its legacy stage.
+	if ( VK_PBR_GridOwned( pass.viewDef, surf ) ) {
+		return false;
+	}
 	if ( tri->numIndexes <= 0 || tri->ambientCache == NULL ) {
 		if ( stats != NULL ) {
 			stats->emptyGeometry++;

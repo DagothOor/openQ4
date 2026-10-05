@@ -106,6 +106,7 @@ def main() -> int:
     parser.add_argument('--samples', choices=(0, 4), type=int, default=0)
     parser.add_argument('--gl-native', action='store_true',
                         help='OpenGL with the classic light loop owning PBR (draw_pbr.cpp)')
+    parser.add_argument('--production', action='store_true', help='Vulkan with the laboratory linear scene off: every PBR draw composes into the display-referred frame, as shipped')
     args = parser.parse_args()
     profile = configure(json.loads((args.runtime_root / 'pbr-lab.json').read_text()), args.samples)
     # Fault injection is a native preflight contract. GL has no corresponding
@@ -122,6 +123,8 @@ def main() -> int:
         sys.argv.append('--gl-debug')
     if args.gl_native:
         sys.argv.append('--gl-native')
+    if args.production:
+        sys.argv.append('--production')
     code = lab.main()
     report_path = args.output_dir / 'report.json'
     report = json.loads(report_path.read_text())

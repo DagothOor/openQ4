@@ -2948,6 +2948,13 @@ bool idMaterial::ParsePBRBlock( idLexer &src, const textureRepeat_t trpDefault )
 				pbrInfo.packedSeparateData = true;
 			}
 		}
+		if ( reference != NULL && !pbrInfo.packedSeparateData ) {
+			// The maps stay separate: OpenGL still reads all three, but a
+			// Vulkan ambient light then has no slot for the roughness map.
+			src.Warning( "PBR material '%s' could not pack its separate material-data maps into one ORM image (%s); "
+				"Vulkan ambient lights use its scalar roughness", GetName(),
+				program.Length() >= MAX_IMAGE_NAME ? "image names too long" : "image load failed" );
+		}
 	}
 
 	pbrInfo.hasExplicitLegacyFallback = pbrInfo.legacyBump.present ||

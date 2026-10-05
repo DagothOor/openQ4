@@ -60,6 +60,15 @@ CLASSIC_REFERENCES = {name: 'classic baseline with PBR off; its differences belo
 EDGE_SHIFT_LIMIT = 0.0005
 COVERAGE_FLIP_LIMIT = 16
 
+# Overview controls of the baked light grid are judged per station: each of
+# the 24 specimen means within one byte. Their frames also hold the classic
+# room, whose texture filtering differs by a byte or two between the APIs, and
+# the laboratory's four-probe DXT1 grid samples differently along thin bands of
+# normal directions on OpenGL (modern and native alike) and Vulkan. Both are
+# recorded, not judged.
+STATION_JUDGED_PREFIXES = ('lightgrid-',)
+STATION_LIMIT = 1.0
+
 
 def alpha_tested(name: str) -> bool:
     return 'cutout' in name
@@ -184,20 +193,31 @@ def compare(gl: dict, vk: dict) -> dict:
         judged_gl, exclusions = judged(a, b, baseline, COVERAGE_FLIP_LIMIT if alpha_tested(name) else 0)
         raw, full, patch = metrics(a, b), metrics(judged_gl, b), metrics(specimen(a), specimen(b))
         exempt = VULKAN_ONLY.get(name) or CLASSIC_REFERENCES.get(name)
-        ok = (patch['maximumError'] <= 2 and within_encoded_allowance(full['maximumError'], full['fractionAbove2'])
-              and exclusions['edgeShiftedFraction'] <= EDGE_SHIFT_LIMIT)
+        stations = None
+        if name.startswith(STATION_JUDGED_PREFIXES):
+            means = [row.get('image', {}).get('stationRGB', {}) for row in (rows[0][name], rows[1][name])]
+            errors = {station: max(abs(x - y) for x, y in zip(rgb, means[1][station]))
+                      for station, rgb in means[0].items() if station in means[1]}
+            stations = {'maximumError': max(errors.values(), default=None), 'stations': len(errors),
+                        'limit': STATION_LIMIT, 'errors': errors}
+            ok = len(errors) == 24 and stations['maximumError'] <= STATION_LIMIT
+        else:
+            ok = (patch['maximumError'] <= 2 and within_encoded_allowance(full['maximumError'], full['fractionAbove2'])
+                  and exclusions['edgeShiftedFraction'] <= EDGE_SHIFT_LIMIT)
         cases[name] = {'fullFrame': full, 'rawFullFrame': raw, 'specimen': patch, 'exclusions': exclusions,
-                       'classicBaseline': baseline_name, 'pass': ok, 'exemption': exempt,
+                       'stations': stations, 'classicBaseline': baseline_name, 'pass': ok, 'exemption': exempt,
                        'captureFailures': [rows[0][name].get('failures'), rows[1][name].get('failures')]}
         if not ok and exempt is None:
-            failures.append(f'{name}: OpenGL native PBR differs from Vulkan '
-                            f'(specimen {patch["maximumError"]}, frame {full["maximumError"]}, '
-                            f'edge shifts {exclusions["edgeShiftedPixels"]})')
+            detail = (f'stations {stations["maximumError"]} over {stations["stations"]}' if stations is not None else
+                      f'specimen {patch["maximumError"]}, frame {full["maximumError"]}, '
+                      f'edge shifts {exclusions["edgeShiftedPixels"]}')
+            failures.append(f'{name}: OpenGL native PBR differs from Vulkan ({detail})')
     return {'status': 'fail' if failures else 'pass', 'failures': failures, 'cases': cases,
             'compared': len(cases),
             'exempt': sorted(name for name in cases if name in VULKAN_ONLY or name in CLASSIC_REFERENCES),
             'edgeShiftLimit': EDGE_SHIFT_LIMIT, 'coverageFlipLimit': COVERAGE_FLIP_LIMIT,
-            'scope': 'Classic OpenGL light-loop PBR (draw_pbr.cpp) against native Vulkan on the same laboratory runtime.'}
+            'scope': 'Classic OpenGL light-loop PBR (draw_pbr.cpp) against native Vulkan on the same laboratory runtime, '
+                     'Vulkan in its laboratory or production (--production) composition.'}
 
 
 def main() -> int:

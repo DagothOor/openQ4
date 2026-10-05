@@ -42,6 +42,15 @@
   Separate metallic, roughness and AO maps pack at load (`packORM`). The
   ambient oracles evaluate an independent NumPy reference
   (`tools/tests/pbr_reference.py`) pixel by pixel over the specimen sphere.
+- [x] Vulkan's display-referred frame composes baked light grids for PBR.
+  Vulkan had composed PBR-weighted grid diffuse only inside the laboratory's
+  linear scene, so as players run it a PBR receiver in a grid lost its
+  environment pass and took the classic grid pass through its legacy diffuse
+  stage, metals included. The environment pass now composes the grid per
+  surface like the OpenGL owner, the classic grid pass skips native PBR
+  receivers, and PBR always decodes the atlas. `--production` runs the Vulkan
+  laboratory suites with the linear scene off, paired with the OpenGL owner;
+  every pairing passes.
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:

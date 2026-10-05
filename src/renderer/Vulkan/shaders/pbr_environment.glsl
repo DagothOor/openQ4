@@ -115,7 +115,10 @@ vec3 EvaluatePBREnvironment() {
     vec3 specular = prefiltered * (f0 * brdf.x + brdf.y)
         * PBREnergyCompensationColor(f0, brdf.x + brdf.y) * specularAO;
 #ifdef PBR_BAKED_LIGHTGRID
-    vec4 baked = ModernBakedIrradiance(vLightProjectionTexCoord.xyw, n, pc.b.z > 0.5);
+    // PBR shades in linear light whether the draw accumulates the laboratory
+    // linear scene or encodes into the display-referred frame, so it always
+    // decodes the display-encoded atlas texels.
+    vec4 baked = ModernBakedIrradiance(vLightProjectionTexCoord.xyw, n, true);
     diffuse = ModernBakedClamp((1.0 - fresnel) * diffuseColor
         * baked.rgb * diffuseAO * vVertexColor, baked.w);
     return PBRDisplayOutput(diffuse + specular * pc.c.z * vVertexColor);

@@ -110,6 +110,13 @@ one byte/channel. The post runner also requires actual GL graph dimensions and
 in `.tmp/vulkan-gap-closure/scene-scale/checkpoint-v30-scene-scale.json`; broader
 material, multi-view and platform qualification remain separate.
 
+The laboratory pins `r_pbrLinearScene 1`, so its Vulkan suites qualify the
+linear scene and float preview. `--production` runs a Vulkan suite with the
+linear scene off, as players run it; each such suite is paired with the
+classic OpenGL owner's captures of the same batch (`--gl-native`), since both
+compose every PBR draw into the display-referred frame. Overview controls of
+the baked light grid are judged per station there.
+
 The `ibl` suite isolates analytic environment lighting by disabling all direct
 lights. The laboratory pins `r_pbrAnalyticEnvironment 1`, the studio
 environment its expectations were qualified against; the `ibl-production`

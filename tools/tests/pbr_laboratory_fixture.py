@@ -411,7 +411,7 @@ def test_vulkan_direct_evidence(root: Path) -> None:
     assert check([('emission-half','grey')])[0]['failures'], 'emission needs an independent linear color reference'
     assert check([('emission-extreme','grey')])[0]['failures'], 'extreme emission must preserve the faint channel'
     # A committed linear HDR scene maps the unclipped red channel through the
-    # filmic curve and one sRGB encode, 178 instead of the stock 77.
+    # filmic curve and one sRGB encode, 178 instead of production's 3.
     paths['filmic']=root/'vk-direct-filmic.tga'
     paths['filmic'].write_bytes(header+bytes((255,255,178))*(1280*800))
     linear=['Vulkan HDR: sceneRequested=1 sceneFormat=RGBA16F linearScene=1']

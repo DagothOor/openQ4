@@ -2580,11 +2580,16 @@ static bool VK_PBR_EnvironmentSourcesView( const viewDef_t *viewDef ) {
 	return !VK_PBRProbes_ForView( viewDef, probeSet ) || probeSet != VK_NULL_HANDLE;
 }
 
+// The laboratory linear scene prepares every baked receiver of its view in
+// advance (VK_PBR_PrepareBakedView); a display-referred frame tries the
+// receiver's grid first in VK_PBR_DrawEnvironment and, like the OpenGL owner,
+// keeps the environment alone when the grid contract declines it.
 static bool VK_PBR_EnvironmentEnabled( const viewDef_t *viewDef, const drawSurf_t *surf,
 		float alphaScale, bool composite ) {
 	return !( alphaScale > 0.0f && composite )
 		&& r_pbrIBL.GetBool() && r_pbrIBLIntensity.GetFloat() > 0.0f
-		&& r_pbrDebug.GetInteger() == 0 && !VK_LightGrid_SurfaceRequestsBakedDiffuse( viewDef, surf )
+		&& r_pbrDebug.GetInteger() == 0
+		&& !( VK_HDRScene_Accumulating() && VK_LightGrid_SurfaceRequestsBakedDiffuse( viewDef, surf ) )
 		&& VK_PBR_EnvironmentSourcesView( viewDef );
 }
 
@@ -2599,6 +2604,7 @@ static bool VK_PBR_PrepareEnvironment( VkCommandBuffer cmd, const viewDef_t *vie
 	const bool classicBaked = baked != NULL && !surf->material->HasPBR();
 	const bool illuminated = baked != NULL
 		? !classicBaked && r_pbrIBL.GetBool() && r_pbrIBLIntensity.GetFloat() > 0.0f
+			&& VK_PBR_EnvironmentSourcesView( viewDef )
 		: VK_PBR_EnvironmentEnabled( viewDef, surf, alphaScale, composite );
 	const int debugMode = r_pbrDebug.GetInteger();
 	// Emission (mode 6) retains its authored ambient stage. The other material
@@ -2741,6 +2747,7 @@ struct vkPBRBakedView_t {
 	const viewDef_t *view;
 	bool ready, retargeted;
 	int requested, submitted;
+	int production;		// receivers composed in a display-referred frame
 	int rejectedPrepared, restoredUniformBytes, restoredDescriptors;
 	const char *reason;
 	std::unordered_map<const drawSurf_t *, vkPBRPreparedDraw_t> draws;
@@ -2760,7 +2767,7 @@ void VK_PBR_PrepareBakedView( const viewDef_t *view ) {
 	vkPBRBakedView.view = view;
 	vkPBRBakedView.ready = false;
 	vkPBRBakedView.retargeted = false;
-	vkPBRBakedView.requested = vkPBRBakedView.submitted = 0;
+	vkPBRBakedView.requested = vkPBRBakedView.submitted = vkPBRBakedView.production = 0;
 	vkPBRBakedView.rejectedPrepared = vkPBRBakedView.restoredUniformBytes = vkPBRBakedView.restoredDescriptors = 0;
 	vkPBRBakedView.reason = "disabled";
 	vkPBRBakedView.draws.clear();
@@ -2865,12 +2872,67 @@ static void VK_PBR_SubmitPrepared( VkCommandBuffer cmd, const vkPBRPreparedDraw_
 	vkCmdDrawIndexed( cmd, uint32_t( prepared.geo->numIndexes ), 1, 0, 0, 0 );
 }
 
+bool VK_PBR_GridOwned( const viewDef_t *view, const drawSurf_t *surf ) {
+	vkPBRDirectInteraction_t material;
+	return !VK_HDRScene_Accumulating() && surf != NULL && surf->material != NULL
+		&& surf->material->HasPBR() && VK_PBRDirectMaterial( surf, material );
+}
+
+bool VK_PBR_EnvironmentVisit( const viewDef_t *view, const drawSurf_t *surf ) {
+	return r_pbrIBL.GetBool() || r_pbrDebug.GetInteger() != 0
+		|| ( !VK_HDRScene_Accumulating() && VK_LightGrid_SurfaceRequestsBakedDiffuse( view, surf ) );
+}
+
+/*
+A display-referred frame composes a native PBR receiver's baked light grid in
+its environment pass, like the OpenGL owner (RB_GLPBR_EnvironmentPass): baked
+diffuse weighted by the material (Fresnel, metalness, multi-bounce AO) beside
+the environment specular, decoded to linear light and encoded once with the
+draw. The classic grid pass skips the receiver (VK_PBR_GridOwned), so the grid
+adds its light once. The laboratory linear scene prepares the same draws for
+its whole view in advance instead (VK_PBR_PrepareBakedView).
+*/
+static const viewDef_t *vkPBRProductionGridView;
+static int vkPBRProductionGridFrame = -1;
+
+static bool VK_PBR_DrawProductionBaked( VkCommandBuffer cmd, const viewDef_t *viewDef,
+		const drawSurf_t *surf, const srfTriangles_t *tri, const float mvp[16] ) {
+	if ( VK_HDRScene_Accumulating() || r_pbrDebug.GetInteger() != 0 || !surf->material->HasPBR()
+			|| surf->material->Coverage() == MC_TRANSLUCENT
+			|| !VK_LightGrid_SurfaceRequestsBakedDiffuse( viewDef, surf ) ) {
+		return false;
+	}
+	if ( vkPBRProductionGridView != viewDef || vkPBRProductionGridFrame != backEnd.frameCount ) {
+		VK_LightGrid_PrepareModernView( viewDef );
+		vkPBRProductionGridView = viewDef;
+		vkPBRProductionGridFrame = backEnd.frameCount;
+	}
+	vkPBRBakedInput_t baked = {};
+	if ( !VK_LightGrid_PrepareModern( viewDef, surf, baked.images, baked.params ) ) {
+		return false;
+	}
+	vkPBRPreparedDraw_t prepared;
+	if ( !VK_PBR_PrepareEnvironment( cmd, viewDef, surf, tri, mvp, 0.0f, false, prepared, &baked ) ) {
+		return false;
+	}
+	prepared.pipeline = VK_Exec_BakedEnvironmentPipeline( prepared.bakedProbes );
+	if ( prepared.pipeline == VK_NULL_HANDLE ) {
+		return false;
+	}
+	VK_PBR_SubmitPrepared( cmd, prepared, mvp, 0.0f, false );
+	++vkPBRBakedView.production;
+	return true;
+}
+
 bool VK_PBR_DrawEnvironment( VkCommandBuffer cmd, const viewDef_t *viewDef,
 		const drawSurf_t *surf, const srfTriangles_t *tri, const float mvp[16],
 		float alphaScale, bool composite ) {
 	if ( VK_PBR_BakedSurfaceOwned( viewDef, surf ) ) {
 		VK_PBR_SubmitPrepared( cmd, vkPBRBakedView.draws.find( surf )->second, mvp, 0.0f, false );
 		++vkPBRBakedView.submitted;
+		return true;
+	}
+	if ( alphaScale <= 0.0f && !composite && VK_PBR_DrawProductionBaked( cmd, viewDef, surf, tri, mvp ) ) {
 		return true;
 	}
 	vkPBRPreparedDraw_t prepared;
@@ -3115,9 +3177,9 @@ static void VK_PBRTransparentResetView( const viewDef_t *viewDef ) {
 }
 
 void VK_PBR_PrintGfxInfo() {
-	common->Printf( "Vulkan baked lighting: requested=%d ready=%d prepared=%d submitted=%d rejectedPrepared=%d restoredUniform=%d restoredDescriptors=%d reason='%s'\n",
+	common->Printf( "Vulkan baked lighting: requested=%d ready=%d prepared=%d submitted=%d production=%d rejectedPrepared=%d restoredUniform=%d restoredDescriptors=%d reason='%s'\n",
 		vkPBRBakedView.requested, vkPBRBakedView.ready ? 1 : 0, int( vkPBRBakedView.draws.size() ),
-		vkPBRBakedView.submitted, vkPBRBakedView.rejectedPrepared, vkPBRBakedView.restoredUniformBytes,
+		vkPBRBakedView.submitted, vkPBRBakedView.production, vkPBRBakedView.rejectedPrepared, vkPBRBakedView.restoredUniformBytes,
 		vkPBRBakedView.restoredDescriptors, vkPBRBakedView.reason != NULL ? vkPBRBakedView.reason : "none" );
 	common->Printf( "Vulkan: native PBR transparency: admitted=%d reason=%s requiredAtLeast=%d capacity=%d recorded=%d composites=%d surfaces=%d ready=%d preparedRecords=%d restoredUniformBytes=%d restoredDescriptors=%d faultVisits=%d\n",
 		vkPBRTransparentView.admitted ? 1 : 0,

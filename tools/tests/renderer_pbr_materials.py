@@ -1407,6 +1407,31 @@ def test_pbr_production_environment_contract() -> None:
             "the classic grid pass leaves owned PBR surfaces to their environment pass")
 
 
+def test_vulkan_production_baked_contract() -> None:
+    # A display-referred Vulkan frame composes a native PBR receiver's baked
+    # grid in its environment pass, as the OpenGL owner does, and the classic
+    # grid pass leaves the receiver alone (production readiness, Stage E).
+    interactions = read(ROOT / "src/renderer/Vulkan/vk_Interactions.cpp")
+    require(interactions, "static bool VK_PBR_DrawProductionBaked(", "Vulkan production baked composition")
+    require(interactions,
+            "if ( alphaScale <= 0.0f && !composite && VK_PBR_DrawProductionBaked( cmd, viewDef, surf, tri, mvp ) ) {",
+            "opaque environment draws try the receiver's grid first")
+    require(interactions,
+            "&& !( VK_HDRScene_Accumulating() && VK_LightGrid_SurfaceRequestsBakedDiffuse( viewDef, surf ) )",
+            "only the linear laboratory scene withholds a grid receiver's plain environment draw")
+    effects = function_body(read(ROOT / "src/renderer/Vulkan/vk_SceneEffects.cpp"), "static bool VK_LightGrid_DrawSurface(")
+    require(effects, "if ( VK_PBR_GridOwned( pass.viewDef, surf ) ) {",
+            "the classic grid pass leaves native PBR receivers to their environment pass")
+    environment = read(ROOT / "src/renderer/Vulkan/shaders/pbr_environment.glsl")
+    require(environment, "vec4 baked = ModernBakedIrradiance(vLightProjectionTexCoord.xyw, n, true);",
+            "PBR always decodes the display-encoded atlas")
+    executor = read(ROOT / "src/renderer/Vulkan/vk_GuiExecutor.cpp")
+    require(executor, ": ( probes ? vkExec.bakedProbeEnvironmentFragModule : vkExec.bakedEnvironmentFragModule );",
+            "display-referred targets use the single-attachment baked shaders")
+    require(executor, "&& VK_PBR_EnvironmentVisit( viewDef, drawSurf ) ) ) || shader->IsPortalSky() ) {",
+            "the ambient walk visits a grid receiver without environment light")
+
+
 def main() -> int:
     tests = [value for name, value in sorted(globals().items()) if name.startswith("test_")]
     for test in tests:
