@@ -13709,6 +13709,14 @@ static bool RB_LightGridUsesReceiverOnlySubmission( const int debugMode ) {
 		debugMode == 7;
 }
 
+// Final-image modes (0 = normal, 5 = final contribution) multiply the bounce light by the
+// surface texture. A surface whose material has no usable texture stage would otherwise get
+// a flat untextured grey added on top (whitish helmets, vehicles), so skip it there, the same
+// way debug mode 4 does.
+static bool RB_LightGridRequiresAlbedoStage( const int debugMode ) {
+	return !RB_LightGridUsesReceiverOnlySubmission( debugMode ) || debugMode == 0 || debugMode == 5;
+}
+
 struct rbLightGridPortalBlend_t {
 	const LightGrid *	neighborLightGrid;
 	idPlane				portalPlane;
@@ -14428,7 +14436,7 @@ static bool RB_STD_DrawLightGridSurface( const drawSurf_t *surf, const LightGrid
 	if ( shader->HasPBR() && RB_GLPBR_SurfaceOwned( surf ) ) {
 		return false;
 	}
-	if ( !receiverOnlySubmission && !RB_LightGridHasActiveAlbedoStage( shader, regs ) ) {
+	if ( RB_LightGridRequiresAlbedoStage( debugMode ) && !RB_LightGridHasActiveAlbedoStage( shader, regs ) ) {
 		if ( drawStats != NULL ) {
 			drawStats->noAlbedo++;
 		}
@@ -14961,7 +14969,6 @@ static bool RB_STD_DrawLightGridInlineSurface( const drawSurf_t *surf ) {
 	}
 
 	const int debugMode = r_lightGridDebug.GetInteger();
-	const bool receiverOnlySubmission = RB_LightGridUsesReceiverOnlySubmission( debugMode );
 	const LightGrid *lightGrid = NULL;
 	bool viewWeaponLightGrid = false;
 	if ( !RB_SurfaceHasLightGrid( surf, lightGrid ) ) {
@@ -14970,7 +14977,7 @@ static bool RB_STD_DrawLightGridInlineSurface( const drawSurf_t *surf ) {
 		}
 		viewWeaponLightGrid = true;
 	}
-	if ( !receiverOnlySubmission && !RB_LightGridHasActiveAlbedoStage( surf->material, surf->shaderRegisters ) ) {
+	if ( RB_LightGridRequiresAlbedoStage( debugMode ) && !RB_LightGridHasActiveAlbedoStage( surf->material, surf->shaderRegisters ) ) {
 		return false;
 	}
 
@@ -15053,7 +15060,6 @@ static void RB_STD_LightGridIndirect( void ) {
 	glMatrixMode( GL_MODELVIEW );
 
 	const int debugMode = r_lightGridDebug.GetInteger();
-	const bool receiverOnlySubmission = RB_LightGridUsesReceiverOnlySubmission( debugMode );
 
 	RB_STD_SetLightGridDrawState( false );
 	RB_STD_BindLightGridProgram();
@@ -15090,7 +15096,7 @@ static void RB_STD_LightGridIndirect( void ) {
 			worldNoGrid++;
 			continue;
 		}
-		if ( !receiverOnlySubmission && !RB_LightGridHasActiveAlbedoStage( surf->material, surf->shaderRegisters ) ) {
+		if ( RB_LightGridRequiresAlbedoStage( debugMode ) && !RB_LightGridHasActiveAlbedoStage( surf->material, surf->shaderRegisters ) ) {
 			worldNoAlbedo++;
 			continue;
 		}
