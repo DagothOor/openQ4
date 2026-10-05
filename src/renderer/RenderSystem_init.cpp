@@ -30,6 +30,9 @@ If you have questions concerning this license or the applicable additional terms
 
 
 #include "tr_local.h"
+#if !defined( OPENQ4_RENDERER_VK_MODULE ) && !defined( OPENQ4_RENDERER_GLES_MODULE )
+#include "draw_pbr.h"
+#endif
 #include "OpenGL/FramebufferSamples.h"
 #include "LevelShotDepth.h"
 #include "RendererResourceSettings.h"
@@ -4698,6 +4701,9 @@ void GfxInfo_f( const idCmdArgs &args ) {
 		RENDER_GRAPH_MAX_RESOURCE_ACCESSES );
 	R_RenderGraphResources_PrintGfxInfo();
 	R_MaterialResourceTable_PrintGfxInfo();
+#if !defined( OPENQ4_RENDERER_VK_MODULE ) && !defined( OPENQ4_RENDERER_GLES_MODULE )
+	RB_GLPBR_PrintInfo();
+#endif
 	{
 		const classicGuiDomainStats_t &guiDomain = R_ClassicGuiDomain_Stats();
 		common->Printf(

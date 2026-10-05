@@ -29,6 +29,7 @@ If you have questions concerning this license or the applicable additional terms
 
 
 #include "tr_local.h"
+#include "draw_pbr.h"
 #include "GLDebugScope.h"
 #include "GLStateCache.h"
 #include "RenderGraph.h"
@@ -1133,6 +1134,7 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 			R_ClassicFogBlendDomain_PrepareFrame( *scenePackets );
 		}
 		R_ModernGLExecutor_PrepareFrame( *scenePackets, legacyGraph );
+		RB_GLPBR_AdoptExecutorFrame();
 		rg_modernStatMirrorsZeroed = false;	// active frame wrote real stats; re-zero on next dormant frame
 	} else {
 		// the zeroed stat mirrors cannot change while the side pipeline is
@@ -1155,6 +1157,19 @@ void RB_ExecuteBackEndCommands( const emptyCommand_t *cmds ) {
 			rg_modernStatMirrorsZeroed = true;
 		}
 		R_ModernGLExecutor_SkipFrame();
+		// Native PBR admission (draw_pbr.cpp) reads the material contract
+		// table. Prepare that alone, from the same packets Vulkan uses.
+		if ( r_rendererModernQuality.GetBool() && r_pbrMaterials.GetBool() ) {
+			const idScenePacketFrame *scenePackets = NULL;
+			if ( R_ScenePackets_FrontEndFrameAvailable() ) {
+				scenePackets = &R_ScenePackets_FrontEndFrame();
+			} else {
+				R_ScenePackets_BuildLegacyCommandStream( cmds, rg_backendScenePacketFrame );
+				scenePackets = &rg_backendScenePacketFrame;
+			}
+			R_MaterialResourceTable_PrepareFrame( *scenePackets );
+			RB_GLPBR_PrepareFrame( *scenePackets );
+		}
 	}
 	backEndStartTime = Sys_Milliseconds();
 	R_RendererMetrics_BeginGpuBackendFrame();

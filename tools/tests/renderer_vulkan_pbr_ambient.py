@@ -55,6 +55,8 @@ def configure(manifest: dict, samples: int) -> dict:
         lab.CASE_CAMERAS[name] = 'sampling'
         if not enabled:
             lab.LEGACY_CASES.add(name)
+        if hidden:
+            lab.HIDDEN_SPECIMEN_CASES.add(name)
         profile[name] = dict(material=material, lights=lights, debug=debug, enabled=enabled,
                              double=double, hidden=hidden, rotated=rotated, boundary=boundary,
                              fault=fault, settings=settings, commands=commands)
@@ -102,18 +104,24 @@ def main() -> int:
     parser.add_argument('--basepath', type=Path, required=True)
     parser.add_argument('--backend', choices=('gl', 'vk'), required=True)
     parser.add_argument('--samples', choices=(0, 4), type=int, default=0)
+    parser.add_argument('--gl-native', action='store_true',
+                        help='OpenGL with the classic light loop owning PBR (draw_pbr.cpp)')
     args = parser.parse_args()
     profile = configure(json.loads((args.runtime_root / 'pbr-lab.json').read_text()), args.samples)
     # Fault injection is a native preflight contract. GL has no corresponding
     # rejected draw; every other capture remains a paired rendering control.
     if args.backend == 'gl':
         profile.pop('ambient-alpha-fault')
+    if args.gl_native and args.backend != 'gl':
+        parser.error('--gl-native selects the classic OpenGL owner')
     source_hash = lab.digest(Path(__file__))
     sys.argv = [__file__, '--runtime-root', str(args.runtime_root), '--output-dir', str(args.output_dir),
                 '--basepath', str(args.basepath), '--backend', args.backend, '--camera', 'sampling',
                 '--cases', ','.join(profile), '--batch', '--timeout', '600']
     if args.backend == 'gl':
         sys.argv.append('--gl-debug')
+    if args.gl_native:
+        sys.argv.append('--gl-native')
     code = lab.main()
     report_path = args.output_dir / 'report.json'
     report = json.loads(report_path.read_text())

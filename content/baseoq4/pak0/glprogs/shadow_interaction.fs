@@ -910,7 +910,36 @@ vec3 SampleTranslucentShadow() {
 	return mix( shadow, nextShadow, blend );
 }
 
+#ifdef OPENQ4_PBR
+// Native PBR shading for one light, given its shadow visibility; draw_pbr.cpp
+// appends the library that defines it to this source.
+vec3 OpenQ4PBRDirect( vec3 shadow );
+// The coverage of a translucent owner's replayed light; zero otherwise.
+float OpenQ4PBRAlpha();
+#endif
+
 void main() {
+#ifdef OPENQ4_PBR
+	gShadowDebugState = 0.0;
+#ifdef OPENQ4_PBR_UNSHADOWED
+	gl_FragColor = vec4( OpenQ4PBRDirect( vec3( 1.0 ) ), OpenQ4PBRAlpha() );
+#else
+	if ( uShadowReceiverPlaneBias > 0.5 ) {
+		gShadowDepthGradients = vec4(
+			abs( dFdx( vShadowCoord0.z ) ) + abs( dFdy( vShadowCoord0.z ) ),
+			abs( dFdx( vShadowCoord1.z ) ) + abs( dFdy( vShadowCoord1.z ) ),
+			abs( dFdx( vShadowCoord2.z ) ) + abs( dFdy( vShadowCoord2.z ) ),
+			abs( dFdx( vShadowCoord3.z ) ) + abs( dFdy( vShadowCoord3.z ) ) );
+	}
+	vec4 pbrShadowInfo = SampleShadow();
+	if ( ShadowVisualDebugMode() ) {
+		gl_FragColor = ShadowDebugOutput( pbrShadowInfo );
+		return;
+	}
+	gl_FragColor = vec4( OpenQ4PBRDirect( pbrShadowInfo.x * SampleTranslucentShadow() ), OpenQ4PBRAlpha() );
+#endif
+	return;
+#endif
 	vec4 bumpSample = texture2D( uBumpMap, vBumpTexCoord );
 	vec3 localNormal = DecodeLocalNormal( bumpSample );
 

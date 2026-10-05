@@ -31,6 +31,7 @@ If you have questions concerning this license or the applicable additional terms
 #include <cstring>
 
 #include "tr_local.h"
+#include "draw_pbr.h"
 #include "OpenGL/FramebufferSamples.h"
 #include "CelShading.h"
 #include "ClassicGuiDomain.h"
@@ -8280,8 +8281,10 @@ void RB_T_FillDepthBuffer( const drawSurf_t *surf ) {
 
 			glAlphaFunc( pStage->alphaTestMode, regs[ pStage->alphaTestRegister ] );
 
-			// bind the texture
-			pStage->texture.image->Bind();
+			// bind the texture; a native PBR surface masks with its PBR albedo,
+			// so its coverage is exactly what its draws shade
+			idImage *coverageImage = RB_GLPBR_DepthCoverageImage( surf, pStage );
+			( coverageImage != NULL ? coverageImage : pStage->texture.image )->Bind();
 
 			// set texture matrix and texGens
 			if ( !RB_PrepareStageTexturing( pStage, surf, ac, true ) ) {
@@ -9809,7 +9812,8 @@ enum rbSharedWorldAmbientGLReject_t {
 	RB_SHARED_WORLD_AMBIENT_GL_REJECT_TEXTURE,
 	RB_SHARED_WORLD_AMBIENT_GL_REJECT_TEXTURE_CAPACITY,
 	RB_SHARED_WORLD_AMBIENT_GL_REJECT_COVERAGE,
-	RB_SHARED_WORLD_AMBIENT_GL_REJECT_PHASE
+	RB_SHARED_WORLD_AMBIENT_GL_REJECT_PHASE,
+	RB_SHARED_WORLD_AMBIENT_GL_REJECT_NATIVE_PBR
 };
 
 static float RB_STD_ForceAmbientValue( void );
@@ -10099,6 +10103,13 @@ static bool RB_SharedWorldAmbientGLPreflight( const viewDef_t *viewDef,
 		}
 
 		const drawSurf_t *surf = draw->legacyDrawSurf;
+		// A native PBR surface draws its environment and typed emission in the
+		// per-surface walk, which the shared phase would bypass.
+		if ( surf->material != NULL && surf->material->HasPBR() && RB_GLPBR_SurfaceOwned( surf ) ) {
+			failureDetail = RB_SharedWorldAmbientGLFailureDetail(
+				RB_SHARED_WORLD_AMBIENT_GL_REJECT_NATIVE_PBR, drawIndex );
+			return false;
+		}
 		const srfTriangles_t *tri = surf->geo;
 		if ( tri == NULL || draw->firstIndex != 0 || draw->vertexOffset != 0
 				|| draw->tableGeneration != view.tableGeneration
@@ -10476,7 +10487,10 @@ void RB_STD_T_RenderShaderPasses( const drawSurf_t *surf ) {
 	tri = surf->geo;
 	shader = surf->material;
 
-	if ( !shader->HasAmbient() ) {
+	// A native PBR surface owes the view its environment term even when its
+	// material has no ambient stage of its own.
+	const bool nativePBR = shader->HasPBR() && RB_GLPBR_SurfaceOwned( surf );
+	if ( !shader->HasAmbient() && !nativePBR ) {
 		return;
 	}
 
@@ -10543,6 +10557,9 @@ void RB_STD_T_RenderShaderPasses( const drawSurf_t *surf ) {
 	glVertexPointer( 3, GL_FLOAT, sizeof( idDrawVert ), RB_DrawVertAttributePointer( ac, offsetof( idDrawVert, xyz ) ) );
 	glTexCoordPointer( 2, GL_FLOAT, sizeof( idDrawVert ), RB_DrawVertAttributePointer( ac, offsetof( idDrawVert, st ) ) );
 	bool resetTexCoords = false;
+	if ( nativePBR ) {
+		RB_GLPBR_DrawEnvironment( surf );
+	}
 
 	const int stageCount = shader->GetNumStages();
 	for ( stage = 0; stage < stageCount ; stage++ ) {
@@ -10555,6 +10572,17 @@ void RB_STD_T_RenderShaderPasses( const drawSurf_t *surf ) {
 
 		// skip the stages involved in lighting
 		if ( pStage->lighting != SL_AMBIENT ) {
+			continue;
+		}
+
+		// a native PBR surface's glow stage is its typed emission
+		if ( nativePBR && RB_GLPBR_DrawEmissionStage( surf, stage ) ) {
+			continue;
+		}
+
+		// a native translucent surface composites its lighting through the
+		// authored source-alpha stage
+		if ( nativePBR && RB_GLPBR_DrawTransparentStage( surf, stage ) ) {
 			continue;
 		}
 
@@ -15467,6 +15495,11 @@ RB_STD_DrawView
 
 =============
 */
+bool RB_GLSLInteractionsOwnedByModernPath( void ) {
+	return backEnd.viewDef != NULL
+		&& R_ModernGLExecutor_LegacyPassCanSkipForView( RENDER_PASS_ARB2_INTERACTION, backEnd.viewDef );
+}
+
 void	RB_STD_DrawView( void ) {
 	drawSurf_t	 **drawSurfs;
 	int			numDrawSurfs;
@@ -15474,6 +15507,7 @@ void	RB_STD_DrawView( void ) {
 	RB_LogComment( "---------- RB_STD_DrawView ----------\n" );
 
 	backEnd.depthFunc = GLS_DEPTHFUNC_EQUAL;
+	RB_GLPBR_BeginView();
 
 	drawSurfs = (drawSurf_t **)&backEnd.viewDef->drawSurfs[0];
 	numDrawSurfs = backEnd.viewDef->numDrawSurfs;

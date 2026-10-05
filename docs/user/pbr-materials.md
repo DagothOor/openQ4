@@ -1,10 +1,12 @@
 # Authoring PBR materials
 
 PBR is an opt-in material extension for new openQ4 content. It does not convert
-retail Quake 4 materials automatically. The OpenGL implementation is experimental;
-unsupported scenes retain the authored classic rendering path. Vulkan currently
-supports a smaller material subset with direct, authored ambient and analytic environment lighting.
-See the [qualification ledger](../dev/plans/2026-09-20-pbr-rendering-audit.md)
+retail Quake 4 materials automatically. On OpenGL and Vulkan, each PBR surface
+is drawn natively inside the regular light loop, so it renders in ordinary
+gameplay next to stock surfaces, and every light keeps its own shadows. A
+material the renderer cannot prove keeps its authored classic stages. See the
+[production-readiness plan](../dev/plans/2026-10-04-pbr-production-readiness.md)
+and the earlier [qualification ledger](../dev/plans/2026-09-20-pbr-rendering-audit.md)
 for current evidence and limitations.
 
 ## Material declaration
@@ -87,15 +89,23 @@ alpha in the albedo texture: both backends read the coverage from the albedo
 image and scale it by the stage's own alpha register, so the blend stage must
 name that same image with untransformed coordinates and no vertex tint.
 Unusual blend expressions and custom material programs keep classic ownership.
+A translucent PBR surface is lit where its blend stage draws, after the light
+loop, so its lights cannot be shadowed there: in a view where a
+shadow-casting light reaches a translucent surface, every translucent surface
+in that view keeps its classic lighting and blend on both backends.
 
 ## Preview and fallback
 
-The PBR preview requires `r_rendererModernQuality 1`, `r_pbrMaterials 1` and
-`r_rendererModernVisible 1`. `r_hdrToneMap 1` presents the scene through the
-classic HDR tone map. The laboratory mode `r_pbrLinearScene 1` (default 0, not
-saved) instead accumulates PBR radiance in a separate linear scene, encoded once
-per pixel, and with `r_hdrToneMap 1` presents the whole view, classic surfaces
-included, through the PBR filmic curve.
+PBR rendering requires `r_rendererModernQuality 1` (the default) and
+`r_pbrMaterials 1`. On OpenGL, the classic light loop draws admitted PBR
+surfaces natively (`r_glPBR`, default 1; 0 returns them to their classic
+stages). The experimental modern visible path (`r_rendererModernVisible 1`)
+still takes whole frames that qualify for it, with its own PBR.
+`r_hdrToneMap 1` presents the scene through the classic HDR tone map. The
+laboratory mode `r_pbrLinearScene 1` (default 0, not saved) instead accumulates
+PBR radiance in a separate linear scene, encoded once per pixel, and with
+`r_hdrToneMap 1` presents the whole view, classic surfaces included, through
+the PBR filmic curve.
 `r_pbrIBL 1` supplies filtered environment lighting; `r_rendererReflectionProbes 1`
 allows explicitly authored probe lights. `r_pbrIBLIntensity` changes indirect
 lighting only. `r_rendererModernQuality 0` restores classic ownership.
@@ -104,7 +114,12 @@ lighting only. `r_rendererModernQuality 0` restores classic ownership.
 emissive (6) and ownership (7). In ownership mode, green identifies PBR draws;
 magenta identifies classic draws in the modern path. Always check `gfxInfo` as
 well: a rejected frame must not be mistaken for successful PBR just because its
-classic fallback is visible.
+classic fallback is visible. On OpenGL its `OpenGL: native PBR:` line counts
+the admitted and declined surfaces, the light, environment, emission and
+translucent draws, and names the last decline reason (`material-contract`,
+`gpu-posed-geometry`, `resources`, `view`) and whether the view owns
+translucency (`translucentView`). Surfaces posed on the GPU (`r_gpuSkinning 1`,
+packed MD5R meshes) keep their classic stages on OpenGL.
 
 The qualified OpenGL HDR path includes point/projected shadows, cutouts,
 ordered source alpha, authored fog/blend lights, and existing baked area
@@ -134,7 +149,7 @@ python tools/tests/renderer_pbr_laboratory.py --prepare --runtime-root .tmp/pbr-
 python tools/tests/renderer_pbr_laboratory.py --runtime-root .tmp/pbr-native --output-dir .tmp/pbr-native-proof4 --basepath "E:/SteamLibrary/steamapps/common/Quake 4" --backend vk --batch --suite vulkan-direct --samples 4 --timeout 480
 ```
 
-The suite currently has 68 controls per sample count. Run the separate
+The suite currently has 73 controls per sample count. Run the separate
 `--cases lit,ownership,emissive,master-off` full-map check to expose
 unsupported ownership. The emission control is required: transparency is
 proven by the difference between the two debug captures, which is the authored

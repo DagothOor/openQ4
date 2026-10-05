@@ -30,6 +30,7 @@ the decision and the stage that closes it.
 | G5 | Presentation: HDR-off PBR radiance is added to the display domain without the sRGB transfer, a PBR surface shows about a fifth of the brightness of the same surface lit classically, and Vulkan's HDR scene linearizes and filmic-maps every view once `r_pbrMaterials` is on, changing stock frames. | Calibrate PBR irradiance to the classic light term and composite every PBR draw in the classic display domain on both backends. Stock pixels stay unchanged, and the tone curve does not depend on whether PBR is in view. The linear scene becomes the explicit laboratory mode `r_pbrLinearScene`. | C |
 | G6 | Environment lighting in real maps: without authored probes every PBR surface reflects the analytic studio sky, even in dark interiors. | To be decided after G4/G5 measurements. | E |
 | G7 | Defaults and UX: `r_pbrMaterials` defaults to 0, GL needs the non-archived `r_rendererModernVisible`, and there is no menu control. | Promote after G4/G5/G6, with menu control and docs. | F |
+| G8 | Found by the Stage B parity comparison: every direct-light evaluation (Vulkan, modern GL) returned black where a normal map turned the shading normal away from the viewer, speckling normal-mapped silhouettes, and which pixels went black differed between backends. | Clamp N.V in every direct term (`PBRShadingNoV`). | B |
 
 ## Stage A: complete roughness and AO shading (both backends)
 
@@ -199,3 +200,120 @@ header pins and the PR validation profile pass on the rebased tree.
 | Geometry | 11/11 per backend; parity pass |
 | Transparency / cutout / fog / capacity / resources | 25/25, pass, 7/7, 18/18, 44/44 |
 | Baked lighting | GL 6/6; Vulkan native baked composition passes |
+
+## Stage B: native per-surface PBR in the classic OpenGL light loop
+
+OpenGL, the default renderer, drew authored PBR materials only when a whole
+frame qualified for the experimental modern visible path, which needs six
+developer settings and falls back to classic for any weapon, stock specular
+material, ambient light or stencil shadow. Ordinary gameplay therefore never
+showed PBR on OpenGL. `draw_pbr.cpp` now owns admitted surfaces inside the
+classic light loop, the way native Vulkan does:
+
+- Admission is the shared material contract (`PBRNativeContract`, a
+  backend-neutral copy of the Vulkan rules: one active bump/diffuse/specular
+  sequence, matching cutout coverage, ready images, a single replaceable glow
+  stage, a provable source-alpha stage), plus the OpenGL resources (GLSL,
+  fourteen image units, the PBR programs) and geometry the GLSL path can draw
+  (no GPU-posed MD5R surfaces). The material contract table is prepared every
+  frame PBR is on, as on Vulkan, without starting the rest of the modern side
+  pipeline. `r_glPBR 0` returns every surface to its classic stages.
+- Every light keeps its classic shadowing. The classic decomposition skips an
+  owned surface and the native draw skips everything else, so each surface is
+  lit by exactly one owner per light. Unshadowed and stencil-shadowed lights
+  draw with a PBR variant of the projected receiver program
+  (`OPENQ4_PBR_UNSHADOWED`) under the current stencil state; shadow-mapped
+  lights run the classic receiver pass a second time with PBR variants of the
+  projected and point receivers swapped in. The variants compile the shipped
+  receiver sources with `OPENQ4_PBR` defined and a shading library appended,
+  so their shadow filtering, biases and cascades are the classic receivers'
+  own. Ambient lights take the isotropic AO-occluded diffuse of Stage A.
+- The shading library is the Vulkan evaluation term for term
+  (`pbr_vertex.glsl`, `pbr_direct.glsl`): an orthonormal object-space frame,
+  object-space light and view vectors, specular AA from the final normal's
+  derivatives, the calibrated irradiance and the per-draw display encode.
+  Classic light triangles drop faces turned from the light; PBR draws use the
+  full set (`pbrLightTris`, now built for OpenGL too), so smooth normals light
+  every face they can.
+- The ambient walk draws one environment pass per owned surface (the filtered
+  analytic environment, the split-sum table and authored probes, ported from
+  `pbr_environment.glsl` and `pbr_probes.glsl`), replaces the glow stage with
+  the typed emission, and masks a perforated surface's depth fill with its PBR
+  albedo. Material diagnostics draw once per surface there, as on Vulkan.
+  Authored probes use the same CPU clustering as Vulkan, uploaded per view as
+  small float textures.
+- Translucent (source-alpha) owners composite at their authored stage, as on
+  Vulkan: the light loop draws nothing for them; in the stage's sort position
+  the background keeps 1 - alpha, then every light that reaches the surface
+  and its environment add alpha times their encoded radiance. OpenGL can
+  re-evaluate a light's interaction at any time, so it replays the light where
+  Vulkan replays a recorded draw. A replay cannot reproduce a light's stencil
+  or per-light shadow-map coverage, so -- exactly as on Vulkan -- a view in
+  which a shadow-casting light reaches a translucent receiver keeps classic
+  ownership of every translucent surface, lighting included. Opaque owners in
+  that view are unaffected.
+
+Not yet owned on OpenGL: surfaces posed on the GPU (`r_gpuSkinning 1`, packed
+MD5R meshes; both off by default) keep their classic stages. In a map with a
+baked light grid the classic grid pass still adds its indirect diffuse to an
+owned surface, where Vulkan and the modern GL path replace environment diffuse
+with PBR-weighted baked diffuse; Stage E brings that composition to the owner.
+
+### Continuous N.V on every backend
+
+The paired comparison found a shared defect, not a GL one: every direct-light
+evaluation (Vulkan, modern GL and the new owner) returned black when the
+mapped normal turned away from the viewer. A normal map does that at
+silhouettes, so normal-mapped spheres showed black pixels along their rims,
+and which pixels went black flipped between backends with the last bit of
+interpolation (up to 115 bytes on seven pixels). The direct terms now clamp
+N.V (`PBRShadingNoV`, Neubelt and Pettineo 2013): diffuse is independent of
+N.V and the Smith term stays finite, so the result is continuous. Environment
+terms already clamped.
+
+### OpenGL/Vulkan parity rules
+
+`renderer_pbr_native_gl_parity.py` compares the classic OpenGL owner with
+native Vulkan on the same runtime: the specimen patch within two bytes, the
+whole frame within the encoded-frame allowance of Stage C, after two
+documented exclusions that both come from the classic renderer:
+
+- Classic surfaces. Controls may name a PBR-off capture of the same scene. A
+  pixel PBR changed on neither backend belongs to the classic renderer. The
+  projected-shadow scene differs by up to 25 bytes on 6% of the frame, all of
+  it on the classic walls and floor, where the two backends' classic shadow
+  filters differ; the many-light scene differs by up to four bytes of classic
+  rounding on the lit room, while its PBR emitter matches exactly.
+- Edges. A step beyond the allowance counts as an edge shift when each
+  backend's value lies within the other's 3x3 neighbourhood range (at most
+  0.05% of the frame). Alpha-tested specimens may also flip up to sixteen
+  isolated silhouette pixels: at grazing angles the coverage texture is read
+  from its coarsest mips, averaged to the threshold. The classic cutout control
+  shows the same flips (20 pixels).
+
+The extreme-emission control is reported but exempt: it exercises Vulkan's
+float-HDR auto exposure, and OpenGL's auto exposure follows the modern
+visible post path. So are the controls that turn off `r_vkPBRSpecularAA`,
+which OpenGL does not expose.
+
+### Stage B laboratory evidence (2026-10-05)
+
+Private build of Stage C plus Stage B, Windows/NVIDIA, runtime
+`.tmp/wt-pbr/.tmp/lab-a`. "GL native" runs the laboratory with the modern
+visible path off (`--gl-native`), so the classic light loop owns every PBR
+surface; each GL-native suite is paired with the Vulkan suite captured in the
+same batch from the same runtime and harness.
+
+| Suite | Result |
+|---|---|
+| Native math | pass, including the continuous shading N.V |
+| Material contracts (`renderer_pbr_materials.py`) | pass, including the OpenGL owner and continuous N.V contracts |
+| Vulkan direct, 0x | 73/73 (two new PBR-off baselines) |
+| GL native direct, 0x | 73/73; parity with Vulkan passes on all 73 controls, 7 exempt with stated reasons |
+| GL native ambient | 40/40; independent oracle within 0.91 bytes (translucent alpha controls included); Vulkan 41/41; paired interiors within one byte |
+| GL native IBL | 26/26; environment parity with Vulkan passes on 26 controls |
+| GL native probes | 40/40; probe proof passes (a 33-record overflow now falls back to the analytic environment, as on Vulkan); parity with Vulkan passes, the cutout controls allowing the classic depth fill's alpha-test edges on 0.25% of covered pixels (26 edge pixels, lighting within one byte, no interior mismatch) |
+| GL native diagnostics | 62/62; semantics pass; whole-frame comparison keeps the documented mapped-normal and cutout-boundary set, identical to modern GL's since before Stage A |
+| GL native geometry | 11/11; backface parity with Vulkan passes |
+| GL native overview (`lit,ownership,no-probes,direct,legacy,master-off`) | 6/6 |
+| Modern GL and Vulkan regression suites | Vulkan map 4/4, GL HDR 7/7, GL core 6/6, probes 46/46 and 40/40 with parity, diagnostics 62/62 per backend (same documented set), geometry 11/11 per backend with parity, transparency 25/25, cutout pass, fog 7/7, capacity 18/18, resources 44/44, baked 6/6, HDR scene composition/ambient/recovery pass, HDR-off preview at 4x passes on both backends |

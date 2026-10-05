@@ -11,6 +11,12 @@
 #define OPENQ4_PBR_SCALAR_FUNCTIONS \
 OPENQ4_PBR_INLINE float PBRClamp(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); } \
 OPENQ4_PBR_INLINE float PBRRoughness(float r) { return PBRClamp(r, 0.045, 1.0); } \
+/* N.V for direct shading. A normal map can turn the shading normal away     \
+   from a view the surface itself faces, chiefly at silhouettes. Cutting the \
+   light there blacked those pixels out, and the cut flipped with the last   \
+   bit of interpolation; clamping keeps every term continuous (Neubelt and   \
+   Pettineo 2013). */ \
+OPENQ4_PBR_INLINE float PBRShadingNoV(float NoV) { return PBRClamp(NoV, 1.0e-4, 1.0); } \
 OPENQ4_PBR_INLINE float PBRFilteredRoughness(float perceptualRoughness, float normalVariance) { \
     float r = PBRRoughness(perceptualRoughness); \
     float alpha = r * r; \

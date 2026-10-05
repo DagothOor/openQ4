@@ -43,6 +43,7 @@ def main():
     parser.add_argument('--basepath', type=Path, required=True)
     parser.add_argument('--backend', choices=('gl', 'vk'), required=True)
     parser.add_argument('--samples', type=int, choices=(0, 4), default=0)
+    parser.add_argument('--gl-native', action='store_true', help='OpenGL with the classic light loop owning PBR (draw_pbr.cpp)')
     parser.add_argument('--timeout', type=int, default=1200)
     args = parser.parse_args()
     lab.BASE['image_anisotropy'] = '16'
@@ -78,6 +79,10 @@ def main():
                 '--cases', ','.join(profile), '--batch', '--timeout', str(args.timeout)]
     if args.backend == 'gl':
         sys.argv.append('--gl-debug')
+    if args.gl_native:
+        if args.backend != 'gl':
+            parser.error('--gl-native selects the classic OpenGL owner')
+        sys.argv.append('--gl-native')
     code = lab.main()
     path = args.output_dir / 'report.json'
     report = json.loads(path.read_text())

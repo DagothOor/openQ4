@@ -125,10 +125,10 @@ vec3 EvaluatePBRDirect(vec3 localNormal, vec2 albedoTexCoord,
     vec3 viewDir = SafeNormalize(vViewVector);
     vec3 halfDir = SafeNormalize(lightDir + viewDir);
     float ndotl = max(dot(objectNormal, lightDir), 0.0);
-    float ndotv = max(dot(objectNormal, viewDir), 0.0);
+    float ndotv = PBRShadingNoV(dot(objectNormal, viewDir));
     float ndoth = max(dot(objectNormal, halfDir), 0.0);
     float vdoth = max(dot(viewDir, halfDir), 0.0);
-    if (ndotl <= 0.0 || ndotv <= 0.0 || dot(lightDir + viewDir, lightDir + viewDir) <= 1.0e-8) {
+    if (ndotl <= 0.0 || dot(lightDir + viewDir, lightDir + viewDir) <= 1.0e-8) {
         return vec3(0.0);
     }
     float distribution = PBRDistributionGGX(ndoth, roughness);

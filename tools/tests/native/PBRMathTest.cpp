@@ -198,6 +198,14 @@ int main() {
     Require(mip[0]==11 && mip[3]==128,"sRGB toe differs from power-2.2 filtering");
     Require(kernel::PBRVisibilitySmithGGX(0, 1, 0) == 0, "grazing limit");
     Require(kernel::PBRVisibilitySmithGGX(1, -1, 0) == 0, "back-face light");
+    // A normal map can turn the shading normal from the viewer at a
+    // silhouette; direct light keeps a small positive N.V, never a black cut.
+    Require(kernel::PBRShadingNoV(-0.3f) == 1.0e-4f && kernel::PBRShadingNoV(0.0f) == 1.0e-4f
+        && kernel::PBRShadingNoV(0.5f) == 0.5f && kernel::PBRShadingNoV(2.0f) == 1.0f, "shading N.V clamp");
+    for (float r : roughnesses) {
+        const float grazing = kernel::PBRVisibilitySmithGGX(kernel::PBRShadingNoV(-0.01f), 0.5f, r);
+        Require(grazing > 0.0f && std::isfinite(grazing), "clamped N.V keeps a finite specular lobe");
+    }
     Require(kernel::PBRRoughness(0) == 0.045f && kernel::PBRRoughness(2) == 1, "roughness floor/range");
     for (float r : roughnesses) {
         Require(std::fabs(kernel::PBRFilteredRoughness(r, 0)-r)<1e-7f,"specular AA preserves a constant normal");

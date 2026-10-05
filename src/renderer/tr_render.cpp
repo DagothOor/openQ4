@@ -30,6 +30,7 @@ If you have questions concerning this license or the applicable additional terms
 
 
 #include "tr_local.h"
+#include "draw_pbr.h"
 
 /*
 
@@ -909,6 +910,12 @@ void RB_CreateSingleDrawInteractionsFiltered( const drawSurf_t *surf, void (*Dra
 	drawInteraction_t	inter;
 
 	if ( r_skipInteractions.GetBool() || !surf->geo || ( !surf->geo->ambientCache && !RB_HasPackedPrimBatchMesh( surf->geo ) ) ) {
+		return;
+	}
+
+	// Native PBR (draw_pbr.cpp) owns an admitted surface's interactions: a
+	// classic pass skips it and a native pass skips everything else.
+	if ( RB_GLPBR_DecompositionSkips( surf ) ) {
 		return;
 	}
 

@@ -16,6 +16,7 @@ parser.add_argument('--output-dir', type=Path, required=True)
 parser.add_argument('--basepath', type=Path, required=True)
 parser.add_argument('--backend', choices=('gl','vk'), required=True)
 parser.add_argument('--samples', type=int, choices=(0,4), default=0)
+parser.add_argument('--gl-native', action='store_true', help='OpenGL with the classic light loop owning PBR (draw_pbr.cpp)')
 parser.add_argument('--timeout', type=int, default=600)
 args = parser.parse_args()
 source_hash = lab.digest(Path(__file__))
@@ -64,6 +65,10 @@ sys.argv = [__file__, '--runtime-root',str(args.runtime_root), '--output-dir',st
             '--cases',','.join(profile), '--batch','--timeout',str(args.timeout)]
 if args.backend == 'gl':
     sys.argv.append('--gl-debug')
+if args.gl_native:
+    if args.backend != 'gl':
+        parser.error('--gl-native selects the classic OpenGL owner')
+    sys.argv.append('--gl-native')
 code = lab.main()
 path = args.output_dir/'report.json'
 report = json.loads(path.read_text())

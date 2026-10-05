@@ -227,6 +227,7 @@ def main() -> int:
     parser.add_argument('--basepath',type=Path,required=True)
     parser.add_argument('--backend',choices=('vk','gl'),default='vk')
     parser.add_argument('--samples',type=int,choices=(0,4),default=0)
+    parser.add_argument('--gl-native',action='store_true',help='OpenGL with the classic light loop owning PBR (draw_pbr.cpp)')
     parser.add_argument('--timeout',type=int,default=900)
     parser.add_argument('--prepare-fixture',action='store_true')
     parser.add_argument('--cases',help='comma-separated control suffixes for a focused diagnostic run; omitted runs the full suite')
@@ -249,6 +250,9 @@ def main() -> int:
               '--basepath',str(args.basepath),'--backend',args.backend,'--camera','sampling','--batch',
               '--cases',','.join(profile),'--timeout',str(args.timeout)]
     if args.backend=='gl': sys.argv.append('--gl-debug')
+    if args.gl_native:
+        if args.backend!='gl': parser.error('--gl-native selects the classic OpenGL owner')
+        sys.argv.append('--gl-native')
     code=lab.main()
     path=args.output_dir/'report.json'; report=json.loads(path.read_text())
     report.update(probeProfile=profile,probeHarnessSHA256=harness_hash,requestedSamples=args.samples,

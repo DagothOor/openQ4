@@ -21,6 +21,17 @@
   splits ambient lights per stage. The linear scene and Vulkan's float preview
   are the laboratory mode `r_pbrLinearScene` (default 0); production shares
   the classic HDR tone map, so PBR never changes stock presentation.
+- [x] PBR production readiness, Stage B: native per-surface PBR in the classic
+  OpenGL light loop (`draw_pbr.cpp`, `r_glPBR`). Admission is the Vulkan
+  material contract (`PBRNativeContract`); every light keeps its classic
+  stencil or shadow-map shadowing through PBR variants of the shipped receiver
+  programs; the ambient walk owns the environment term, typed emission,
+  perforated coverage and, as on Vulkan, ordered source-alpha transparency.
+  The paired comparison also found that every direct-light term blacked out
+  normal-mapped silhouettes; all three now clamp N.V (`PBRShadingNoV`). The
+  OpenGL owner matches Vulkan on every paired direct, ambient, environment,
+  probe, diagnostic and geometry control under the documented classic and
+  edge exclusions.
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:

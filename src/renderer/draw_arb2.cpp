@@ -32,6 +32,7 @@ If you have questions concerning this license or the applicable additional terms
 #include <cstring>
 
 #include "tr_local.h"
+#include "draw_pbr.h"
 #include "ARBColorZeroFloor.h"
 #include "CelShading.h"
 #include "Model_local.h"
@@ -2084,6 +2085,24 @@ static pointShadowMapProgram_t	g_pointShadowMapProgram = { 0, 0, 0, -1, false };
 static pointShadowCasterProgram_t	g_pointShadowCasterProgram = { 0, 0, 0, -1, false };
 static pointTranslucentShadowCasterProgram_t	g_pointTranslucentShadowCasterProgram = { 0, 0, 0, -1, false };
 static shadowDebugOverlayProgram_t	g_shadowDebugOverlayProgram = { 0, 0, 0, -1, false };
+// Native PBR variants of the two receiver programs (draw_pbr.cpp): the same
+// sources compiled with the PBR defines injected after the version line and
+// the PBR libraries appended. The loaders consult these only while a variant
+// is being built.
+static const char *	g_receiverProgramDefines = NULL;
+static const char *	g_receiverProgramVertexLibrary = NULL;
+static const char *	g_receiverProgramFragmentLibrary = NULL;
+static shadowMapProgram_t		g_shadowMapPBRProgram = { 0, 0, 0, -1, false };
+static pointShadowMapProgram_t	g_pointShadowMapPBRProgram = { 0, 0, 0, -1, false };
+static glPBRReceiverUniforms_t	g_shadowMapPBRUniforms;
+static glPBRReceiverUniforms_t	g_pointShadowMapPBRUniforms;
+static int		g_shadowMapPBRAttempt = -1;
+static int		g_pointShadowMapPBRAttempt = -1;
+static bool		g_shadowMapPBRAttemptCompare = false;
+static bool		g_pointShadowMapPBRAttemptCompare = false;
+// Set while a PBR variant runs its receiver pass over the owned surfaces.
+static const glPBRReceiverUniforms_t *g_activeReceiverPBRUniforms = NULL;
+static void RB_ShadowMapFreePBRPrograms( void );
 static idImage *			g_shadowMapDepthImage = NULL;
 static idRenderTexture *	g_shadowMapRenderTexture = NULL;
 static idImage *			g_shadowMapScratchDepthImage = NULL;
@@ -4912,6 +4931,8 @@ static void RB_ShadowMapResetProgramStateNoGL( void ) {
 void RB_ShutdownShadowMapResources( void ) {
 	RB_ModernShadowMapsShutdown();
 	if ( glConfig.isInitialized ) {
+		RB_ShadowMapFreePBRPrograms();
+		RB_GLPBR_Shutdown();
 		RB_ShadowMapFreeProgram();
 		RB_ShadowMapFreeCasterProgram();
 		RB_TranslucentShadowMapFreeCasterProgram();
@@ -4987,6 +5008,38 @@ void RB_ShutdownShadowMapResources( void ) {
 	g_activePointShadowMapCache = NULL;
 	memset( g_shadowMapGpuTimerQuerySlots, 0, sizeof( g_shadowMapGpuTimerQuerySlots ) );
 	g_shadowMapGpuTimerQueryCursor = 0;
+}
+
+// Receiver sources: an optional replacement for the version line, an optional
+// define, the PBR variant's defines and library when one is being built.
+static void RB_ReceiverShaderSource( GLhandleARB shader, const char *source, const char *versionLine,
+		const char *define, const char *variantLibrary ) {
+	const char *versionEnd = strchr( source, '\n' );
+	if ( versionEnd == NULL ) {
+		const GLcharARB *whole = (const GLcharARB *)source;
+		glShaderSourceARB( shader, 1, &whole, NULL );
+		return;
+	}
+	const GLcharARB *parts[5];
+	GLint lengths[5];
+	int count = 0;
+	parts[count] = versionLine != NULL ? versionLine : source;
+	lengths[count++] = versionLine != NULL ? -1 : static_cast<GLint>( versionEnd - source + 1 );
+	if ( define != NULL ) {
+		parts[count] = define;
+		lengths[count++] = -1;
+	}
+	if ( g_receiverProgramDefines != NULL ) {
+		parts[count] = g_receiverProgramDefines;
+		lengths[count++] = -1;
+	}
+	parts[count] = versionEnd + 1;
+	lengths[count++] = -1;
+	if ( g_receiverProgramDefines != NULL && variantLibrary != NULL ) {
+		parts[count] = variantLibrary;
+		lengths[count++] = -1;
+	}
+	glShaderSourceARB( shader, count, parts, lengths );
 }
 
 static void RB_ShadowMapPrintInfoLog( GLhandleARB object, const char *label, const char *name ) {
@@ -5176,30 +5229,9 @@ static const char *programBaseName = "glprogs/shadow_interaction";
 
 	GLhandleARB vertexShader = glCreateShaderObjectARB( GL_VERTEX_SHADER_ARB );
 	GLhandleARB fragmentShader = glCreateShaderObjectARB( GL_FRAGMENT_SHADER_ARB );
-	const GLcharARB *vertexSource = (const GLcharARB *)vertexBuffer;
-	const GLcharARB *fragmentSource = (const GLcharARB *)fragmentBuffer;
-	glShaderSourceARB( vertexShader, 1, &vertexSource, NULL );
-	if ( depthCompareMode ) {
-		const char *fragmentVersionEnd = strchr( fragmentBuffer, '\n' );
-		if ( fragmentVersionEnd != NULL ) {
-			static const GLcharARB compareDefine[] = "#define OPENQ4_SHADOW_COMPARE 1\n";
-			const GLcharARB *fragmentSources[3] = {
-				(const GLcharARB *)fragmentBuffer,
-				compareDefine,
-				(const GLcharARB *)( fragmentVersionEnd + 1 )
-			};
-			const GLint fragmentLengths[3] = {
-				static_cast<GLint>( fragmentVersionEnd - fragmentBuffer + 1 ),
-				static_cast<GLint>( sizeof( compareDefine ) - 1 ),
-				-1
-			};
-			glShaderSourceARB( fragmentShader, 3, fragmentSources, fragmentLengths );
-		} else {
-			glShaderSourceARB( fragmentShader, 1, &fragmentSource, NULL );
-		}
-	} else {
-		glShaderSourceARB( fragmentShader, 1, &fragmentSource, NULL );
-	}
+	RB_ReceiverShaderSource( vertexShader, vertexBuffer, NULL, NULL, g_receiverProgramVertexLibrary );
+	RB_ReceiverShaderSource( fragmentShader, fragmentBuffer, NULL,
+		depthCompareMode ? "#define OPENQ4_SHADOW_COMPARE 1\n" : NULL, g_receiverProgramFragmentLibrary );
 	glCompileShaderARB( vertexShader );
 	glCompileShaderARB( fragmentShader );
 
@@ -5581,28 +5613,10 @@ static const char *programBaseName = "glprogs/shadow_point_interaction";
 
 	GLhandleARB vertexShader = glCreateShaderObjectARB( GL_VERTEX_SHADER_ARB );
 	GLhandleARB fragmentShader = glCreateShaderObjectARB( GL_FRAGMENT_SHADER_ARB );
-	const GLcharARB *vertexSource = (const GLcharARB *)vertexBuffer;
-	const GLcharARB *fragmentSource = (const GLcharARB *)fragmentBuffer;
-	glShaderSourceARB( vertexShader, 1, &vertexSource, NULL );
-	if ( depthCompareMode ) {
-		const char *fragmentVersionEnd = strchr( fragmentBuffer, '\n' );
-		if ( fragmentVersionEnd != NULL ) {
-			static const GLcharARB compareVersion[] = "#version 130\n#define OPENQ4_POINT_SHADOW_COMPARE 1\n";
-			const GLcharARB *fragmentSources[2] = {
-				compareVersion,
-				(const GLcharARB *)( fragmentVersionEnd + 1 )
-			};
-			const GLint fragmentLengths[2] = {
-				static_cast<GLint>( sizeof( compareVersion ) - 1 ),
-				-1
-			};
-			glShaderSourceARB( fragmentShader, 2, fragmentSources, fragmentLengths );
-		} else {
-			glShaderSourceARB( fragmentShader, 1, &fragmentSource, NULL );
-		}
-	} else {
-		glShaderSourceARB( fragmentShader, 1, &fragmentSource, NULL );
-	}
+	RB_ReceiverShaderSource( vertexShader, vertexBuffer, NULL, NULL, g_receiverProgramVertexLibrary );
+	RB_ReceiverShaderSource( fragmentShader, fragmentBuffer,
+		depthCompareMode ? "#version 130\n" : NULL,
+		depthCompareMode ? "#define OPENQ4_POINT_SHADOW_COMPARE 1\n" : NULL, g_receiverProgramFragmentLibrary );
 	glCompileShaderARB( vertexShader );
 	glCompileShaderARB( fragmentShader );
 
@@ -9347,6 +9361,11 @@ static void RB_GLSLShadowMap_DrawInteraction( const drawInteraction_t *din ) {
 	din->diffuseImage->Bind();
 	GL_SelectTextureNoClient( 4 );
 	din->specularImage->Bind();
+	const srfTriangles_t *receiverGeo = din->surf->geo;
+	if ( g_activeReceiverPBRUniforms != NULL ) {
+		receiverGeo = RB_GLPBR_BindReceiverInteraction( *g_activeReceiverPBRUniforms, din );
+		RB_GLPBR_CountMappedInteraction();
+	}
 
 	const idMaterial *surfaceMaterial = din->surf->material;
 	if ( surfaceMaterial && surfaceMaterial->TestMaterialFlag( MF_POLYGONOFFSET ) ) {
@@ -9354,7 +9373,7 @@ static void RB_GLSLShadowMap_DrawInteraction( const drawInteraction_t *din ) {
 		glPolygonOffset( r_offsetFactor.GetFloat(), r_offsetUnits.GetFloat() * surfaceMaterial->GetPolygonOffset() );
 	}
 
-	RB_DrawElementsWithCounters( din->surf->geo );
+	RB_DrawElementsWithCounters( receiverGeo );
 
 	if ( surfaceMaterial && surfaceMaterial->TestMaterialFlag( MF_POLYGONOFFSET ) ) {
 		glDisable( GL_POLYGON_OFFSET_FILL );
@@ -9433,6 +9452,11 @@ static void RB_GLSLPointShadowMap_DrawInteraction( const drawInteraction_t *din 
 	din->diffuseImage->Bind();
 	GL_SelectTextureNoClient( 4 );
 	din->specularImage->Bind();
+	const srfTriangles_t *receiverGeo = din->surf->geo;
+	if ( g_activeReceiverPBRUniforms != NULL ) {
+		receiverGeo = RB_GLPBR_BindReceiverInteraction( *g_activeReceiverPBRUniforms, din );
+		RB_GLPBR_CountMappedInteraction();
+	}
 
 	const idMaterial *surfaceMaterial = din->surf->material;
 	if ( surfaceMaterial && surfaceMaterial->TestMaterialFlag( MF_POLYGONOFFSET ) ) {
@@ -9440,11 +9464,22 @@ static void RB_GLSLPointShadowMap_DrawInteraction( const drawInteraction_t *din 
 		glPolygonOffset( r_offsetFactor.GetFloat(), r_offsetUnits.GetFloat() * surfaceMaterial->GetPolygonOffset() );
 	}
 
-	RB_DrawElementsWithCounters( din->surf->geo );
+	RB_DrawElementsWithCounters( receiverGeo );
 
 	if ( surfaceMaterial && surfaceMaterial->TestMaterialFlag( MF_POLYGONOFFSET ) ) {
 		glDisable( GL_POLYGON_OFFSET_FILL );
 	}
+}
+
+static bool RB_GLSLPrepareInteractionVertexCache( const drawSurf_t *surf, idDrawVert *&ambientVertexPointer );
+static bool RB_SurfaceUsesGPUPosedGeometry( const drawSurf_t *surf );
+
+bool RB_GLSLInteractionVertexCache( const drawSurf_t *surf, idDrawVert *&ambientVertexPointer ) {
+	return RB_GLSLPrepareInteractionVertexCache( surf, ambientVertexPointer );
+}
+
+bool RB_GLSLSurfaceUsesGPUPosedGeometry( const drawSurf_t *surf ) {
+	return RB_SurfaceUsesGPUPosedGeometry( surf );
 }
 
 static bool RB_GLSLPrepareInteractionVertexCache( const drawSurf_t *surf, idDrawVert *&ambientVertexPointer ) {
@@ -10832,6 +10867,10 @@ static void RB_DrawMaterialInteractions( const drawSurf_t *surf ) {
 		return;
 	}
 
+	// Owned PBR surfaces take their native draws under the current stencil
+	// state; every classic path below skips them in the decomposition.
+	RB_GLPBR_DrawInteractionChain( surf );
+
 	if ( RB_AppleGL21AutomaticInteractionPath() ) {
 		// The Apple 2.1 driver corridor is intentionally decided per surface.
 		// Ordinary stock geometry avoids the fragile ARB interaction program,
@@ -10890,6 +10929,99 @@ static void RB_DrawMaterialInteractions( const drawSurf_t *surf ) {
 	}
 
 	RB_ARB2_CreateDrawInteractions( surf );
+}
+
+static bool RB_GLSLShadowMap_CreateDrawInteractions( const drawSurf_t *surf );
+static bool RB_GLSLPointShadowMap_CreateDrawInteractions( const drawSurf_t *surf );
+
+static void RB_ShadowMapFreePBRPrograms( void ) {
+	const shadowMapProgram_t classic = g_shadowMapProgram;
+	g_shadowMapProgram = g_shadowMapPBRProgram;
+	RB_ShadowMapFreeProgram();
+	g_shadowMapPBRProgram = g_shadowMapProgram;
+	g_shadowMapProgram = classic;
+	const pointShadowMapProgram_t pointClassic = g_pointShadowMapProgram;
+	g_pointShadowMapProgram = g_pointShadowMapPBRProgram;
+	RB_PointShadowMapFreeProgram();
+	g_pointShadowMapPBRProgram = g_pointShadowMapProgram;
+	g_pointShadowMapProgram = pointClassic;
+	g_shadowMapPBRAttempt = g_pointShadowMapPBRAttempt = -1;
+}
+
+// Builds a variant through the classic loader, which compiles into the
+// classic global: swap it out, load with the PBR injections, swap back.
+static bool RB_ShadowMapLoadPBRVariant( bool point ) {
+	const bool compare = point ? RB_PointShadowMapDepthCompareEnabled() : RB_ShadowMapDepthCompareEnabled();
+	int &attempt = point ? g_pointShadowMapPBRAttempt : g_shadowMapPBRAttempt;
+	bool &attemptCompare = point ? g_pointShadowMapPBRAttemptCompare : g_shadowMapPBRAttemptCompare;
+	if ( attempt == tr.videoRestartCount && attemptCompare == compare ) {
+		return point ? g_pointShadowMapPBRProgram.programValid : g_shadowMapPBRProgram.programValid;
+	}
+	g_receiverProgramDefines = RB_GLPBR_ReceiverDefines( false );
+	g_receiverProgramVertexLibrary = RB_GLPBR_VertexLibrary();
+	g_receiverProgramFragmentLibrary = RB_GLPBR_FragmentLibrary();
+	bool valid = false;
+	if ( point ) {
+		const pointShadowMapProgram_t classic = g_pointShadowMapProgram;
+		g_pointShadowMapProgram = g_pointShadowMapPBRProgram;
+		RB_PointShadowMapFreeProgram();
+		valid = RB_PointShadowMapLoadProgram();
+		g_pointShadowMapPBRProgram = g_pointShadowMapProgram;
+		g_pointShadowMapProgram = classic;
+		if ( valid ) {
+			RB_GLPBR_LookupReceiverUniforms( g_pointShadowMapPBRProgram.programObject, g_pointShadowMapPBRUniforms );
+		}
+	} else {
+		const shadowMapProgram_t classic = g_shadowMapProgram;
+		g_shadowMapProgram = g_shadowMapPBRProgram;
+		RB_ShadowMapFreeProgram();
+		valid = RB_ShadowMapLoadProgram();
+		g_shadowMapPBRProgram = g_shadowMapProgram;
+		g_shadowMapProgram = classic;
+		if ( valid ) {
+			RB_GLPBR_LookupReceiverUniforms( g_shadowMapPBRProgram.programObject, g_shadowMapPBRUniforms );
+		}
+	}
+	g_receiverProgramDefines = NULL;
+	g_receiverProgramVertexLibrary = NULL;
+	g_receiverProgramFragmentLibrary = NULL;
+	attempt = tr.videoRestartCount;
+	attemptCompare = compare;
+	return valid;
+}
+
+static void RB_GLSLShadowMap_DrawPBRReceivers( const drawSurf_t *surf, bool point ) {
+	if ( r_pbrDebug.GetInteger() != 0 || !RB_GLPBR_ChainHasOwned( surf ) || !RB_ShadowMapLoadPBRVariant( point ) ) {
+		return;
+	}
+	RB_GLPBR_BeginNativePass();
+	if ( point ) {
+		const pointShadowMapProgram_t classic = g_pointShadowMapProgram;
+		g_pointShadowMapProgram = g_pointShadowMapPBRProgram;
+		g_activeReceiverPBRUniforms = &g_pointShadowMapPBRUniforms;
+		RB_GLSLPointShadowMap_CreateDrawInteractions( surf );
+		g_pointShadowMapPBRProgram = g_pointShadowMapProgram;
+		g_pointShadowMapProgram = classic;
+	} else {
+		const shadowMapProgram_t classic = g_shadowMapProgram;
+		g_shadowMapProgram = g_shadowMapPBRProgram;
+		g_activeReceiverPBRUniforms = &g_shadowMapPBRUniforms;
+		RB_GLSLShadowMap_CreateDrawInteractions( surf );
+		g_shadowMapPBRProgram = g_shadowMapProgram;
+		g_shadowMapProgram = classic;
+	}
+	g_activeReceiverPBRUniforms = NULL;
+	RB_GLPBR_EndNativePass();
+	RB_GLPBR_UnbindReceiverUnits();
+}
+
+static bool RB_GLSLShadowMap_CreateDrawInteractionsWithPBR( const drawSurf_t *surf, bool point ) {
+	const bool drawn = point ? RB_GLSLPointShadowMap_CreateDrawInteractions( surf )
+		: RB_GLSLShadowMap_CreateDrawInteractions( surf );
+	if ( drawn ) {
+		RB_GLSLShadowMap_DrawPBRReceivers( surf, point );
+	}
+	return drawn;
 }
 
 static bool RB_GLSLShadowMap_CreateDrawInteractions( const drawSurf_t *surf ) {
@@ -12162,8 +12294,8 @@ static void RB_ShadowMapRunPass( const viewLight_t *vLight, shadowMapPassKind_t 
 				vLight, passKind, hybrid );
 		const bool maskOk = receiverStencilReady
 			&& ( pointLight
-				? RB_GLSLPointShadowMap_CreateDrawInteractions( interactions )
-				: RB_GLSLShadowMap_CreateDrawInteractions( interactions ) );
+				? RB_GLSLShadowMap_CreateDrawInteractionsWithPBR( interactions, true )
+				: RB_GLSLShadowMap_CreateDrawInteractionsWithPBR( interactions, false ) );
 		const float cacheReuseMilliseconds = RB_ShadowMapEndTimedPhase( cacheReuseTimer );
 		g_shadowMapStats.cpuMaskMilliseconds += cacheReuseMilliseconds;
 		if ( maskOk ) {
@@ -12255,8 +12387,8 @@ static void RB_ShadowMapRunPass( const viewLight_t *vLight, shadowMapPassKind_t 
 					vLight, passKind, hybrid );
 			maskOk = receiverStencilReady
 				&& ( pointLight
-					? RB_GLSLPointShadowMap_CreateDrawInteractions( interactions )
-					: RB_GLSLShadowMap_CreateDrawInteractions( interactions ) );
+					? RB_GLSLShadowMap_CreateDrawInteractionsWithPBR( interactions, true )
+					: RB_GLSLShadowMap_CreateDrawInteractionsWithPBR( interactions, false ) );
 			const float maskMilliseconds = RB_ShadowMapEndTimedPhase( maskTimer );
 			g_shadowMapStats.cpuMaskMilliseconds += maskMilliseconds;
 		}

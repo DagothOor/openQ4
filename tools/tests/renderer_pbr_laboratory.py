@@ -83,6 +83,14 @@ BASE = {
     'ui_autoJoin': '1',
     'sys_allowMultipleInstances': '1',
 }
+# --gl-native: the experimental modern visible path stays off, so the default
+# classic OpenGL light loop owns every admitted PBR surface (draw_pbr.cpp).
+GL_NATIVE_OVERRIDES = {
+    'r_rendererModernExecutor': '0', 'r_rendererModernSubmit': '0',
+    'r_rendererModernOpaque': '0', 'r_rendererModernDeferred': '0',
+    'r_rendererForwardPlus': '0', 'r_rendererModernVisible': '0', 'r_glPBR': '1',
+}
+
 CASES = {
     'lit': {},
     'forced-parity': {'r_rendererModernLightingParity':'15'},
@@ -232,6 +240,12 @@ CASES['production-fixed-bright']={**CASES['production-fixed'],'r_lightScale':'2'
 FALLBACK_CASES = {'multi-budget','shadow-capacity','local-global','production-rejected','production-no-scissor'}
 FALLBACK_CASES.update(('fog-fallback','blend-fallback','lightgrid-fallback'))
 FALLBACK_CASES.update(f'production-fixed-{boundary}-fallback' for boundary in ('shadow','msaa'))
+# Controls whose PBR specimen is deliberately hidden (background captures for
+# composite oracles): no native owner is expected to admit anything there.
+HIDDEN_SPECIMEN_CASES: set[str] = set()
+# Controls whose specimen deliberately breaks the native material contract:
+# every native owner must decline them and keep the classic stages.
+CONTRACT_DECLINE_CASES = {'vk-direct-emission-mismatch-fallback', 'vk-direct-cutout-mismatch-fallback'}
 LEGACY_CASES = {'legacy','master-off','multi-legacy','shadow-capacity-legacy','local-global-legacy','production-native','production-rejected-native','production-curved-native'}
 LEGACY_CASES.update(('production-fixed-colored-native','production-fixed-master-off'))
 LEGACY_CASES.add('production-fixed-grid-native')
@@ -336,6 +350,11 @@ VK_DIRECT_MATERIALS = {
     'shadow-point-owned':'data_separate', 'shadow-point-restored':'data_separate',
     'shadow-projected-off':'baked_normal_agb', 'shadow-projected':'baked_normal_agb',
     'shadow-projected-owned':'baked_normal_agb', 'shadow-projected-restored':'baked_normal_agb',
+    # The shadowed scene with PBR off: what each backend's classic shadow
+    # filter does to the surfaces PBR never touches.
+    'shadow-projected-native':'baked_normal_agb',
+    # Every light with PBR off: classic rounding on the lit room.
+    'emission-many-lights-native':'emission_half',
     # Production composition: the same draws written straight into the
     # display-referred framebuffer, and a rough grey dielectric against its own
     # classic diffuse fallback under the same light (brightness calibration).
@@ -347,7 +366,7 @@ for suffix in VK_DIRECT_MATERIALS:
                  'r_pbrDebug':'7' if suffix.startswith('ownership-') or suffix.endswith(('-fallback','-owned')) else '0',
                  'r_rendererModernQuality':'0' if suffix=='master-off' else '1',
                  'r_pbrMaterials':'0' if suffix.endswith('-native') else '1'}
-    if suffix in ('shadow-point','shadow-point-owned','shadow-projected','shadow-projected-owned'):
+    if suffix in ('shadow-point','shadow-point-owned','shadow-projected','shadow-projected-owned','shadow-projected-native'):
         CASES[case].update({'r_shadows':'1','r_useShadowMap':'1',
                            'r_shadowMapReport':'2','r_shadowMapReportInterval':'1'})
     if suffix=='cutout-hard':
@@ -362,7 +381,7 @@ for suffix in VK_DIRECT_MATERIALS:
         CASES[case]['r_pbrLinearScene']='0'
     if suffix=='calibration-classic':
         CASES[case]['r_pbrMaterials']='0'
-    if suffix in ('emission-one-light','emission-many-lights'):
+    if suffix in ('emission-one-light','emission-many-lights','emission-many-lights-native'):
         CASES[case]['r_pbrDebug']='6'
     if suffix=='emission-dark':
         CASES[case]['r_skipAmbient']='1'
@@ -698,7 +717,9 @@ def compare_vulkan_direct_captures(results: list[dict]) -> None:
                                        f'{pbr[peak]} at the classic peak {classic[peak]}, expected {predicted:.1f}')
     if 'emission-dark' in patches and max(patches['emission-dark'])!=0:
         by_case['emission-dark']['failures'].append('emission leaked through the disabled ambient owner')
-    if 'emission-extreme' in patches:
+    if 'emission-extreme' in patches and by_case['emission-extreme'].get('backend')=='vk':
+        # A Vulkan float-HDR control: OpenGL's auto exposure follows the
+        # modern visible post path, so the classic owner only records it.
         # Red stays unclipped while the two other channels intentionally
         # saturate; a per-intensity clamp would reduce red to almost nothing.
         # The reference follows the display transfer the capture reported.
@@ -715,6 +736,10 @@ def compare_vulkan_direct_captures(results: list[dict]) -> None:
         names=['aa-'+shape+suffix for suffix in ('','-off','-owned')]
         if not all(name in by_case for name in names): continue
         row=by_case[names[0]]
+        if row.get('backend')!='vk':
+            # r_vkPBRSpecularAA is Vulkan's switch; OpenGL always filters and
+            # is held to Vulkan's filtered result by the paired comparison.
+            continue
         images=[capture_rgb(Path(by_case[name]['screenshot'])) for name in names]
         if any(image is None for image in images):
             row['failures'].append('specular AA requires lit, disabled and ownership captures')
@@ -1526,12 +1551,12 @@ def inspect_capture(args: argparse.Namespace, case: str, text: str, shot: Path) 
     if not shot.is_file(): failures.append('engine screenshot missing')
     diagnostics = diagnostic_lines(text)
     if diagnostics: failures.append('engine diagnostics require review')
-    telemetry = [line for line in text.splitlines() if line.startswith(('PBR material resources:', 'Modern GL executor:', 'Modern visible frame:', 'Modern classic lighting:', 'Modern forward+:', 'Modern current shadow map:', 'Modern scene MSAA:', 'Renderer AA:', 'Modern specular probe atlas:', 'Modern clustered specular probes:', 'Vulkan: native PBR', 'Vulkan PBR probes:', 'Vulkan HDR scene ownership:', 'Vulkan PBR preview:', 'GPU skinning:', 'modernLightingOwnership'))]
+    telemetry = [line for line in text.splitlines() if line.startswith(('OpenGL: native PBR:', 'PBR material resources:', 'Modern GL executor:', 'Modern visible frame:', 'Modern classic lighting:', 'Modern forward+:', 'Modern current shadow map:', 'Modern scene MSAA:', 'Renderer AA:', 'Modern specular probe atlas:', 'Modern clustered specular probes:', 'Vulkan: native PBR', 'Vulkan PBR probes:', 'Vulkan HDR scene ownership:', 'Vulkan PBR preview:', 'GPU skinning:', 'modernLightingOwnership'))]
     if case.startswith(('vk-direct-','ibl-')):
         samples=CASES[case].get('r_multiSamples',BASE['r_multiSamples'])
         if not re.search(rf'Renderer AA: MSAA requested={samples} effective={samples}\b',text):
             failures.append('native direct specimen did not render at its requested sample count')
-    if case=='vk-direct-emission-extreme':
+    if case=='vk-direct-emission-extreme' and args.backend=='vk':
         hdr=next((line for line in text.splitlines() if line.startswith('Vulkan HDR:')), '')
         telemetry.append(hdr)
         state=dict(re.findall(r'(\w+)=([^\s]+)',hdr))
@@ -1565,11 +1590,34 @@ def inspect_capture(args: argparse.Namespace, case: str, text: str, shot: Path) 
         if not re.search(r'Modern scene MSAA: samples=4 colorResolves=[1-9]\d* depthResolves=[1-9]\d*',text):
             failures.append('multisample scene color and depth were not resolved')
     active_pbr = case not in LEGACY_CASES | FALLBACK_CASES and args.tier != 'legacy'
-    if case in FALLBACK_CASES:
+    if getattr(args, 'gl_native', False):
+        # The classic light loop owns PBR: prove its own telemetry instead of
+        # the modern visible frame, which is deliberately off.
+        native = next((line for line in telemetry if line.startswith('OpenGL: native PBR:')), '')
+        state = dict(re.findall(r'(\w+)=([^\s]+)', native))
+        settings = {**BASE, **CASES.get(case, {})}
+        expected = settings.get('r_pbrMaterials') == '1' and settings.get('r_rendererModernQuality') == '1'
+        # Nothing is drawn to admit when the specimen is hidden or the ambient
+        # walk is skipped with every direct light off.
+        unseen = case in HIDDEN_SPECIMEN_CASES or settings.get('r_skipAmbient') == '1'
+        if not native:
+            failures.append('native OpenGL PBR telemetry missing')
+        elif state.get('enabled') != str(int(expected)):
+            failures.append('native OpenGL PBR enable state differs from the case')
+        elif expected and state.get('program') != '1':
+            failures.append('native OpenGL PBR program is unavailable')
+        elif case in CONTRACT_DECLINE_CASES:
+            if int(state.get('admitted', '0')) != 0 or int(state.get('declined', '0')) <= 0:
+                failures.append('native OpenGL PBR did not decline a broken material contract')
+        elif expected and not unseen and int(state.get('admitted', '0')) <= 0:
+            failures.append('native OpenGL PBR did not admit the specimen')
+        elif not expected and int(state.get('admitted', '0')) != 0:
+            failures.append('native OpenGL PBR admitted a surface with PBR disabled')
+    elif case in FALLBACK_CASES:
         visible = next((line for line in telemetry if line.startswith('Modern visible frame:')), '')
         if not re.search(r'\bexec=0\b',visible) or not re.search(r'\bblocked=1\b',visible):
             failures.append('unsupported rendering contract did not retain complete classic ownership')
-    if active_pbr and args.backend == 'gl':
+    if active_pbr and args.backend == 'gl' and not getattr(args, 'gl_native', False):
         ownership = next((line for line in telemetry if line.startswith('modernLightingOwnership')), '')
         if (case.startswith(('production','environment-')) or '-pbr' in case or case in ('fog-preview','blend-preview')) and not re.search(r'override=0 requested=1 materialContract=1\b',ownership):
             failures.append('production admission relied on a parity override or lacked its material contract')
@@ -1607,14 +1655,26 @@ def inspect_capture(args: argparse.Namespace, case: str, text: str, shot: Path) 
                 if len(points)<3 or len({m.get('firstTile') for m in points.values()})!=len(points):
                     failures.append('three point lights did not consume distinct complete maps')
     if case in ('vk-direct-shadow-point','vk-direct-shadow-point-owned',
-                'vk-direct-shadow-projected','vk-direct-shadow-projected-owned'):
+                'vk-direct-shadow-projected','vk-direct-shadow-projected-owned',
+                'vk-direct-shadow-projected-native'):
         kind='projected' if '-projected' in case else 'point'
-        maps=[line for line in text.splitlines() if line.startswith('SM pass light[') and f'type={kind} ' in line]
-        # The stationary func_static may enter the static cache after the
-        # stabilization frames. Require represented casters, not a particular
-        # cache classification; the off/on/restore images prove occlusion.
-        if not any(re.search(r'\bGLOBAL=(?:publish|reuse|scratch|alias)\b',line)
-                   and re.search(r'\b(?:static|dynamic)=[1-9]\d*',line) for line in maps):
+        if args.backend == 'gl':
+            # OpenGL reports each complete map, rendered or reused from the
+            # static cache, with its caster classes a-d.
+            maps=[line for line in text.splitlines() if line.startswith(('SM pass global[','SM pass local['))
+                  and f'type={kind} ' in line]
+            complete=any(re.search(r'\bresult=(?:mapped|cache-reuse)\b',line)
+                         and re.search(r'\bcasters\(a=(\d+) b=(\d+) c=(\d+) d=(\d+)\)',line)
+                         and sum(map(int,re.search(r'\bcasters\(a=(\d+) b=(\d+) c=(\d+) d=(\d+)\)',line).groups()))>0
+                         for line in maps)
+        else:
+            maps=[line for line in text.splitlines() if line.startswith('SM pass light[') and f'type={kind} ' in line]
+            # The stationary func_static may enter the static cache after the
+            # stabilization frames. Require represented casters, not a particular
+            # cache classification; the off/on/restore images prove occlusion.
+            complete=any(re.search(r'\bGLOBAL=(?:publish|reuse|scratch|alias)\b',line)
+                         and re.search(r'\b(?:static|dynamic)=[1-9]\d*',line) for line in maps)
+        if not complete:
             failures.append(f'native {kind} material control lacks a complete map with represented casters')
         telemetry.extend(dict.fromkeys(maps))
     image = {}
@@ -1767,11 +1827,11 @@ def capture_cases(args: argparse.Namespace, cases: list[str], save: Path) -> lis
                 scene_setups.add('vk-direct-projector')
             # Isolate emission with zero, one or several direct lights. The
             # emission-only diagnostic must agree with the unlit ordinary draw.
-            many=case=='vk-direct-emission-many-lights'
+            many=case in ('vk-direct-emission-many-lights','vk-direct-emission-many-lights-native')
             emitter=case.startswith('vk-direct-emission-')
             for light in ('key','blue_fill','warm_fill','lab_projector'):
                 commands += [f'script "${light}.{"On" if many else "Off"}()"']
-            direct_on=not emitter or case in ('vk-direct-emission-one-light','vk-direct-emission-many-lights')
+            direct_on=not emitter or case in ('vk-direct-emission-one-light','vk-direct-emission-many-lights','vk-direct-emission-many-lights-native')
             commands += [f'script "$vk_direct_light.{"On" if direct_on else "Off"}()"']
             material=VK_DIRECT_MATERIALS[case.removeprefix('vk-direct-')]
             model=lab.CONSTANT_NORMAL_MODEL if case.startswith('vk-direct-aa-constant') else lab.MODEL
@@ -1853,7 +1913,7 @@ def capture_cases(args: argparse.Namespace, cases: list[str], save: Path) -> lis
         if case.startswith('vk-direct-shadow-'):
             commands += ['wait 2']
         commands += ['viewpos', 'gfxInfo', 'rendererMaterialResourceTableDump', f'screenshot "screenshots/{case}.tga"']
-        if case=='vk-direct-emission-extreme':
+        if case=='vk-direct-emission-extreme' and args.backend=='vk':
             commands += ['rendererVulkanHDRInfo']
         if args.linear and case not in LEGACY_CASES | FALLBACK_CASES | LINEAR_UNAVAILABLE_CASES:
             commands += [f'screenshot linear "screenshots/{case}.pfm"']
@@ -1932,10 +1992,15 @@ def main() -> int:
     selection.add_argument('--suite',choices=('vulkan-direct','ibl'),help='run every control in the named suite')
     parser.add_argument('--camera',default='overview',help='camera name in pbr-lab.json; station-NAME centres a station')
     parser.add_argument('--backend',choices=('gl','vk'),default='gl')
+    parser.add_argument('--gl-native',action='store_true',help='OpenGL with the modern visible path off: the classic light loop draws PBR (draw_pbr.cpp)')
     parser.add_argument('--tier',default='gl45')
     parser.add_argument('--timeout',type=int,default=180)
     parser.add_argument('--samples',type=int,choices=(0,4),help='override sample count for vk-direct or IBL controls')
     args = parser.parse_args()
+    if args.gl_native:
+        if args.backend != 'gl':
+            parser.error('--gl-native selects the classic OpenGL owner')
+        BASE.update(GL_NATIVE_OVERRIDES)
     args.runtime_root = fixture.validate_runtime_root(args.runtime_root)
     args.output_dir = fixture.validate_runtime_root(args.output_dir)
     args.basepath = args.basepath.resolve()
@@ -1950,12 +2015,12 @@ def main() -> int:
         parser.error('select rendering controls, or explicitly prepare/update the fixture')
     if args.prepare and args.update_fixture: parser.error('choose --prepare or --update-fixture')
     if any(case not in CASES for case in cases): parser.error('unknown capture case')
-    if args.backend!='vk' and any(case.startswith('vk-direct-') for case in cases):
-        parser.error('vk-direct controls require the native Vulkan backend')
+    if args.backend!='vk' and not args.gl_native and any(case.startswith('vk-direct-') for case in cases):
+        parser.error('vk-direct controls require a native PBR owner: Vulkan or --gl-native')
     if args.backend!='vk' and 'ibl-shared' in cases:
         parser.error('ibl-shared qualifies the Vulkan ambient walker; GL deliberately excludes shared ambient from modern PBR')
     if args.samples is not None:
-        if not cases or not all(case.startswith('ibl-') or (args.backend=='vk' and case.startswith('vk-direct-')) for case in cases):
+        if not cases or not all(case.startswith('ibl-') or ((args.backend=='vk' or args.gl_native) and case.startswith('vk-direct-')) for case in cases):
             parser.error('--samples requires only IBL or native vk-direct controls')
         for case in cases:
             CASES[case]={**CASES[case],'r_multiSamples':str(args.samples)}

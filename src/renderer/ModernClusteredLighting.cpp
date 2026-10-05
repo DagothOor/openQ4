@@ -3427,7 +3427,11 @@ bool R_ModernClusteredLighting_PrepareProbes( const idScenePacketFrame &packetFr
 bool R_ModernClusteredLighting_ExportProbeViews( std::uint64_t generation,
 		std::vector<rendererSpecularProbeView_t> &views ) {
 	views.clear();
-	if ( generation == 0 || !rg_clusteredLightingStats.frameValid || rg_clusteredLightingStats.probeCount <= 0 ) {
+	// A frame stays valid for its lights when its probe set is incomplete or
+	// overflows; the executor then publishes no probe frame and every view
+	// falls back to the analytic environment. Adopters follow that verdict.
+	if ( generation == 0 || !rg_clusteredLightingStats.frameValid || rg_clusteredLightingStats.probeCount <= 0
+			|| !rg_clusteredLightingStats.probeFrameReady ) {
 		return false;
 	}
 	R_ModernClusteredLighting_PackProbeViews( R_ModernClusteredLighting_ProbeGenerationExact( generation ), views );
