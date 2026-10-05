@@ -1760,7 +1760,15 @@ def inspect_capture(args: argparse.Namespace, case: str, text: str, shot: Path) 
         if not re.search(r'Modern scene MSAA: samples=4 colorResolves=[1-9]\d* depthResolves=[1-9]\d*',text):
             failures.append('multisample scene color and depth were not resolved')
     active_pbr = case not in LEGACY_CASES | FALLBACK_CASES and args.tier != 'legacy'
-    if getattr(args, 'gl_native', False):
+    # SSAO occludes only PBR's indirect light, which the classic light loop's
+    # native owner does: the modern visible path declines those frames to it.
+    ssao_declined = (active_pbr and args.backend == 'gl' and not getattr(args, 'gl_native', False)
+                     and case.startswith('ssao-'))
+    if ssao_declined:
+        visible = next((line for line in telemetry if line.startswith('Modern visible frame:')), '')
+        if not re.search(r'\bblocked=1\b', visible) or 'reason=pbr-ssao-indirect-only' not in visible:
+            failures.append('the modern visible path kept an SSAO frame with PBR materials')
+    if getattr(args, 'gl_native', False) or ssao_declined:
         # The classic light loop owns PBR: prove its own telemetry instead of
         # the modern visible frame, which is deliberately off.
         native = next((line for line in telemetry if line.startswith('OpenGL: native PBR:')), '')
@@ -1787,7 +1795,7 @@ def inspect_capture(args: argparse.Namespace, case: str, text: str, shot: Path) 
         visible = next((line for line in telemetry if line.startswith('Modern visible frame:')), '')
         if not re.search(r'\bexec=0\b',visible) or not re.search(r'\bblocked=1\b',visible):
             failures.append('unsupported rendering contract did not retain complete classic ownership')
-    if active_pbr and args.backend == 'gl' and not getattr(args, 'gl_native', False):
+    if active_pbr and args.backend == 'gl' and not getattr(args, 'gl_native', False) and not ssao_declined:
         ownership = next((line for line in telemetry if line.startswith('modernLightingOwnership')), '')
         if (case.startswith(('production','environment-')) or '-pbr' in case or case in ('fog-preview','blend-preview')) and not re.search(r'override=0 requested=1 materialContract=1\b',ownership):
             failures.append('production admission relied on a parity override or lacked its material contract')

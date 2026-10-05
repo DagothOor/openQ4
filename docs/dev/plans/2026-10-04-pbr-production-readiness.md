@@ -481,7 +481,9 @@ estimates, visibility of indirect light:
   64 select it and its row order. Vulkan's linear laboratory scene declines
   SSAO as before, so SSAO frames are always display-referred.
 
-The modern visible GL path, a developer path, keeps the whole-frame pass.
+The modern visible GL path, a developer path, kept the whole-frame pass; it
+now leaves such frames to the light loop (see "SSAO on the modern visible
+path" below).
 
 ### Stage D laboratory controls
 
@@ -724,3 +726,39 @@ are textured: the modern GL path drops a stage's color modulation.
 | Probes, modern GL and the OpenGL owner | 50/50 each (Vulkan's failure-injection controls are Vulkan-only), probe proof passes |
 | Probe parity | modern GL/Vulkan, OpenGL owner/Vulkan and Vulkan production/OpenGL owner pass; the box and baked controls agree within two bytes |
 | Box and baked measurements | identical on all four owners |
+
+### SSAO on the modern visible path
+
+The modern visible GL path (`r_rendererModernVisible 1`, a developer path)
+draws whole frames with its own PBR and had applied SSAO to the finished
+frame, direct light included. It cannot read the occlusion field, so a frame
+whose render graph requests SSAO and that draws a PBR material now declines to
+the light loop (`R_ModernGLExecutor_DeclinePBRUnderSSAO`, blocker
+`pbr-ssao-indirect-only`), whose native owner applies SSAO to indirect light
+only. Frames without SSAO or without PBR are unchanged. The SSAO suite now
+also runs on that path: each of its PBR controls declines with that reason,
+the native owner admits the specimen, and the results equal the OpenGL
+owner's (182,539 native pixels, none changed by direct light, 3,825 darkened
+indirectly, no classic pixel changed). It passes 8/8 and pairs with Vulkan
+production, as the OpenGL owner and Vulkan production also pass 8/8 each.
+
+### OpenGL contexts without GLSL 1.30
+
+The OpenGL owner's receivers are GLSL 1.10, but its environment, emission and
+translucent programs are GLSL 1.30. On a context without 1.30, such as the
+GL 2.1 legacy context macOS gives openQ4 (GLSL 1.20), the receivers compiled,
+so the owner admitted PBR surfaces and then failed to build the environment
+program on first use: on a Mac those surfaces would render without indirect
+light and print shader errors. The owner now requires
+`glConfig.GLSL130Available` (`RB_GLPBR_ContextSupported`); without it PBR
+materials keep their classic stages and the console says so once.
+
+Under an emulated Apple GL 2.1 context (WSL Mesa llvmpipe with GL 2.1, GLSL
+1.20, Apple's extension list and `r_forceAppleGL21InteractionCorridor 1`),
+the laboratory's PBR controls crashed the client before the change: Mesa's
+compiler faulted on the GLSL 1.30 environment program, which Apple's would
+reject. With the change the client renders them like the PBR-off controls,
+prints the note once and declines every PBR surface (`declined=115
+lastDecline=resources`). Its only warnings are the two the PBR-off controls
+also print: the `gl45` tier falls back to the legacy one, and vertex arrays
+live in system memory.

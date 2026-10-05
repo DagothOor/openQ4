@@ -982,11 +982,18 @@ static const viewDef_t *g_glPBRProbeUploadedView;
 static int				g_glPBRProbeUploadedFrame = -1;
 static int				g_glPBRProbeFrameViews;
 
+// The environment, emission and translucent programs are GLSL 1.30. Without
+// it (Apple's GL 2.1 context stops at 1.20) PBR materials keep their classic
+// stages: receivers alone would light them with no indirect light at all.
+static bool RB_GLPBR_ContextSupported( void ) {
+	return glConfig.GLSLProgramAvailable && glConfig.GLSL130Available;
+}
+
 void RB_GLPBR_PrepareFrame( const idScenePacketFrame &frame ) {
 	g_glPBRProbeViews.clear();
 	g_glPBRProbeUploadedView = NULL;
 	g_glPBRProbeFrameViews = 0;
-	if ( !r_glPBR.GetBool() || !glConfig.GLSLProgramAvailable || !r_rendererModernQuality.GetBool()
+	if ( !r_glPBR.GetBool() || !RB_GLPBR_ContextSupported() || !r_rendererModernQuality.GetBool()
 			|| !r_pbrMaterials.GetBool() || !r_pbrIBL.GetBool() || r_pbrIBLIntensity.GetFloat() <= 0.0f ) {
 		return;
 	}
@@ -1014,7 +1021,7 @@ void RB_GLPBR_AdoptExecutorFrame( void ) {
 	g_glPBRProbeViews.clear();
 	g_glPBRProbeUploadedView = NULL;
 	g_glPBRProbeFrameViews = 0;
-	if ( !r_glPBR.GetBool() || !glConfig.GLSLProgramAvailable || !r_rendererModernQuality.GetBool()
+	if ( !r_glPBR.GetBool() || !RB_GLPBR_ContextSupported() || !r_rendererModernQuality.GetBool()
 			|| !r_pbrMaterials.GetBool() || !r_pbrIBL.GetBool() || r_pbrIBLIntensity.GetFloat() <= 0.0f
 			|| !r_rendererReflectionProbes.GetBool() ) {
 		return;
@@ -1176,8 +1183,18 @@ void RB_GLPBR_BeginView( void ) {
 }
 
 static bool RB_GLPBR_ResourcesAvailable( void ) {
-	return r_glPBR.GetBool() && glConfig.GLSLProgramAvailable
-		&& glConfig.maxTextureImageUnits >= GL_PBR_REQUIRED_IMAGE_UNITS
+	if ( !r_glPBR.GetBool() ) {
+		return false;
+	}
+	if ( !RB_GLPBR_ContextSupported() ) {
+		static int notedRestart = -1;
+		if ( notedRestart != tr.videoRestartCount ) {
+			notedRestart = tr.videoRestartCount;
+			common->Printf( "OpenGL: native PBR needs GLSL 1.30, which this context lacks; PBR materials keep their classic stages\n" );
+		}
+		return false;
+	}
+	return glConfig.maxTextureImageUnits >= GL_PBR_REQUIRED_IMAGE_UNITS
 		&& RB_GLPBR_LoadUnshadowedProgram();
 }
 

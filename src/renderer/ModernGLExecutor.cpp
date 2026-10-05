@@ -2653,6 +2653,41 @@ static void R_ModernGLExecutor_ClassifyModernVisibleLighting( const idScenePacke
 	R_ModernGLExecutor_RecomputeModernVisibleFallbacks( stats );
 }
 
+/*
+==================
+R_ModernGLExecutor_DeclinePBRUnderSSAO
+
+SSAO occludes only a PBR surface's indirect light: the classic light loop's
+native owner folds the occlusion field into it (PBR production readiness,
+Stage D). This path would darken the whole frame afterwards instead, so a
+frame that requests SSAO and draws a PBR material stays classic.
+==================
+*/
+static void R_ModernGLExecutor_DeclinePBRUnderSSAO( const idScenePacketFrame &packetFrame, const idRenderGraph &graph, modernGLExecutorStats_t &stats ) {
+	bool ssao = false;
+	for ( int i = 0; i < graph.NumPasses() && !ssao; ++i ) {
+		ssao = graph.Pass( i ).enabled && graph.Pass( i ).category == RENDER_PASS_SSAO;
+	}
+	if ( !ssao ) {
+		return;
+	}
+	const int drawPacketCount = packetFrame.NumDrawPackets();
+	for ( int i = 0; i < drawPacketCount; ++i ) {
+		const drawPacket_t &draw = packetFrame.DrawPacket( i );
+		if ( draw.materialRecord == NULL || R_ModernGLExecutor_DrawPacketUsesLegacySidecarView( draw ) ) {
+			continue;
+		}
+		const materialResourceTableRecord_t *record = R_MaterialResourceTable_FindRecordForMaterial( draw.materialRecord->material );
+		if ( record == NULL || !record->hasPBR ) {
+			continue;
+		}
+		stats.modernVisibleMaterialFallbackDraws++;
+		R_ModernGLExecutor_SetOwnershipBlocker( stats, "material", R_ModernGLExecutor_ViewIndexForViewDef( packetFrame, draw.viewDef ),
+			draw.passCategory, record->materialId, record->materialName, "pbr-ssao-indirect-only" );
+		return;
+	}
+}
+
 static void R_ModernGLExecutor_AnalyzeModernVisibleOwnershipReadiness( const idScenePacketFrame &packetFrame, const idRenderGraph &graph, modernGLExecutorStats_t &stats ) {
 	if ( !stats.modernVisibleRequested ) {
 		return;
@@ -2686,6 +2721,7 @@ static void R_ModernGLExecutor_AnalyzeModernVisibleOwnershipReadiness( const idS
 	stats.modernVisibleCompatibilityModernPasses += gridOwnerChange;
 	stats.modernVisibleCompatibilityLegacyPasses -= gridOwnerChange;
 	R_ModernGLExecutor_RecordPacketFallbackBlockers( packetFrame, stats );
+	R_ModernGLExecutor_DeclinePBRUnderSSAO( packetFrame, graph, stats );
 
 	// This runs before ModernShadowPlanner and ModernClusteredLighting have
 	// built the frame, so it can only record which lighting domains the front

@@ -1371,6 +1371,9 @@ def test_gl_classic_loop_native_pbr_contract() -> None:
         if fragment.count("gl_FragColor = vec4( OpenQ4PBRDirect(") != fragment.count("), OpenQ4PBRAlpha() );"):
             raise AssertionError(f"{name}: every PBR output carries the translucent coverage alpha")
 
+    # GLSL 1.30 programs: a context without it (Apple GL 2.1) stays classic.
+    require(owner, "return glConfig.GLSLProgramAvailable && glConfig.GLSL130Available;",
+            "a context without GLSL 1.30 keeps PBR materials classic")
 
 def test_pbr_production_environment_contract() -> None:
     """Environment lighting in real maps follows the map on every backend.
@@ -1508,6 +1511,16 @@ def test_pbr_ssao_indirect_contract() -> None:
     executor = read(ROOT / "src/renderer/Vulkan/vk_GuiExecutor.cpp")
     require(executor, "if ( worldDepthCaptures != 0 && VK_PostProcess_PrepareSSAOField( viewDef ) ) {",
             "the field is drawn after the prepass, before the lights")
+    # The modern visible GL path cannot read the field, so it leaves a frame
+    # with SSAO and a PBR material to the classic light loop's native owner.
+    modern = read(ROOT / "src/renderer/ModernGLExecutor.cpp")
+    for token in ("static void R_ModernGLExecutor_DeclinePBRUnderSSAO( const idScenePacketFrame &packetFrame, const idRenderGraph &graph, modernGLExecutorStats_t &stats ) {",
+                  "ssao = graph.Pass( i ).enabled && graph.Pass( i ).category == RENDER_PASS_SSAO;",
+                  '"pbr-ssao-indirect-only"',
+                  "R_ModernGLExecutor_DeclinePBRUnderSSAO( packetFrame, graph, stats );"):
+        require(modern, token, "modern visible GL declines SSAO frames with PBR")
+    require(read(ROOT / "tools/tests/renderer_pbr_laboratory.py"), "'reason=pbr-ssao-indirect-only' not in visible",
+            "the laboratory proves the modern path's SSAO decline")
 
 
 def test_pbr_default_promotion_contract() -> None:

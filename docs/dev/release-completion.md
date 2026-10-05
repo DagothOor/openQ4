@@ -100,6 +100,15 @@
   control checks GL's cube convention in the written faces and in the
   reflection on all four owners. The light-grid bake shared the old sizing
   and is fixed separately.
+- [x] SSAO on the modern visible GL path: a frame that requests SSAO and draws
+  a PBR material is declined to the light loop (`pbr-ssao-indirect-only`),
+  whose native owner applies SSAO to indirect light only; a modern GL run of
+  the SSAO suite proves the decline and the owner's result.
+- [x] OpenGL PBR needs GLSL 1.30: on a context without it (macOS's GL 2.1) PBR
+  materials keep their classic stages, with a one-time console note, instead
+  of being admitted with no environment program. Under an emulated Apple GL
+  2.1 context the old path crashed the client in Mesa's shader compiler; now
+  its PBR controls render like the PBR-off ones.
 - [x] Fix the OpenGL PBR-laboratory regressions reported on 2026-10-04,
   bisected over lean lab runtimes of the 09-24, 09-25, 10-01, 10-02 and current
   builds:

@@ -119,7 +119,11 @@ every PBR material to its classic stages and is kept. They also need
 skips all PBR preparation. On OpenGL, the classic light loop draws admitted PBR
 surfaces natively (`r_glPBR`, default 1; 0 returns them to their classic
 stages). The experimental modern visible path (`r_rendererModernVisible 1`)
-still takes whole frames that qualify for it, with its own PBR.
+still takes whole frames that qualify for it, with its own PBR, except a
+frame that uses SSAO with a PBR material, which stays with the light loop so
+that SSAO still darkens only indirect light. OpenGL PBR needs GLSL 1.30: on
+a context without it, such as macOS's OpenGL 2.1, PBR materials keep their
+classic stages and the console says so once.
 `r_hdrToneMap 1` presents the scene through the classic HDR tone map. The
 laboratory mode `r_pbrLinearScene 1` (default 0, not saved) instead accumulates
 PBR radiance in a separate linear scene, encoded once per pixel, and with
