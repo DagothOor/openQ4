@@ -984,12 +984,41 @@
     reproduces the shipped atlases at those windows: q4xtourney2 at 2538x1312
     (r 0.9996, mean difference 0.8 levels, against 9.4 for a correct bake) and
     q4dm8, from the unlogged 2026-06-18 batch, at the default 1280x720 window
-    (r 0.997). airdefense2 shares that batch. Re-baking them waits on a
-    decision and on two bake faults: from `.install`, bounces 2+ reload and the
-    pack writer reads the shipped `pak1` atlases, which outrank `fs_savepath`,
-    and captures never reach `R_ToggleSmpFrame`, so frame memory grows about
-    300 KB per face (`r_showMemory 1` counts 3.5 GB after q4dm8's 11,340 faces,
-    enough to wrap its 32-bit total) and larger maps run out of memory.
+    (r 0.997). airdefense2 shares that batch. They stay as shipped for now
+    (decided 2026-10-05); the next entry fixes the two faults that kept a
+    re-bake of them from being correct.
+- [x] A light-grid bake releases every capture and builds on its own output,
+  so maps that ship light grids can be re-baked correctly and large maps
+  finish. Captures ran BeginFrame and their back end inline but never reached
+  EndFrame, so frame memory grew about 300 KB a face (`r_showMemory 1`
+  counted 3.5 GB after q4dm8's 11,340 faces, enough to wrap its 32-bit total;
+  airdefense2 ran out of memory), frame-temp vertex data stayed live and the
+  upload stream never fenced a buffer before a later capture reused it. Each
+  capture now ends with EndFrame's release calls, without presenting
+  (`LightGrid_FinishCapture`). openQ4 searches `fs_savepath` last, so a bake
+  that read its atlases back by name got the copies `pak1` ships: re-baking
+  q4dm8 lit bounces 2+ with the shipped grid and packed the shipped
+  irradiance byte for byte. The bake now reads its atlases and
+  `separateAreas` metadata from the save path (`LightGrid_ReadBakedTGA`,
+  `LoadLightGridFile( path, true )`), uploads them in the format a by-name
+  load derives, gives areas it wrote nothing for no images, and warns when
+  another copy of the pack will load first. `lightgrid_bake_contract.py` pins
+  both and round-trips the TGA reader in a compiled harness; mutants of each
+  fault fail it. Evidence, with the new renderer module:
+  - game/core2, 6,551 probes and about 118,000 faces: private memory held at
+    3.1 GB from the map load to the end, and frame memory never passed one
+    frame's 3.6 MB;
+  - game/core2 at a coarser grid: during its 1.5-minute bake the previous
+    module grew from 3.0 to 9.9 GB while the new one stayed at 3.2 GB, and
+    with no shipped copy to shadow the atlases the two bakes match (99.97% of
+    texels identical, largest difference 4 levels);
+  - game/airdefense2 at the shipped settings, which ran out of memory before:
+    all 14,041 probes in 23.5 minutes at a steady 3.1 GB. Its pack holds this
+    bake's irradiance (1.4 levels from the baked atlases, the DXT1 error,
+    against 9.6 from the shipped pack), and the bake warned that the shipped
+    pack still loads first. The shipped grid is dark by comparison: about
+    9,600 of its 14,041 valid probes are black, against about 150 in the new
+    bake.
 
 ## Unreleased — Quake 4: The Awakening (`q4xbase`)
 

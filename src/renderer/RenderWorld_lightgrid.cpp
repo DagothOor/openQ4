@@ -21,6 +21,7 @@ GNU General Public License for more details.
 
 #include "tr_local.h"
 #include "RendererModule.h"
+#include "RendererUpload.h"
 #if !defined( _WIN32 )
 #include <unistd.h>
 #endif
@@ -400,6 +401,24 @@ static void LightGrid_CopyBottomUpRGB( int width, int height, const byte *srcBot
 	}
 }
 
+/*
+===================
+LightGrid_FinishCapture
+
+A bake capture runs BeginFrame and its back end inline but never reaches
+EndFrame, so nothing released what each face allocated: frame memory grew
+about 300 KB a face for the whole bake (3.5 GB on mp/q4dm8, and game/airdefense2
+ran out of memory), frame-temp vertex data stayed live, and the upload stream
+never fenced the buffer a later capture reuses. Release them as EndFrame does,
+without presenting.
+===================
+*/
+static void LightGrid_FinishCapture() {
+	R_ToggleSmpFrame();
+	vertexCache.EndFrame();
+	R_RendererUpload_EndFrame();
+}
+
 static void LightGrid_RenderCaptureScene( int width, int height, renderView_t *ref ) {
 	const bool oldUseScissor = r_useScissor.GetBool();
 
@@ -421,6 +440,7 @@ static void LightGrid_RenderCaptureScene( int width, int height, renderView_t *r
 		}
 		R_ClearCommandChain();
 	}
+	LightGrid_FinishCapture();
 
 	glReadBuffer( GL_BACK );
 
@@ -894,6 +914,7 @@ static void LightGrid_CaptureViewRGB( int width, int height, int blends, renderV
 
 	if ( blends <= 1 ) {
 		R_ReadTiledPixels( width, height, rgbBuffer.Ptr(), ref );
+		LightGrid_FinishCapture();
 	} else {
 		idTempArray<unsigned short> accumBuffer( pixelCount * 3 );
 		memset( accumBuffer.Ptr(), 0, pixelCount * 3 * sizeof( unsigned short ) );
@@ -901,6 +922,7 @@ static void LightGrid_CaptureViewRGB( int width, int height, int blends, renderV
 		r_jitter.SetBool( true );
 		for ( int i = 0; i < blends; i++ ) {
 			R_ReadTiledPixels( width, height, rgbBuffer.Ptr(), ref );
+			LightGrid_FinishCapture();
 			for ( int j = 0; j < pixelCount * 3; j++ ) {
 				accumBuffer[ j ] += rgbBuffer[ j ];
 			}
@@ -1659,6 +1681,56 @@ static const char *LightGrid_PackChunkSourceSuffix( int kind ) {
 	}
 }
 
+/*
+===================
+LightGrid_ReadBakedTGA
+
+Reads an atlas this bake wrote, from the save path. openQ4 searches fs_savepath
+last, so loading it by name finds any copy a map ships in pak1 first: a re-bake
+of such a map packed the shipped atlases and lit bounces 2+ with the shipped
+grid. Returns top-down RGBA in R_StaticAlloc memory, as R_LoadImage does.
+===================
+*/
+static byte *LightGrid_ReadBakedTGA( const char *name, int &width, int &height, ID_TIME_T &timestamp ) {
+	width = 0;
+	height = 0;
+	timestamp = FILE_NOT_FOUND_TIMESTAMP;
+	idFile *file = fileSystem->OpenExplicitFileRead( fileSystem->RelativePathToOSPath( name, "fs_savepath" ) );
+	if ( file == NULL ) {
+		return NULL;
+	}
+
+	// the uncompressed 24-bit layout LightGrid_WriteTGA24Header writes
+	byte header[18];
+	byte *pic = NULL;
+	if ( file->Read( header, sizeof( header ) ) == sizeof( header ) &&
+		 header[0] == 0 && header[1] == 0 && header[2] == 2 && header[16] == 24 ) {
+		const int w = header[12] | ( header[13] << 8 );
+		const int h = header[14] | ( header[15] << 8 );
+		const bool topDown = ( header[17] & ( 1 << 5 ) ) != 0;
+		const bool sane = w > 0 && h > 0 && w <= 16384 && h <= 16384;
+		idTempArray<byte> bgr( sane ? w * h * 3 : 0 );
+		if ( sane && file->Read( bgr.Ptr(), w * h * 3 ) == w * h * 3 ) {
+			pic = static_cast<byte *>( R_StaticAlloc( w * h * 4 ) );
+			for ( int y = 0; y < h; y++ ) {
+				const byte *src = bgr.Ptr() + ( topDown ? y : h - 1 - y ) * w * 3;
+				byte *dst = pic + y * w * 4;
+				for ( int x = 0; x < w; x++ ) {
+					dst[ x * 4 + 0 ] = src[ x * 3 + 2 ];
+					dst[ x * 4 + 1 ] = src[ x * 3 + 1 ];
+					dst[ x * 4 + 2 ] = src[ x * 3 + 0 ];
+					dst[ x * 4 + 3 ] = 255;
+				}
+			}
+			width = w;
+			height = h;
+			timestamp = file->Timestamp();
+		}
+	}
+	fileSystem->CloseFile( file );
+	return pic;
+}
+
 static bool LightGrid_WritePackImagePayload( idFile *file, const char *baseName, lightGridPackChunkDirectory_t &chunk ) {
 	const char *suffix = LightGrid_PackChunkSourceSuffix( chunk.kind );
 	if ( suffix[0] == '\0' ) {
@@ -1671,9 +1743,9 @@ static bool LightGrid_WritePackImagePayload( idFile *file, const char *baseName,
 	int width = 0;
 	int height = 0;
 	ID_TIME_T timestamp = FILE_NOT_FOUND_TIMESTAMP;
-	R_LoadImage( sourceName.c_str(), &pic, &width, &height, &timestamp, false );
+	pic = LightGrid_ReadBakedTGA( sourceName.c_str(), width, height, timestamp );
 	if ( pic == NULL ) {
-		common->Warning( "LightGrid pack: failed to read %s", sourceName.c_str() );
+		common->Warning( "LightGrid pack: failed to read %s from the save path", sourceName.c_str() );
 		return false;
 	}
 
@@ -3154,10 +3226,10 @@ void idRenderWorldLocal::PreloadLightGridImages( renderLightGridLoadReceipt_t &r
 		( Sys_Milliseconds() - loadStart ) * 0.001f );
 }
 
-bool idRenderWorldLocal::LoadLightGridFile( const char *name ) {
+bool idRenderWorldLocal::LoadLightGridFile( const char *name, bool osPath ) {
 	// Errors are not fatal: a grid that cannot be read, or that was baked for another build
 	// of this map, is ignored and the map loads without it.
-	idLexer *src = new idLexer( name, LEXFL_NOSTRINGCONCAT | LEXFL_NODOLLARPRECOMPILE | LEXFL_NOFATALERRORS );
+	idLexer *src = new idLexer( name, LEXFL_NOSTRINGCONCAT | LEXFL_NODOLLARPRECOMPILE | LEXFL_NOFATALERRORS, osPath );
 	if ( !src->IsLoaded() ) {
 		delete src;
 		return false;
@@ -3359,6 +3431,113 @@ void idRenderWorldLocal::WriteLightGridsToFile( const char *name ) const {
 
 	fileSystem->CloseFile( file );
 	common->Printf( "Wrote %s\n", fileName.c_str() );
+}
+
+/*
+===================
+LightGrid_UploadBakedAtlas
+
+Uploads an atlas this bake wrote, read from the save path, in the format the
+image would get if it loaded by name.
+===================
+*/
+static bool LightGrid_UploadBakedAtlas( idImage *image, const char *fileName, int kind ) {
+	int width = 0;
+	int height = 0;
+	ID_TIME_T timestamp = FILE_NOT_FOUND_TIMESTAMP;
+	byte *pic = LightGrid_ReadBakedTGA( fileName, width, height, timestamp );
+	if ( pic == NULL ) {
+		return false;
+	}
+
+	textureFormat_t textureFormat = LightGrid_PackChunkFormat( kind );
+	textureColor_t colorFormat = CFM_DEFAULT;
+	idBinaryImage baked( image->GetName() );
+	const bool built = baked.Load2DFromMemory( width, height, pic, 1, textureFormat, colorFormat, false );
+	R_StaticFree( pic );
+	if ( !built ) {
+		return false;
+	}
+
+	const bimageFile_t &header = baked.GetFileHeader();
+	idImageOpts opts;
+	opts.textureType = static_cast<textureType_t>( header.textureType );
+	opts.format = static_cast<textureFormat_t>( header.format );
+	opts.colorFormat = static_cast<textureColor_t>( header.colorFormat );
+	opts.width = header.width;
+	opts.height = header.height;
+	opts.numLevels = header.numLevels;
+	opts.gammaMips = false;
+	image->AllocImage( opts, TF_LINEAR, TR_CLAMP );
+	for ( int i = 0; i < baked.NumImages(); i++ ) {
+		const bimageImage_t &img = baked.GetImageHeader( i );
+		image->SubImageUpload( img.level, 0, 0, img.destZ, img.width, img.height, baked.GetImageData( i ) );
+	}
+	return image->IsLoaded() && !image->IsDefaulted();
+}
+
+/*
+===================
+LightGrid_UseBakedAtlases
+
+Lights the world with the atlases this bake wrote. Loading them by name
+(LoadLightGridImages) finds any copy a map ships in pak1 before the save
+path, so a re-bake of such a map lit bounces 2+ with the shipped grid. An area
+the bake writes nothing for (no valid probes) gets no images, so it stays unlit
+rather than falling back to a shipped or older copy.
+===================
+*/
+static void LightGrid_UseBakedAtlases( idRenderWorldLocal *world ) {
+	static const int kinds[3] = { LIGHTGRID_PACK_CHUNK_IRRADIANCE, LIGHTGRID_PACK_CHUNK_VISIBILITY, LIGHTGRID_PACK_CHUNK_PROBE };
+	world->ReleaseLightGridPack();
+	idStr baseName = world->mapName;
+	baseName.StripFileExtension();
+	for ( int areaIndex = 0; areaIndex < world->numPortalAreas; areaIndex++ ) {
+		LightGrid &lightGrid = world->portalAreas[areaIndex].lightGrid;
+		LightGrid_ClearPackedImageRef( lightGrid.packedIrradianceImage );
+		LightGrid_ClearPackedImageRef( lightGrid.packedVisibilityImage );
+		LightGrid_ClearPackedImageRef( lightGrid.packedProbeImage );
+		idImage **images[3] = { &lightGrid.irradianceImage, &lightGrid.visibilityImage, &lightGrid.probeImage };
+		for ( int k = 0; k < 3; k++ ) {
+			*images[k] = NULL;
+			if ( lightGrid.GridPointCount() <= 0 || lightGrid.CountValidGridPoints() <= 0 ) {
+				continue;
+			}
+			idStr imageName = va( "env/%s/area%i_lightgrid_%s", baseName.c_str(), areaIndex, LightGrid_PackChunkSourceSuffix( kinds[k] ) );
+			idImage *image = globalImages->ImageHandleDeferred( imageName.c_str(), TF_LINEAR, TR_CLAMP, LightGrid_PackChunkUsage( kinds[k] ), CF_2D );
+			if ( image != NULL && LightGrid_UploadBakedAtlas( image, va( "%s.tga", imageName.c_str() ), kinds[k] ) ) {
+				*images[k] = image;
+			}
+		}
+	}
+	world->lightGridAvailabilityFrame = -1;
+}
+
+/*
+===================
+LightGrid_BakeLoadsNextTime
+
+True when the next load of relativePath reads the copy this bake left in the
+save path, which openQ4 searches last.
+===================
+*/
+static bool LightGrid_BakeLoadsNextTime( const char *relativePath ) {
+	idFile *saved = fileSystem->OpenExplicitFileRead( fileSystem->RelativePathToOSPath( relativePath, "fs_savepath" ) );
+	if ( saved == NULL ) {
+		return false;
+	}
+	void *loaded = NULL;
+	const int length = fileSystem->ReadFile( relativePath, &loaded );
+	bool same = length >= 0 && length == saved->Length();
+	if ( same && length > 0 ) {
+		idTempArray<byte> bytes( length );
+		same = saved->Read( bytes.Ptr(), length ) == length && memcmp( bytes.Ptr(), loaded, length ) == 0;
+	}
+	fileSystem->CloseFile( saved );
+	if ( loaded != NULL ) {
+		fileSystem->FreeFile( loaded );
+	}
+	return same;
 }
 
 bool R_BakeCurrentLightGrids( const lightGridBakeOptions_t &options, const char *jobName ) {
@@ -3707,7 +3886,7 @@ bool R_BakeCurrentLightGrids( const lightGridBakeOptions_t &options, const char 
 			runStats.commitMsec += Sys_Milliseconds() - commitStart;
 		}
 		const int reloadStart = Sys_Milliseconds();
-		world->LoadLightGridImages( true );
+		LightGrid_UseBakedAtlases( world );
 		runStats.reloadMsec += Sys_Milliseconds() - reloadStart;
 	}
 
@@ -3718,7 +3897,9 @@ bool R_BakeCurrentLightGrids( const lightGridBakeOptions_t &options, const char 
 		const int commitStart = Sys_Milliseconds();
 		if ( LightGrid_CommitStagedOutputFile( stagedLightGridWrite ) ) {
 			common->Printf( "Wrote %s\n", stagedLightGridWrite.finalName.c_str() );
-			metadataAvailableForPack = world->LoadLightGridFile( stagedLightGridWrite.finalName.c_str() );
+			// this bake's metadata, not a shipped copy that loads by name first
+			const idStr savedLightGrid = fileSystem->RelativePathToOSPath( stagedLightGridWrite.finalName.c_str(), "fs_savepath" );
+			metadataAvailableForPack = world->LoadLightGridFile( savedLightGrid.c_str(), true );
 		}
 		runStats.commitMsec += Sys_Milliseconds() - commitStart;
 	} else {
@@ -3726,14 +3907,20 @@ bool R_BakeCurrentLightGrids( const lightGridBakeOptions_t &options, const char 
 		metadataAvailableForPack = LightGrid_WriteLightGridFile( *world, lightGridName.c_str(), options, fileStats );
 		runStats.metadataMsec += Sys_Milliseconds() - metadataStart;
 	}
+	bool wrotePack = false;
 	if ( metadataAvailableForPack ) {
 		const int packStart = Sys_Milliseconds();
-		LightGrid_WriteLightGridPackFile( *world, lightGridName.c_str(), options, fileStats );
+		wrotePack = LightGrid_WriteLightGridPackFile( *world, lightGridName.c_str(), options, fileStats );
 		runStats.metadataMsec += Sys_Milliseconds() - packStart;
 	}
 	const int finalReloadStart = Sys_Milliseconds();
-	world->LoadLightGridImages( true );
+	LightGrid_UseBakedAtlases( world );
 	runStats.reloadMsec += Sys_Milliseconds() - finalReloadStart;
+	idStr packName = lightGridName;
+	packName.SetFileExtension( "lightgridpack" );
+	if ( wrotePack && !LightGrid_BakeLoadsNextTime( packName.c_str() ) ) {
+		common->Warning( "bakeLightGrids: %s will not load from this bake: another copy comes first, ahead of the save path. Replace that copy with the bake to use it.", packName.c_str() );
+	}
 
 	tr.suppressLevelshotViewModels = oldSuppressLevelshotViewModels;
 	r_showLightGrid.SetInteger( oldShowLightGrid );

@@ -359,6 +359,7 @@ Fix:
 
 Cause:
 - The bake keeps temporary probe captures, readback buffers, and atlas write buffers alive while each batch is processed.
+- Before 0.13.2, memory also grew with every probe face the bake captured, until the bake finished, so large maps such as Air Defense Trenches could run out of memory partway through. That no longer happens.
 
 Fix:
 - Lower `r_lightGridBakeMemoryMB`. Start with `8`, then `4` if needed.
@@ -392,6 +393,15 @@ Try:
 - increasing `size`
 - checking that the map is using the expected saved files, not stale older bake output
 - confirming `area*_lightgrid_amb.tga`, `area*_lightgrid_vis.tga`, and `area*_lightgrid_pos.tga` exist for each baked area
+
+### `bakeLightGrids` says the pack "will not load from this bake"
+
+Cause:
+- openQ4 ships light grids for the stock multiplayer maps and Air Defense Trenches, and it loads those bundled copies before anything in `fs_savepath`. Your bake is complete and correct, but when the map next loads the bundled light grid is used instead.
+
+Fix:
+- None is needed to play: the bundled light grid keeps working.
+- Developers who re-bake a bundled map replace its files under `content/baseoq4/pak1/` with the bake's output and rebuild the package.
 
 ### A map I baked with 0.13.1 or earlier lights oddly
 

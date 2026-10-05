@@ -314,7 +314,7 @@ public:
 	void					ReleaseLightGridPack();
 	void					TrimLightGridPack();
 	bool					AnyLightGridAvailable();
-	bool					LoadLightGridFile( const char *name );
+	bool					LoadLightGridFile( const char *name, bool osPath = false );	// osPath: name is an OS path, not a game path
 	bool					LoadLightGridPackFile( const char *name );
 	bool					ParseLightGridPoints( idLexer *src );
 	bool					ParseLightGridVisibility( idLexer *src );
