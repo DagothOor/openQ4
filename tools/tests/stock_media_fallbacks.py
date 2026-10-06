@@ -168,12 +168,21 @@ def test_sound_tries_authored_sample_before_the_retail_family_fallback() -> None
         if snippet not in resolver:
             raise AssertionError(f"missing sound fallback contract {snippet!r}")
 
+    # LoadResource and LoadResourceAsync share the probe order
+    variants = function_body(source, "static void SoundSample_BuildVariants(")
+    require_in_order(
+        variants,
+        (
+            "SoundSample_AppendUniqueSampleVariant( sampleVariants, baseSampleName );",
+            "SoundSample_AppendMissingQ4StockFallback( sampleVariants, baseSampleName );",
+        ),
+        "sound compatibility must probe the authored sample before its fallback",
+    )
     load = function_body(source, "void idSoundSample_OpenAL::LoadResource(")
     require_in_order(
         load,
         (
-            "SoundSample_AppendUniqueSampleVariant( sampleVariants, baseSampleName );",
-            "SoundSample_AppendMissingQ4StockFallback( sampleVariants, baseSampleName );",
+            "SoundSample_BuildVariants( GetName(), sampleVariants );",
             "for( int i = 0; i < sampleVariants.Num(); i++ )",
             'idLib::Warning( "Couldn\'t load sound',
         ),

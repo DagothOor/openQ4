@@ -25,7 +25,7 @@ void operator delete(void* p) noexcept {std::free(p);}
 void operator delete(void* p,std::size_t) noexcept {std::free(p);}
 #define CHECK(x) do { ++checks; if (!(x)) { std::fprintf(stderr,"line %d: %s\n",__LINE__,#x); std::exit(1); } } while(0)
 struct idCVar { int value=0; std::string text; bool GetBool() const { return value!=0; } int GetInteger() const { return value; } const char* GetString() const { return text.c_str(); } };
-idCVar s_noSound, s_useOpenAL, s_deviceName, s_useEAXReverb, s_openALHRTF, s_numberOfSpeakers, s_maxEmitterChannels, s_openALEfxDebugMode;
+idCVar s_noSound, s_useOpenAL, s_deviceName, s_useEAXReverb, s_openALHRTF, s_numberOfSpeakers, s_maxEmitterChannels, s_openALEfxDebugMode, s_outputLimiter;
 template<class T> struct List : std::vector<T> { int Num() const {return static_cast<int>(this->size());} void AddUnique(T x){if(std::find(this->begin(),this->end(),x)==this->end())this->push_back(x);} void RemoveIndex(int i){this->erase(this->begin()+i);} };
 class idSoundVoice_OpenAL {
 public:
@@ -68,7 +68,7 @@ ALCdevice* device=reinterpret_cast<ALCdevice*>(0x1000); ALCcontext* context=rein
 ALenum alError=AL_NO_ERROR; ALCenum alcError=ALC_NO_ERROR;
 bool connected=true,support=true,resetResult=true,ignoreReset=false,resetFalseButApplied=false,efxSupport=true,filterMutation=false;
 int mode=ALC_STEREO_SOFT,hrtf=0,status=ALC_HRTF_DISABLED_SOFT,calls=0,writes=0,resets=0,failWrite=0;
-int deviceLayout=ALC_STEREO_SOFT,stereoObserved=0,callbackAt=0,callbackKind=0,writesAtCallback=0;bool reentryRejected=false;
+int deviceLayout=ALC_STEREO_SOFT,limiterRequest=-1,stereoObserved=0,callbackAt=0,callbackKind=0,writesAtCallback=0;bool reentryRejected=false;
 SoundSettingsPolicy* callerPolicy=nullptr;SoundSettingsLease* callerLease=nullptr;
 SoundSettingsPolicy policyMutation{3,true,999};
 void Tick();
@@ -93,7 +93,7 @@ void AL_APIENTRY GenFilters(ALsizei n,ALuint* x) noexcept {for(int i=0;i<n;++i)i
 void AL_APIENTRY DelFilters(ALsizei n,const ALuint* x) noexcept {for(int i=0;i<n;++i)if(Write())filters.erase(x[i]);}
 void AL_APIENTRY Filteri(ALuint x,ALenum p,ALint v) noexcept {if(Write()&&(!filters.count(x)||p!=AL_FILTER_TYPE||v!=AL_FILTER_LOWPASS))alError=AL_INVALID_VALUE;}
 void AL_APIENTRY Filterf(ALuint x,ALenum p,ALfloat v) noexcept {if(Write()){if(!filters.count(x))alError=AL_INVALID_VALUE;else filters[x][p==AL_LOWPASS_GAIN?0:1]=v;}}
-ALCboolean ALC_APIENTRY Reset(ALCdevice*,const ALCint* attrs) noexcept {Tick();++resets;if(!resetResult&&!resetFalseButApplied)return ALC_FALSE;if(!ignoreReset){for(int i=0;attrs[i];i+=2){if(attrs[i]==ALC_OUTPUT_MODE_SOFT)mode=attrs[i+1]==ALC_ANY_SOFT?deviceLayout:attrs[i+1]==ALC_STEREO_SOFT&&stereoObserved?stereoObserved:attrs[i+1];if(attrs[i]==ALC_HRTF_SOFT && attrs[i+1]!=ALC_DONT_CARE_SOFT)hrtf=attrs[i+1];}status=hrtf?ALC_HRTF_ENABLED_SOFT:ALC_HRTF_DISABLED_SOFT;}return resetResult?ALC_TRUE:ALC_FALSE;}
+ALCboolean ALC_APIENTRY Reset(ALCdevice*,const ALCint* attrs) noexcept {Tick();++resets;if(!resetResult&&!resetFalseButApplied)return ALC_FALSE;if(!ignoreReset){for(int i=0;attrs[i];i+=2){if(attrs[i]==ALC_OUTPUT_MODE_SOFT)mode=attrs[i+1]==ALC_ANY_SOFT?deviceLayout:attrs[i+1]==ALC_STEREO_SOFT&&stereoObserved?stereoObserved:attrs[i+1];if(attrs[i]==ALC_HRTF_SOFT && attrs[i+1]!=ALC_DONT_CARE_SOFT)hrtf=attrs[i+1];if(attrs[i]==ALC_OUTPUT_LIMITER_SOFT)limiterRequest=attrs[i+1];}status=hrtf?ALC_HRTF_ENABLED_SOFT:ALC_HRTF_DISABLED_SOFT;}return resetResult?ALC_TRUE:ALC_FALSE;}
 }
 extern "C" {
 ALenum AL_APIENTRY alGetError() noexcept {Fake::Tick();const auto e=Fake::alError;Fake::alError=AL_NO_ERROR;return e;}
@@ -145,12 +145,12 @@ static void ResetFixture(bool efx=false) {
 	auto& h=soundSystemLocal.hardware;h.openalDevice=Fake::device;h.openalContext=Fake::context;h.voices.resize(3);
 	Fake::context=reinterpret_cast<ALCcontext*>(0x2000);h.openalContext=Fake::context;Fake::alError=0;Fake::alcError=0;Fake::mode=ALC_STEREO_SOFT;Fake::hrtf=0;Fake::status=ALC_HRTF_DISABLED_SOFT;
 	Fake::connected=true;Fake::support=true;Fake::efxSupport=true;Fake::resetResult=true;Fake::ignoreReset=false;Fake::resetFalseButApplied=false;Fake::filterMutation=false;
-	Fake::calls=Fake::writes=Fake::resets=Fake::failWrite=0;Fake::deviceLayout=ALC_STEREO_SOFT;Fake::stereoObserved=Fake::callbackAt=Fake::callbackKind=Fake::writesAtCallback=0;Fake::reentryRejected=false;Fake::listener=1;Fake::actual=Fake::defaultName="Physical";Fake::missingProc.clear();
+	Fake::calls=Fake::writes=Fake::resets=Fake::failWrite=0;Fake::deviceLayout=ALC_STEREO_SOFT;Fake::limiterRequest=-1;Fake::stereoObserved=Fake::callbackAt=Fake::callbackKind=Fake::writesAtCallback=0;Fake::reentryRejected=false;Fake::listener=1;Fake::actual=Fake::defaultName="Physical";Fake::missingProc.clear();
 	Fake::sources.clear();Fake::slots.clear();Fake::effects.clear();Fake::filters.clear();
 	Fake::callerPolicy=nullptr;Fake::callerLease=nullptr;
 	for(unsigned i=0;i<3;++i){h.voices[i].openalSource=i+1;h.voices[i].soundSettingsSourceGeneration=SoundSettings_SourceCreated();Fake::sources[i+1]={};h.voices[i].openalDirectFilter=20+i*2;h.voices[i].openalAuxFilter=21+i*2;Fake::filters[20+i*2]={1,1};Fake::filters[21+i*2]={1,1};}
 	s_noSound.value=0;s_useOpenAL.value=1;s_deviceName.text="";s_openALHRTF.value=0;s_openALEfxDebugMode.value=0;
-	s_numberOfSpeakers.value=2;s_useEAXReverb.value=efx;s_maxEmitterChannels.value=48;mainThread=true;automaticMonitor=0;
+	s_numberOfSpeakers.value=2;s_outputLimiter.value=1;s_useEAXReverb.value=efx;s_maxEmitterChannels.value=48;mainThread=true;automaticMonitor=0;
 	if(efx){h.efxEnabled=true;h.auxEffectSlot=10;h.auxReverbEffect=11;Fake::slots[10]=11;Fake::effects[11]=AL_EFFECT_EAXREVERB;}
 }
 static void Patch(const SoundSettingsPolicy& p){s_numberOfSpeakers.value=p.speakers;s_useEAXReverb.value=p.efx;s_maxEmitterChannels.value=p.maxEmitterChannels;}
@@ -176,7 +176,9 @@ static void Positive() {
 	// Leaving forced 5.1 for the device's layout on headphones: the reset asks for
 	// any layout and leaves HRTF to OpenAL, which may switch it on.
 	ResetFixture();s_numberOfSpeakers.value=6;Fake::mode=ALC_SURROUND_5_1_SOFT;Fake::deviceLayout=ALC_STEREO_HRTF_SOFT;Fake::hrtf=1;
-	l=Begin({0,false,48},b);Patch({0,false,48});CHECK(SoundSettings_TryApply(l,o,error,sizeof(error)));CHECK(Fake::resets==1&&o.outputMode==ALC_STEREO_HRTF_SOFT&&o.hrtf);Complete(l);
+	l=Begin({0,false,48},b);Patch({0,false,48});CHECK(SoundSettings_TryApply(l,o,error,sizeof(error)));CHECK(Fake::resets==1&&o.outputMode==ALC_STEREO_HRTF_SOFT&&o.hrtf);
+	// The reset rebuilds the device, so it must carry the output limiter too.
+	CHECK(Fake::limiterRequest==ALC_TRUE);Complete(l);
 	CHECK(soundSystemLocal.hardware.openedSpeakerCount==0);
 }
 static void Negative() {

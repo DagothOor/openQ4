@@ -346,6 +346,7 @@ idSoundWorldLocal::idSoundWorldLocal()
 	shakeAmp = 0.0f;
 	rumbleAmp = 0.0f;
 	currentCushionDB = DB_SILENCE;
+	lastCushionTime = 0;
 
 	localSound = AllocSoundEmitter();
 
@@ -421,7 +422,16 @@ idSoundWorldLocal::AllocSoundChannel
 */
 idSoundChannel* idSoundWorldLocal::AllocSoundChannel()
 {
-	return channelAllocator.Alloc();
+	idSoundChannel* channel = channelAllocator.Alloc();
+	// idBlockAlloc hands out recycled channels without constructing them again (BFG's
+	// allocator placed a new object). A recycled channel kept its old volume fade, so
+	// after a map script faded a sound to -80 dB and removed it, whatever sound got
+	// that channel next played silent.
+	if( channel != NULL )
+	{
+		channel->Reset();
+	}
+	return channel;
 }
 
 /*
@@ -675,6 +685,8 @@ void idSoundWorldLocal::Update()
 	// A hardware channel is a channel from the sound file itself (IE: left, right, LFE)
 	// We only allow MAX_HARDWARE_CHANNELS channels, which may wind up being a smaller number of idSoundChannels
 	idStaticList< idActiveChannel, MAX_ACTIVE_EMITTER_CHANNEL_CANDIDATES > activeEmitterChannels;
+	// Voice-over that has gone silent but cannot be muted without losing its lip sync
+	idStaticList< idSoundChannel*, MAX_HARDWARE_VOICES > silentUnmutableChannels;
 	const int maxEmitterChannels = idMath::ClampInt( 1, MAX_HARDWARE_VOICES, s_maxEmitterChannels.GetInteger() );
 
 	int activeHardwareChannels = 0;
@@ -707,6 +719,12 @@ void idSoundWorldLocal::Update()
 				if( channel->CanMute() )
 				{
 					channel->Mute();
+				}
+				else if( channel->hardwareVoice != NULL && silentUnmutableChannels.Num() < silentUnmutableChannels.Max() )
+				{
+					// Skipping it left the line playing at its last audible gain: on through
+					// alt-tab with s_muteUnfocused, and through a door that had just closed.
+					silentUnmutableChannels.Append( channel );
 				}
 				continue;
 			}
@@ -758,7 +776,10 @@ void idSoundWorldLocal::Update()
 		}
 	}
 
-	const float secondsPerFrame = 1.0f / 60.0f;
+	// s_cushionFadeRate is dB per second of sound time. BFG stepped it by a fixed 1/60 s
+	// per update, which ramped four times too fast at 240 fps.
+	const float secondsPerFrame = ( lastCushionTime > 0 ) ? idMath::ClampFloat( 0.0f, 0.25f, ( currentTime - lastCushionTime ) * 0.001f ) : ( 1.0f / 60.0f );
+	lastCushionTime = currentTime;
 
 	// ------------------
 	// In the very common case of having more sounds that would contribute to the
@@ -792,6 +813,11 @@ void idSoundWorldLocal::Update()
 	// Retail places the area reverb slots before it mixes any channel, so every
 	// voice's sends below see this frame's slots.
 	soundSystemLocal.reverb.Update( this );
+	// These keep running at zero gain, so the line resumes in step when it is heard again.
+	for( int i = 0; i < silentUnmutableChannels.Num(); i++ )
+	{
+		silentUnmutableChannels[i]->UpdateHardware( 0.0f, currentTime );
+	}
 	for( int i = 0; i < activeEmitterChannels.Num(); i++ )
 	{
 		idSoundChannel* chan = activeEmitterChannels[i].channel;
@@ -825,7 +851,7 @@ void idSoundWorldLocal::Update()
 		}
 
 		const float channelAmplitude = chan->hardwareVoice->GetGain() * chan->currentAmplitude;
-		shakeAmp += chan->parms.shakes * channelAmplitude;
+		shakeAmp += chan->parms.shakes * chan->shakeScale * chan->currentAmplitude;
 
 		float channelRumble = idMath::Fabs( chan->parms.shakes ) * channelAmplitude;
 		if( ( chan->parms.soundShaderFlags & SSF_CAUSE_RUMBLE ) != 0 )
@@ -847,6 +873,7 @@ void idSoundWorldLocal::Update()
 		// the voice list is actually usable for diagnosing silent sounds.
 //		static idOverlayHandle handle;
 //		console->PrintOverlay( handle, JUSTIFY_LEFT, showVoiceTable.c_str() );
+		showVoiceTable += va( "shake: %.3f  rumble: %.3f\n", shakeAmp, rumbleAmp );
 		idLib::Printf( "%s", showVoiceTable.c_str() );
 	}
 

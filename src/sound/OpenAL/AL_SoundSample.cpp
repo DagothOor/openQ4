@@ -30,7 +30,9 @@ If you have questions concerning this license or the applicable additional terms
 */
 
 #include "../snd_local.h"
+#include "../../framework/ParallelJobSystem.h"
 #include <cstdlib>
+#include <memory>
 #include <stdint.h>
 
 #define STB_VORBIS_HEADER_ONLY
@@ -260,6 +262,7 @@ idSoundSample_OpenAL::idSoundSample_OpenAL
 */
 idSoundSample_OpenAL::idSoundSample_OpenAL()
 {
+	pendingDecode = NULL;
 	timestamp = FILE_NOT_FOUND_TIMESTAMP;
 	loaded = false;
 	neverPurge = false;
@@ -446,9 +449,36 @@ bool idSoundSample_OpenAL::LoadGeneratedSample( const idStr& filename )
 
 	return false;
 }
+
 /*
 ========================
-idSoundSample_OpenAL::Load
+SoundSample_BuildVariants
+
+The files LoadResource probes for a sample, in order.
+========================
+*/
+static void SoundSample_BuildVariants( const char* name, idList< idStr >& sampleVariants )
+{
+	idStr baseSampleName = name;
+	if( baseSampleName.Find( "/vo/" ) >= 0 )
+	{
+		SoundSample_AppendLocalizedVOVariants( sampleVariants, baseSampleName, sys_lang.GetString() );
+
+		// Retail Quake 4 resolves the voice-over language separately from the
+		// text language (idSoundSample::Load -> SoundSample_SelectVOLanguage)
+		// and falls back to English for any language that ships localized
+		// subtitles but no localized voice track. Without this a text-only
+		// language pack silences every line of dialogue while lip-sync, which
+		// is driven from the decl rather than the sample, keeps animating.
+		SoundSample_AppendLocalizedVOVariants( sampleVariants, baseSampleName, "english" );
+	}
+	SoundSample_AppendUniqueSampleVariant( sampleVariants, baseSampleName );
+	SoundSample_AppendMissingQ4StockFallback( sampleVariants, baseSampleName );
+}
+
+/*
+========================
+idSoundSample_OpenAL::LoadResource
 ========================
 */
 void idSoundSample_OpenAL::LoadResource()
@@ -470,21 +500,7 @@ void idSoundSample_OpenAL::LoadResource()
 	loaded = false;
 
 	idList< idStr > sampleVariants;
-	idStr baseSampleName = GetName();
-	if( baseSampleName.Find( "/vo/" ) >= 0 )
-	{
-		SoundSample_AppendLocalizedVOVariants( sampleVariants, baseSampleName, sys_lang.GetString() );
-
-		// Retail Quake 4 resolves the voice-over language separately from the
-		// text language (idSoundSample::Load -> SoundSample_SelectVOLanguage)
-		// and falls back to English for any language that ships localized
-		// subtitles but no localized voice track. Without this a text-only
-		// language pack silences every line of dialogue while lip-sync, which
-		// is driven from the decl rather than the sample, keeps animating.
-		SoundSample_AppendLocalizedVOVariants( sampleVariants, baseSampleName, "english" );
-	}
-	SoundSample_AppendUniqueSampleVariant( sampleVariants, baseSampleName );
-	SoundSample_AppendMissingQ4StockFallback( sampleVariants, baseSampleName );
+	SoundSample_BuildVariants( GetName(), sampleVariants );
 
 	for( int i = 0; i < sampleVariants.Num(); i++ )
 	{
@@ -589,9 +605,59 @@ void idSoundSample_OpenAL::LoadResource()
 	return;
 }
 
+/*
+========================
+SoundSample_BuildAmplitudeEnvelope
+
+The peak of every 1/60 s of 16-bit PCM as 0-255, the rate GetAmplitude reads. Camera
+shakes, controller rumble and sound-driven lights follow it. Retail measured the decoded
+samples for this; the .amp files the BFG path expected never shipped with Quake 4.
+========================
+*/
+static void SoundSample_BuildAmplitudeEnvelope( const int16* pcm, const uint32 bytes, const int channels, const int rate, idList<byte>& out )
+{
+	out.Clear();
+	if( pcm == NULL || channels <= 0 || rate <= 0 )
+	{
+		return;
+	}
+	const int64 frames = bytes / ( sizeof( int16 ) * channels );
+	const int64 entries = ( frames * 60 + rate - 1 ) / rate;
+	if( frames <= 0 || entries <= 0 || entries > 60 * 60 * 60 )
+	{
+		return;
+	}
+	out.SetNum( static_cast<int>( entries ) );
+	for( int64 entry = 0; entry < entries; entry++ )
+	{
+		const int64 first = ( entry * rate / 60 ) * channels;
+		const int64 last = Min( frames, ( entry + 1 ) * rate / 60 ) * channels;
+		int peak = 0;
+		for( int64 i = first; i < last; i++ )
+		{
+			const int value = pcm[i] < 0 ? -pcm[i] : pcm[i];
+			peak = ( value > peak ) ? value : peak;
+		}
+		out[static_cast<int>( entry )] = static_cast<byte>( Min( 255, ( peak * 255 + 16383 ) / 32767 ) );
+	}
+}
+
 void idSoundSample_OpenAL::CreateOpenALBuffer()
 {
+	if( pendingDecode != NULL )
+	{
+		// uploads once the PCM is in
+		FinishDecode();
+		return;
+	}
 	if( openalBuffer != 0 || openalBufferUploadFailed )
+	{
+		return;
+	}
+
+	// FreeData() empties the buffer list; there is nothing to upload until the
+	// sample is loaded again
+	if( buffers.Num() <= 0 || buffers[0].buffer == NULL )
 	{
 		return;
 	}
@@ -642,7 +708,12 @@ void idSoundSample_OpenAL::CreateOpenALBuffer()
 
 			if( MS_ADPCM_decode( ( uint8** ) &buffer, &bufferSize ) < 0 )
 			{
-				common->Error( "idSoundSample_OpenAL::CreateOpenALBuffer: could not decode ADPCM '%s' to 16 bit format", GetName() );
+				idLib::Warning( "idSoundSample_OpenAL::CreateOpenALBuffer: could not decode ADPCM '%s' to 16 bit format", GetName() );
+				alDeleteBuffers( 1, &openalBuffer );
+				CheckALErrors();
+				openalBuffer = 0;
+				openalBufferUploadFailed = true;
+				return;
 			}
 
 			buffers[0].buffer = buffer;
@@ -650,15 +721,15 @@ void idSoundSample_OpenAL::CreateOpenALBuffer()
 
 			totalBufferSize = bufferSize;
 		}
-		else if( format.basic.formatTag == idWaveFile::FORMAT_XMA2 )
+		else if( format.basic.formatTag == idWaveFile::FORMAT_XMA2 || format.basic.formatTag == idWaveFile::FORMAT_EXTENSIBLE )
 		{
-			// RB: not used in the PC version of the BFG edition
-			common->Error( "idSoundSample_OpenAL::CreateOpenALBuffer: could not decode XMA2 '%s' to 16 bit format", GetName() );
-		}
-		else if( format.basic.formatTag == idWaveFile::FORMAT_EXTENSIBLE )
-		{
-			// RB: not used in the PC version of the BFG edition
-			common->Error( "idSoundSample_OpenAL::CreateOpenALBuffer: could not decode extensible WAV format '%s' to 16 bit format", GetName() );
+			// LoadWav refuses XMA2 and turns extensible PCM into plain PCM, so this is only a guard
+			idLib::Warning( "idSoundSample_OpenAL::CreateOpenALBuffer: '%s' is not 16-bit PCM", GetName() );
+			alDeleteBuffers( 1, &openalBuffer );
+			CheckALErrors();
+			openalBuffer = 0;
+			openalBufferUploadFailed = true;
+			return;
 		}
 		else
 		{
@@ -688,6 +759,10 @@ void idSoundSample_OpenAL::CreateOpenALBuffer()
 		else
 #endif
 		{
+			if( amplitude.Num() == 0 && !IsDefault() )
+			{
+				SoundSample_BuildAmplitudeEnvelope( static_cast<const int16*>( buffer ), bufferSize, NumChannels(), format.basic.samplesPerSec, amplitude );
+			}
 			alBufferData( openalBuffer, GetOpenALBufferFormat(), buffer, bufferSize, format.basic.samplesPerSec );
 		}
 
@@ -756,6 +831,7 @@ OpenAL handle.
 */
 bool idSoundSample_OpenAL::EnsureCpuPayload()
 {
+	FinishDecode();
 	if( !payloadReleased )
 	{
 		return buffers.Num() > 0 && buffers[0].buffer != NULL;
@@ -799,6 +875,10 @@ bool idSoundSample_OpenAL::EnsureCpuPayload()
 idSoundSample_OpenAL::LoadWav
 ========================
 */
+// A failed attempt frees what it read and returns false; LoadResource tries the next
+// loader and language variant and only falls back to the default sound when all fail.
+// Making the default here uploaded the beep, and a later variant that loaded found the
+// OpenAL buffer taken and played the beep in its place.
 bool idSoundSample_OpenAL::LoadWav( const idStr& filename )
 {
 
@@ -817,7 +897,7 @@ bool idSoundSample_OpenAL::LoadWav( const idStr& filename )
 	if( formatError != NULL )
 	{
 		idLib::Warning( "LoadWav( %s ) : %s", filename.c_str(), formatError );
-		MakeDefault();
+		FreeData();
 		return false;
 	}
 	timestamp = wave.Timestamp();
@@ -826,7 +906,7 @@ bool idSoundSample_OpenAL::LoadWav( const idStr& filename )
 	if( dataChunkSize == 0 || dataChunkSize > ( uint32 )idMath::INT_MAX || format.basic.blockSize == 0 )
 	{
 		idLib::Warning( "LoadWav( %s ) : invalid data chunk", filename.c_str() );
-		MakeDefault();
+		FreeData();
 		return false;
 	}
 	totalBufferSize = ( int )dataChunkSize;
@@ -837,13 +917,20 @@ bool idSoundSample_OpenAL::LoadWav( const idStr& filename )
 		if( format.basic.bitsPerSample != 16 )
 		{
 			idLib::Warning( "LoadWav( %s ) : %s", filename.c_str(), "Not a 16 bit PCM wav file" );
-			MakeDefault();
+			FreeData();
+			return false;
+		}
+		// the OpenAL upload is mono or stereo 16-bit; anything else played as noise
+		if( format.basic.numChannels < 1 || format.basic.numChannels > 2 || format.basic.blockSize != format.basic.numChannels * 2 )
+		{
+			idLib::Warning( "LoadWav( %s ) : %d channels with %d byte frames; only mono and stereo 16-bit PCM play", filename.c_str(), format.basic.numChannels, format.basic.blockSize );
+			FreeData();
 			return false;
 		}
 		if( totalBufferSize % format.basic.blockSize != 0 )
 		{
 			idLib::Warning( "LoadWav( %s ) : %s", filename.c_str(), "PCM data is not block aligned" );
-			MakeDefault();
+			FreeData();
 			return false;
 		}
 
@@ -858,7 +945,7 @@ bool idSoundSample_OpenAL::LoadWav( const idStr& filename )
 		if( buffers[0].buffer == NULL || !openQ4_ReadWaveExact( wave, buffers[0].buffer, totalBufferSize ) )
 		{
 			idLib::Warning( "LoadWav( %s ) : could not read PCM data", filename.c_str() );
-			MakeDefault();
+			FreeData();
 			return false;
 		}
 
@@ -878,7 +965,7 @@ bool idSoundSample_OpenAL::LoadWav( const idStr& filename )
 			format.extra.adpcm.numCoef, decodedBytes ) )
 		{
 			idLib::Warning( "LoadWav( %s ) : invalid ADPCM block layout", filename.c_str() );
-			MakeDefault();
+			FreeData();
 			return false;
 		}
 
@@ -894,8 +981,23 @@ bool idSoundSample_OpenAL::LoadWav( const idStr& filename )
 		if( buffers[0].buffer == NULL || !openQ4_ReadWaveExact( wave, buffers[0].buffer, totalBufferSize ) )
 		{
 			idLib::Warning( "LoadWav( %s ) : could not read ADPCM data", filename.c_str() );
-			MakeDefault();
+			FreeData();
 			return false;
+		}
+		// The decoder refuses a block whose coefficient selector is out of range, and that
+		// refusal at upload ended the session; refuse the file here instead.
+		const uint8* adpcm = static_cast<const uint8*>( buffers[0].buffer );
+		for( uint32 blockOffset = 0; blockOffset < dataChunkSize; blockOffset += format.basic.blockSize )
+		{
+			for( int channel = 0; channel < format.basic.numChannels; channel++ )
+			{
+				if( adpcm[ blockOffset + channel ] >= format.extra.adpcm.numCoef || adpcm[ blockOffset + channel ] >= 7 )
+				{
+					idLib::Warning( "LoadWav( %s ) : ADPCM block at byte %u selects coefficient %d of %d", filename.c_str(), blockOffset, adpcm[ blockOffset + channel ], format.extra.adpcm.numCoef );
+					FreeData();
+					return false;
+				}
+			}
 		}
 
 		buffers[0].buffer = GPU_CONVERT_CPU_TO_CPU_CACHED_READONLY_ADDRESS( buffers[0].buffer );
@@ -903,136 +1005,16 @@ bool idSoundSample_OpenAL::LoadWav( const idStr& filename )
 	}
 	else if( format.basic.formatTag == idWaveFile::FORMAT_XMA2 )
 	{
-
-		if( format.extra.xma2.blockCount == 0 )
-		{
-			idLib::Warning( "LoadWav( %s ) : %s", filename.c_str(), "No data blocks in file" );
-			MakeDefault();
-			return false;
-		}
-
-		if( format.extra.xma2.bytesPerBlock == 0 || format.extra.xma2.bytesPerBlock > ( uint32 )idMath::INT_MAX )
-		{
-			idLib::Warning( "LoadWav( %s ) : invalid XMA2 block size", filename.c_str() );
-			MakeDefault();
-			return false;
-		}
-		const int bytesPerBlock = ( int )format.extra.xma2.bytesPerBlock;
-		const uint64 requiredBlocks = ( ( uint64 )totalBufferSize + bytesPerBlock - 1 ) / bytesPerBlock;
-		if( format.extra.xma2.blockCount != requiredBlocks )
-		{
-			idLib::Warning( "LoadWav( %s ) : invalid XMA2 block layout", filename.c_str() );
-			MakeDefault();
-			return false;
-		}
-		//assert( format.extra.xma2.blockCount == ALIGN( totalBufferSize, bytesPerBlock ) / bytesPerBlock );
-		//assert( format.extra.xma2.blockCount * bytesPerBlock >= totalBufferSize );
-		//assert( format.extra.xma2.blockCount * bytesPerBlock < totalBufferSize + bytesPerBlock );
-
-		buffers.SetNum( ( int )format.extra.xma2.blockCount );
-		for( int i = 0; i < buffers.Num(); i++ )
-		{
-			if( i == buffers.Num() - 1 )
-			{
-				buffers[i].bufferSize = totalBufferSize - ( i * bytesPerBlock );
-			}
-			else
-			{
-				buffers[i].bufferSize = bytesPerBlock;
-			}
-
-			buffers[i].buffer = AllocBuffer( buffers[i].bufferSize, GetName() );
-			if( buffers[i].buffer == NULL || !openQ4_ReadWaveExact( wave, buffers[i].buffer, buffers[i].bufferSize ) )
-			{
-				for( int j = 0; j <= i; j++ )
-				{
-					FreeBuffer( buffers[j].buffer );
-				}
-				buffers.Clear();
-				idLib::Warning( "LoadWav( %s ) : could not read XMA2 data", filename.c_str() );
-				MakeDefault();
-				return false;
-			}
-			buffers[i].buffer = GPU_CONVERT_CPU_TO_CPU_CACHED_READONLY_ADDRESS( buffers[i].buffer );
-		}
-
-		int seekTableSize = wave.SeekToChunk( 'seek' );
-		if( seekTableSize != 4 * buffers.Num() )
-		{
-			idLib::Warning( "LoadWav( %s ) : %s", filename.c_str(), "Wrong number of entries in seek table" );
-			MakeDefault();
-			return false;
-		}
-
-		for( int i = 0; i < buffers.Num(); i++ )
-		{
-			if( !openQ4_ReadWaveExact( wave, &buffers[i].numSamples, sizeof( buffers[i].numSamples ) ) )
-			{
-				idLib::Warning( "LoadWav( %s ) : could not read XMA2 seek table", filename.c_str() );
-				MakeDefault();
-				return false;
-			}
-			idSwap::Big( buffers[i].numSamples );
-			if( buffers[i].numSamples < 0 )
-			{
-				idLib::Warning( "LoadWav( %s ) : invalid XMA2 seek entry", filename.c_str() );
-				MakeDefault();
-				return false;
-			}
-		}
-
-		if( format.extra.xma2.loopBegin > ( uint32 )idMath::INT_MAX || format.extra.xma2.loopLength > ( uint32 )idMath::INT_MAX )
-		{
-			idLib::Warning( "LoadWav( %s ) : invalid XMA2 loop range", filename.c_str() );
-			MakeDefault();
-			return false;
-		}
-
-		playBegin = ( int )format.extra.xma2.loopBegin;
-		playLength = ( int )format.extra.xma2.loopLength;
-		if( playLength < 0 || playLength > idMath::INT_MAX - playBegin )
-		{
-			idLib::Warning( "LoadWav( %s ) : invalid XMA2 loop range", filename.c_str() );
-			MakeDefault();
-			return false;
-		}
-
-		if( buffers[buffers.Num() - 1].numSamples < playBegin + playLength )
-		{
-			if( buffers[buffers.Num() - 1].numSamples < playBegin )
-			{
-				idLib::Warning( "LoadWav( %s ) : invalid XMA2 loop range", filename.c_str() );
-				MakeDefault();
-				return false;
-			}
-			// This shouldn't happen, but it's not fatal if it does
-			playLength = buffers[buffers.Num() - 1].numSamples - playBegin;
-		}
-		else
-		{
-			// Discard samples beyond playLength
-			for( int i = 0; i < buffers.Num(); i++ )
-			{
-				if( buffers[i].numSamples > playBegin + playLength )
-				{
-					buffers[i].numSamples = playBegin + playLength;
-					// Ideally, the following loop should always have 0 iterations because playBegin + playLength ends in the last block already
-					// But there is no guarantee for that, so to be safe, discard all buffers beyond this one
-					for( int j = i + 1; j < buffers.Num(); j++ )
-					{
-						FreeBuffer( buffers[j].buffer );
-					}
-					buffers.SetNum( i + 1 );
-					break;
-				}
-			}
-		}
-
+		// BFG's Xbox 360 format. Nothing on PC decodes it, and accepting it ended the
+		// session at upload time.
+		idLib::Warning( "LoadWav( %s ) : XMA2 is an Xbox 360 format and cannot be played", filename.c_str() );
+		FreeData();
+		return false;
 	}
 	else
 	{
 		idLib::Warning( "LoadWav( %s ) : Unsupported wave format %d", filename.c_str(), format.basic.formatTag );
-		MakeDefault();
+		FreeData();
 		return false;
 	}
 
@@ -1052,11 +1034,173 @@ bool idSoundSample_OpenAL::LoadWav( const idStr& filename )
 
 /*
 ========================
-idSoundSample_OpenAL::LoadOgg
+idSoundSampleDecode
+
+One Ogg sample decoding on a job worker. The main thread opened the stream, so the
+sample's length, rate and channels are already known and only the PCM is outstanding;
+the job writes nothing but the pcm frames and decodedFrames. Whoever waits on the list
+owns the rest again.
 ========================
 */
-bool idSoundSample_OpenAL::LoadOgg( const idStr& filename )
+struct idSoundSampleDecode
 {
+	stb_vorbis*					vorbis = NULL;		// opened on the main thread, or NULL for the job to open
+	byte*						fileData = NULL;
+	int							fileLen = 0;
+	short*						pcm = NULL;
+	unsigned int				capacityFrames = 0;
+	int							channels = 0;
+	int							sampleRate = 0;
+	unsigned int				decodedFrames = 0;
+	bool						headerMismatch = false;	// the job's open disagreed with SoundSample_PeekOggInfo
+	std::unique_ptr<idJobList>	list;
+};
+
+idCVar s_asyncSampleDecode( "s_asyncSampleDecode", "1", CVAR_BOOL, "decode the Ogg samples a level load references on job workers, while the rest of the level loads" );
+
+// Decodes this many samples at once at most; beyond it LoadSample decodes on the
+// main thread, which keeps the job queue open for the rest of the level load. A
+// finished decode stops counting once LoadSample uploads it (FinishSampleDecodes).
+static const int SOUND_SAMPLE_MAX_PENDING_DECODES = 48;
+static int soundSamplePendingDecodes = 0;
+
+// One Vorbis frame per call, straight into place: what stb_vorbis_decode_memory loops
+// on. Thread-safe: it touches only the stream and the output it is given.
+static void SoundSample_DecodeFrames( stb_vorbis* vorbis, const int channels, short* pcm, const unsigned int capacityFrames, unsigned int& decodedFrames )
+{
+	decodedFrames = 0;
+	while( decodedFrames < capacityFrames )
+	{
+		const int frames = stb_vorbis_get_frame_short_interleaved( vorbis, channels, pcm + ( size_t )decodedFrames * channels,
+			static_cast<int>( ( capacityFrames - decodedFrames ) * channels ) );
+		if( frames <= 0 )
+		{
+			break;
+		}
+		decodedFrames += static_cast<unsigned int>( frames );
+	}
+}
+
+/*
+========================
+SoundSample_PeekOggInfo
+
+The channels and rate from the identification header and the length from the
+end-of-stream page's granule position, without stb_vorbis's codebook setup (about
+0.3 ms a file, most of what LoadSample spent on the main thread). The job's own open
+checks all three, so a stream this misreads loads the ordinary way.
+========================
+*/
+static uint32 SoundSample_ReadLE32( const byte* p )
+{
+	return ( uint32 )p[0] | ( ( uint32 )p[1] << 8 ) | ( ( uint32 )p[2] << 16 ) | ( ( uint32 )p[3] << 24 );
+}
+
+static bool SoundSample_PeekOggInfo( const byte* data, const int length, int& channels, int& sampleRate, unsigned int& frames )
+{
+	if( data == NULL || length < 58 || memcmp( data, "OggS", 4 ) != 0 )
+	{
+		return false;
+	}
+	const int firstPacket = 27 + data[26];
+	if( firstPacket + 16 > length || data[firstPacket] != 0x01 || memcmp( data + firstPacket + 1, "vorbis", 6 ) != 0 )
+	{
+		return false;
+	}
+	channels = data[firstPacket + 11];
+	sampleRate = static_cast<int>( SoundSample_ReadLE32( data + firstPacket + 12 ) );
+
+	// the last page: flagged end-of-stream and ending exactly at the end of the file
+	const int earliest = Max( 0, length - 65536 - 27 );
+	for( int page = length - 27; page >= earliest; page-- )
+	{
+		if( data[page] != 'O' || memcmp( data + page, "OggS", 4 ) != 0 || data[page + 4] != 0 || ( data[page + 5] & 0x04 ) == 0 )
+		{
+			continue;
+		}
+		const int segments = data[page + 26];
+		if( page + 27 + segments > length )
+		{
+			continue;
+		}
+		int pageLength = 27 + segments;
+		for( int segment = 0; segment < segments; segment++ )
+		{
+			pageLength += data[page + 27 + segment];
+		}
+		if( page + pageLength != length )
+		{
+			continue;
+		}
+		const uint32 granuleLow = SoundSample_ReadLE32( data + page + 6 );
+		const uint32 granuleHigh = SoundSample_ReadLE32( data + page + 10 );
+		if( granuleHigh != 0 || granuleLow == 0 || granuleLow == 0xffffffff )
+		{
+			return false;
+		}
+		frames = granuleLow;
+		return true;
+	}
+	return false;
+}
+
+// Opens the stream if the main thread did not, decodes it and releases the stream and
+// the file bytes. Runs on a worker, or inline.
+static void SoundSample_RunDecode( idSoundSampleDecode& decode )
+{
+	if( decode.vorbis == NULL && decode.fileData != NULL && !decode.headerMismatch )
+	{
+		int vorbisError = 0;
+		decode.vorbis = stb_vorbis_open_memory( decode.fileData, decode.fileLen, &vorbisError, NULL );
+		if( decode.vorbis != NULL )
+		{
+			const stb_vorbis_info info = stb_vorbis_get_info( decode.vorbis );
+			if( info.channels != decode.channels || static_cast<int>( info.sample_rate ) != decode.sampleRate ||
+					stb_vorbis_stream_length_in_samples( decode.vorbis ) != decode.capacityFrames )
+			{
+				decode.headerMismatch = true;
+				stb_vorbis_close( decode.vorbis );
+				decode.vorbis = NULL;
+			}
+		}
+		else
+		{
+			decode.headerMismatch = true;
+		}
+	}
+	if( decode.vorbis != NULL )
+	{
+		SoundSample_DecodeFrames( decode.vorbis, decode.channels, decode.pcm, decode.capacityFrames, decode.decodedFrames );
+		stb_vorbis_close( decode.vorbis );
+		decode.vorbis = NULL;
+	}
+	if( decode.fileData != NULL )
+	{
+		Mem_Free( decode.fileData );
+		decode.fileData = NULL;
+	}
+}
+
+static void SoundSample_DecodeJob( const idJobContext& context )
+{
+	SoundSample_RunDecode( *static_cast<idSoundSampleDecode*>( context.data ) );
+}
+
+/*
+========================
+idSoundSample_OpenAL::BeginOggLoad
+
+Reads the file, opens the stream and sizes the sample from it. With asyncDecode the
+PCM is decoded on a job worker and *asyncDecode receives the job (NULL when it was
+decoded here after all); without it the whole sample is decoded here.
+========================
+*/
+bool idSoundSample_OpenAL::BeginOggLoad( const idStr& filename, idSoundSampleDecode** asyncDecode )
+{
+	if( asyncDecode != NULL )
+	{
+		*asyncDecode = NULL;
+	}
 	idFileLocal fileIn( fileSystem->OpenFileRead( filename ) );
 	if( fileIn == NULL )
 	{
@@ -1088,48 +1232,338 @@ bool idSoundSample_OpenAL::LoadOgg( const idStr& filename )
 	ampName.SetFileExtension( "amp" );
 	LoadAmplitude( ampName );
 
-	int channels = 0;
-	int sampleRate = 0;
-	short* decoded = NULL;
-	const int samplesPerChannel = stb_vorbis_decode_memory( fileData, fileLen, &channels, &sampleRate, &decoded );
-
-	Mem_Free( fileData );
-
-	if( samplesPerChannel <= 0 || decoded == NULL )
+	// Off the main thread entirely when the headers say enough to size the sample.
+	int peekChannels = 0;
+	int peekRate = 0;
+	unsigned int peekFrames = 0;
+	if( asyncDecode != NULL && soundSamplePendingDecodes < SOUND_SAMPLE_MAX_PENDING_DECODES &&
+			jobSystem.IsInitialized() && !jobSystem.IsSynchronous() &&
+			SoundSample_PeekOggInfo( fileData, fileLen, peekChannels, peekRate, peekFrames ) &&
+			peekChannels >= 1 && peekChannels <= 2 && peekRate > 0 &&
+			( uint64 )peekFrames * peekChannels * sizeof( int16 ) <= ( uint64 )idMath::INT_MAX )
 	{
-		if( decoded != NULL )
+		const int peekBytes = static_cast<int>( ( uint64 )peekFrames * peekChannels * sizeof( int16 ) );
+		buffers.SetNum( 1 );
+		buffers[0].buffer = AllocBuffer( peekBytes, GetName() );
+		if( buffers[0].buffer != NULL )
 		{
-			free( decoded );
+			FinishOggLoad( peekChannels, peekRate, peekFrames );
+			idSoundSampleDecode* decode = new idSoundSampleDecode;
+			decode->fileData = fileData;
+			decode->fileLen = fileLen;
+			decode->pcm = static_cast<short*>( buffers[0].buffer );
+			decode->capacityFrames = peekFrames;
+			decode->channels = peekChannels;
+			decode->sampleRate = peekRate;
+			decode->list = jobSystem.CreateJobList( "sound-sample-decode", 1, 0, idJobPriority::LOW );
+			if( decode->list != nullptr && decode->list->AddJob( &SoundSample_DecodeJob, decode ) &&
+					decode->list->Submit() == idJobSubmitResult::ACCEPTED )
+			{
+				soundSamplePendingDecodes++;
+				*asyncDecode = decode;
+				return true;
+			}
+			if( decode->list != nullptr )
+			{
+				decode->list->Wait();
+			}
+			SoundSample_RunDecode( *decode );
+			const bool mismatch = decode->headerMismatch;
+			const unsigned int decodedFrames = decode->decodedFrames;
+			delete decode;
+			if( mismatch )
+			{
+				FreeData();
+				return false;
+			}
+			return FinishOggDecode( filename, decodedFrames );
 		}
+		buffers.Clear();
+	}
+
+	// Open the stream, size the buffer from its length and decode straight into it.
+	// stb_vorbis_decode_memory grew a scratch buffer by doubling and then copied it: two
+	// to three times a sound's PCM at peak, and a full copy of every sound loaded.
+	int vorbisError = 0;
+	stb_vorbis* vorbis = stb_vorbis_open_memory( fileData, fileLen, &vorbisError, NULL );
+	if( vorbis == NULL )
+	{
+		Mem_Free( fileData );
+		idLib::Warning( "LoadOgg( %s ) : failed to open Ogg Vorbis (stb_vorbis error %d)", filename.c_str(), vorbisError );
+		FreeData();
+		return false;
+	}
+	const stb_vorbis_info info = stb_vorbis_get_info( vorbis );
+	const int channels = info.channels;
+	const int sampleRate = static_cast<int>( info.sample_rate );
+	unsigned int streamFrames = stb_vorbis_stream_length_in_samples( vorbis );
+	if( streamFrames == 0 && channels >= 1 && channels <= 2 && sampleRate > 0 )
+	{
+		// No length in the last page: decode the old way, growing a scratch buffer.
+		stb_vorbis_close( vorbis );
+		int scratchChannels = 0;
+		int scratchRate = 0;
+		short* scratch = NULL;
+		const int scratchFrames = stb_vorbis_decode_memory( fileData, fileLen, &scratchChannels, &scratchRate, &scratch );
+		Mem_Free( fileData );
+		if( scratchFrames <= 0 || scratch == NULL || scratchChannels != channels ||
+				( uint64 )scratchFrames * channels * sizeof( int16 ) > ( uint64 )idMath::INT_MAX )
+		{
+			free( scratch );
+			idLib::Warning( "LoadOgg( %s ) : failed to decode Ogg Vorbis", filename.c_str() );
+			FreeData();
+			return false;
+		}
+		streamFrames = static_cast<unsigned int>( scratchFrames );
+		const int scratchBytes = static_cast<int>( ( uint64 )streamFrames * channels * sizeof( int16 ) );
+		buffers.SetNum( 1 );
+		buffers[0].buffer = AllocBuffer( scratchBytes, GetName() );
+		if( buffers[0].buffer == NULL )
+		{
+			free( scratch );
+			idLib::Warning( "LoadOgg( %s ) : could not allocate decoded audio", filename.c_str() );
+			FreeData();
+			return false;
+		}
+		memcpy( buffers[0].buffer, scratch, scratchBytes );
+		free( scratch );
+		return FinishOggLoad( channels, sampleRate, streamFrames );
+	}
+	if( channels < 1 || channels > 2 || sampleRate <= 0 || streamFrames == 0 ||
+			( uint64 )streamFrames * channels * sizeof( int16 ) > ( uint64 )idMath::INT_MAX )
+	{
+		stb_vorbis_close( vorbis );
+		Mem_Free( fileData );
+		idLib::Warning( "LoadOgg( %s ) : unsupported stream (%d channels, %d Hz, %u frames)", filename.c_str(), channels, sampleRate, streamFrames );
+		FreeData();
+		return false;
+	}
+
+	const int capacityBytes = static_cast<int>( ( uint64 )streamFrames * channels * sizeof( int16 ) );
+	buffers.SetNum( 1 );
+	buffers[0].buffer = AllocBuffer( capacityBytes, GetName() );
+	if( buffers[0].buffer == NULL )
+	{
+		stb_vorbis_close( vorbis );
+		Mem_Free( fileData );
+		idLib::Warning( "LoadOgg( %s ) : could not allocate decoded audio", filename.c_str() );
+		FreeData();
+		return false;
+	}
+	// Sized from the stream, so the length, rate and channels hold from here on.
+	FinishOggLoad( channels, sampleRate, streamFrames );
+
+	idSoundSampleDecode* decode = new idSoundSampleDecode;
+	decode->vorbis = vorbis;
+	decode->fileData = fileData;
+	decode->fileLen = fileLen;
+	decode->sampleRate = sampleRate;
+	decode->pcm = static_cast<short*>( buffers[0].buffer );
+	decode->capacityFrames = streamFrames;
+	decode->channels = channels;
+
+	if( asyncDecode != NULL && soundSamplePendingDecodes < SOUND_SAMPLE_MAX_PENDING_DECODES &&
+			jobSystem.IsInitialized() && !jobSystem.IsSynchronous() )
+	{
+		decode->list = jobSystem.CreateJobList( "sound-sample-decode", 1, 0, idJobPriority::LOW );
+		if( decode->list != nullptr && decode->list->AddJob( &SoundSample_DecodeJob, decode ) &&
+				decode->list->Submit() == idJobSubmitResult::ACCEPTED )
+		{
+			soundSamplePendingDecodes++;
+			*asyncDecode = decode;
+			return true;
+		}
+		// rejected or run inline by the job system: finish below
+		if( decode->list != nullptr )
+		{
+			decode->list->Wait();
+		}
+	}
+
+	SoundSample_RunDecode( *decode );
+	const unsigned int decodedFrames = decode->decodedFrames;
+	delete decode;
+	return FinishOggDecode( filename, decodedFrames );
+}
+
+/*
+========================
+idSoundSample_OpenAL::FinishOggDecode
+
+The stream's PCM is in buffers[0]. A stream that decodes short keeps what it had.
+========================
+*/
+bool idSoundSample_OpenAL::FinishOggDecode( const idStr& filename, const unsigned int decodedFrames )
+{
+	if( decodedFrames == 0 )
+	{
 		idLib::Warning( "LoadOgg( %s ) : failed to decode Ogg Vorbis", filename.c_str() );
-		MakeDefault();
+		FreeData();
 		return false;
+	}
+	if( decodedFrames < static_cast<unsigned int>( playLength ) )
+	{
+		// stb_vorbis stops at the first page it cannot decode and keeps what it has
+		idLib::Warning( "LoadOgg( %s ) : decoded %u of %d frames; the file is damaged and plays short", filename.c_str(), decodedFrames, playLength );
+		return FinishOggLoad( NumChannels(), SampleRate(), decodedFrames );
+	}
+	return true;
+}
+
+/*
+========================
+idSoundSample_OpenAL::LoadOgg
+========================
+*/
+bool idSoundSample_OpenAL::LoadOgg( const idStr& filename )
+{
+	return BeginOggLoad( filename, NULL );
+}
+
+/*
+========================
+idSoundSample_OpenAL::LoadResourceAsync
+
+LoadResource for a level load: when the first sample the probe would try is an Ogg,
+the file is read and opened here and its PCM decodes on a job worker while the level
+keeps loading. Length, rate and channels hold at once; FinishDecode waits for the PCM
+and uploads it, and every reader of the PCM calls it first. Anything else, and any
+failure, takes the normal synchronous probe.
+========================
+*/
+void idSoundSample_OpenAL::LoadResourceAsync()
+{
+	FinishDecode();
+	if( !s_asyncSampleDecode.GetBool() || s_noSound.GetBool() || idStr::Icmpn( GetName(), "_default", 8 ) == 0 )
+	{
+		LoadResource();
+		return;
 	}
 
-	if( channels < 1 || channels > 2 )
+	idList< idStr > sampleVariants;
+	SoundSample_BuildVariants( GetName(), sampleVariants );
+	idStr oggName = sampleVariants.Num() > 0 ? sampleVariants[0] : idStr( GetName() );
+	idStr ext;
+	oggName.ExtractFileExtension( ext );
+	if( ext.Icmp( "roq" ) == 0 )
 	{
-		free( decoded );
-		idLib::Warning( "LoadOgg( %s ) : unsupported channel count %d", filename.c_str(), channels );
-		MakeDefault();
-		return false;
+		LoadResource();
+		return;
 	}
-	if( sampleRate <= 0 )
-	{
-		free( decoded );
-		idLib::Warning( "LoadOgg( %s ) : invalid sample rate %d", filename.c_str(), sampleRate );
-		MakeDefault();
-		return false;
-	}
+	oggName.SetFileExtension( ".ogg" );
 
-	const uint64 decodedBytes = ( uint64 )samplesPerChannel * channels * sizeof( int16 );
-	if( decodedBytes == 0 || decodedBytes > ( uint64 )idMath::INT_MAX )
+	FreeData();
+	idSoundSampleDecode* decode = NULL;
+	if( !BeginOggLoad( oggName, &decode ) )
 	{
-		free( decoded );
-		idLib::Warning( "LoadOgg( %s ) : decoded data is too large", filename.c_str() );
-		MakeDefault();
-		return false;
+		// no Ogg first, or a broken one: the normal probe tries every loader and variant
+		LoadResource();
+		return;
 	}
+	loaded = true;
+	if( decode == NULL )
+	{
+		CreateOpenALBuffer();
+		return;
+	}
+	pendingDecode = decode;
+	pendingDecodeName = oggName;
+}
 
+/*
+========================
+idSoundSample_OpenAL::FinishDecode
+
+Waits for an outstanding decode and uploads the sample. Does nothing without one.
+========================
+*/
+void idSoundSample_OpenAL::FinishDecode()
+{
+	if( pendingDecode == NULL )
+	{
+		return;
+	}
+	idSoundSampleDecode* decode = pendingDecode;
+	pendingDecode = NULL;
+	soundSamplePendingDecodes--;
+	if( decode->list != nullptr )
+	{
+		decode->list->Wait();
+	}
+	// a cancelled job never ran: decode it here
+	SoundSample_RunDecode( *decode );
+	const bool mismatch = decode->headerMismatch;
+	const unsigned int decodedFrames = decode->decodedFrames;
+	delete decode;
+
+	if( mismatch )
+	{
+		// the peeked header disagreed with the stream: load it the ordinary way
+		LoadResource();
+		return;
+	}
+	if( !FinishOggDecode( pendingDecodeName, decodedFrames ) )
+	{
+		// the normal probe falls back to other loaders, variants and the default
+		LoadResource();
+		return;
+	}
+	CreateOpenALBuffer();
+}
+
+/*
+========================
+idSoundSample_OpenAL::IsDecodeComplete
+========================
+*/
+bool idSoundSample_OpenAL::IsDecodeComplete() const
+{
+	return pendingDecode != NULL && ( pendingDecode->list == nullptr || pendingDecode->list->TryWait() );
+}
+
+/*
+========================
+idSoundSample_OpenAL::CancelDecode
+
+Waits for an outstanding decode and drops it; the caller frees the sample.
+========================
+*/
+void idSoundSample_OpenAL::CancelDecode()
+{
+	if( pendingDecode == NULL )
+	{
+		return;
+	}
+	idSoundSampleDecode* decode = pendingDecode;
+	pendingDecode = NULL;
+	soundSamplePendingDecodes--;
+	if( decode->list != nullptr )
+	{
+		decode->list->Cancel();
+		decode->list->Wait();
+	}
+	if( decode->vorbis != NULL )
+	{
+		stb_vorbis_close( decode->vorbis );
+		decode->vorbis = NULL;
+	}
+	if( decode->fileData != NULL )
+	{
+		Mem_Free( decode->fileData );
+		decode->fileData = NULL;
+	}
+	delete decode;
+}
+
+/*
+========================
+idSoundSample_OpenAL::FinishOggLoad
+
+buffers[0] holds frames of interleaved 16-bit PCM.
+========================
+*/
+bool idSoundSample_OpenAL::FinishOggLoad( const int channels, const int sampleRate, const unsigned int frames )
+{
 	memset( &format, 0, sizeof( format ) );
 	format.basic.formatTag = idWaveFile::FORMAT_PCM;
 	format.basic.numChannels = ( uint16 )channels;
@@ -1139,26 +1573,11 @@ bool idSoundSample_OpenAL::LoadOgg( const idStr& filename )
 	format.basic.avgBytesPerSec = format.basic.samplesPerSec * format.basic.blockSize;
 
 	playBegin = 0;
-	playLength = samplesPerChannel;
-
-	totalBufferSize = ( int )decodedBytes;
-
-	buffers.SetNum( 1 );
+	playLength = static_cast<int>( frames );
+	totalBufferSize = static_cast<int>( ( uint64 )frames * channels * sizeof( int16 ) );
 	buffers[0].bufferSize = totalBufferSize;
 	buffers[0].numSamples = playLength;
-	buffers[0].buffer = AllocBuffer( totalBufferSize, GetName() );
-	if( buffers[0].buffer == NULL )
-	{
-		free( decoded );
-		idLib::Warning( "LoadOgg( %s ) : could not allocate decoded audio", filename.c_str() );
-		MakeDefault();
-		return false;
-	}
-
-	memcpy( buffers[0].buffer, decoded, totalBufferSize );
 	buffers[0].buffer = GPU_CONVERT_CPU_TO_CPU_CACHED_READONLY_ADDRESS( buffers[0].buffer );
-
-	free( decoded );
 
 	return true;
 }
@@ -1408,6 +1827,8 @@ Called before deleting the object and at the start of LoadResource()
 */
 void idSoundSample_OpenAL::FreeData()
 {
+	// a worker may still be writing into buffers[0]
+	CancelDecode();
 	if( buffers.Num() > 0 || openalBuffer != 0 )
 	{
 		soundSystemLocal.StopVoicesWithSample( ( idSoundSample* )this );

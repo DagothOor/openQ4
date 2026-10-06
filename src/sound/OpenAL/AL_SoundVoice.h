@@ -64,10 +64,20 @@ public:
 		}
 	}
 
+	// The gain, wet/dry, occlusion and reverb setters only record their value; the
+	// emitter calls CommitMix once all of them have run, so the filters and sends go
+	// out once a frame instead of once per setter.
 	void					SetGain( float gain )
 	{
 		idSoundVoice_Base::SetGain( gain );
-		ApplyWetDryRouting();
+	}
+
+	// The sound's minDistance. BFG's XAudio2 mixer blended a voice toward every
+	// speaker inside it; here it becomes the source's size (AL_EXT_SOURCE_RADIUS).
+	void		SetInnerRadius( float r ) override
+	{
+		idSoundVoice_Base::SetInnerRadius( r );
+		ApplySourceRadius();
 	}
 
 	void		SetPitch( float p )
@@ -82,31 +92,28 @@ public:
 	void		SetWetLevel( float wet ) override
 	{
 		idSoundVoice_Base::SetWetLevel( wet );
-		ApplyWetDryRouting();
 	}
 	void		SetDryLevel( float dry ) override
 	{
 		idSoundVoice_Base::SetDryLevel( dry );
-		ApplyWetDryRouting();
 	}
 	void		SetOcclusion( float f ) override
 	{
 		idSoundVoice_Base::SetOcclusion( f );
-		ApplyWetDryRouting();
 	}
 	void		SetEnvironmentMuffle( float f ) override
 	{
 		idSoundVoice_Base::SetEnvironmentMuffle( f );
-		ApplyWetDryRouting();
 	}
 	bool		SetReverbSource( int areaSlot, int roomMB, int occlusionMB, bool mono ) override
 	{
-		const bool changed = idSoundVoice_Base::SetReverbSource( areaSlot, roomMB, occlusionMB, mono );
-		if( changed )
-		{
-			ApplyWetDryRouting();
-		}
-		return changed;
+		return idSoundVoice_Base::SetReverbSource( areaSlot, roomMB, occlusionMB, mono );
+	}
+	// Every frame, not only on change: the listener's reverb slot moves between
+	// areas and the sends have to follow it.
+	void		CommitMix() override
+	{
+		ApplyWetDryRouting();
 	}
 
 	// Drops both reverb sends so the hardware can release its effect slots.
@@ -182,6 +189,7 @@ private:
 	// Adjust the voice frequency based on the new sample rate for the buffer
 	void					SetSampleRate( uint32 newSampleRate, uint32 operationSet );
 	void					ResetSourceMixState();
+	void					ApplySourceRadius();
 	void					ApplyWetDryRouting();
 	bool ApplyWetDryRoutingChecked(bool filters, bool wet, ALuint slot, SoundSettingsSourceReceipt& out);
 	void					CreateWetDryFilters();
@@ -213,6 +221,7 @@ private:
 
 	bool					hasVUMeter;
 	bool					paused;
+	float					appliedSourceRadius;	// last AL_SOURCE_RADIUS sent, -1 = none yet
 };
 
 /*

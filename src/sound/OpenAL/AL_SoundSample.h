@@ -35,6 +35,7 @@ idSoundSample_OpenAL
 ================================================
 */
 class idSampleInfo;
+struct idSoundSampleDecode;
 class idSoundSample_OpenAL
 {
 public:
@@ -42,6 +43,16 @@ public:
 
 	// Loads and initializes the resource based on the name.
 	virtual void	 LoadResource();
+	// LoadResource for a level load: an Ogg's PCM decodes on a job worker (see the .cpp).
+	void			LoadResourceAsync();
+	// Waits for an outstanding decode and uploads the sample; nothing without one.
+	void			FinishDecode();
+	bool			IsDecoding() const
+	{
+		return pendingDecode != NULL;
+	}
+	// a worker has finished the outstanding decode; FinishDecode will not wait
+	bool			IsDecodeComplete() const;
 
 	void			SetName( const char* n )
 	{
@@ -185,6 +196,10 @@ protected:
 
 	bool			LoadWav( const idStr& name );
 	bool			LoadOgg( const idStr& name );
+	bool			BeginOggLoad( const idStr& name, idSoundSampleDecode** asyncDecode );
+	bool			FinishOggDecode( const idStr& name, unsigned int decodedFrames );
+	bool			FinishOggLoad( int channels, int sampleRate, unsigned int frames );
+	void			CancelDecode();
 	bool			LoadRoQ( const idStr& name );
 	bool			LoadAmplitude( const idStr& name );
 	void			WriteAllSamples( const idStr& sampleName );
@@ -248,6 +263,10 @@ protected:
 	idWaveFile::waveFmt_t	format;
 
 	idList<byte> amplitude;
+
+	// An Ogg decoding on a job worker into buffers[0] (LoadResourceAsync), and its file
+	idSoundSampleDecode*	pendingDecode;
+	idStr					pendingDecodeName;
 };
 
 /*

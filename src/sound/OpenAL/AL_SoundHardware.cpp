@@ -39,6 +39,8 @@ idCVar s_meterTopTime( "s_meterTopTime", "1000", CVAR_INTEGER | CVAR_ARCHIVE, "H
 idCVar s_meterPosition( "s_meterPosition", "100 100 20 200", CVAR_ARCHIVE, "VU meter location (x y w h)" );
 idCVar s_device( "s_device", "-1", CVAR_INTEGER | CVAR_ARCHIVE, "Which audio device to use (listDevices to list, -1 for default)" );
 idCVar s_showPerfData( "s_showPerfData", "0", CVAR_BOOL, "Show sound backend performance data" );
+idCVar s_outputLimiter( "s_outputLimiter", "1", CVAR_ARCHIVE | CVAR_BOOL, "soft-limit the final mix so loud scenes compress instead of clipping" );
+idCVar s_resampler( "s_resampler", "auto", CVAR_ARCHIVE, "OpenAL resampler for every voice: auto (an 11th order sinc when the runtime has one), default (the runtime's own), or a name or number from listResamplers; takes effect on s_restart" );
 extern idCVar s_useEAXReverb;
 extern idCVar s_deviceName;
 extern idCVar s_openALHRTF;
@@ -414,26 +416,6 @@ static ALCint openQ4_GetRequestedOutputMode()
 	}
 }
 
-static const ALCint* openQ4_BuildOutputModeContextAttributes( ALCdevice* device, ALCint attributes[ 3 ] )
-{
-	attributes[0] = 0;
-	if( device == NULL || alcIsExtensionPresent( device, "ALC_SOFT_output_mode" ) != AL_TRUE )
-	{
-		if( openQ4_GetSpeakerCount() == OPENQ4_OPENAL_SPEAKERS_SURROUND )
-		{
-			common->Warning( "OpenAL output mode requested '%s', but ALC_SOFT_output_mode is not available.", openQ4_SpeakerCountName( openQ4_GetSpeakerCount() ) );
-		}
-		return NULL;
-	}
-
-	const ALCint outputMode = openQ4_GetRequestedOutputMode();
-	attributes[0] = ALC_OUTPUT_MODE_SOFT;
-	attributes[1] = outputMode;
-	attributes[2] = 0;
-	common->Printf( "OpenAL output mode requested: %s\n", openQ4_OutputModeName( outputMode ) );
-	return attributes;
-}
-
 static void openQ4_ReportOutputMode( ALCdevice* device )
 {
 	if( device == NULL || alcIsExtensionPresent( device, "ALC_SOFT_output_mode" ) != AL_TRUE )
@@ -450,19 +432,6 @@ static void openQ4_ReportOutputMode( ALCdevice* device )
 	}
 }
 #else
-static const ALCint* openQ4_BuildOutputModeContextAttributes( ALCdevice* device, ALCint attributes[ 3 ] )
-{
-	(void)device;
-	(void)attributes;
-	if( openQ4_GetSpeakerCount() == OPENQ4_OPENAL_SPEAKERS_SURROUND )
-	{
-		// Expected with default cvars on providers without ALC_SOFT_output_mode
-		// (e.g. Apple's OpenAL framework); status line, not a warning.
-		common->Printf( "OpenAL output mode '%s' requested, but this build does not expose ALC_SOFT_output_mode; using the runtime default.\n", openQ4_SpeakerCountName( openQ4_GetSpeakerCount() ) );
-	}
-	return NULL;
-}
-
 static void openQ4_ReportOutputMode( ALCdevice* device )
 {
 	(void)device;
@@ -513,7 +482,7 @@ static bool openQ4_LoadHrtfProcs( ALCdevice* device )
 	return qalcResetDeviceSOFT != NULL;
 }
 
-static void openQ4_ApplyHrtfPreference( ALCdevice* device )
+static void openQ4_ReportHrtfPreference( ALCdevice* device )
 {
 	if( device == NULL )
 	{
@@ -530,33 +499,10 @@ static void openQ4_ApplyHrtfPreference( ALCdevice* device )
 		return;
 	}
 
-	if( !openQ4_LoadHrtfProcs( device ) )
-	{
-		if( mode != OPENQ4_OPENAL_HRTF_AUTO )
-		{
-			common->Warning( "OpenAL HRTF requested '%s', but alcResetDeviceSOFT is unavailable.", openQ4_HrtfModeName( mode ) );
-		}
-		return;
-	}
-
+	// alcGetStringiSOFT lists the HRTFs; the preference itself is applied
+	// through openQ4_BuildDeviceAttributes when the context is created.
+	openQ4_LoadHrtfProcs( device );
 	common->Printf( "OpenAL HRTF requested mode: %s\n", openQ4_HrtfModeName( mode ) );
-	if( mode == OPENQ4_OPENAL_HRTF_AUTO )
-	{
-		return;
-	}
-
-	const ALCint hrtfValue = ( mode == OPENQ4_OPENAL_HRTF_ON ) ? ALC_TRUE : ALC_FALSE;
-	const ALCint hrtfAttributes[] = {
-		ALC_HRTF_SOFT, hrtfValue,
-		0
-	};
-	(void)alcGetError( device );
-	const bool resetSucceeded = qalcResetDeviceSOFT( device, hrtfAttributes ) == ALC_TRUE;
-	const ALCenum resetError = CheckALCErrors( device );
-	if( !resetSucceeded || resetError != ALC_NO_ERROR )
-	{
-		common->Warning( "OpenAL HRTF request '%s' was rejected by the active device.", openQ4_HrtfModeName( mode ) );
-	}
 }
 
 static void openQ4_ReportHrtfStatus( ALCdevice* device )
@@ -595,7 +541,7 @@ static void openQ4_ReportHrtfStatus( ALCdevice* device )
 #endif
 }
 #else
-static void openQ4_ApplyHrtfPreference( ALCdevice* device )
+static void openQ4_ReportHrtfPreference( ALCdevice* device )
 {
 	(void)device;
 	if( openQ4_GetHrtfMode() != OPENQ4_OPENAL_HRTF_AUTO )
@@ -613,6 +559,93 @@ static void openQ4_ReportHrtfStatus( ALCdevice* device )
 }
 #endif
 
+
+/*
+========================
+openQ4_BuildDeviceAttributes
+
+Every device preference travels in one attribute list. alcCreateContext and
+alcReopenDeviceSOFT rebuild the device's parameters from the list they are
+given, so a preference applied any other way (the old HRTF reset before the
+context existed) silently reverts to the runtime default: s_openALHRTF 1 still
+heard HRTF, and a hot-plug reopen dropped the speaker layout.
+========================
+*/
+static const int OPENQ4_OPENAL_DEVICE_ATTRIBUTE_CAPACITY = 7;	// three pairs and the terminator
+
+static const ALCint* openQ4_BuildDeviceAttributes( ALCdevice* device, ALCint attributes[ OPENQ4_OPENAL_DEVICE_ATTRIBUTE_CAPACITY ], const bool report )
+{
+	int count = 0;
+	attributes[0] = 0;
+	if( device == NULL )
+	{
+		return NULL;
+	}
+
+#if OPENQ4_OPENAL_HRTF_SUPPORTED
+	const int hrtfMode = openQ4_GetHrtfMode();
+	if( hrtfMode != OPENQ4_OPENAL_HRTF_AUTO && alcIsExtensionPresent( device, "ALC_SOFT_HRTF" ) == AL_TRUE )
+	{
+		attributes[count++] = ALC_HRTF_SOFT;
+		attributes[count++] = ( hrtfMode == OPENQ4_OPENAL_HRTF_ON ) ? ALC_TRUE : ALC_FALSE;
+	}
+#endif
+
+#if OPENQ4_OPENAL_OUTPUT_MODE_SUPPORTED
+	if( alcIsExtensionPresent( device, "ALC_SOFT_output_mode" ) == AL_TRUE )
+	{
+		const ALCint outputMode = openQ4_GetRequestedOutputMode();
+		attributes[count++] = ALC_OUTPUT_MODE_SOFT;
+		attributes[count++] = outputMode;
+		if( report )
+		{
+			common->Printf( "OpenAL output mode requested: %s\n", openQ4_OutputModeName( outputMode ) );
+		}
+	}
+	else if( report && openQ4_GetSpeakerCount() == OPENQ4_OPENAL_SPEAKERS_SURROUND )
+	{
+		common->Warning( "OpenAL output mode requested '%s', but ALC_SOFT_output_mode is not available.", openQ4_SpeakerCountName( openQ4_GetSpeakerCount() ) );
+	}
+#else
+	if( report && openQ4_GetSpeakerCount() == OPENQ4_OPENAL_SPEAKERS_SURROUND )
+	{
+		// Expected with default cvars on providers without ALC_SOFT_output_mode
+		// (e.g. Apple's OpenAL framework); status line, not a warning.
+		common->Printf( "OpenAL output mode '%s' requested, but this build does not expose ALC_SOFT_output_mode; using the runtime default.\n", openQ4_SpeakerCountName( openQ4_GetSpeakerCount() ) );
+	}
+#endif
+
+#if defined( ALC_OUTPUT_LIMITER_SOFT )
+	// OpenAL Soft only limits integer output by default, and shared-mode Windows
+	// endpoints mix in float, so a big firefight could clip; ask for it outright.
+	if( alcIsExtensionPresent( device, "ALC_SOFT_output_limiter" ) == AL_TRUE )
+	{
+		attributes[count++] = ALC_OUTPUT_LIMITER_SOFT;
+		attributes[count++] = s_outputLimiter.GetBool() ? ALC_TRUE : ALC_FALSE;
+	}
+#endif
+
+	attributes[count] = 0;
+	return ( count > 0 ) ? attributes : NULL;
+}
+
+static void openQ4_ReportOutputLimiter( ALCdevice* device )
+{
+#if defined( ALC_OUTPUT_LIMITER_SOFT )
+	if( device == NULL || alcIsExtensionPresent( device, "ALC_SOFT_output_limiter" ) != AL_TRUE )
+	{
+		return;
+	}
+	ALCint limiter = ALC_FALSE;
+	alcGetIntegerv( device, ALC_OUTPUT_LIMITER_SOFT, 1, &limiter );
+	if( CheckALCErrors( device ) == ALC_NO_ERROR )
+	{
+		common->Printf( "OpenAL output limiter: %s\n", limiter == ALC_TRUE ? "on" : "off" );
+	}
+#else
+	(void)device;
+#endif
+}
 
 /*
 ========================
@@ -647,6 +680,13 @@ idSoundHardware_OpenAL::idSoundHardware_OpenAL()
 	openedWithDefaultFallback = false;
 	openedHrtfMode = openQ4_GetHrtfMode();
 	openedSpeakerCount = openQ4_GetSpeakerCount();
+	// soundSystemLocal is built during static initialization, before cvars from
+	// other files exist; CaptureOpenedDeviceState records the real value
+	openedOutputLimiter = true;
+	sourceRadiusAvailable = false;
+	directChannelsAvailable = false;
+	directChannelsMode = AL_FALSE;
+	sourceResampler = -1;
 
 	//vuMeterRMS = NULL;
 	//vuMeterPeak = NULL;
@@ -817,6 +857,7 @@ void idSoundHardware_OpenAL::CaptureOpenedDeviceState( const char* requestedDevi
 	openedWithDefaultFallback = openedRequestedDeviceName.Length() > 0 && openedActiveDeviceName.Icmp( openedRequestedDeviceName ) != 0;
 	openedHrtfMode = openQ4_GetHrtfMode();
 	openedSpeakerCount = openQ4_GetSpeakerCount();
+	openedOutputLimiter = s_outputLimiter.GetBool();
 	lastDeviceCheckTime = Sys_Milliseconds();
 }
 
@@ -951,7 +992,10 @@ bool idSoundHardware_OpenAL::TryReopenDevice( const char* requestedDeviceName, c
 	}
 
 	(void)alcGetError( openalDevice );
-	const bool reopened = qalcReopenDeviceSOFT( openalDevice, reopenDeviceName, NULL ) == ALC_TRUE;
+	// The reopened device is rebuilt from these attributes alone; NULL would drop the
+	// HRTF preference, the speaker layout and the limiter.
+	ALCint reopenAttributes[ OPENQ4_OPENAL_DEVICE_ATTRIBUTE_CAPACITY ];
+	const bool reopened = qalcReopenDeviceSOFT( openalDevice, reopenDeviceName, openQ4_BuildDeviceAttributes( openalDevice, reopenAttributes, false ) ) == ALC_TRUE;
 	const ALCenum reopenError = CheckALCErrors( openalDevice );
 	if( !reopened || reopenError != ALC_NO_ERROR )
 	{
@@ -975,6 +1019,7 @@ bool idSoundHardware_OpenAL::TryReopenDevice( const char* requestedDeviceName, c
 	}
 	openQ4_ReportHrtfStatus( openalDevice );
 	openQ4_ReportOutputMode( openalDevice );
+	openQ4_ReportOutputLimiter( openalDevice );
 	return true;
 #else
 	(void)normalizedRequestedDeviceName;
@@ -1080,6 +1125,12 @@ bool idSoundHardware_OpenAL::UpdateDeviceMonitoring() {
 		return true;
 	}
 
+	if( s_outputLimiter.GetBool() != openedOutputLimiter ) {
+		common->Printf( "OpenAL output limiter turned %s; restarting sound system.\n", s_outputLimiter.GetBool() ? "on" : "off" );
+		soundSystemLocal.SetNeedsRestart();
+		return true;
+	}
+
 #if defined( ALC_CONNECTED )
 	if( alcIsExtensionPresent( openalDevice, "ALC_EXT_disconnect" ) == AL_TRUE ) {
 		ALCint connected = ALC_TRUE;
@@ -1181,6 +1232,196 @@ void idSoundHardware_OpenAL::PrintALInfo()
 	CheckALErrors();
 }
 
+#if defined( AL_SOURCE_RESAMPLER_SOFT ) && defined( AL_NUM_RESAMPLERS_SOFT ) && defined( AL_DEFAULT_RESAMPLER_SOFT ) && defined( AL_RESAMPLER_NAME_SOFT )
+	#define OPENQ4_OPENAL_RESAMPLER_SUPPORTED 1
+typedef const ALchar* ( AL_APIENTRY *openq4_alGetStringiSOFT_t )( ALenum pname, ALsizei index );
+
+static const char* openQ4_ResamplerName( openq4_alGetStringiSOFT_t getStringi, const ALint index )
+{
+	const ALchar* name = getStringi != NULL ? getStringi( AL_RESAMPLER_NAME_SOFT, index ) : NULL;
+	return name != NULL ? name : "";
+}
+
+/*
+========================
+openQ4_SelectResampler
+
+Quake 4 recorded 4762 of its 5737 sounds at 22.05 kHz, so nearly every voice is
+upsampled about 2.2x to a 48 kHz device. A short polyphase sinc keeps the images
+above 11 kHz out of the mix; the runtime's own default is a 4-point
+interpolator. Returns -1 to leave the runtime default in place.
+========================
+*/
+static ALint openQ4_SelectResampler( idStr& chosenName )
+{
+	chosenName = "runtime default";
+	if( alIsExtensionPresent( "AL_SOFT_source_resampler" ) != AL_TRUE )
+	{
+		chosenName = "runtime default (no AL_SOFT_source_resampler)";
+		return -1;
+	}
+	const openq4_alGetStringiSOFT_t getStringi = reinterpret_cast<openq4_alGetStringiSOFT_t>( alGetProcAddress( "alGetStringiSOFT" ) );
+	const ALint count = alGetInteger( AL_NUM_RESAMPLERS_SOFT );
+	const ALint defaultIndex = alGetInteger( AL_DEFAULT_RESAMPLER_SOFT );
+	if( CheckALErrors() != AL_NO_ERROR || getStringi == NULL || count <= 0 )
+	{
+		return -1;
+	}
+	if( defaultIndex >= 0 && defaultIndex < count )
+	{
+		chosenName = openQ4_ResamplerName( getStringi, defaultIndex );
+	}
+
+	const idStr request = s_resampler.GetString();
+	ALint chosen = -1;
+	if( request.Length() == 0 || request.Icmp( "default" ) == 0 )
+	{
+		return -1;
+	}
+	if( request.Icmp( "auto" ) == 0 )
+	{
+		for( ALint i = 0; i < count && chosen < 0; i++ )
+		{
+			const idStr name = openQ4_ResamplerName( getStringi, i );
+			if( name.Find( "11th order Sinc", false ) >= 0 && name.Find( "fast", false ) < 0 )
+			{
+				chosen = i;
+			}
+		}
+		for( ALint i = 0; i < count && chosen < 0; i++ )
+		{
+			if( idStr( openQ4_ResamplerName( getStringi, i ) ).Find( "Sinc", false ) >= 0 )
+			{
+				chosen = i;
+			}
+		}
+	}
+	else if( request.IsNumeric() )
+	{
+		const int index = atoi( request.c_str() );
+		if( index >= 0 && index < count )
+		{
+			chosen = index;
+		}
+	}
+	else
+	{
+		for( ALint i = 0; i < count && chosen < 0; i++ )
+		{
+			if( request.Icmp( openQ4_ResamplerName( getStringi, i ) ) == 0 )
+			{
+				chosen = i;
+			}
+		}
+	}
+	if( chosen < 0 )
+	{
+		if( request.Icmp( "auto" ) != 0 )
+		{
+			common->Warning( "s_resampler '%s' names no OpenAL resampler; keeping the runtime default (listResamplers lists them).", request.c_str() );
+		}
+		return -1;
+	}
+	chosenName = openQ4_ResamplerName( getStringi, chosen );
+	return chosen;
+}
+
+static void listResamplers_f( const idCmdArgs& args )
+{
+	(void)args;
+	if( soundSystem->GetOpenALDevice() == NULL || alIsExtensionPresent( "AL_SOFT_source_resampler" ) != AL_TRUE )
+	{
+		idLib::Printf( "OpenAL resamplers: unavailable\n" );
+		return;
+	}
+	const openq4_alGetStringiSOFT_t getStringi = reinterpret_cast<openq4_alGetStringiSOFT_t>( alGetProcAddress( "alGetStringiSOFT" ) );
+	const ALint count = alGetInteger( AL_NUM_RESAMPLERS_SOFT );
+	const ALint defaultIndex = alGetInteger( AL_DEFAULT_RESAMPLER_SOFT );
+	const ALint active = soundSystemLocal.hardware.GetSourceResampler();
+	idLib::Printf( "OpenAL resamplers (s_resampler accepts a name or number):\n" );
+	for( ALint i = 0; i < count; i++ )
+	{
+		const bool isActive = ( active >= 0 ) ? ( i == active ) : ( i == defaultIndex );
+		idLib::Printf( "  %c %d: %s%s\n", isActive ? '*' : ' ', i, openQ4_ResamplerName( getStringi, i ), i == defaultIndex ? " (runtime default)" : "" );
+	}
+	CheckALErrors();
+}
+#else
+	#define OPENQ4_OPENAL_RESAMPLER_SUPPORTED 0
+static ALint openQ4_SelectResampler( idStr& chosenName )
+{
+	chosenName = "runtime default";
+	return -1;
+}
+
+static void listResamplers_f( const idCmdArgs& args )
+{
+	(void)args;
+	idLib::Printf( "OpenAL resamplers: unavailable\n" );
+}
+#endif
+
+/*
+========================
+idSoundHardware_OpenAL::GetAirAbsorptionGainHF
+========================
+*/
+float idSoundHardware_OpenAL::GetAirAbsorptionGainHF() const
+{
+	if( !efxEnabled || primaryReverbSlot < 0 || primaryReverbSlot >= SOUND_REVERB_SLOTS )
+	{
+		return 1.0f;
+	}
+	const float gain = appliedReverb[primaryReverbSlot].airAbsorptionGainHF;
+	return ( FLOAT_IS_NAN( gain ) || gain <= 0.0f || gain > 1.0f ) ? 1.0f : gain;
+}
+
+/*
+========================
+idSoundHardware_OpenAL::DetectVoiceFeatures
+
+What every voice can use on this context. Called with the context current.
+========================
+*/
+void idSoundHardware_OpenAL::DetectVoiceFeatures()
+{
+	sourceRadiusAvailable = false;
+	directChannelsAvailable = false;
+	directChannelsMode = AL_FALSE;
+	sourceResampler = -1;
+
+#if defined( AL_SOURCE_RADIUS )
+	sourceRadiusAvailable = alIsExtensionPresent( "AL_EXT_SOURCE_RADIUS" ) == AL_TRUE;
+#endif
+#if defined( AL_DIRECT_CHANNELS_SOFT )
+	if( alIsExtensionPresent( "AL_SOFT_direct_channels" ) == AL_TRUE )
+	{
+		directChannelsAvailable = true;
+		directChannelsMode = AL_TRUE;
+#if defined( AL_REMIX_UNMATCHED_SOFT )
+		// remix rather than drop channels the output does not have
+		if( alIsExtensionPresent( "AL_SOFT_direct_channels_remix" ) == AL_TRUE )
+		{
+			directChannelsMode = AL_REMIX_UNMATCHED_SOFT;
+		}
+#endif
+	}
+#endif
+	idStr resamplerName;
+	sourceResampler = openQ4_SelectResampler( resamplerName );
+
+	// Doom units are inches, and OpenAL reads AL_SPEED_OF_SOUND in the units of the
+	// velocities it is given, so its 343.3 default meant 343 inches a second.
+	alSpeedOfSound( 343.3f / 0.0254f );
+	alDopplerFactor( 1.0f );
+	CheckALErrors();
+
+	common->Printf( "OpenAL voices: source radius %s, direct stereo %s, resampler %s\n",
+		sourceRadiusAvailable ? "on" : "unavailable",
+		directChannelsAvailable ? ( directChannelsMode == AL_TRUE ? "on" : "on (remixed)" ) : "unavailable",
+		resamplerName.c_str() );
+}
+
 void listDevices_f( const idCmdArgs& args )
 {
 	idStrList deviceNames;
@@ -1224,6 +1465,7 @@ void idSoundHardware_OpenAL::Init()
 	{
 		listDevicesCommandAdded = true;
 		cmdSystem->AddCommand( "listDevices", listDevices_f, 0, "Lists the connected sound devices", NULL );
+		cmdSystem->AddCommand( "listResamplers", listResamplers_f, 0, "Lists the OpenAL resamplers s_resampler can pick", NULL );
 	}
 
 	// Periodic re-init retries after a failure run silently so a missing
@@ -1266,15 +1508,15 @@ void idSoundHardware_OpenAL::Init()
 		return;
 	}
 
-	openQ4_ApplyHrtfPreference( openalDevice );
+	openQ4_ReportHrtfPreference( openalDevice );
 
-	ALCint openalContextAttributes[ 3 ];
-	const ALCint* requestedContextAttributes = openQ4_BuildOutputModeContextAttributes( openalDevice, openalContextAttributes );
+	ALCint openalContextAttributes[ OPENQ4_OPENAL_DEVICE_ATTRIBUTE_CAPACITY ];
+	const ALCint* requestedContextAttributes = openQ4_BuildDeviceAttributes( openalDevice, openalContextAttributes, true );
 	openalContext = alcCreateContext( openalDevice, requestedContextAttributes );
 	if( openalContext == NULL && requestedContextAttributes != NULL )
 	{
 		CheckALCErrors( openalDevice );
-		common->Warning( "idSoundHardware_OpenAL::Init: alcCreateContext() rejected requested OpenAL output mode; retrying with runtime default." );
+		common->Warning( "idSoundHardware_OpenAL::Init: alcCreateContext() rejected the requested OpenAL device attributes; retrying with runtime default." );
 		openalContext = alcCreateContext( openalDevice, NULL );
 	}
 	if( openalContext == NULL )
@@ -1365,6 +1607,7 @@ void idSoundHardware_OpenAL::Init()
 	{
 		common->Printf( "OpenAL callback buffers available.\n" );
 	}
+	DetectVoiceFeatures();
 
 	CaptureOpenedDeviceState( requestedDeviceName.c_str() );
 	reopenDeviceAvailable = alcIsExtensionPresent( openalDevice, "ALC_SOFT_reopen_device" ) == ALC_TRUE && openQ4_LoadReopenDeviceProc( openalDevice );
@@ -1389,6 +1632,7 @@ void idSoundHardware_OpenAL::Init()
 	}
 	openQ4_ReportHrtfStatus( openalDevice );
 	openQ4_ReportOutputMode( openalDevice );
+	openQ4_ReportOutputLimiter( openalDevice );
 
 	efxEnabled = false;
 	efxFiltersAvailable = false;
@@ -1637,6 +1881,11 @@ void idSoundHardware_OpenAL::Shutdown()
 	openedWithDefaultFallback = false;
 	openedHrtfMode = OPENQ4_OPENAL_HRTF_AUTO;
 	openedSpeakerCount = OPENQ4_OPENAL_SPEAKERS_DEVICE;
+	openedOutputLimiter = true;
+	sourceRadiusAvailable = false;
+	directChannelsAvailable = false;
+	directChannelsMode = AL_FALSE;
+	sourceResampler = -1;
 	openedRequestedDeviceName.Clear();
 	openedActiveDeviceName.Clear();
 	openedDefaultDeviceName.Clear();

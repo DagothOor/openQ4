@@ -348,9 +348,15 @@ void idSoundSystemLocal::Restart()
 
 	if( !s_noSound.GetBool() )
 	{
+		// Only what the current level and the menus hold; samples purged at an earlier
+		// level end stay purged until something references them again.
 		int reloaded = 0;
 		for( int i = 0; i < samples.Num(); i++ )
 		{
+			if( !samples[i]->GetNeverPurge() && !samples[i]->GetLevelLoadReferenced() )
+			{
+				continue;
+			}
 			samples[i]->LoadResource();
 			if( samples[i]->IsLoaded() )
 			{
@@ -358,6 +364,13 @@ void idSoundSystemLocal::Restart()
 			}
 		}
 		idLib::Printf( "%d sound samples reloaded\n", reloaded );
+	}
+	else
+	{
+		// Every sample was just freed. Keep the restart pending so turning sound back
+		// on reloads them, instead of the device's periodic re-init starting voices on
+		// empty samples.
+		needsRestart = true;
 	}
 
 	SetMute( wasMuted );
@@ -449,6 +462,7 @@ idSoundSystemLocal::Shutdown
 */
 void idSoundSystemLocal::Shutdown()
 {
+	decodingSamples.Clear();
 	samples.DeleteContents( true );
 	sampleHash.Free();
 	FreeStreamBuffers();
@@ -759,22 +773,55 @@ idSoundSample* idSoundSystemLocal::LoadSample( const char* name )
 		if( idStr::Cmp( samples[i]->GetName(), canonical ) == 0 )
 		{
 			samples[i]->SetLevelLoadReferenced();
+			if( !insideLevelLoad )
+			{
+				// referenced from the menus or mid-level: keep it from now on
+				samples[i]->SetNeverPurge();
+			}
+			if( !samples[i]->IsLoaded() )
+			{
+				// purged when an earlier level ended
+				if( insideLevelLoad )
+				{
+					FinishSampleDecodes( false );
+					samples[i]->LoadResourceAsync();
+					if( samples[i]->IsDecoding() )
+					{
+						decodingSamples.Append( samples[i] );
+					}
+				}
+				else
+				{
+					samples[i]->LoadResource();
+				}
+			}
 			return samples[i];
 		}
 	}
 	idSoundSample* sample = new idSoundSample;
 	sample->SetName( canonical );
 	sampleHash.Add( hashKey, samples.Append( sample ) );
-	//if( !insideLevelLoad )
-	//{
-		// Sound sample referenced before any map is loaded
+	// Doom 3's sound cache: a sample first referenced outside a level load (the menus,
+	// the HUD, a sound a script reaches for mid-level) is never purged; one a level
+	// load references is kept while some level references it. Marking every sample
+	// never-purge kept the decoded audio of every map visited, about 218 MB a map.
+	if( !insideLevelLoad )
+	{
 		sample->SetNeverPurge();
 		sample->LoadResource();
-	//}
-	//else
-	//{
-		sample->SetLevelLoadReferenced();
-	//}
+	}
+	else
+	{
+		// its PCM decodes on a job worker while the level keeps loading; it uploads
+		// once the worker is done, or at EndLevelLoad
+		FinishSampleDecodes( false );
+		sample->LoadResourceAsync();
+		if( sample->IsDecoding() )
+		{
+			decodingSamples.Append( sample );
+		}
+	}
+	sample->SetLevelLoadReferenced();
 
 	if( cvarSystem->GetCVarBool( "fs_buildgame" ) )
 	{
@@ -782,6 +829,26 @@ idSoundSample* idSoundSystemLocal::LoadSample( const char* name )
 	}
 
 	return sample;
+}
+
+/*
+========================
+idSoundSystemLocal::FinishSampleDecodes
+========================
+*/
+void idSoundSystemLocal::FinishSampleDecodes( const bool all )
+{
+	for( int i = 0; i < decodingSamples.Num(); )
+	{
+		idSoundSample* sample = decodingSamples[i];
+		if( all || !sample->IsDecoding() || sample->IsDecodeComplete() )
+		{
+			sample->FinishDecode();
+			decodingSamples.RemoveIndex( i );
+			continue;
+		}
+		i++;
+	}
 }
 
 /*
@@ -839,13 +906,14 @@ idSoundSystemLocal::BeginLevelLoad
 void idSoundSystemLocal::BeginLevelLoad()
 {
 	insideLevelLoad = true;
+	// Clear the marks but keep the data, so samples the next level shares with this
+	// one are not decoded again; EndLevelLoad frees the rest.
 	for( int i = 0; i < samples.Num(); i++ )
 	{
 		if( samples[i]->GetNeverPurge() )
 		{
 			continue;
 		}
-		samples[i]->FreeData();
 		samples[i]->ResetLevelLoadReferenced();
 	}
 }
@@ -863,6 +931,32 @@ void idSoundSystemLocal::EndLevelLoad( const char* mapName )
 	// Retail loads the reverb presets and the map's area table here, once the
 	// game render world (and so its portal areas) exists.
 	reverb.LoadLevel( mapName, session != NULL ? session->rw : NULL );
+
+	// Upload what the job workers decoded during the load.
+	FinishSampleDecodes( true );
+	for( int i = 0; i < samples.Num(); i++ )
+	{
+		samples[i]->FinishDecode();
+	}
+
+	// Free the samples earlier levels loaded that this one did not reference.
+	int purged = 0;
+	int64 purgedBytes = 0;
+	for( int i = 0; i < samples.Num(); i++ )
+	{
+		idSoundSample* sample = samples[i];
+		if( sample->GetNeverPurge() || sample->GetLevelLoadReferenced() || !sample->IsLoaded() )
+		{
+			continue;
+		}
+		purgedBytes += sample->BufferSize();
+		sample->FreeData();
+		purged++;
+	}
+	if( purged > 0 )
+	{
+		common->Printf( "%d sound samples from earlier levels freed (%.1f MB)\n", purged, purgedBytes / ( 1024.0 * 1024.0 ) );
+	}
 /*
 	common->Printf( "----- idSoundSystemLocal::EndLevelLoad -----\n" );
 	int		start = Sys_Milliseconds();

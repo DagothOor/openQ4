@@ -98,6 +98,25 @@ public:
 		return auxEffectSlot;
 	}
 
+	// Voice features found on the current context (DetectVoiceFeatures)
+	bool			HasSourceRadius() const
+	{
+		return sourceRadiusAvailable;
+	}
+	bool			HasDirectChannels() const
+	{
+		return directChannelsAvailable;
+	}
+	ALint			GetDirectChannelsMode() const
+	{
+		return directChannelsMode;
+	}
+	// AL_SOURCE_RESAMPLER_SOFT index for every voice, -1 keeps the runtime default
+	ALint			GetSourceResampler() const
+	{
+		return sourceResampler;
+	}
+
 	// Retail area reverb slots (idSoundReverb). Slot 0 is auxEffectSlot, whose
 	// lifetime the checked settings path owns; slots 1-3 exist while it does.
 	// Returns the number of usable slots, 0 when EFX reverb is off.
@@ -111,6 +130,9 @@ public:
 	ALuint			GetReverbSlotHandle( int slot ) const;
 	// the slot every mono voice's first send feeds: the one holding the listener's area
 	ALuint			GetPrimaryAuxEffectSlot() const;
+	// high-frequency gain per metre from the listener's reverb preset (0.994, -5 mB, in
+	// every stock preset); 1 while no EFX reverb is playing
+	float			GetAirAbsorptionGainHF() const;
 	int				GetMaxAuxiliarySends() const
 	{
 		return maxAuxiliarySends;
@@ -175,6 +197,11 @@ private:
 	bool				openedWithDefaultFallback;
 	int					openedHrtfMode;
 	int					openedSpeakerCount;
+	bool				openedOutputLimiter;
+	bool				sourceRadiusAvailable;
+	bool				directChannelsAvailable;
+	ALint				directChannelsMode;
+	ALint				sourceResampler;
 	idStr				openedRequestedDeviceName;
 	idStr				openedActiveDeviceName;
 	idStr				openedDefaultDeviceName;
@@ -202,6 +229,7 @@ private:
 	bool			TryReopenDevice( const char* requestedDeviceName, const char* reason );
 	bool			UpdateDeviceMonitoring();
 	void			PrintPerformanceData();
+	void			DetectVoiceFeatures();
 	bool			CreateAreaReverbSlots();
 	void			ResetReverbSlotState();
 	ALuint			ReverbEffectHandle( int slot ) const;

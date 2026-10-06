@@ -670,10 +670,12 @@ bool idSoundShader::ParseShader( idLexer& src )
 				token.SetFileExtension( ".wav" );
 			}
 
+			// BFG's rule, for openQ4's own SSF_VO. Retail's SSF_IS_VO marks lip-synced speech and
+			// is the game's to set: inferred from the path it took map speakers playing VO out of
+			// s_speakerFraction, 3.7 dB louder than Quake 4 played them.
 			if( token.IcmpPrefixPath( "sound/vo/" ) == 0 || token.IcmpPrefixPath( "sound/guis/" ) == 0 )
 			{
 				parms.soundShaderFlags |= SSF_VO;
-				parms.soundShaderFlags |= SSF_IS_VO;
 			}
 			if( SND_IsMusicSamplePath( token ) )
 			{
@@ -696,7 +698,6 @@ bool idSoundShader::ParseShader( idLexer& src )
 			if( token.IcmpPrefixPath( "sound/vo/" ) == 0 || token.IcmpPrefixPath( "sound/guis/" ) == 0 )
 			{
 				parms.soundShaderFlags |= SSF_VO;
-				parms.soundShaderFlags |= SSF_IS_VO;
 			}
 			if( SND_IsMusicSamplePath( token ) )
 			{

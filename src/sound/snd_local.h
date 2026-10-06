@@ -247,6 +247,9 @@ public:
 	// returns true if this channel is marked as looping
 	bool	IsLooping() const;
 
+	// back to the freshly constructed state
+	void	Reset();
+
 	class idSoundEmitterLocal* 	emitter;
 
 	int						startTime;
@@ -263,7 +266,8 @@ public:
 	idSoundFade				volumeFade;
 
 	float					volumeDB;			// last volume at which this channel will play (calculated in UpdateVolume)
-	float					currentAmplitude;	// current amplitude on the hardware voice
+	float					currentAmplitude;	// the sample's envelope at the current playback position
+	float					shakeScale;			// linear volume before s_volume: shakes do not follow the volume setting
 	float					lastFrequencyShift;
 	float					elapsedFrequencyShiftTime;
 
@@ -384,6 +388,7 @@ public:
 	idDemoFile* 		writeDemo;		// if not NULL, archive commands here
 
 	float				currentCushionDB;	// channels at or below this level will be faded to 0
+	int					lastCushionTime;	// sound time of the last cushion update, 0 = none yet
 	float				shakeAmp;			// last calculated shake amplitude
 	float				rumbleAmp;			// last calculated controller rumble amplitude
 
@@ -479,6 +484,14 @@ public:
 	idVec3		spatializedOrigin;
 	int			occludingPortalCount;
 	bool		crossesLiquidBoundary;	// openQ4: emitter and listener are in different media
+
+	// The shaders and samples this emitter started most recently. Retail's fixed channel
+	// slots kept a finished sound's sample, so no_dups also skipped the variant that had
+	// just ended; openQ4 frees finished channels and needs to remember it here.
+	static const int	RECENT_SAMPLES = 8;
+	const idSoundShader*	recentShaders[ RECENT_SAMPLES ];
+	const idSoundSample*	recentSamples[ RECENT_SAMPLES ];
+	int					recentNext;
 
 	// sound emitters are only allocated by the soundWorld block allocator
 	idSoundEmitterLocal();
@@ -705,6 +718,10 @@ public:
 	bool						needsRestart;
 
 	bool						insideLevelLoad;
+	// samples whose PCM is decoding on a job worker (LoadResourceAsync)
+	idList<idSoundSample*>		decodingSamples;
+	// uploads the samples whose decode has finished, or all of them, waiting
+	void						FinishSampleDecodes( bool all );
 
 	//-------------------------
 

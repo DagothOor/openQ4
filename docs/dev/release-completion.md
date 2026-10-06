@@ -46,6 +46,33 @@
   1. Every other audio default already matched retail or is openQ4-only and
   sound. `sound_settings.py` and `sound_recovery.py` cover the device layout.
 
+- [x] Audio modernization pass against the id Tech 5 (BFG) and id Tech 6
+  (Wwise-class) generation; record in
+  [audio-modernization.md](audio-modernization.md). Spatial: `AL_SOURCE_RADIUS`
+  from each sound's `minDistance` (`s_sourceRadiusScale`, BFG's unused inner
+  radius), full spread for sounds at the listener, direct channels for stereo
+  (`s_directStereo`; HRTF had narrowed and dimmed the menu music by ~5 dB).
+  Device: one attribute list for create, reopen and the settings reset, which
+  fixes `s_openALHRTF 1` being ignored and hot-plug dropping the layout; the
+  output limiter (`s_outputLimiter`), an 11th order sinc resampler
+  (`s_resampler`, `listResamplers`), `AL_SPEED_OF_SOUND` in game units and 16x
+  `AL_MAX_GAIN` for `s_unclamped` speakers. Mixing: recycled channels keep no
+  fade (silent sounds after -80 dB script fades), the channel clock follows the
+  slow-motion pitch (weapon wheel cut dialogue short; music keeps its tempo),
+  silent voice-over updates at zero gain (it kept playing while unfocused),
+  path-inferred VO no longer sets retail's `SSF_IS_VO`, `no_dups` remembers
+  finished variants, frame-rate independent cushion fade, global channels past
+  positional range, filters committed once a frame, air absorption from the
+  room preset (`s_airAbsorption`), and static voices restart after a device
+  reopen. Shakes: the game's shake query reaches the world and follows
+  `shakeData` or a measured envelope. Memory: Doom 3 level purge restored
+  (airdefense1 then airdefense2: 233 MB to 121 MB of PCM), exact-size Ogg decode,
+  and loaders that fail without uploading the beep or ending the session.
+  Level loads decode Ogg samples on job workers (`s_asyncSampleDecode`): the
+  main thread peeks the page headers for length and format, the job opens and
+  checks the stream; airdefense1's sound precache went from ~970 to ~270 ms of
+  main-thread time. Every performance preset keeps room reverb (3b13c1dd).
+
 - [x] PBR production readiness, Stage A: complete roughness and AO shading on
   both backends. Multiple-scattering energy compensation on every specular
   lobe, specular and multi-bounce occlusion, horizon occlusion, AO on authored

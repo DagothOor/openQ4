@@ -64,6 +64,8 @@ public:
         payloadReleased = false;
         openalBuffer = 77;
     }
+    // no decode in flight in this fixture (LoadResourceAsync)
+    void FinishDecode() {}
     bool EnsureCpuPayload();
 };
 ''' + production + r'''

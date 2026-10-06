@@ -95,10 +95,14 @@ public:
 		centerChannel = FLOAT_IS_NAN( c ) ? 0.0f : idMath::ClampFloat( 0.0f, 1.0f, c );
 	}
 
-	void		SetInnerRadius( float r )
+	virtual void	SetInnerRadius( float r )
 	{
 		innerRadius = ( FLOAT_IS_NAN( r ) || r <= 0.0f ) ? 0.0f : r;
 	}
+
+	// Sends the gain, filter and reverb state gathered by this frame's setters
+	// to the hardware in one pass.
+	virtual void	CommitMix() {}
 	void		SetChannelMask( uint32 mask )
 	{
 		channelMask = mask;

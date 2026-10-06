@@ -525,8 +525,14 @@ public:
 		soundWorld->PlaceListener(origin, axis, listenerId);
 	}
 
+	// The game asks for the shake at the player's view, where the listener already is, so the
+	// world's own sum of audible shaking sounds answers it. This returned 0, and no sound
+	// with a "shakes" value moved the camera or an earthquake entity.
 	virtual	float			CurrentShakeAmplitudeForPosition(int worldId, const int time, const idVec3& listenerPosition) {
-		return 0.0f; // GetSoundWorldFromId(worldId)->CurrentShakeAmplitudeForPosition(time, listenerPosition);
+		(void)time;
+		(void)listenerPosition;
+		idSoundWorld* soundWorld = GetSoundWorldFromId(worldId);
+		return ( soundWorld != NULL ) ? soundWorld->CurrentShakeAmplitude() : 0.0f;
 	}
 
 	// RAVEN END

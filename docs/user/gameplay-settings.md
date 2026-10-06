@@ -174,7 +174,7 @@ Linux distributions install it as their OpenAL. Apple's own OpenAL framework has
 using it plays without reverb.
 
 Behavior:
-- `s_useEAXReverb 1` (default): room reverb on. `0` turns it off, along with door muffling, as in
+- `s_useEAXReverb 1` (default): room reverb on, in every performance preset. `0` turns it off, along with door muffling, as in
   the original game. Changing it from the console takes effect after `s_restart`.
 - `s_useEAXOcclusion 1` (default): closed doors muffle sound while reverb is on.
 - `s_muteEAXReverb 1`: silences the reverb of the area you are standing in, for comparison.
@@ -203,7 +203,28 @@ Behavior:
 Notes:
 - Earlier openQ4 builds asked for 5.1 on every device. A saved `6` from those builds moves to `0`
   once. A saved `2` is kept.
-- `s_openALHRTF` chooses headphone HRTF: `0` automatic (default), `1` off, `2` on.
+- `s_openALHRTF` chooses headphone HRTF: `0` automatic (default), `1` off, `2` on. Earlier builds
+  could not turn it off on headphones; `1` now does.
+- Unplugging a headset or switching the default device keeps the sound going, including music
+  and looping ambience, and keeps your speaker and HRTF choices.
+
+## Audio Quality
+
+These are on by default and rarely need changing. Each takes effect after `s_restart`.
+
+- `s_sourceRadiusScale 0.5`: a sound has a size, half of its shader's `minDistance`. Standing next
+  to a machine or a fire, it surrounds you instead of jumping from ear to ear as you turn, and
+  your own footsteps and weapons play evenly instead of from straight ahead. `0` makes every
+  positioned sound a point.
+- `s_directStereo 1`: music and other stereo sounds play straight to your speakers or headphones.
+  With 3D headphone audio on, they used to pass through it as two virtual speakers, which
+  narrowed the stereo and made them quieter.
+- `s_resampler auto`: most Quake 4 sounds are recorded at 22 kHz; `auto` upsamples them with a
+  sinc filter for cleaner high frequencies. `default` keeps OpenAL's own, and `listResamplers`
+  lists the choices.
+- `s_outputLimiter 1`: loud scenes compress instead of clipping.
+- `s_airAbsorption 1`: distant sounds lose a little treble, by the air absorption each room's
+  reverb preset sets.
 
 ## Hit Marker
 

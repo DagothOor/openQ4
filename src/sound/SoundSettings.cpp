@@ -15,7 +15,7 @@
 	defined(AL_EFFECT_EAXREVERB) && defined(AL_FILTER_LOWPASS) && defined(ALC_STEREO_HRTF_SOFT)
 
 extern idCVar s_noSound, s_useOpenAL, s_deviceName, s_useEAXReverb;
-extern idCVar s_openALHRTF, s_numberOfSpeakers, s_maxEmitterChannels, s_openALEfxDebugMode;
+extern idCVar s_openALHRTF, s_numberOfSpeakers, s_maxEmitterChannels, s_openALEfxDebugMode, s_outputLimiter;
 
 namespace {
 bool Fail(char* out, int size, const char* text) noexcept {
@@ -199,7 +199,16 @@ struct SoundSettingsAccess {
 		LPALCRESETDEVICESOFT reset=nullptr;
 		if (!Native([&] {reset=reinterpret_cast<LPALCRESETDEVICESOFT>(alcGetProcAddress(h.openalDevice,"alcResetDeviceSOFT"));return reset!=nullptr;}) ||
 			!Native([&] {return alcGetError(h.openalDevice)==ALC_NO_ERROR;})) return false;
+		// A reset rebuilds the device from these attributes alone, so the limiter rides along.
+		bool limiter=false;
+#if defined(ALC_OUTPUT_LIMITER_SOFT)
+		if (!Native([&] {limiter=alcIsExtensionPresent(h.openalDevice,"ALC_SOFT_output_limiter")==ALC_TRUE;return true;})) return false;
+		const ALCint attrs[]={ALC_HRTF_SOFT,automaticStereo?ALC_DONT_CARE_SOFT:(desired.hrtf?ALC_TRUE:ALC_FALSE),ALC_OUTPUT_MODE_SOFT,desired.outputMode,
+			limiter?ALC_OUTPUT_LIMITER_SOFT:0,s_outputLimiter.GetBool()?ALC_TRUE:ALC_FALSE,0};
+#else
 		const ALCint attrs[]={ALC_HRTF_SOFT,automaticStereo?ALC_DONT_CARE_SOFT:(desired.hrtf?ALC_TRUE:ALC_FALSE),ALC_OUTPUT_MODE_SOFT,desired.outputMode,0};
+#endif
+		(void)limiter;
 		bool accepted=false;
 		if (!Native([&] {accepted=reset(h.openalDevice,attrs)==ALC_TRUE;return true;})) return false;
 		const bool noError=Native([&] {return alcGetError(h.openalDevice)==ALC_NO_ERROR;});
