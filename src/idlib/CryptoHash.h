@@ -28,6 +28,13 @@ static constexpr std::size_t SHA256_BLOCK_BYTES = 64;
 // exact primitives can be exercised by the native safety test target.
 void SHA256( const void *data, std::size_t dataBytes,
 	std::uint8_t digest[ SHA256_DIGEST_BYTES ] );
+// The same digest through the portable compression only. SHA256 itself uses
+// the processor's SHA instructions when it has them; tests compare the two.
+void SHA256Portable( const void *data, std::size_t dataBytes,
+	std::uint8_t digest[ SHA256_DIGEST_BYTES ] );
+// "x86 SHA extensions", "Armv8 SHA-256 instructions" or "portable": which
+// compression SHA256 runs on this machine.
+const char *SHA256Implementation( void );
 
 void HMACSHA256( const void *key, std::size_t keyBytes,
 	const void *data, std::size_t dataBytes,

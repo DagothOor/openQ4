@@ -384,13 +384,55 @@ load (declarations, models, sounds), which is why the total gain is larger
 than the probe phase alone. The remaining probe time is DDS header reads,
 which are already memoized per load.
 
+## 2026-10-06 content hashing cost
+
+The image "decode" phase was not mostly reads either. Every precompressed DDS
+the level loads is hashed twice on the main thread for the image policy's
+content identity (`R_MakeImageFileContent` over the file, then
+`R_MakeImageBinaryContent` over each mip), and generated `.bimage` reads hash
+their payload too: about 510 MiB of SHA-256 per `game/airdefense1` load. The
+portable `idCrypto::SHA256` ran at **252 MB/s** (MSVC `/O2`, this machine),
+about two seconds of the load.
+
+`idCrypto::SHA256` now runs the processor's SHA instructions when it has them:
+the x86 SHA extensions (every AMD Zen, Intel Ice Lake/Goldmont and later),
+detected once with CPUID, and the Armv8 SHA-256 instructions wherever the
+compilation baseline guarantees them (Apple Silicon). Everything else keeps
+the portable compression, which now scrubs its schedule once per call instead
+of once per 64-byte block. Single-thread throughput, 64 MiB:
+
+| Implementation | MB/s |
+|---|---|
+| portable, before | 252 |
+| portable, after | 339 (MSVC) / 353-361 (GCC 13, Clang 18) |
+| x86 SHA extensions | 2,029 (MSVC) / 1,966-2,025 (GCC, Clang) |
+
+The native core-safety test cross-checks the accelerated path against the
+portable one for every length up to 1,100 bytes at four alignments, beside the
+FIPS 180-4 and RFC 4231 vectors; the Armv8 path passed the same checks under
+`qemu-aarch64`.
+
+Warm `game/airdefense1` loads, 1280x720 hidden window, one staged build with
+only the renderer module swapped between the old and new hash, interleaved
+after a warm-up load:
+
+| Renderer | Old SHA-256 (ms) | New SHA-256 (ms) |
+|---|---|---|
+| OpenGL | 13,982 / 12,441 / 12,381 | 11,096 / 9,629 / 10,552 |
+| Vulkan | 11,937 / 15,809 / 17,311 | 8,260 / 12,439 / 14,414 |
+
+The OpenGL median fell from 12,441 ms to 10,552 ms (-15%); generated reads
+from about 390 ms to 80 ms and the DDS phase from about 1.8 s to 1.1-1.6 s.
+The Vulkan runs shared the machine with peer builds that grew during the
+series, but each new load was 2.9-3.7 s faster than the old load before it.
+
 ### Ranked remaining work
 
 1. **Done 2026-10-06** (see above): the timestamp probe no longer opens PK4
    members, and loose search directories are checked once per load instead of
    once per lookup.
-2. Parallel level image read. This is the real bulk, but it is reads, not
-   decode, and the obvious design does not work: `FinishLevelLoadCache`
+2. Parallel level image read. With hashing fast, the DDS phase that remains is
+   mostly the PK4 inflate of each file, and the obvious design does not work: `FinishLevelLoadCache`
    (`Session.cpp`) joins the pipeline and drains every handle before
    `EndLevelLoad` runs, so a prefetch pump driven from the image path is inert,
    and the existing substitution hook only replaces the payload read after the

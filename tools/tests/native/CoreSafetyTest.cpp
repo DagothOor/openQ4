@@ -99,6 +99,36 @@ static void ExerciseCryptoVectors() {
 	idCrypto::SHA256( "abc", 3, digest );
 	ExpectCryptoBytes( digest, sizeof( digest ),
 		"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "SHA-256 abc" );
+	const char *twoBlocks = "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmno"
+		"ijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu";
+	idCrypto::SHA256( twoBlocks, 112, digest );
+	ExpectCryptoBytes( digest, sizeof( digest ),
+		"cf5b16a778af8380036ce59e7b0492370b249b11e8f07a51afac45037afee9d1", "SHA-256 896-bit" );
+
+	// SHA256 runs the processor's SHA instructions where it has them. Every
+	// length across several blocks, at every word alignment, must agree with
+	// the portable compression.
+	std::printf( "SHA-256 implementation: %s\n", idCrypto::SHA256Implementation() );
+	std::uint8_t pattern[ 1100 + 4 ];
+	std::uint32_t seed = 0x9e3779b9u;
+	for ( std::uint8_t &value : pattern ) {
+		seed = seed * 1664525u + 1013904223u;
+		value = static_cast<std::uint8_t>( seed >> 24 );
+	}
+	for ( std::size_t length = 0; length <= 1100; ++length ) {
+		for ( std::size_t offset = 0; offset < 4; ++offset ) {
+			std::uint8_t portable[idCrypto::SHA256_DIGEST_BYTES];
+			idCrypto::SHA256( pattern + offset, length, digest );
+			idCrypto::SHA256Portable( pattern + offset, length, portable );
+			if ( std::memcmp( digest, portable, sizeof( digest ) ) != 0 ) {
+				std::fprintf( stderr, "SHA-256 %s disagrees with portable at length %zu offset %zu\n",
+					idCrypto::SHA256Implementation(), length, offset );
+				failures++;
+				length = 1100;
+				break;
+			}
+		}
+	}
 
 	std::uint8_t hmacKey[20];
 	std::memset( hmacKey, 0x0b, sizeof( hmacKey ) );
