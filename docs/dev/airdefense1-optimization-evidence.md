@@ -426,6 +426,37 @@ from about 390 ms to 80 ms and the DDS phase from about 1.8 s to 1.1-1.6 s.
 The Vulkan runs shared the machine with peer builds that grew during the
 series, but each new load was 2.9-3.7 s faster than the old load before it.
 
+## 2026-10-06 OpenGL texture allocation
+
+`idImage::AllocImage` still carried a BFG workaround from 2011: for every mip
+level of a compressed texture it allocated an uninitialized buffer of that
+level's full size and handed it to `glCompressedTexImage2D`, with a
+`glGetError` before and after, and `SubImageUpload` then uploaded the real
+data with another `glGetError` per level. Every compressed texture a map loads
+crossed to the driver twice, and threaded drivers synchronize on each error
+query.
+
+Compressed textures now take immutable `glTexStorage2D` storage when the
+context has it (GL 4.2, `GL_ARB_texture_storage`, ES 3.0), which allocates
+every level at once and uploads nothing; contexts without it keep the old
+path. While `ActuallyLoadImage` uploads an image, the per-mip error query is
+deferred to one query when its upload scope closes, still before the consumed
+load completes (`renderer_image_policy_boundaries.py` pins that order).
+
+Same staged build with only the OpenGL renderer module swapped, warm
+`game/airdefense1`, idle machine, interleaved after a warm-up:
+
+| Renderer module | Map load (ms) |
+|---|---|
+| before | 10,566 / 10,098 / 10,475 / 10,147 |
+| after | 9,116 / 9,717 / 9,510 / 9,617 |
+
+Every pair was faster, by 0.4-1.5 s; the median fell from 10,311 ms to
+9,564 ms (-7%). The measured upload phase itself varies between 0.5 and 3.9 s
+from run to run on this machine, so the saving shows in the whole load rather
+than in that phase alone. A fixed-tic screenshot pair matched outside the
+animated sky and effects (0.07% of the lower half differed, by at most 20).
+
 ### Ranked remaining work
 
 1. **Done 2026-10-06** (see above): the timestamp probe no longer opens PK4

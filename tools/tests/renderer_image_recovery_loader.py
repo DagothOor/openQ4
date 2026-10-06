@@ -33,6 +33,7 @@ static idBinaryImage binary;
 bool R_ImagePolicyOperationAllowed(){return allowed;}bool R_ImagePolicyContentMutation(){return mutationAllowed;}
 bool R_ImagePolicyUsesPreparedContent(){return uses;}void R_ImagePolicyObserveError(const char*){++errors;allowed=false;}
 struct Renderer{bool IsOpenGLRunning(){return context;}}tr;
+struct idImageUploadErrorScope{};
 class idImage {
 public:bimageFile_t opts{9,9,9,9,9,9};bool defaulted=true,scratchImage=false;std::string loadedSourceName="original";void(*generatorFunction)(idImage*)=nullptr;
  void DeriveOpts(){throw std::runtime_error("unexpected scratch-image path");}

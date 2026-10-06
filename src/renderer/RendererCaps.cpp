@@ -221,6 +221,7 @@ static void RendererDriverQuirks_DisableModernBaseline( renderBackendCaps_t &cap
 	caps.hasMultiDrawIndirect = false;
 	caps.hasTextureViews = false;
 	caps.hasBufferStorage = false;
+	caps.hasTextureStorage = false;
 	caps.hasDSA = false;
 	caps.hasMultiBind = false;
 	caps.hasGLSpirv = false;
@@ -1201,6 +1202,7 @@ void GLCapabilityProbe_Build( renderBackendCaps_t &caps, const char *versionStri
 	caps.hasSync = caps.glVersion >= 3.2f || GLCapabilityProbe_HasExtension( "GL_ARB_sync" );
 	caps.hasMapBufferRange = caps.glVersion >= 3.0f || GLCapabilityProbe_HasExtension( "GL_ARB_map_buffer_range" );
 	caps.hasBufferStorage = caps.glVersion >= 4.4f || GLCapabilityProbe_HasExtension( "GL_ARB_buffer_storage" );
+	caps.hasTextureStorage = caps.glVersion >= 4.2f || GLCapabilityProbe_HasExtension( "GL_ARB_texture_storage" );
 	caps.hasDSA = caps.glVersion >= 4.5f || GLCapabilityProbe_HasExtension( "GL_ARB_direct_state_access" );
 	caps.hasMultiBind = caps.glVersion >= 4.4f || GLCapabilityProbe_HasExtension( "GL_ARB_multi_bind" );
 	caps.hasCompute = caps.glVersion >= 4.3f || GLCapabilityProbe_HasExtension( "GL_ARB_compute_shader" );
@@ -1262,6 +1264,7 @@ void GLCapabilityProbe_Build( renderBackendCaps_t &caps, const char *versionStri
 		caps.hasMapBufferRange = es30;
 		caps.hasSRGBTextures = es30;
 		caps.hasFramebufferSRGB = es30;
+		caps.hasTextureStorage = es30 || GLCapabilityProbe_HasExtension( "GL_EXT_texture_storage" );
 
 		// ES 3.1 territory: compute, SSBO and indirect draws. Left to the
 		// generic extension probe so a 3.1+ context can still light them up.

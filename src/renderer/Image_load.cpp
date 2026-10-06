@@ -616,6 +616,16 @@ Absolutely every image goes through this path
 On exit, the idImage will have a valid OpenGL texture number that can be bound
 ===============
 */
+int idImageUploadErrorScope::depth = 0;
+bool idImageUploadErrorScope::pending = false;
+
+idImageUploadErrorScope::~idImageUploadErrorScope() {
+	if ( --depth == 0 && pending ) {
+		pending = false;
+		GL_CheckErrors();
+	}
+}
+
 void idImage::ActuallyLoadImage( bool fromBackEnd ) {
 	if ( !R_ImagePolicyOperationAllowed() ) return;
 	if ( !R_ImagePolicyContentMutation() ) return;
@@ -656,9 +666,12 @@ void idImage::ActuallyLoadImage( bool fromBackEnd ) {
             defaulted=false;
             const auto source=descriptor.scope==IPC_DIRECT_SOURCE?ICS_DIRECT_DDS:ICS_GENERATED;
             consumedLoad.Content(*prepared,source);
-            AllocImage();
-            for(int i=0;i<prepared->NumImages();++i){const bimageImage_t& part=prepared->GetImageHeader(i);
-                SubImageUpload(part.level,0,0,part.destZ,part.width,part.height,prepared->GetImageData(i));}
+            {
+                idImageUploadErrorScope uploadErrors;
+                AllocImage();
+                for(int i=0;i<prepared->NumImages();++i){const bimageImage_t& part=prepared->GetImageHeader(i);
+                    SubImageUpload(part.level,0,0,part.destZ,part.width,part.height,prepared->GetImageData(i));}
+            }
             loadedSourceName=descriptor.file.qpath;
             consumedLoad.Loaded(source);
             return;
@@ -1065,6 +1078,7 @@ void idImage::ActuallyLoadImage( bool fromBackEnd ) {
 	consumedLoad.Content(im,consumedSource);
 	{
 		idScopedImageLoadPhase uploadPhase( imageLoadPhaseTimings.uploadMsec, imageLoadPhaseTimings.uploadCount );
+		idImageUploadErrorScope uploadErrors;
 		AllocImage();
 
 		const int imageCount = im.NumImages();

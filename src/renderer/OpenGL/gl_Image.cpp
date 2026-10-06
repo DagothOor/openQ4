@@ -248,7 +248,9 @@ void idImage::SubImageUpload( int mipLevel, int x, int y, int z, int width, int 
 		glPixelStorei( GL_UNPACK_ROW_LENGTH, 0 );
 	}
 
-	if ( R_ImagePolicyActive() || imageConsumedLoad_t::Active(this) ) GL_CheckErrors();
+	if ( ( R_ImagePolicyActive() || imageConsumedLoad_t::Active(this) ) && !idImageUploadErrorScope::Defer() ) {
+		GL_CheckErrors();
+	}
 	imageOperation.Succeeded();
 }
 
@@ -701,7 +703,26 @@ void idImage::AllocImage() {
 		return;
 	}
 
-	for ( int side = 0; side < numSides; side++ ) {
+	// Immutable storage allocates every level of a compressed image in one call
+	// and uploads nothing. The per-level path below hands the driver an
+	// uninitialized buffer of each level's full size (a 2011 workaround for
+	// drivers that would not allocate otherwise), so every compressed texture
+	// a map loads crossed to the driver twice, with two error queries per level.
+	// Compressed images are only ever re-specified by PurgeImage + AllocImage,
+	// which creates a new texture object.
+	int fullChainLevels = 1;
+	for ( int size = Max( opts.width, opts.height ); size > 1; size >>= 1 ) {
+		fullChainLevels++;
+	}
+	const bool immutableStorage = IsCompressed() && glConfig.backendCaps.hasTextureStorage
+		&& opts.numLevels >= 1 && opts.numLevels <= fullChainLevels
+		&& ( opts.textureType != TT_CUBIC || opts.width == opts.height );
+	if ( immutableStorage ) {
+		glTexStorage2D( target, opts.numLevels, internalFormat, opts.width,
+			opts.textureType == TT_CUBIC ? opts.width : opts.height );
+	}
+
+	for ( int side = 0; side < numSides && !immutableStorage; side++ ) {
 		int w = opts.width;
 		int h = opts.height;
 		if ( opts.textureType == TT_CUBIC ) {

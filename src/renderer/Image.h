@@ -351,6 +351,29 @@ ID_INLINE idImage::idImage(const char* name) : imgName(name), imagePolicyIdentit
 	useCount = 0;
 }
 
+// While a scope is open, an OpenGL SubImageUpload leaves its error query to
+// the scope's end: glGetError synchronizes with threaded drivers, and a loaded
+// image uploads each mip separately. Errors stay sticky until that one query,
+// so they are still observed before the load completes.
+class idImageUploadErrorScope {
+public:
+	idImageUploadErrorScope() { depth++; }
+	~idImageUploadErrorScope();
+	// true when an open scope takes over the query of this upload
+	static bool Defer() {
+		if ( depth <= 0 ) {
+			return false;
+		}
+		pending = true;
+		return true;
+	}
+	idImageUploadErrorScope( const idImageUploadErrorScope & ) = delete;
+	idImageUploadErrorScope &operator=( const idImageUploadErrorScope & ) = delete;
+private:
+	static int depth;
+	static bool pending;
+};
+
 // Mutable renderer-owned images must never be treated as static PBR material
 // resources. The name form catches targets before lazy allocation; the image
 // form also catches arbitrary names registered through ScratchImage().

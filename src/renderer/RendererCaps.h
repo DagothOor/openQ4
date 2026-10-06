@@ -88,6 +88,7 @@ typedef struct renderBackendCaps_s {
 	bool						hasSync;
 	bool						hasMapBufferRange;
 	bool						hasBufferStorage;
+	bool						hasTextureStorage;	// immutable glTexStorage2D
 	bool						hasDSA;
 	bool						hasMultiBind;
 	bool						hasCompute;

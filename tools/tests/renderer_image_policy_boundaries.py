@@ -270,8 +270,25 @@ def build_units(repository, headers):
     # The release upload boundary must preserve errors before program loaders or
     # other consumers can issue a direct glGetError and erase the observation.
     gl_upload = method((renderer / 'OpenGL/gl_Image.cpp').read_text(encoding='utf-8'), 'void idImage::SubImageUpload(')
-    if 'if ( R_ImagePolicyActive() || imageConsumedLoad_t::Active(this) ) GL_CheckErrors();\n\timageOperation.Succeeded();' not in gl_upload:
+    if ('if ( ( R_ImagePolicyActive() || imageConsumedLoad_t::Active(this) ) && !idImageUploadErrorScope::Defer() ) {\n'
+            '\t\tGL_CheckErrors();\n\t}\n\timageOperation.Succeeded();') not in gl_upload:
         raise AssertionError('checked GL upload completion must collect errors before success')
+    # A loaded image defers that query to its upload scope, which must close
+    # (GL_CheckErrors) inside ActuallyLoadImage after the last mip upload and
+    # before the consumed load completes; nothing in between reads glGetError.
+    image_load = (renderer / 'Image_load.cpp').read_text(encoding='utf-8')
+    scope_end = method(image_load, 'idImageUploadErrorScope::~idImageUploadErrorScope(')
+    if 'GL_CheckErrors();' not in scope_end:
+        raise AssertionError('the upload error scope must collect deferred GL errors when it closes')
+    load = method(image_load, 'void idImage::ActuallyLoadImage(')
+    upload_block = load.index('idImageUploadErrorScope uploadErrors;\n\t\tAllocImage();')
+    last_upload = load.index('SubImageUpload( img.level', upload_block)
+    scope_close = load.index('\n\t}\n', last_upload)
+    loaded = load.index('consumedLoad.Loaded(consumedSource);', upload_block)
+    if not upload_block < last_upload < scope_close < loaded:
+        raise AssertionError('deferred GL upload errors must be collected before the consumed load completes')
+    if 'glGetError' in load[upload_block:scope_close]:
+        raise AssertionError('no raw glGetError may run while upload errors are deferred')
     module = (renderer / 'RendererModule.cpp').read_text(encoding='utf-8')
     module = MODULE_SUPPORT + method(module, 'static void RM_ReleaseDisplayVideoPin(') + method(module, 'bool R_RendererModule_TryImagePolicyRestart(') + MODULE_MAIN
     return {'vulkan': vulkan, 'entries': ENTRY_SUPPORT + '\n'.join(entries) + ENTRY_MAIN,

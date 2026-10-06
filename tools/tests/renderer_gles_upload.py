@@ -36,6 +36,7 @@ using byte = unsigned char;
 static bool R_ImagePolicyOperationAllowed() { return true; }
 static bool R_ImagePolicyActive() { return false; }
 struct imageConsumedLoad_t { static bool Active(const void*) { return false; } };
+struct idImageUploadErrorScope { static bool Defer() { return false; } };
 static void GL_CheckErrors() {}
 struct renderImageOperation_t {
     template<class... T> explicit renderImageOperation_t(T...) {}
