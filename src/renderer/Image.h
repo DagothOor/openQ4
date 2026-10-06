@@ -226,6 +226,9 @@ public:
 	void		AddUseCount( int count ) { useCount += count; }
 	int			GetUseCount() const { return useCount; }
 	void		ActuallyLoadImage(bool fromBackEnd);
+	// The DDS file ActuallyLoadImage will read whole, when it reads one, so a
+	// level load can fetch it ahead. A wrong guess costs only that read.
+	bool		PredictDirectDDSPayload(idStr& path) const;
 	//---------------------------------------------
 	// Platform specific implementations
 	//---------------------------------------------
@@ -568,6 +571,12 @@ bool R_ResolvePreferredDDSImageSource(const char* name, idStr& ddsName, ID_TIME_
 // load; disabling also clears all memoized probe results
 void R_SetDDSProbeCacheActive(bool active);
 bool R_LoadPrecompressedDDS(const char* name, idBinaryImage& image, ID_TIME_T* timestamp, textureUsage_t usage, const imageDownsizePolicy_t& downsizePolicy, bool useMipmaps, imageReductionResult_t* reduction = NULL, const imageFileContent_t* expected = NULL);
+// Optional source of DDS files a level load has already read and fingerprinted
+// on worker threads. A taken buffer comes from this binary's heap and passes to
+// the caller; false means R_LoadPrecompressedDDS opens and reads the file itself.
+typedef bool (*imageDDSPrefetchTake_t)(const char* qpath, byte** buffer, int* bytes, ID_TIME_T* timestamp,
+    imageFileContent_t* content, bool* contentObserved);
+void R_SetDDSPrefetchSource(imageDDSPrefetchTake_t take);
 bool R_ImageDDS_RunSelfTest();
 // pic is in top to bottom raster format
 bool R_LoadCubeImages(const char* cname, cubeFiles_t extensions, byte* pic[6], int* size, ID_TIME_T* timestamp);

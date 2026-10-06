@@ -5,7 +5,7 @@ No native driver, real filesystem asset, compressed codec implementation or cont
 qualification. DDS parsing/layout/owned mip views and RGBA filter bytes are real.
 """
 from pathlib import Path
-import argparse, hashlib, json, os, shutil, subprocess, tempfile
+import argparse, hashlib, json, os, re, shutil, subprocess, tempfile
 from renderer_consumed_policy import method
 ROOT=Path(__file__).resolve().parents[2]
 SUPPORT=r'''
@@ -184,6 +184,10 @@ def main():
  # Skip top-of-file forward declarations when extracting the two reduction bodies.
  for sig in ['static void R_DownsizeLoadedImageData(', 'static bool R_DownsizeLoadedCubeImageData(']:cpu+='\n'+method(load[load.index('static byte *R_ShrinkLoadedImageData('):],sig)
  dds=files[files.index('static ID_INLINE uint32 R_ReadLittleUInt32('):files.index('static bool R_ReadDDSFileInfoUncached(')]
+ # The level-load prefetch hook the loader consults before opening a file.
+ image_h=(ROOT/'src/renderer/Image.h').read_text()
+ dds+='\n'+re.search(r'typedef bool \(\*imageDDSPrefetchTake_t\)\([^;]*;',image_h)[0]
+ dds+='\n'+files[files.index('static imageDDSPrefetchTake_t ddsPrefetchTake'):files.index('/*\n=============\nR_LoadPrecompressedDDS')]
  dds+='\n'+method(files,'bool R_LoadPrecompressedDDS(').replace('const imageFileContent_t* expected )','const imageFileContent_t* expected = nullptr )')+'\n'+method(files,'bool R_LoadCubeImages(')
  assembly='\n'.join(method(binary,s) for s in ['void idBinaryImage::Clear(', 'static void R_PadRGBAImageTo4x4Blocks(', 'static void PadImageTo4x4(', 'void idBinaryImage::Load2DFromOwnedCompressedData(', 'bool idBinaryImage::Load2DFromMemory(', 'bool idBinaryImage::LoadCubeFromMemory('])
  actual=method(load,'void idImage::ActuallyLoadImage(');assert 'consumedLoad.Reduction(consumedReduction);' in actual

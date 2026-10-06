@@ -347,7 +347,8 @@ private:
 	dword			pageRequests;					// page requests
 	dword			OSAllocs;						// number of allocs made to the OS
 
-	int				c_heapAllocRunningCount;
+	// allocations reach the heap from worker threads too (inflate, decode)
+	std::atomic<int>	c_heapAllocRunningCount;
 
 	void			*defragBlock;					// a single huge block that can be allocated
 													// at startup, then freed when needed
@@ -399,7 +400,7 @@ void idHeap::Init () {
 	mediumLastFreePage	= NULL;
 	mediumFirstUsedPage	= NULL;
 
-	c_heapAllocRunningCount = 0;
+	c_heapAllocRunningCount.store( 0, std::memory_order_relaxed );
 
 //RAVEN BEGIN
 //amccarthy:  initalize allocation tracking
@@ -515,7 +516,7 @@ void *idHeap::Allocate( const dword bytes, byte tag ) {
 	if ( !bytes ) {
 		return NULL;
 	}
-	c_heapAllocRunningCount++;
+	c_heapAllocRunningCount.fetch_add( 1, std::memory_order_relaxed );
 
 #if USE_LIBC_MALLOC
 
@@ -552,7 +553,7 @@ void idHeap::Free( void *p ) {
 	if ( !p ) {
 		return;
 	}
-	c_heapAllocRunningCount--;
+	c_heapAllocRunningCount.fetch_sub( 1, std::memory_order_relaxed );
 
 #if USE_LIBC_MALLOC
 

@@ -1281,6 +1281,12 @@ bool R_ResolvePreferredDDSImageSource( const char *cname, idStr &ddsName, ID_TIM
 	return false;
 }
 
+static imageDDSPrefetchTake_t ddsPrefetchTake = NULL;
+
+void R_SetDDSPrefetchSource( imageDDSPrefetchTake_t take ) {
+	ddsPrefetchTake = take;
+}
+
 /*
 =============
 R_LoadPrecompressedDDS
@@ -1307,27 +1313,36 @@ bool R_LoadPrecompressedDDS( const char *cname, idBinaryImage &image, ID_TIME_T 
 	// mip payloads stay behind as views into it inside the idBinaryImage, and its
 	// eventual Mem_Free in idBinaryImage::Clear must pair with this binary's
 	// allocator (the renderer modules carry their own idlib heap).
-	idFile *ddsFile = fileSystem->OpenFileRead( name.c_str() );
-    struct CloseFile { idFile*& file; ~CloseFile() { if (file) fileSystem->CloseFile(file); } } closeFile{ddsFile};
-	if ( ddsFile == NULL ) {
-		if ( timestamp != NULL ) {
-			*timestamp = FILE_NOT_FOUND_TIMESTAMP;
-		}
-		return false;
-	}
-	if ( timestamp != NULL ) {
-		*timestamp = ddsFile->Timestamp();
-	}
-	const int fileSize = ddsFile->Length();
-    if (expected && (fileSize < 0 || std::uint64_t(fileSize) != requested.bytes)) return false;
-	byte *buffer = fileSize >= DDS_HEADER_BYTES ? (byte *)Mem_Alloc( fileSize ) : NULL;
+	byte *buffer = NULL;
     struct ReleaseBuffer { byte*& bytes; ~ReleaseBuffer() { if (bytes) Mem_Free(bytes); } } releaseBuffer{buffer};
-	const bool readOk = buffer != NULL && ddsFile->Read( buffer, fileSize ) == fileSize;
-	fileSystem->CloseFile( ddsFile );
-    ddsFile = NULL;
-	if ( !readOk ) return false;
+	int fileSize = 0;
     imageFileContent_t actualContent;
-    const bool contentObserved = R_MakeImageFileContent(IFC_DIRECT_DDS,name.c_str(),buffer,fileSize,actualContent);
+    bool contentObserved = false;
+	// A level load may already have read and fingerprinted this exact file on a
+	// worker thread; that buffer also comes from this binary's heap.
+	const bool prefetched = expected == NULL && ddsPrefetchTake != NULL
+		&& ddsPrefetchTake( name.c_str(), &buffer, &fileSize, timestamp, &actualContent, &contentObserved );
+	if ( !prefetched ) {
+		idFile *ddsFile = fileSystem->OpenFileRead( name.c_str() );
+	    struct CloseFile { idFile*& file; ~CloseFile() { if (file) fileSystem->CloseFile(file); } } closeFile{ddsFile};
+		if ( ddsFile == NULL ) {
+			if ( timestamp != NULL ) {
+				*timestamp = FILE_NOT_FOUND_TIMESTAMP;
+			}
+			return false;
+		}
+		if ( timestamp != NULL ) {
+			*timestamp = ddsFile->Timestamp();
+		}
+		fileSize = ddsFile->Length();
+	    if (expected && (fileSize < 0 || std::uint64_t(fileSize) != requested.bytes)) return false;
+		buffer = fileSize >= DDS_HEADER_BYTES ? (byte *)Mem_Alloc( fileSize ) : NULL;
+		const bool readOk = buffer != NULL && ddsFile->Read( buffer, fileSize ) == fileSize;
+		fileSystem->CloseFile( ddsFile );
+	    ddsFile = NULL;
+		if ( !readOk ) return false;
+	    contentObserved = R_MakeImageFileContent(IFC_DIRECT_DDS,name.c_str(),buffer,fileSize,actualContent);
+	}
     if (expected && (!contentObserved || !R_ImageFileContentEqual(requested,actualContent))) return false;
 
 	bool loaded = false;

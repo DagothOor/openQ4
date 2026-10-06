@@ -96,6 +96,26 @@ static void Direct() {
         TEST(R_LoadPrecompressedDDS("textures/a.dds",live,nullptr,TD_BUMP,policy,true,&reduction,nullptr));
         auto wanted=Descriptor(live,reduction,policy);TEST(wanted.scope==IPC_DIRECT_SOURCE&&wanted.file.bytes==fs.file.bytes.size());
         TEST(R_ReconstructImageContent(wanted,restored));TEST(Snapshot(restored)==Snapshot(live));
+        {
+            // A level-load prefetch hands over the file it already read and
+            // fingerprinted: no second open, the same output and file identity,
+            // and the buffer is owned like a read one. A recovery read (an
+            // expected descriptor) never consults it.
+            static std::vector<byte> prefetchBytes;static int prefetchTakes=0;static std::string prefetchPath;
+            prefetchBytes=fs.file.bytes;prefetchTakes=0;
+            R_SetDDSPrefetchSource([](const char* qpath,byte** buffer,int* size,ID_TIME_T* stamp,imageFileContent_t* content,bool* observed)->bool{
+                ++prefetchTakes;prefetchPath=qpath;*buffer=(byte*)Mem_Alloc(prefetchBytes.size());
+                memcpy(*buffer,prefetchBytes.data(),prefetchBytes.size());*size=int(prefetchBytes.size());if(stamp)*stamp=73;
+                *observed=R_MakeImageFileContent(IFC_DIRECT_DDS,qpath,*buffer,prefetchBytes.size(),*content);return true;});
+            const int opensBefore=fs.opens;idBinaryImage viaPrefetch("prefetched");imageReductionResult_t prefetchReduction;ID_TIME_T stamp=0;
+            TEST(R_LoadPrecompressedDDS("textures/a.dds",viaPrefetch,&stamp,TD_BUMP,policy,true,&prefetchReduction,nullptr));
+            TEST(fs.opens==opensBefore&&prefetchTakes==1&&prefetchPath=="textures/a.dds"&&stamp==73);
+            TEST(Snapshot(viaPrefetch)==Snapshot(live)&&R_ImageFileContentEqual(viaPrefetch.GetFileContent(),live.GetFileContent()));
+            idBinaryImage exact("exact");imageReductionResult_t exactReduction;
+            TEST(R_LoadPrecompressedDDS(wanted.file.qpath,exact,nullptr,TD_BUMP,policy,true,&exactReduction,&wanted.file));
+            TEST(prefetchTakes==1&&fs.opens==opensBefore+1&&Snapshot(exact)==Snapshot(live));
+            R_SetDDSPrefetchSource(nullptr);
+        }
         const auto bytes=fs.file.bytes;
         fs.file.bytes.back()^=1;PristineFailure(wanted,restored);
         auto old=Snapshot(restored);imageReductionResult_t untouched;untouched.firstLevel=999;

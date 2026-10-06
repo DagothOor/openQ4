@@ -43,6 +43,17 @@
   native core-safety test cross-checks both paths at every length to 1,100
   bytes and four alignments; the Armv8 path passed under qemu-aarch64.
 
+- [x] Read level textures on worker threads (idTech 5 track, Air Defense 1
+  register item 2). `LoadLevelImages` predicts each image's precompressed DDS
+  and up to four workers read and fingerprint the next ones while the main
+  thread uploads; the main thread still opens every file and owns every
+  buffer (32 files / 64 MiB window), and `R_LoadPrecompressedDDS` takes a
+  finished buffer through `R_SetDDSPrefetchSource` (never for recovery reads).
+  1,657 of 1,657 predictions taken; DDS phase 1.1-1.7 s -> 0.1 s; warm load
+  OpenGL median 11.1 -> 9.1 s, Vulkan 1.6-2.3 s faster per pair; static
+  screenshot region pixel-identical. `renderer_image_content.py` compiles the
+  real loader with a counted prefetch hand-off and pins the worker invariants.
+
 - [x] Stop sending every OpenGL texture to the driver twice. Compressed
   textures take immutable `glTexStorage2D` storage when available (new
   `hasTextureStorage` capability) instead of a 2011 BFG workaround that

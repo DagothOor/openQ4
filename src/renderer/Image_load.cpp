@@ -616,6 +616,35 @@ Absolutely every image goes through this path
 On exit, the idImage will have a valid OpenGL texture number that can be bound
 ===============
 */
+/*
+==============
+PredictDirectDDSPayload
+
+Mirrors ActuallyLoadImage's direct-DDS decision without its staleness check;
+the preferred-source resolution is memoized for the level load, so the load
+itself asks again for free.
+==============
+*/
+bool idImage::PredictDirectDDSPayload( idStr &path ) const {
+	if ( scratchImage || generatorFunction != NULL || cubeFiles != CF_2D || usage == TD_PBR_COLOR
+			|| R_ImagePolicyUsesPreparedContent() ) {
+		return false;
+	}
+	idStr name = GetName();
+	idStr extension;
+	name.ExtractFileExtension( extension );
+	if ( idStr::Icmp( extension.c_str(), "dds" ) == 0 ) {
+		path = name;
+	} else {
+		bool precompressed = false;
+		if ( !R_ResolvePreferredDDSImageSource( GetName(), path, NULL, true, &precompressed ) || !precompressed ) {
+			return false;
+		}
+	}
+	path.BackSlashesToSlashes();
+	return true;
+}
+
 int idImageUploadErrorScope::depth = 0;
 bool idImageUploadErrorScope::pending = false;
 

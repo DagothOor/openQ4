@@ -33,6 +33,12 @@ If you have questions concerning this license or the applicable additional terms
 #include "tr_local.h"
 #include "RendererResourceSettings.h"
 
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <thread>
+#include <vector>
+
 bool R_IsMutableRenderImageName( const char *name ) {
 	if ( name == NULL || name[0] == '\0' ) {
 		return false;
@@ -501,6 +507,265 @@ static int R_QsortImageSizes( const void *a, const void *b ) {
 	}
 	return idStr::Icmp( ea->image->GetName(), eb->image->GetName() );
 }
+
+/*
+====================================================================
+
+Level image prefetch
+
+A level load reads ~1,700 images one after another, and for most of them the
+whole cost of the read is inflating a precompressed DDS out of its pk4 and
+fingerprinting it. While the main thread uploads image N, worker threads read
+and fingerprint the DDS files of the next images. The main thread still opens
+every file (the filesystem's search state is not thread-safe) and allocates
+every buffer from this module's heap; a worker only reads its own open file
+into its own buffer. R_LoadPrecompressedDDS takes a finished buffer through
+R_SetDDSPrefetchSource, and an image that turns out not to read its predicted
+file just releases it.
+
+====================================================================
+*/
+
+idCVar image_prefetchLevelImages( "image_prefetchLevelImages", "1", CVAR_RENDERER | CVAR_BOOL,
+	"read and fingerprint a level's precompressed textures on worker threads while earlier ones upload" );
+
+namespace {
+
+static const int LEVEL_IMAGE_PREFETCH_MAX_OPEN = 32;
+static const int64 LEVEL_IMAGE_PREFETCH_MAX_BYTES = 64ll << 20;
+static const int LEVEL_IMAGE_PREFETCH_MAX_FILE_BYTES = 64 << 20;
+static const int LEVEL_IMAGE_PREFETCH_MAX_WORKERS = 4;
+static const int LEVEL_IMAGE_PREFETCH_MIN_FILE_BYTES = 128;	// a DDS header
+
+struct levelImagePrefetchEntry_t {
+	idStr				qpath;		// empty when the image reads no direct DDS
+	idFile *			file = NULL;
+	byte *				buffer = NULL;
+	int					bytes = 0;
+	ID_TIME_T			timestamp = FILE_NOT_FOUND_TIMESTAMP;
+	imageFileContent_t	content{};
+	bool				contentObserved = false;
+	bool				readOk = false;
+	bool				opened = false;
+	bool				queued = false;		// waiting in the queue, not yet started
+	bool				done = false;
+	bool				settled = false;	// taken or released by the main thread
+};
+
+class idLevelImagePrefetch {
+public:
+	~idLevelImagePrefetch() { End(); }
+
+	void Begin( const idList<sortedImage_t> &images ) {
+		entries.resize( static_cast<size_t>( images.Num() ) );
+		for ( int i = 0; i < images.Num(); ++i ) {
+			images[ i ].image->PredictDirectDDSPayload( entries[ static_cast<size_t>( i ) ].qpath );
+		}
+		const unsigned int hardware = std::thread::hardware_concurrency();
+		const int workerCount = idMath::ClampInt( 1, LEVEL_IMAGE_PREFETCH_MAX_WORKERS,
+			hardware > 1 ? static_cast<int>( hardware ) - 1 : 1 );
+		stopping = false;
+		for ( int i = 0; i < workerCount; ++i ) {
+			workers.emplace_back( &idLevelImagePrefetch::Work, this );
+		}
+		active = this;
+		R_SetDDSPrefetchSource( &idLevelImagePrefetch::TakeHook );
+	}
+
+	// Main thread: open and queue the files of the next images, within the
+	// open-file and byte budgets.
+	void Pump( int consumeIndex ) {
+		current = consumeIndex;
+		if ( nextToOpen < consumeIndex ) {
+			nextToOpen = consumeIndex;
+		}
+		while ( nextToOpen < static_cast<int>( entries.size() )
+				&& nextToOpen - consumeIndex < LEVEL_IMAGE_PREFETCH_MAX_OPEN
+				&& outstandingBytes < LEVEL_IMAGE_PREFETCH_MAX_BYTES ) {
+			levelImagePrefetchEntry_t &entry = entries[ static_cast<size_t>( nextToOpen++ ) ];
+			if ( entry.qpath.Length() == 0 ) {
+				continue;
+			}
+			idFile *file = fileSystem->OpenFileRead( entry.qpath.c_str() );
+			if ( file == NULL ) {
+				continue;
+			}
+			const int bytes = file->Length();
+			if ( bytes < LEVEL_IMAGE_PREFETCH_MIN_FILE_BYTES || bytes > LEVEL_IMAGE_PREFETCH_MAX_FILE_BYTES ) {
+				fileSystem->CloseFile( file );
+				continue;
+			}
+			entry.file = file;
+			entry.bytes = bytes;
+			entry.timestamp = file->Timestamp();
+			entry.buffer = static_cast<byte *>( Mem_Alloc( bytes ) );
+			entry.opened = true;
+			outstandingBytes += bytes;
+			std::lock_guard<std::mutex> lock( mutex );
+			entry.queued = true;
+			queue.push_back( &entry );
+			workReady.notify_one();
+		}
+	}
+
+	// Main thread: an image finished loading; drop its file if it was not taken.
+	void Retire( int index ) {
+		levelImagePrefetchEntry_t &entry = entries[ static_cast<size_t>( index ) ];
+		if ( entry.opened && !entry.settled ) {
+			Settle( entry, false );
+			Mem_Free( entry.buffer );
+			entry.buffer = NULL;
+		}
+		current = -1;
+	}
+
+	void End() {
+		if ( active == this ) {
+			R_SetDDSPrefetchSource( NULL );
+			active = NULL;
+		}
+		{
+			std::lock_guard<std::mutex> lock( mutex );
+			stopping = true;
+			for ( levelImagePrefetchEntry_t *entry : queue ) {
+				entry->queued = false;
+				entry->done = true;	// never started: nothing read
+			}
+			queue.clear();
+		}
+		workReady.notify_all();
+		for ( std::thread &worker : workers ) {
+			worker.join();
+		}
+		workers.clear();
+		for ( levelImagePrefetchEntry_t &entry : entries ) {
+			if ( entry.opened && !entry.settled ) {
+				Settle( entry, false );
+				Mem_Free( entry.buffer );
+				entry.buffer = NULL;
+			}
+		}
+		entries.clear();
+	}
+
+	int Taken() const { return taken; }
+	int Opened() const { return settledCount; }
+
+private:
+	static bool TakeHook( const char *qpath, byte **buffer, int *bytes, ID_TIME_T *timestamp,
+			imageFileContent_t *content, bool *contentObserved ) {
+		return active != NULL && active->Take( qpath, buffer, bytes, timestamp, content, contentObserved );
+	}
+
+	bool Take( const char *qpath, byte **buffer, int *bytes, ID_TIME_T *timestamp,
+			imageFileContent_t *content, bool *contentObserved ) {
+		if ( current < 0 || current >= static_cast<int>( entries.size() ) ) {
+			return false;
+		}
+		levelImagePrefetchEntry_t &entry = entries[ static_cast<size_t>( current ) ];
+		if ( !entry.opened || entry.settled || entry.qpath.Cmp( qpath ) != 0 ) {
+			return false;
+		}
+		Settle( entry, true );
+		if ( !entry.readOk ) {
+			Mem_Free( entry.buffer );
+			entry.buffer = NULL;
+			return false;
+		}
+		*buffer = entry.buffer;
+		*bytes = entry.bytes;
+		if ( timestamp != NULL ) {
+			*timestamp = entry.timestamp;
+		}
+		*content = entry.content;
+		*contentObserved = entry.contentObserved;
+		entry.buffer = NULL;
+		taken++;
+		return true;
+	}
+
+	// Main thread: finish the entry, then close its file. A file no worker has
+	// started is read here when its data is wanted, and otherwise dropped.
+	void Settle( levelImagePrefetchEntry_t &entry, bool wantData ) {
+		bool readHere = false;
+		{
+			std::unique_lock<std::mutex> lock( mutex );
+			if ( entry.queued ) {
+				for ( auto it = queue.begin(); it != queue.end(); ++it ) {
+					if ( *it == &entry ) {
+						queue.erase( it );
+						break;
+					}
+				}
+				entry.queued = false;
+				entry.done = true;
+				readHere = wantData;
+			} else {
+				workDone.wait( lock, [&entry] { return entry.done; } );
+			}
+		}
+		if ( readHere ) {
+			Read( entry );
+		}
+		fileSystem->CloseFile( entry.file );
+		entry.file = NULL;
+		entry.settled = true;
+		outstandingBytes -= entry.bytes;
+		settledCount++;
+	}
+
+	// Touches only the entry's own file and buffer, and reads its path without
+	// copying it, so it is safe on a worker.
+	static void Read( levelImagePrefetchEntry_t &entry ) {
+		entry.readOk = entry.file->Read( entry.buffer, entry.bytes ) == entry.bytes;
+		if ( entry.readOk ) {
+			entry.contentObserved = R_MakeImageFileContent( IFC_DIRECT_DDS, entry.qpath.c_str(),
+				entry.buffer, static_cast<std::size_t>( entry.bytes ), entry.content );
+		}
+	}
+
+	void Work() {
+		for ( ;; ) {
+			levelImagePrefetchEntry_t *entry = NULL;
+			{
+				std::unique_lock<std::mutex> lock( mutex );
+				workReady.wait( lock, [this] { return stopping || !queue.empty(); } );
+				if ( queue.empty() ) {
+					return;
+				}
+				entry = queue.front();
+				queue.pop_front();
+				entry->queued = false;
+			}
+			// Until done is published under the lock the main thread does not
+			// touch this entry (Settle waits on done), so no copy is needed.
+			Read( *entry );
+			{
+				std::lock_guard<std::mutex> lock( mutex );
+				entry->done = true;
+			}
+			workDone.notify_all();
+		}
+	}
+
+	static idLevelImagePrefetch *active;
+	std::vector<levelImagePrefetchEntry_t> entries;
+	std::vector<std::thread> workers;
+	std::deque<levelImagePrefetchEntry_t *> queue;
+	std::mutex mutex;
+	std::condition_variable workReady;
+	std::condition_variable workDone;
+	bool stopping = false;
+	int current = -1;
+	int nextToOpen = 0;
+	int64 outstandingBytes = 0;
+	int taken = 0;
+	int settledCount = 0;
+};
+
+idLevelImagePrefetch *idLevelImagePrefetch::active = NULL;
+
+} // namespace
 
 /*
 =======================
@@ -1323,6 +1588,12 @@ int idImageManager::LoadLevelImages( bool pacifier ) {
 		qsort( pendingImages.Ptr(), pendingImages.Num(), sizeof( sortedImage_t ), R_QsortImageName );
 	}
 
+	idLevelImagePrefetch prefetch;
+	const bool prefetching = image_prefetchLevelImages.GetBool() && pendingImages.Num() > 1;
+	if ( prefetching ) {
+		prefetch.Begin( pendingImages );
+	}
+
 	for ( int i = 0; i < pendingImages.Num(); i++ ) {
 		if ( pacifier ) {
 			//common->UpdateLevelLoadPacifier();
@@ -1332,7 +1603,13 @@ int idImageManager::LoadLevelImages( bool pacifier ) {
 		if ( profileLevelLoad ) {
 			loadTimer.Start();
 		}
+		if ( prefetching ) {
+			prefetch.Pump( i );
+		}
 		pendingImages[ i ].image->ActuallyLoadImage( false );
+		if ( prefetching ) {
+			prefetch.Retire( i );
+		}
 		if ( profileLevelLoad ) {
 			loadTimer.Stop();
 			const double imageLoadMsec = loadTimer.Milliseconds();
@@ -1341,6 +1618,13 @@ int idImageManager::LoadLevelImages( bool pacifier ) {
 			loadedStorageBytes += pendingImages[ i ].image->StorageSize();
 		}
 		session->AdvanceLoadingAssetQueue( 1 );
+	}
+
+	if ( prefetching ) {
+		prefetch.End();
+		if ( profileLevelLoad ) {
+			common->Printf( "Image prefetch: %d of %d prefetched files taken\n", prefetch.Taken(), prefetch.Opened() );
+		}
 	}
 
 	if ( profileLevelLoad && pendingImages.Num() > 0 ) {

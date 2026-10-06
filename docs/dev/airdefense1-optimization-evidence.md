@@ -457,13 +457,48 @@ from run to run on this machine, so the saving shows in the whole load rather
 than in that phase alone. A fixed-tic screenshot pair matched outside the
 animated sky and effects (0.07% of the lower half differed, by at most 20).
 
+## 2026-10-06 parallel level image read
+
+With hashing fast, the DDS phase that remained was the PK4 inflate of each
+file plus its file fingerprint, one image after another. `LoadLevelImages` now
+predicts the precompressed DDS each pending image will read
+(`idImage::PredictDirectDDSPayload`, the direct-DDS decision of
+`ActuallyLoadImage` without its staleness check), and while the main thread
+loads image N, up to four worker threads read and fingerprint the files of the
+next images. The main thread still opens every file (the filesystem's search
+state is not thread-safe) and allocates every buffer from the renderer
+module's heap, within 32 open files and 64 MiB; a worker only reads its own
+open file into its own buffer (in-pak files each have their own `unzReOpen`
+handle, the read counter is locked, and the heap's running count is now
+atomic because inflate allocates). `R_LoadPrecompressedDDS` takes a finished
+buffer and its fingerprint through `R_SetDDSPrefetchSource`; a recovery read
+with an expected descriptor never does, and an image that does not read its
+predicted file releases it. `image_prefetchLevelImages 0` restores the serial
+read. This prefetches during the image phase itself rather than during
+`gameInit`, which is what makes it safe: every file is opened by its owner
+thread at the moment the old code would have opened it, only earlier.
+
+Warm `game/airdefense1`, 1280x720 hidden window, same binary, cvar alternated
+after a warm-up; every predicted file (1,657 of 1,657) was taken:
+
+| Renderer | `image_prefetchLevelImages 0` (ms) | `1` (ms) |
+|---|---|---|
+| OpenGL | 10,356 / 9,651 / 11,865 / 11,801 | 7,163 / 9,209 / 9,471 / 8,931 |
+| Vulkan | 12,904 / 10,406 / 8,357 | 10,602 / 8,818 / 6,447 |
+
+The DDS phase fell from 1.1-1.7 s to about 0.1 s on both renderers, and every
+pair was faster: by 0.4-3.2 s on OpenGL (median 11.1 s to 9.1 s) and 1.6-2.3 s
+on Vulkan. A fixed-tic screenshot pair matched pixel for pixel outside the
+animated sky and effects.
+
 ### Ranked remaining work
 
 1. **Done 2026-10-06** (see above): the timestamp probe no longer opens PK4
    members, and loose search directories are checked once per load instead of
    once per lookup.
-2. Parallel level image read. With hashing fast, the DDS phase that remains is
-   mostly the PK4 inflate of each file, and the obvious design does not work: `FinishLevelLoadCache`
+2. **Done 2026-10-06** (see above) for precompressed DDS images, which are
+   ~96% of a stock level's image reads. Generated `.bimage` reads and the
+   source-decode path stay serial. The original design note follows: the obvious design does not work: `FinishLevelLoadCache`
    (`Session.cpp`) joins the pipeline and drains every handle before
    `EndLevelLoad` runs, so a prefetch pump driven from the image path is inert,
    and the existing substitution hook only replaces the payload read after the
