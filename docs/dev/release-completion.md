@@ -32,6 +32,42 @@
   image probe phase 415 -> 132 ms. `filesystem_length_probe_contract.py`
   compiles the real search, probe, memo and `CreateOSPath` bodies.
 
+- [x] Hash loaded content with the processor's SHA instructions (idTech 5
+  track, load-time register). `idCrypto::SHA256` compresses whole block runs
+  through the x86 SHA extensions after a one-time CPUID check, or the Armv8
+  SHA-256 instructions where the compilation baseline guarantees them (Apple
+  Silicon), about 2 GB/s against 252 MB/s; the portable path scrubs its
+  schedule once per call (339 MB/s). The image policy hashes about 510 MiB per
+  Air Defense 1 load. Interleaved warm loads with only the renderer module
+  swapped: OpenGL median 12.4 -> 10.6 s, Vulkan 2.9-3.7 s faster per pair. The
+  native core-safety test cross-checks both paths at every length to 1,100
+  bytes and four alignments; the Armv8 path passed under qemu-aarch64.
+
+- [x] Stop sending every OpenGL texture to the driver twice. Compressed
+  textures take immutable `glTexStorage2D` storage when available (new
+  `hasTextureStorage` capability) instead of a 2011 BFG workaround that
+  uploaded an uninitialized buffer per level, and a loaded image queries GL
+  errors once instead of once per mip (still before its consumed load
+  completes). Warm Air Defense 1, OpenGL module swapped, idle machine: median
+  10.3 -> 9.6 s, every pair faster; fixed-tic screenshots matched outside
+  animated effects.
+
+- [x] Keep Vulkan's compiled pipelines across crashes and measure them. The
+  pipeline cache is written atomically before every level load as well as at
+  shutdown, and every `vkCreate*Pipelines` call is timed (`gfxInfo`, per-map
+  log line). A whole Air Defense 1 session with a full sweep creates 33
+  pipelines: 49 ms total and one 11 ms creation cold, 4 ms total warm, so
+  background or prewarmed compilation is not needed for stock content.
+
+- [x] Stop GPU skinning from paying for the CPU work it replaces, and record
+  why it stays opt-in. Vulkan accepts admitted surfaces as deferred (no CPU
+  tangent derivation) and completes refused ones on the CPU before any draw;
+  immutable four-weight sidecars are validated once at load instead of on
+  every use; `deform expand` derives the basis of a GPU-skinned pose. The
+  2026-10-06 strict pairs measured only about 1,500 skinned vertices (about
+  15 microseconds of CPU) per frame on stock maps, so `r_gpuSkinning` stays
+  off; the evidence verifier follows the benchmark's report schema again.
+
 - [x] Play retail Quake 4's per-area reverb. openQ4 read neither reverb file
   and no sound reached its single Generic reverb, because the send was gated by
   a shader wet level that defaults to 0. It now loads `efxs/<map>.efx` or
