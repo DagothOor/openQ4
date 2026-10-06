@@ -151,7 +151,7 @@ files ship. Shake strength uses the sound's volume before `s_volume`, as retail 
 ### Presets
 
 Every performance preset keeps room reverb on (`s_useEAXReverb 1`); see
-[Common_MigrateLegacyAudioDefaults](../../src/framework/Common.cpp) for the one-time step that
+`Common_MigrateLegacyAudioDefaults` in `src/framework/Common.cpp` for the one-time step that
 restores it on profiles still on the minimum, lowpower or performance preset.
 
 ## Deferred
