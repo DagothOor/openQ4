@@ -109,6 +109,19 @@ typedef struct vkDeviceContext_s {
 	VkImage				swapchainImages[ 8 ];
 	VkImageView			swapchainViews[ 8 ];
 	bool				swapchainTransferSrc;
+	// A hidden window (r_hiddenWindow) is never displayed, so its frames skip
+	// the presentation engine: each renders into its frame slot's offscreen
+	// image, which screenshots read as they read a swapchain image, and is
+	// neither acquired nor presented. With the display off (modern standby, a
+	// sleeping monitor) a hidden window's engine handed images back only every
+	// quarter to whole second, and an acquire often waited out its timeout.
+	// The swapchain is still created and recreated, unused, so present-mode
+	// requests and reports behave as before. These images live and die with
+	// it; r_vkHiddenWindowPresent 1 presents hidden frames again.
+	bool				offscreenFrames;
+	VkImage				offscreenImages[ VK_FRAMES_IN_FLIGHT ];
+	VkImageView			offscreenViews[ VK_FRAMES_IN_FLIGHT ];
+	VmaAllocation		offscreenAllocations[ VK_FRAMES_IN_FLIGHT ];
 
 	VkCommandPool		commandPool;
 	VkCommandBuffer		commandBuffers[ VK_FRAMES_IN_FLIGHT ];
@@ -239,9 +252,11 @@ void	VK_Device_RecordPipelineCreation( uint64 microseconds );
 void	VK_Device_PersistPipelineCache( const char *reason );
 void	VK_Device_PrintPipelineInfo( void );
 
-// acquires, records a dynamic-rendering clear with the given color, and
-// presents; handles OUT_OF_DATE/SUBOPTIMAL by recreating and retrying once
-void	VK_Device_PresentClearFrame( const float clearColor[ 4 ] );
+// Called before each frame's acquisition. r_vkPresentationFailureTest 3 takes
+// every swapchain image the presentation engine would hand out, as a display
+// that is off withholds them; clearing the drill rebuilds the swapchain to
+// return them. False when that rebuild fails.
+bool	VK_Device_ServiceWithheldImages( void );
 
 typedef void ( *vkImmediateRecord_t )( VkCommandBuffer cmd, void *user );
 // records upload commands into the shared upload command buffer, opening a

@@ -30,7 +30,10 @@ scene capture; that command retains its separate radiance/admission checks.
 Readback deliberately waits for the GPU. OpenGL restores texture bindings and
 pixel-transfer state. Vulkan submits, waits and resumes the acquired frame
 without presenting a partial scene, and invalidates the interrupted GPU timing
-sample. Ordinary rendering does not perform these transfers.
+sample. In a hidden window (`r_hiddenWindow 1`) the Vulkan frame is an
+offscreen image rather than a swapchain image, and captures read it the same
+way; see [Vulkan frame pacing](vulkan-frame-pacing.md#hidden-windows-and-a-sleeping-display-2026-10-06).
+Ordinary rendering does not perform these transfers.
 
 ## Runtime validation
 

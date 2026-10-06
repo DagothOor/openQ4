@@ -51,20 +51,21 @@ static VkExtent2D surfaceExtent{1280,720};
 struct Cvar {
     bool modified=false; int value=1;
     bool IsModified(){return modified;} void ClearModified(){modified=false;}
-    int GetInteger()const{return value;}
-} r_swapInterval,r_rendererMetrics;
+    int GetInteger()const{return value;} bool GetBool()const{return value!=0;}
+} r_swapInterval,r_rendererMetrics,r_hiddenWindow;
 enum {RENDERER_WAIT_FRAME_FENCE,RENDERER_WAIT_SWAPCHAIN_IMAGE,RENDERER_PRESENT_WINDOW_STATE,RENDERER_PRESENT_CONTEXT,RENDERER_PRESENT_SWAP};
 static unsigned long long R_RendererMetrics_CpuClock(){return 0;}
 static void R_RendererMetrics_EndWaitPhase(int,unsigned long long){}
 static void R_RendererMetrics_EndUploadRetirement(unsigned long long){}
 static void R_RendererMetrics_EndPresentPhase(int,unsigned long long){}
-struct renderWindowRequest_t {int swapInterval=1;};
+struct renderWindowRequest_t {int swapInterval=1; struct {bool hiddenWindow=false;} parms;};
 static renderWindowRequest_t request;
 static bool strict=false,loadingBypass=false;
 static const renderWindowRequest_t* R_GetRecoverableWindowRequest(){return &request;}
 static bool R_IsRecoverableRendererRestart(){return strict;}
 static std::vector<VkPresentModeKHR> supportedModes{VK_PRESENT_MODE_FIFO_KHR,VK_PRESENT_MODE_IMMEDIATE_KHR,VK_PRESENT_MODE_FIFO_RELAXED_KHR};
-static int recreateCalls=0,submitCalls=0,presentCalls=0,acquireCalls=0,waitCalls=0,timingFailures=0;
+static int recreateCalls=0,submitCalls=0,presentCalls=0,acquireCalls=0,waitCalls=0,timingFailures=0,withheldCalls=0;
+static bool withheldOkay=true;
 static uint32_t submittedWaits=0,submittedSignals=0;
 struct Common { template<class... T> void Warning(const char*,T...){} template<class... T> void Printf(const char*,T...){} } commonObject,*common=&commonObject;
 struct { int frameCount=1; } tr;
@@ -84,6 +85,9 @@ struct Context {
     VkSemaphore renderFinishedSemaphores[2]{handle<VkSemaphore>(10),handle<VkSemaphore>(11)};
     VkImage swapchainImages[2]{handle<VkImage>(12),handle<VkImage>(13)},depthImages[2]{handle<VkImage>(14),handle<VkImage>(15)};
     VkImageView swapchainViews[2]{};
+    bool offscreenFrames=false;
+    VkImage offscreenImages[2]{handle<VkImage>(16),handle<VkImage>(17)};
+    VkImageView offscreenViews[2]{handle<VkImageView>(18),handle<VkImageView>(19)};
     VkImageView depthViews[2]{};
     VkCommandBuffer uploadCommandBuffer=handle<VkCommandBuffer>(20);
     VkFence uploadFence=handle<VkFence>(21);
@@ -100,6 +104,7 @@ struct Pipeline { VkPipeline pipeline{}; };
 struct Executor {
     bool frameOpen=false,acquireWaitPending=false,displayColorMapped=false;
     int frameSlot=0; uint32_t swapImageIndex=0; VkCommandBuffer cmd=handle<VkCommandBuffer>(4);
+    VkImage frameImage{}; VkImageView frameImageView{}; bool framePresentable=false;
     vkRing_t vertexRings[2],indexRings[2],uniformRings[2];
     int temporalNativeWidth=0,temporalNativeHeight=0,temporalHistoryGenerationSeen=0;
     VkFormat temporalSwapchainFormat=VK_FORMAT_UNDEFINED,pipelineTargetFormat=VK_FORMAT_R8G8B8A8_UNORM;
@@ -116,6 +121,9 @@ static bool VK_GuiExecutor_FrameIsOpen(){return vkExec.frameOpen;}
 // double records the request and clears the loss when the window cooperates.
 static bool VK_Device_RecoverSurface(){calls.emplace_back("recover-surface");++recoverCalls;if(recoverOkay)vkCtx.surfaceLost=false;return recoverOkay;}
 static bool VK_Device_SurfaceExtentChanged(){return surfaceExtentChanged;}
+// The withheld-image drill (r_vkPresentationFailureTest 3) runs before each
+// acquisition; the double records that and can report a failed release.
+static bool VK_Device_ServiceWithheldImages(){++withheldCalls;return withheldOkay;}
 static void VK_ShadowMap_BeginFrame(){}
 static VkResult vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice,VkSurfaceKHR,VkSurfaceCapabilitiesKHR* caps){
     std::memset(caps,0,sizeof(*caps));caps->currentExtent=surfaceExtent;return VK_SUCCESS;
@@ -217,8 +225,8 @@ static renderDisplayPresentation_t snapshot(){renderDisplayPresentation_t s{};R_
 static void reset(){
     queueResult=presentResult=endResult=flushResult=waitResult=resetResult=beginResult=resetFenceResult=idleResult=acquireResult=uploadResult=VK_SUCCESS;
     recreateOkay=executorOkay=recoverOkay=true;surfaceExtentChanged=false;surfaceExtent={1280,720};
-    calls.clear();recreateCalls=submitCalls=presentCalls=acquireCalls=waitCalls=timingFailures=recoverCalls=0;
-    r_swapInterval={};request={};strict=loadingBypass=false;
+    calls.clear();recreateCalls=submitCalls=presentCalls=acquireCalls=waitCalls=timingFailures=recoverCalls=withheldCalls=0;
+    withheldOkay=true;r_swapInterval={};r_hiddenWindow={};r_hiddenWindow.value=0;request={};strict=loadingBypass=false;
     supportedModes={VK_PRESENT_MODE_FIFO_KHR,VK_PRESENT_MODE_IMMEDIATE_KHR,VK_PRESENT_MODE_FIFO_RELAXED_KHR};
     vkCtx={};vkExec={}; R_DisplayPresentationBeginDevice();R_DisplayPresentationReady();
 }
@@ -293,6 +301,39 @@ int main(){
         assert(snapshot().outcome==RDP_ACQUIRE_FAILED);
         acquireResult=VK_SUCCESS;open();assert(VK_GuiExecutor_SubmitFrame(true));
     }
+    // A hidden window renders offscreen. However the presentation engine would
+    // answer, nothing is acquired, withheld, waited on, signaled or presented,
+    // and the completed frame counts as presented, not as a failure. Each
+    // frame slot renders into its own image.
+    for(VkResult engine:{VK_SUCCESS,VK_TIMEOUT}){
+        reset();vkCtx.offscreenFrames=true;acquireResult=engine;baseline=snapshot();open();
+        assert(acquireCalls==0 && withheldCalls==0 && !vkExec.framePresentable);
+        assert(vkExec.frameImage==vkCtx.offscreenImages[0] && vkExec.frameImageView==vkCtx.offscreenViews[0]);
+        assert(VK_GuiExecutor_SubmitFrame(true));s=snapshot();
+        assert(submittedWaits==0 && submittedSignals==0 && presentCalls==0);
+        assert(s.submittedSequence==baseline.submittedSequence+1 && s.presentedSequence==baseline.presentedSequence+1);
+        assert(s.outcome==RDP_PRESENTED && s.failureSequence==baseline.failureSequence);
+        open();assert(vkExec.frameImage==vkCtx.offscreenImages[1] && acquireCalls==0);
+        assert(VK_GuiExecutor_SubmitFrame(true) && snapshot().presentedSequence==baseline.presentedSequence+2);
+    }
+    // A capture-only submission of an offscreen frame presents nothing either.
+    reset();vkCtx.offscreenFrames=true;baseline=snapshot();open();assert(VK_GuiExecutor_SubmitFrame(false));
+    s=snapshot();assert(s.presentedSequence==baseline.presentedSequence && presentCalls==0 && submittedSignals==0);
+    vkExec.frameOpen=true;assert(VK_GuiExecutor_SubmitFrame(true));
+    assert(snapshot().presentedSequence==baseline.presentedSequence+1 && presentCalls==0 && submittedWaits==0);
+    // A displayed window's frame reads the acquired swapchain image. The
+    // withheld-image drill runs before acquisition and stops the frame when
+    // returning its images fails.
+    reset();open();assert(vkExec.framePresentable && vkExec.frameImage==vkCtx.swapchainImages[0]);
+    assert(withheldCalls==1 && acquireCalls==1);assert(VK_GuiExecutor_SubmitFrame(true));
+    reset();withheldOkay=false;
+    assert(!VK_GuiExecutor_BeginFrame() && acquireCalls==0 && !vkExec.frameOpen && submitCalls==0);
+    // A window is as hidden as the request that placed it: a strict restart's
+    // own request while it applies, otherwise r_hiddenWindow.
+    reset();r_hiddenWindow.value=1;assert(VK_Device_WindowHidden());
+    strict=true;request.parms.hiddenWindow=false;assert(!VK_Device_WindowHidden());
+    request.parms.hiddenWindow=true;r_hiddenWindow.value=0;assert(VK_Device_WindowHidden());
+    strict=false;assert(!VK_Device_WindowHidden());
     // A minimized window reports a zero extent: recreation declines without
     // idling the device until the surface has a size again.
     reset();vkCtx.surfaceExtentZero=true;surfaceExtent={0,0};
@@ -373,6 +414,7 @@ def main():
     source += method(device, "int VK_Device_RequestedSwapInterval( void )")
     source += method(device, "static void VK_Device_RecordSwapInterval( int interval )")
     source += method(device, "static bool VK_Device_SelectPresentMode( int requestedInterval, bool strict, VkPresentModeKHR &selected )")
+    source += method(device, "static bool VK_Device_WindowHidden( void )")
     source += SWAPCHAIN_SUPPORT
     source += method(device, "void VK_Device_BlockPresentation( renderDisplayOutcome_t outcome, VkResult error, const char *operation )")
     source += method(device, "bool VK_Device_RecreateSwapchain( void )")
@@ -391,10 +433,12 @@ def main():
     assert "VK_Device_DeferDestroy" in failed_submit and "vmaDestroyBuffer" not in failed_submit
     recreate = function_body(device, "bool VK_Device_RecreateSwapchain(")
     assert recreate.index("presentationBlocked") < recreate.index("vkDeviceWaitIdle")
-    clear = function_body(device, "void VK_Device_PresentClearFrame(")
-    assert clear.index("presentationBlocked") < clear.index("vkWaitForFences")
-    assert "VK_Device_BlockPresentation( RDP_SUBMIT_FAILED" in clear
-    assert "VK_Device_RequestedSwapInterval() != vkCtx.swapInterval" in clear
+    # No acquisition may wait forever: a presentation engine that withholds
+    # images (the display off, an unmapped surface) would hang the frame loop.
+    for path in sorted((RENDERER / "Vulkan").glob("*.cpp")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for call in text.split("vkAcquireNextImageKHR(")[1:]:
+            assert "UINT64_MAX" not in call.split(";", 1)[0], f"unbounded swapchain acquisition in {path.name}"
     create = method(device, "static bool VK_Device_CreateSwapchain( void )")
     assert create.index("VK_Device_RequestedSwapInterval()") < create.index("VK_Device_SelectPresentMode(")
     assert "R_IsRecoverableRendererRestart() || vkCtx.strictSwapInterval" in create
@@ -403,6 +447,12 @@ def main():
     assert "R_IsRecoverableRendererRestart() || !vkCtx.strictSwapInterval" in fallback
     assert "presentMode = VK_PRESENT_MODE_FIFO_KHR;" in fallback and "strictSwapInterval = false" not in fallback
     assert create.index("VK_Device_CreateDepthImages()") < create.index("VK_Device_RecordSwapInterval( requestedInterval )")
+    # A hidden window's offscreen images live and die with its swapchain.
+    assert "VK_Device_WindowHidden() && !r_vkHiddenWindowPresent.GetBool()" in create
+    assert create.index("VK_Device_CreateDepthImages()") < create.index("VK_Device_CreateOffscreenImages()")
+    destroy = method(device, "static void VK_Device_DestroySwapchainObjects( void )")
+    assert "VK_Device_ReleaseWithheldImages();" in destroy and "vmaDestroyImage( vkCtx.allocator, vkCtx.offscreenImages[ i ]" in destroy
+    assert "vkCtx.offscreenFrames = false;" in destroy
     # renderer-vk compiles against the vendored SDK headers, which every
     # checkout has before Meson provisions SDL3 or any system SDK is installed.
     include = ROOT / "src/external/vulkan/include"
@@ -419,7 +469,7 @@ def main():
         exe = temp / ("presentation.exe" if os.name == "nt" else "presentation")
         subprocess.run([compiler, "-std=c++20", "-I", str(RENDERER), "-I", str(include), str(cpp), str(RENDERER / "DisplayPresentation.cpp"), "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True)
-    print("Display presentation: real tracker, GL swap/strict readback, Vulkan applied swap policy/restore/legacy handoff, scene/capture submit, present/recreate failures, upload dependencies and no-reuse latch passed")
+    print("Display presentation: real tracker, GL swap/strict readback, Vulkan applied swap policy/restore/legacy handoff, scene/capture submit, hidden-window offscreen frames, bounded acquisition, present/recreate failures, upload dependencies and no-reuse latch passed")
 
 
 if __name__ == "__main__":

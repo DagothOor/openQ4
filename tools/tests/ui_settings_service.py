@@ -1500,7 +1500,14 @@ def render_frame_body():
     vk = function_body((ROOT/'src/renderer/Vulkan/vk_GuiExecutor.cpp').read_text(encoding='utf-8'),'static bool VK_GuiExecutor_SubmitFrame( bool present ) {')
     require_order(vk,'vkQueueSubmit2(','R_DisplayPresentationSubmitted();','Vulkan successful submission counter')
     require_order(vk,'R_DisplayPresentationSubmitted();','vkQueuePresentKHR(','Vulkan same-stack present')
-    require_order(vk,'vkQueuePresentKHR(','R_DisplayPresentationPresented();','Vulkan accepted API present counter')
+    # Only an accepted present counts, except a hidden window's offscreen frame:
+    # it never reaches the presentation engine, so completing it is all the
+    # presentation that window gets, as a GL swap of a hidden window is.
+    offscreen = vk[vk.index('if ( !presentImage ) {'):vk.index('vkQueuePresentKHR(')]
+    require_order(offscreen,'if ( !presentImage ) {','R_DisplayPresentationPresented();','Vulkan hidden-window frame counter')
+    require_order(vk[vk.index('vkQueuePresentKHR('):],'vkQueuePresentKHR(','R_DisplayPresentationPresented();','Vulkan accepted API present counter')
+    if 'R_DisplayPresentationPresented();' in vk[:vk.index('if ( !presentImage ) {')]:
+        raise AssertionError('Vulkan counts a presentation outside the accepted or hidden-window paths')
     gl = function_body((ROOT/'src/renderer/OpenGL/gl_ContextSDL3.cpp').read_text(encoding='utf-8'),'void GLimp_SwapBuffers(')
     require_order(gl,'s_glWindowServices->SwapGLWindow()','R_DisplayPresentationSubmitted(); R_DisplayPresentationPresented();','GL accepted synchronous swap counters')
     return body

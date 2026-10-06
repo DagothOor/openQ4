@@ -70,15 +70,20 @@ void VK_Device_BlockPresentation( renderDisplayOutcome_t outcome, VkResult error
 static idCVar r_vkPresentationRecoveries( "r_vkPresentationRecoveries", "3", CVAR_RENDERER | CVAR_INTEGER,
 	"automatic renderer restarts allowed per session when Vulkan presentation fails (device loss); 0 disables", 0, 16 );
 static idCVar r_vkPresentationFailureTest( "r_vkPresentationFailureTest", "0", CVAR_RENDERER | CVAR_INTEGER,
-	"diagnostic: 1 latches the next frame as a lost device, 2 reports the surface lost, to exercise Vulkan recovery", 0, 2 );
+	"diagnostic: 1 latches the next frame as a lost device, 2 reports the surface lost, 3 withholds every swapchain "
+	"image until set back to 0 (as a display that is off does), to exercise Vulkan recovery", 0, 3 );
+static idCVar r_vkHiddenWindowPresent( "r_vkHiddenWindowPresent", "0", CVAR_RENDERER | CVAR_BOOL,
+	"diagnostic: 1 acquires and presents a hidden window's frames through its swapchain instead of rendering them "
+	"offscreen; applies when the swapchain is next created (vid_restart)" );
 static int vkPresentationRecoveries = 0;
 
 void VK_Device_ServicePresentationRecovery( void ) {
 	if ( !vkCtx.initialized ) {
 		return;
 	}
+	// Drill 3 is not one-shot; VK_Device_ServiceWithheldImages serves it.
 	const int drill = r_vkPresentationFailureTest.GetInteger();
-	if ( drill != 0 && !vkCtx.presentationBlocked ) {
+	if ( ( drill == 1 || drill == 2 ) && !vkCtx.presentationBlocked ) {
 		r_vkPresentationFailureTest.SetInteger( 0 );
 		if ( drill == 1 ) {
 			VK_Device_BlockPresentation( RDP_SUBMIT_FAILED, VK_ERROR_DEVICE_LOST, "simulated device loss" );
@@ -482,12 +487,40 @@ static void VK_Device_SelectShadowDepthFormat( void ) {
 			(int)vkCtx.shadowDepthFormat, vkCtx.shadowDepthFilterLinear ? "linear" : "nearest" );
 }
 
+// Swapchain images r_vkPresentationFailureTest 3 holds, one acquisition fence
+// each. They return to the presentation engine with their swapchain.
+static VkFence vkWithheldImageFences[ 8 ];
+static uint32_t vkNumWithheldImages = 0;
+
+static void VK_Device_ReleaseWithheldImages( void ) {
+	for ( uint32_t i = 0; i < vkNumWithheldImages; i++ ) {
+		// Each fence signals once the engine has finished with its image.
+		(void)vkWaitForFences( vkCtx.device, 1, &vkWithheldImageFences[ i ], VK_TRUE, 1000000000ull );
+		vkDestroyFence( vkCtx.device, vkWithheldImageFences[ i ], NULL );
+		vkWithheldImageFences[ i ] = VK_NULL_HANDLE;
+	}
+	vkNumWithheldImages = 0;
+}
+
 /*
 ====================
 VK_Device_DestroySwapchainObjects
 ====================
 */
 static void VK_Device_DestroySwapchainObjects( void ) {
+	VK_Device_ReleaseWithheldImages();
+	for ( int i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
+		if ( vkCtx.offscreenViews[ i ] != VK_NULL_HANDLE ) {
+			vkDestroyImageView( vkCtx.device, vkCtx.offscreenViews[ i ], NULL );
+			vkCtx.offscreenViews[ i ] = VK_NULL_HANDLE;
+		}
+		if ( vkCtx.offscreenImages[ i ] != VK_NULL_HANDLE ) {
+			vmaDestroyImage( vkCtx.allocator, vkCtx.offscreenImages[ i ], vkCtx.offscreenAllocations[ i ] );
+			vkCtx.offscreenImages[ i ] = VK_NULL_HANDLE;
+			vkCtx.offscreenAllocations[ i ] = NULL;
+		}
+	}
+	vkCtx.offscreenFrames = false;
 	for ( uint32_t i = 0; i < vkCtx.swapchainImageCount; i++ ) {
 		if ( vkCtx.swapchainViews[ i ] != VK_NULL_HANDLE ) {
 			vkDestroyImageView( vkCtx.device, vkCtx.swapchainViews[ i ], NULL );
@@ -584,6 +617,72 @@ static bool VK_Device_CreateDepthImages( void ) {
 		}
 	}
 	return true;
+}
+
+/*
+====================
+VK_Device_CreateOffscreenImages
+
+A hidden window's per-frame-slot color images (vkDeviceContext_t::
+offscreenFrames), standing in for swapchain images with the same format,
+extent and usage. One per slot, like the depth images, so a frame never writes
+an image the previous frame may still be rendering.
+====================
+*/
+static bool VK_Device_CreateOffscreenImages( void ) {
+	for ( int i = 0; i < VK_FRAMES_IN_FLIGHT; i++ ) {
+		VkImageCreateInfo ici;
+		memset( &ici, 0, sizeof( ici ) );
+		ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		ici.imageType = VK_IMAGE_TYPE_2D;
+		ici.format = vkCtx.swapchainFormat;
+		ici.extent.width = vkCtx.swapchainExtent.width;
+		ici.extent.height = vkCtx.swapchainExtent.height;
+		ici.extent.depth = 1;
+		ici.mipLevels = 1;
+		ici.arrayLayers = 1;
+		ici.samples = VK_SAMPLE_COUNT_1_BIT;
+		ici.tiling = VK_IMAGE_TILING_OPTIMAL;
+		ici.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+		VmaAllocationCreateInfo vaci;
+		memset( &vaci, 0, sizeof( vaci ) );
+		vaci.usage = VMA_MEMORY_USAGE_AUTO;
+
+		if ( vmaCreateImage( vkCtx.allocator, &ici, &vaci, &vkCtx.offscreenImages[ i ],
+				&vkCtx.offscreenAllocations[ i ], NULL ) != VK_SUCCESS ) {
+			common->Warning( "Vulkan: hidden-window frame image creation failed (%ux%u)",
+					vkCtx.swapchainExtent.width, vkCtx.swapchainExtent.height );
+			return false;
+		}
+
+		VkImageViewCreateInfo ivci;
+		memset( &ivci, 0, sizeof( ivci ) );
+		ivci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		ivci.image = vkCtx.offscreenImages[ i ];
+		ivci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		ivci.format = vkCtx.swapchainFormat;
+		ivci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		ivci.subresourceRange.levelCount = 1;
+		ivci.subresourceRange.layerCount = 1;
+		if ( vkCreateImageView( vkCtx.device, &ivci, NULL, &vkCtx.offscreenViews[ i ] ) != VK_SUCCESS ) {
+			common->Warning( "Vulkan: hidden-window frame image view creation failed" );
+			return false;
+		}
+	}
+	return true;
+}
+
+// The window's visibility comes from the request that placed it: a strict
+// restart's own request, otherwise r_hiddenWindow, which window creation and
+// every vid_restart hand to the window services. The window itself is
+// created hidden and only shown afterwards, so its flags cannot tell.
+static bool VK_Device_WindowHidden( void ) {
+	if ( R_IsRecoverableRendererRestart() ) {
+		const auto *request = R_GetRecoverableWindowRequest();
+		if ( request != NULL ) return request->parms.hiddenWindow;
+	}
+	return r_hiddenWindow.GetBool();
 }
 
 /*
@@ -800,10 +899,19 @@ static bool VK_Device_CreateSwapchain( void ) {
 		VK_Device_DestroySwapchainObjects();
 		return false;
 	}
+	const bool offscreenFrames = VK_Device_WindowHidden() && !r_vkHiddenWindowPresent.GetBool();
+	if ( offscreenFrames && !VK_Device_CreateOffscreenImages() ) {
+		VK_Device_DestroySwapchainObjects();
+		return false;
+	}
+	vkCtx.offscreenFrames = offscreenFrames;
 
 	common->Printf( "Vulkan: created swapchain %ux%u format=%d colorSpace=%d images=%u presentMode=%d\n",
 			extent.width, extent.height, (int)chosen.format, (int)chosen.colorSpace,
 			count, (int)presentMode );
+	if ( offscreenFrames ) {
+		common->Printf( "Vulkan: hidden window renders offscreen and does not present (r_vkHiddenWindowPresent 0)\n" );
+	}
 	if ( !vkCtx.swapchainTransferSrc ) {
 		common->Warning( "Vulkan: swapchain does not support transfer-source captures; screenshots and backbuffer feedback are unavailable" );
 	}
@@ -1131,6 +1239,50 @@ bool VK_Device_RecoverSurface( void ) {
 	common->Printf( "Vulkan: surface recreated after surface loss\n" );
 	// A zero extent here is a minimized window; the next frame retries.
 	return VK_Device_CreateSwapchain();
+}
+
+/*
+====================
+VK_Device_ServiceWithheldImages
+
+r_vkPresentationFailureTest 3 reproduces a presentation engine that hands out
+no images, as one does while the display is off, without turning anything off:
+before each acquisition it takes every image the engine will give, so the
+frame's own acquisition finds none. Presenting is the only other way to hand
+an acquired image back, and these were never rendered, so clearing the drill
+returns them with a swapchain rebuild.
+====================
+*/
+bool VK_Device_ServiceWithheldImages( void ) {
+	if ( r_vkPresentationFailureTest.GetInteger() != 3 ) {
+		return vkNumWithheldImages == 0 || VK_Device_RecreateSwapchain();
+	}
+	if ( vkCtx.swapchain == VK_NULL_HANDLE ) {
+		return true;
+	}
+	if ( vkNumWithheldImages == 0 ) {
+		common->Printf( "Vulkan: withholding swapchain images (r_vkPresentationFailureTest 3)\n" );
+	}
+	VkFenceCreateInfo fci;
+	memset( &fci, 0, sizeof( fci ) );
+	fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	while ( vkNumWithheldImages < vkCtx.swapchainImageCount ) {
+		VkFence fence = VK_NULL_HANDLE;
+		if ( vkCreateFence( vkCtx.device, &fci, NULL, &fence ) != VK_SUCCESS ) {
+			break;
+		}
+		// A zero timeout only takes images that are free now; more than the
+		// engine can spare is legal to request when the wait is bounded.
+		uint32_t imageIndex = 0;
+		const VkResult res = vkAcquireNextImageKHR( vkCtx.device, vkCtx.swapchain, 0,
+				VK_NULL_HANDLE, fence, &imageIndex );
+		if ( res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR ) {
+			vkDestroyFence( vkCtx.device, fence, NULL );
+			break;
+		}
+		vkWithheldImageFences[ vkNumWithheldImages++ ] = fence;
+	}
+	return true;
 }
 
 /*
@@ -1626,181 +1778,6 @@ void VK_Device_Shutdown( void ) {
 		vkDestroyInstance( vkCtx.instance, NULL );
 	}
 	memset( &vkCtx, 0, sizeof( vkCtx ) );
-}
-
-/*
-====================
-VK_Device_PresentClearFrame
-====================
-*/
-void VK_Device_PresentClearFrame( const float clearColor[ 4 ] ) {
-	if ( !vkCtx.initialized || vkCtx.presentationBlocked ) {
-		return;
-	}
-
-	// swap-interval changes require a swapchain rebuild
-	if ( VK_Device_RequestedSwapInterval() != vkCtx.swapInterval ) {
-		if ( !VK_Device_RecreateSwapchain() ) {
-			return;
-		}
-	}
-
-	const int slot = vkCtx.frameSlot;
-	vkCtx.frameSlot = ( vkCtx.frameSlot + 1 ) % VK_FRAMES_IN_FLIGHT;
-	vkCtx.recordingSlot = slot;
-
-	const VkResult waited = vkWaitForFences( vkCtx.device, 1, &vkCtx.frameFences[ slot ], VK_TRUE, UINT64_MAX );
-	if ( waited != VK_SUCCESS ) { VK_Device_BlockPresentation( RDP_WAIT_FAILED, waited, "clear frame fence wait" ); return; }
-	// deferred destroys must never run while a submitted upload batch could
-	// still reference their images
-	VK_Device_WaitUploadBatch();
-	if ( vkCtx.presentationBlocked ) return;
-	VK_Device_FlushDeferredDestroys( slot );
-
-	uint32_t imageIndex = 0;
-	VkResult res = vkAcquireNextImageKHR( vkCtx.device, vkCtx.swapchain, UINT64_MAX,
-			vkCtx.acquireSemaphores[ slot ], VK_NULL_HANDLE, &imageIndex );
-	if ( res == VK_ERROR_OUT_OF_DATE_KHR ) {
-		if ( !VK_Device_RecreateSwapchain() ) {
-			return;
-		}
-		res = vkAcquireNextImageKHR( vkCtx.device, vkCtx.swapchain, UINT64_MAX,
-				vkCtx.acquireSemaphores[ slot ], VK_NULL_HANDLE, &imageIndex );
-	}
-	if ( res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR ) {
-		if ( res == VK_ERROR_DEVICE_LOST ) VK_Device_BlockPresentation( RDP_ACQUIRE_FAILED, res, "clear frame acquire" );
-		else R_DisplayPresentationFailed( RDP_ACQUIRE_FAILED, (int32_t)res );
-		return;
-	}
-
-	VkCommandBuffer cmd = vkCtx.commandBuffers[ slot ];
-	res = vkResetCommandBuffer( cmd, 0 );
-	if ( res != VK_SUCCESS ) { VK_Device_BlockPresentation( RDP_RECORD_FAILED, res, "clear command reset" ); return; }
-
-	VkCommandBufferBeginInfo cbbi;
-	memset( &cbbi, 0, sizeof( cbbi ) );
-	cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	res = vkBeginCommandBuffer( cmd, &cbbi );
-	if ( res != VK_SUCCESS ) { VK_Device_BlockPresentation( RDP_RECORD_FAILED, res, "clear command begin" ); return; }
-	res = vkResetFences( vkCtx.device, 1, &vkCtx.frameFences[ slot ] );
-	if ( res != VK_SUCCESS ) { VK_Device_BlockPresentation( RDP_WAIT_FAILED, res, "clear fence reset" ); return; }
-
-	// UNDEFINED -> COLOR_ATTACHMENT
-	VkImageMemoryBarrier2 toColor;
-	memset( &toColor, 0, sizeof( toColor ) );
-	toColor.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-	toColor.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-	toColor.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-	toColor.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-	toColor.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	toColor.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	toColor.image = vkCtx.swapchainImages[ imageIndex ];
-	toColor.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	toColor.subresourceRange.levelCount = 1;
-	toColor.subresourceRange.layerCount = 1;
-
-	VkDependencyInfo dep;
-	memset( &dep, 0, sizeof( dep ) );
-	dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-	dep.imageMemoryBarrierCount = 1;
-	dep.pImageMemoryBarriers = &toColor;
-	vkCmdPipelineBarrier2( cmd, &dep );
-
-	// dynamic-rendering clear pass
-	VkRenderingAttachmentInfo color;
-	memset( &color, 0, sizeof( color ) );
-	color.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	color.imageView = vkCtx.swapchainViews[ imageIndex ];
-	color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	color.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	color.clearValue.color.float32[ 0 ] = clearColor[ 0 ];
-	color.clearValue.color.float32[ 1 ] = clearColor[ 1 ];
-	color.clearValue.color.float32[ 2 ] = clearColor[ 2 ];
-	color.clearValue.color.float32[ 3 ] = clearColor[ 3 ];
-
-	VkRenderingInfo ri;
-	memset( &ri, 0, sizeof( ri ) );
-	ri.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-	ri.renderArea.extent = vkCtx.swapchainExtent;
-	ri.layerCount = 1;
-	ri.colorAttachmentCount = 1;
-	ri.pColorAttachments = &color;
-
-	vkCmdBeginRendering( cmd, &ri );
-	vkCmdEndRendering( cmd );
-
-	// COLOR_ATTACHMENT -> PRESENT
-	VkImageMemoryBarrier2 toPresent;
-	memset( &toPresent, 0, sizeof( toPresent ) );
-	toPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-	toPresent.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-	toPresent.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-	toPresent.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
-	toPresent.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-	toPresent.image = vkCtx.swapchainImages[ imageIndex ];
-	toPresent.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	toPresent.subresourceRange.levelCount = 1;
-	toPresent.subresourceRange.layerCount = 1;
-	dep.pImageMemoryBarriers = &toPresent;
-	vkCmdPipelineBarrier2( cmd, &dep );
-
-	res = vkEndCommandBuffer( cmd );
-	if ( res != VK_SUCCESS ) { VK_Device_BlockPresentation( RDP_RECORD_FAILED, res, "clear command end" ); return; }
-
-	VkSemaphoreSubmitInfo waitInfo;
-	memset( &waitInfo, 0, sizeof( waitInfo ) );
-	waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-	waitInfo.semaphore = vkCtx.acquireSemaphores[ slot ];
-	waitInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-
-	VkSemaphoreSubmitInfo signalInfo;
-	memset( &signalInfo, 0, sizeof( signalInfo ) );
-	signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-	signalInfo.semaphore = vkCtx.renderFinishedSemaphores[ imageIndex ];
-	signalInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-
-	VkCommandBufferSubmitInfo cmdInfo;
-	memset( &cmdInfo, 0, sizeof( cmdInfo ) );
-	cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-	cmdInfo.commandBuffer = cmd;
-
-	VkSubmitInfo2 si;
-	memset( &si, 0, sizeof( si ) );
-	si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-	si.waitSemaphoreInfoCount = 1;
-	si.pWaitSemaphoreInfos = &waitInfo;
-	si.commandBufferInfoCount = 1;
-	si.pCommandBufferInfos = &cmdInfo;
-	si.signalSemaphoreInfoCount = 1;
-	si.pSignalSemaphoreInfos = &signalInfo;
-
-	// the upload batch must precede any frame submission in queue order so
-	// this frame's fence covers it
-	VK_Device_FlushUploadBatch();
-	if ( vkCtx.presentationBlocked ) return;
-	res = vkQueueSubmit2( vkCtx.graphicsQueue, 1, &si, vkCtx.frameFences[ slot ] );
-	if ( res != VK_SUCCESS ) { VK_Device_BlockPresentation( RDP_SUBMIT_FAILED, res, "clear frame submit" ); return; }
-	R_DisplayPresentationSubmitted();
-
-	VkPresentInfoKHR pi;
-	memset( &pi, 0, sizeof( pi ) );
-	pi.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-	pi.waitSemaphoreCount = 1;
-	pi.pWaitSemaphores = &vkCtx.renderFinishedSemaphores[ imageIndex ];
-	pi.swapchainCount = 1;
-	pi.pSwapchains = &vkCtx.swapchain;
-	pi.pImageIndices = &imageIndex;
-
-	res = vkQueuePresentKHR( vkCtx.graphicsQueue, &pi );
-	if ( res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR ) R_DisplayPresentationPresented();
-	else if ( res == VK_ERROR_OUT_OF_DATE_KHR ) R_DisplayPresentationFailed( RDP_PRESENT_FAILED, (int32_t)res );
-	else { VK_Device_BlockPresentation( RDP_PRESENT_FAILED, res, "clear frame present" ); return; }
-	if ( res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR ) {
-		if ( !VK_Device_RecreateSwapchain() ) common->Warning( "Vulkan: swapchain recreation after clear present failed" );
-	}
 }
 
 /*

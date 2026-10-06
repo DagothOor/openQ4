@@ -510,6 +510,12 @@ typedef struct vkGuiExecutor_s {
 	bool				mainScopeOpen;		// the swapchain dynamic-rendering scope is recording
 	int					frameSlot;
 	uint32_t			swapImageIndex;
+	// The frame's final color image and view: the acquired swapchain image,
+	// or a hidden window's offscreen image (vkCtx.offscreenFrames), which
+	// screenshots read the same way and which is never presented.
+	VkImage				frameImage;
+	VkImageView			frameImageView;
+	bool				framePresentable;
 	VkCommandBuffer		cmd;
 	float				clearColor[ 4 ];
 	int					boundVertexOffset;	// binding-0 ring offset of the last VK_Exec_BindTriGeometry
@@ -4076,50 +4082,62 @@ bool VK_GuiExecutor_BeginFrame( void ) {
 	R_RendererMetrics_EndUploadRetirement( retirementBegin );
 
 	// A present-mode change needs a new swapchain. GL re-applies its swap
-	// interval on every present; the Vulkan equivalent only ever ran inside
-	// VK_Device_PresentClearFrame, which nothing calls, so toggling vsync did
-	// nothing here until something else forced a rebuild. Do it before the
-	// acquire, where the old swapchain is not yet in use this frame.
+	// interval on every present, so toggling vsync did nothing here until
+	// something else forced a rebuild. Do it before the acquire, where the old
+	// swapchain is not yet in use this frame. A hidden window's unused
+	// swapchain follows too, so it reports the interval it was asked for.
 	if ( VK_Device_RequestedSwapInterval() != vkCtx.swapInterval ) {
 		if ( !VK_Device_RecreateSwapchain() ) {
 			return false;
 		}
 	}
 
-	// A presentation engine that withholds images (an occluded Wayland
-	// window with FIFO, a compositor stall) must not block the game loop
-	// forever. A timeout acquires nothing and signals nothing, so the frame is
-	// simply skipped and retried; normal acquisition returns well within it.
-	const uint64_t acquireTimeout = 1000000000ull;
+	// A hidden window is never displayed, so its frame does not wait on the
+	// presentation engine: it renders into this slot's offscreen image, which
+	// screenshots read as they would a swapchain image (vkCtx.offscreenFrames).
+	const bool presentable = !vkCtx.offscreenFrames;
 	uint32_t imageIndex = 0;
-	const unsigned long long acquireBegin = timingEnabled ? R_RendererMetrics_CpuClock() : 0;
-	VkResult res = vkAcquireNextImageKHR( vkCtx.device, vkCtx.swapchain, acquireTimeout,
-			vkCtx.acquireSemaphores[ slot ], VK_NULL_HANDLE, &imageIndex );
-	R_RendererMetrics_EndWaitPhase( RENDERER_WAIT_SWAPCHAIN_IMAGE, acquireBegin );
-	if ( res == VK_ERROR_OUT_OF_DATE_KHR ) {
-		if ( !VK_Device_RecreateSwapchain() ) {
+	VkResult res = VK_SUCCESS;
+	if ( presentable ) {
+		if ( !VK_Device_ServiceWithheldImages() ) {
 			return false;
 		}
-		const unsigned long long retryBegin = timingEnabled ? R_RendererMetrics_CpuClock() : 0;
+		// A presentation engine that withholds images (an occluded Wayland
+		// window with FIFO, a compositor stall) must not block the game loop
+		// forever. A timeout acquires nothing and signals nothing, so the frame is
+		// simply skipped and retried; normal acquisition returns well within it.
+		const uint64_t acquireTimeout = 1000000000ull;
+		const unsigned long long acquireBegin = timingEnabled ? R_RendererMetrics_CpuClock() : 0;
 		res = vkAcquireNextImageKHR( vkCtx.device, vkCtx.swapchain, acquireTimeout,
 				vkCtx.acquireSemaphores[ slot ], VK_NULL_HANDLE, &imageIndex );
-		R_RendererMetrics_EndWaitPhase( RENDERER_WAIT_SWAPCHAIN_IMAGE, retryBegin );
+		R_RendererMetrics_EndWaitPhase( RENDERER_WAIT_SWAPCHAIN_IMAGE, acquireBegin );
+		if ( res == VK_ERROR_OUT_OF_DATE_KHR ) {
+			if ( !VK_Device_RecreateSwapchain() ) {
+				return false;
+			}
+			const unsigned long long retryBegin = timingEnabled ? R_RendererMetrics_CpuClock() : 0;
+			res = vkAcquireNextImageKHR( vkCtx.device, vkCtx.swapchain, acquireTimeout,
+					vkCtx.acquireSemaphores[ slot ], VK_NULL_HANDLE, &imageIndex );
+			R_RendererMetrics_EndWaitPhase( RENDERER_WAIT_SWAPCHAIN_IMAGE, retryBegin );
+		}
+		if ( res == VK_TIMEOUT || res == VK_NOT_READY ) {
+			R_DisplayPresentationFailed( RDP_ACQUIRE_FAILED, (int32_t)res );
+			return false;
+		}
+		if ( res == VK_ERROR_SURFACE_LOST_KHR ) {
+			// Nothing was acquired; rebuild the surface and retry next frame.
+			R_DisplayPresentationFailed( RDP_ACQUIRE_FAILED, (int32_t)res );
+			(void)VK_Device_RecoverSurface();
+			return false;
+		}
+		if ( res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR ) {
+			if ( res == VK_ERROR_DEVICE_LOST ) VK_Device_BlockPresentation( RDP_ACQUIRE_FAILED, res, "frame acquire" );
+			else R_DisplayPresentationFailed( RDP_ACQUIRE_FAILED, (int32_t)res );
+			return false;
+		}
 	}
-	if ( res == VK_TIMEOUT || res == VK_NOT_READY ) {
-		R_DisplayPresentationFailed( RDP_ACQUIRE_FAILED, (int32_t)res );
-		return false;
-	}
-	if ( res == VK_ERROR_SURFACE_LOST_KHR ) {
-		// Nothing was acquired; rebuild the surface and retry next frame.
-		R_DisplayPresentationFailed( RDP_ACQUIRE_FAILED, (int32_t)res );
-		(void)VK_Device_RecoverSurface();
-		return false;
-	}
-	if ( res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR ) {
-		if ( res == VK_ERROR_DEVICE_LOST ) VK_Device_BlockPresentation( RDP_ACQUIRE_FAILED, res, "frame acquire" );
-		else R_DisplayPresentationFailed( RDP_ACQUIRE_FAILED, (int32_t)res );
-		return false;
-	}
+	const VkImage frameImage = presentable ? vkCtx.swapchainImages[ imageIndex ] : vkCtx.offscreenImages[ slot ];
+	const VkImageView frameImageView = presentable ? vkCtx.swapchainViews[ imageIndex ] : vkCtx.offscreenViews[ slot ];
 
 	VkCommandBuffer cmd = vkCtx.commandBuffers[ slot ];
 	VkCommandBufferBeginInfo cbbi;
@@ -4154,7 +4172,7 @@ bool VK_GuiExecutor_BeginFrame( void ) {
 	toAttachment[ 0 ].dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
 	toAttachment[ 0 ].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	toAttachment[ 0 ].newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	toAttachment[ 0 ].image = vkCtx.swapchainImages[ imageIndex ];
+	toAttachment[ 0 ].image = frameImage;
 	toAttachment[ 0 ].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	toAttachment[ 0 ].subresourceRange.levelCount = 1;
 	toAttachment[ 0 ].subresourceRange.layerCount = 1;
@@ -4177,18 +4195,22 @@ bool VK_GuiExecutor_BeginFrame( void ) {
 
 	vkExec.frameSlot = slot;
 	vkExec.swapImageIndex = imageIndex;
+	vkExec.frameImage = frameImage;
+	vkExec.frameImageView = frameImageView;
+	vkExec.framePresentable = presentable;
 	vkExec.cmd = cmd;
 	vkExec.activeRenderTexture = NULL;
 	vkExec.activeCubeFace = 0;
 	memset( vkExec.activeColorEntries, 0, sizeof( vkExec.activeColorEntries ) );
 	vkExec.activeDepthEntry = NULL;
 	memset( vkExec.activeColorAttachmentViews, 0, sizeof( vkExec.activeColorAttachmentViews ) );
-	vkExec.activeColorAttachmentViews[ 0 ] = vkCtx.swapchainViews[ imageIndex ];
+	vkExec.activeColorAttachmentViews[ 0 ] = frameImageView;
 	vkExec.activeDepthAttachmentView = vkCtx.depthViews[ slot ];
 	vkExec.activeExtent = vkCtx.swapchainExtent;
 	vkExec.activePipelineTarget = VK_Exec_SwapchainPipelineTarget();
 	vkExec.frameOpen = true;
-	vkExec.acquireWaitPending = true;
+	// An offscreen frame acquired nothing, so its submission waits on nothing.
+	vkExec.acquireWaitPending = presentable;
 	vkExec.displayColorMapped = false;
 	VK_Exec_BeginMainRendering( true );
 
@@ -4235,7 +4257,7 @@ static void VK_Exec_BarrierActiveTargetForLoad( void ) {
 		barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
 		barrier.oldLayout = barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.image = entry != NULL ? entry->image : vkCtx.swapchainImages[ vkExec.swapImageIndex ];
+		barrier.image = entry != NULL ? entry->image : vkExec.frameImage;
 		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		barrier.subresourceRange.baseArrayLayer = entry != NULL && entry->isCube ? (uint32_t)vkExec.activeCubeFace : 0;
 		barrier.subresourceRange.levelCount = barrier.subresourceRange.layerCount = 1;
@@ -4458,7 +4480,7 @@ static void VK_Exec_TransitionSwapchain( VkImageLayout oldLayout, VkImageLayout 
 	VK_Exec_LayoutAccess( newLayout, barrier.dstStageMask, barrier.dstAccessMask );
 	barrier.oldLayout = oldLayout;
 	barrier.newLayout = newLayout;
-	barrier.image = vkCtx.swapchainImages[ vkExec.swapImageIndex ];
+	barrier.image = vkExec.frameImage;
 	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	barrier.subresourceRange.levelCount = 1;
 	barrier.subresourceRange.layerCount = 1;
@@ -4547,7 +4569,7 @@ bool VK_Exec_SetRenderTarget( idRenderTexture *renderTexture, int cubeFace ) {
 		}
 	} else {
 		attachments.colorCount = 1;
-		attachments.colorViews[ 0 ] = vkCtx.swapchainViews[ vkExec.swapImageIndex ];
+		attachments.colorViews[ 0 ] = vkExec.frameImageView;
 		attachments.depthView = vkCtx.depthViews[ vkExec.frameSlot ];
 		attachments.extent = vkCtx.swapchainExtent;
 		attachments.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -5596,7 +5618,7 @@ static bool VK_TemporalPresentation_CompositePendingScene( void ) {
 	region.dstOffsets[1].z = 1;
 	vkCmdBlitImage( vkExec.cmd, sceneColor->image,
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		vkCtx.swapchainImages[vkExec.swapImageIndex],
+		vkExec.frameImage,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, filter );
 
 	VK_Exec_TransitionImage( sceneColor, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL );
@@ -5755,7 +5777,7 @@ bool VK_Exec_CopyRender( idImage *image, int x, int y, int width, int height,
 		if ( vkExec.activeRenderTexture != NULL && sourceEntry == NULL ) {
 			return false;
 		}
-		sourceImage = sourceEntry != NULL ? sourceEntry->image : vkCtx.swapchainImages[ vkExec.swapImageIndex ];
+		sourceImage = sourceEntry != NULL ? sourceEntry->image : vkExec.frameImage;
 		sourceFormat = sourceEntry != NULL ? sourceEntry->format : vkCtx.swapchainFormat;
 	}
 	const uint32_t sourceLayer = sourceEntry != NULL && sourceEntry->isCube
@@ -6985,7 +7007,7 @@ bool VK_GuiExecutor_ReadPixels( int x, int y, int width, int height, void *pixel
 	copy.imageExtent.width = (uint32_t)width;
 	copy.imageExtent.height = (uint32_t)height;
 	copy.imageExtent.depth = 1;
-	vkCmdCopyImageToBuffer( vkExec.cmd, vkCtx.swapchainImages[ vkExec.swapImageIndex ],
+	vkCmdCopyImageToBuffer( vkExec.cmd, vkExec.frameImage,
 			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, readbackBuffer, 1, &copy );
 
 	VK_Exec_TransitionSwapchain( VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -7084,6 +7106,8 @@ static bool VK_GuiExecutor_SubmitFrame( bool present ) {
 	const int slot = vkExec.frameSlot;
 	const uint32_t imageIndex = vkExec.swapImageIndex;
 	VkCommandBuffer cmd = vkExec.cmd;
+	// A hidden window's offscreen frame completes without a presentation.
+	const bool presentImage = present && vkExec.framePresentable;
 
 	// submit any batched image uploads first: same-queue submission order makes
 	// them execute before this frame samples the images, and this frame's fence
@@ -7098,7 +7122,7 @@ static bool VK_GuiExecutor_SubmitFrame( bool present ) {
 	VK_Exec_EndMainRendering();
 	VK_Exec_TransitionActiveTargetToSampled();
 
-	if ( present ) {
+	if ( presentImage ) {
 		VkImageMemoryBarrier2 toPresent;
 		memset( &toPresent, 0, sizeof( toPresent ) );
 		toPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -7107,7 +7131,7 @@ static bool VK_GuiExecutor_SubmitFrame( bool present ) {
 		toPresent.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
 		toPresent.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-		toPresent.image = vkCtx.swapchainImages[ imageIndex ];
+		toPresent.image = vkExec.frameImage;
 		toPresent.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		toPresent.subresourceRange.levelCount = 1;
 		toPresent.subresourceRange.layerCount = 1;
@@ -7170,8 +7194,8 @@ static bool VK_GuiExecutor_SubmitFrame( bool present ) {
 	si.pWaitSemaphoreInfos = vkExec.acquireWaitPending ? &waitInfo : NULL;
 	si.commandBufferInfoCount = 1;
 	si.pCommandBufferInfos = &cmdInfo;
-	si.signalSemaphoreInfoCount = present ? 1 : 0;
-	si.pSignalSemaphoreInfos = present ? &signalInfo : NULL;
+	si.signalSemaphoreInfoCount = presentImage ? 1 : 0;
+	si.pSignalSemaphoreInfos = presentImage ? &signalInfo : NULL;
 	const VkResult submitted = vkQueueSubmit2( vkCtx.graphicsQueue, 1, &si, vkCtx.frameFences[ slot ] );
 	if ( submitted != VK_SUCCESS ) {
 		VK_GpuFrameTiming_SubmitFailed( slot );
@@ -7188,6 +7212,12 @@ static bool VK_GuiExecutor_SubmitFrame( bool present ) {
 	vkExec.acquireWaitPending = false;
 	vkExec.frameOpen = false;
 	if ( !present ) {
+		return true;
+	}
+	if ( !presentImage ) {
+		// Nothing displays a hidden window, so its completed frame is all its
+		// presentation is, as a GL swap of a hidden window is.
+		R_DisplayPresentationPresented();
 		return true;
 	}
 
@@ -9033,7 +9063,7 @@ static bool VK_TemporalPresentation_BlitColorToSwap(
 	region.dstOffsets[1].z = 1;
 	vkCmdBlitImage( vkExec.cmd, sourceEntry->image,
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		vkCtx.swapchainImages[vkExec.swapImageIndex],
+		vkExec.frameImage,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, filter );
 	VK_Exec_TransitionImage( sourceEntry,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL );

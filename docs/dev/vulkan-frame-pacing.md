@@ -4,6 +4,63 @@ Status: unresolved. Vulkan remains experimental. This investigation separates
 CPU work, GPU execution and synchronization waits; it does not establish a
 performance improvement or complete renderer qualification.
 
+## Hidden windows and a sleeping display (2026-10-06)
+
+Hidden-window Vulkan captures (`r_hiddenWindow 1`) on the RTX 4060 laptop ran
+at a few frames per second for most of 2026-10-06. `com_speeds` showed frames
+alternating between about 40 ms and 1 s, or holding near 260 ms, and a
+retained-UI dialog whose focus lands on the frame its timeline ends missed
+fixed `waitMsec` waits. OpenGL captures of the same scenarios kept their usual
+length.
+
+Every slow run falls inside a Modern Standby period. The System event log has
+the laptop entering it (Kernel-Power event 506) at 10:06:21 and leaving it (507)
+at 17:49:10; the display was off in between while agents kept capturing. The
+same Create Server capture took 23–29 s before 10:06 and 63–87 s during
+standby. Join Game captures took 121–305 s on Vulkan, two of them ending at the
+300 s timeout, against 77–103 s on OpenGL. Once standby ended, the identical
+hidden scenario paced at an even 16.7 ms (`com_maxfps 60`), and
+`rendererDisplayProbe report` counted no failed acquisitions.
+
+The only one-second constant in the Vulkan frame path was the swapchain
+acquisition timeout. A hidden window's FIFO presentation engine releases images
+at vblank. With the display off, the frame times (about 260 ms, 500 ms and
+1 s) show it handing them back only every quarter to whole second, so an
+acquisition often waited out the whole second and the frame was skipped
+(`RDP_ACQUIRE_FAILED`, `VK_TIMEOUT`), which gives the alternating pattern. The diagnostic `r_vkPresentationFailureTest 3` reproduces that state
+with the display on: it holds every image the engine releases until it is set
+back to 0, which returns them with a swapchain rebuild. In a hidden window
+that still presents (`r_vkHiddenWindowPresent 1`, the old behavior), a
+six-second `waitMsec` under the drill took 113 s: all 113 acquisitions timed
+out, because a skipped frame retries acquisition at each of its later render
+commands. With the change below, the same drill holds 60 fps (median 17 ms,
+maximum 30 ms) with no failed acquisition.
+
+A hidden window no longer uses its swapchain for frames. Each frame renders
+into its frame slot's offscreen color image, with the swapchain's format,
+extent and usage. Screenshots and back-buffer copies read it as they read a
+swapchain image. The frame completes without acquiring or presenting, and
+counts as presented, as a GL swap of a hidden window does, so display-change
+confirmation and `rendererDisplayProbe` behave as before. The swapchain is
+still created and recreated for resizes and interval changes, so present-mode
+reports are unchanged. Hidden frames are paced by the engine's frame cap:
+Windows caps hidden windows at 60 fps, and other platforms use `com_maxfps`.
+Visible windows are unchanged and keep the one-second timeout that protects an
+occluded Wayland window or a stalled compositor. `VK_Device_PresentClearFrame`,
+an uncalled Phase C helper that acquired with no timeout at all, is removed,
+and `renderer_display_presentation.py` rejects any unbounded acquisition.
+At one frozen pose in Air Defense 1, an offscreen screenshot and one taken
+while presenting (switched with `vid_restart partial`) are pixel-identical,
+and the retained-UI title capture writes all six screenshots in 20 s. With the
+display on and the machine otherwise idle, offscreen frames are as even as
+presented ones: 60 fps, median 17 ms and at most 19–23 ms on the title and in
+Air Defense 1, with no Vulkan validation-layer message for either path.
+
+Hidden-window measurements no longer include presentation. The hidden-window
+stalls in the sections below came from the cross-adapter presentation path. To
+study that path in a hidden window, set `r_vkHiddenWindowPresent 1`; it applies
+when the swapchain is next created, for example at `vid_restart`.
+
 ## Reproduction and localization
 
 The v56 stock `game/storage1` comparison retained five runs before and five

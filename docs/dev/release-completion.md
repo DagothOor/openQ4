@@ -63,6 +63,26 @@
   10.3 -> 9.6 s, every pair faster; fixed-tic screenshots matched outside
   animated effects.
 
+- [x] Stop hidden Vulkan windows stalling up to a second per frame. With the
+  display off (Modern Standby on 2026-10-06, 10:06-17:49), a hidden window's
+  FIFO presentation engine handed swapchain images back only every quarter to
+  whole second, so `vkAcquireNextImageKHR` often waited out its 1 s timeout and
+  the frame was skipped: retained-UI captures alternated ~40 ms and ~1 s frames
+  and ran up to four times as long as on OpenGL. A hidden window
+  (`r_hiddenWindow`, or a strict restart's hidden request) now renders each
+  frame into its slot's offscreen image and never acquires or presents;
+  screenshots and back-buffer copies read that image, and the completed frame
+  counts as presented. The swapchain is still created, so present-mode reports
+  are unchanged, and visible windows keep the 1 s timeout.
+  `r_vkPresentationFailureTest 3` withholds every swapchain image to reproduce
+  the condition with the display on (presenting: 113 timed-out acquisitions in
+  a 6 s wait; offscreen: 60 fps and none), and `r_vkHiddenWindowPresent 1`
+  presents hidden frames again for presentation studies. The uncalled
+  `VK_Device_PresentClearFrame`, an unbounded acquire, is removed. Offscreen
+  and presented captures at one frozen pose are pixel-identical.
+  `renderer_display_presentation.py` runs the real frame methods on both paths
+  and rejects unbounded acquisition.
+
 - [x] Keep Vulkan's compiled pipelines across crashes and measure them. The
   pipeline cache is written atomically before every level load as well as at
   shutdown, and every `vkCreate*Pipelines` call is timed (`gfxInfo`, per-map
