@@ -1388,6 +1388,10 @@ extern idCVar r_shadowMapPCSSMaxRadius;	// projected PCSS-lite maximum filter ra
 extern idCVar r_shadowMapNormalOffsetScale;	// normal-offset receiver bias in shadow texels
 extern idCVar r_shadowMapCasterCulling;	// caster face culling: 0 = two-sided, 1 = near shell, 2 = topology-aware automatic
 extern idCVar r_shadowMapPointHighPrecision;	// 1 = store point shadow depth as high-precision float color
+extern idCVar r_sunLightScale;		// brightness multiplier for sun lights
+extern idCVar r_sunLightMinRadius;	// point lights larger than this count as suns
+// r_sunLightScale for sun lights, 1 for every other light
+float R_LightIntensityScale( const viewLight_t *vLight );
 extern idCVar r_shadowMapPointMaxRadius;	// point lights larger than this keep stencil shadows; 0 = no limit
 // true when a point light of this radius may use a cube shadow map (r_shadowMapPointLights and r_shadowMapPointMaxRadius)
 bool R_ShadowMapPointLightAllowed( const renderLight_t &parms );

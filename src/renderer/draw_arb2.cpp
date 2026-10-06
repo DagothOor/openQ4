@@ -10690,10 +10690,11 @@ static void RB_ARB2_CreateCustomGLSLDrawInteractionsForSurface( const drawSurf_t
 			RB_BakeTextureMatrixIntoTexgen( reinterpret_cast<idPlane *>( inter.lightProjection ), backEnd.lightTextureMatrix );
 		}
 
+		const float sunScale = R_LightIntensityScale( vLight );
 		const float lightColor[4] = {
-			backEnd.lightScale * lightRegs[ lightStage->color.registers[0] ],
-			backEnd.lightScale * lightRegs[ lightStage->color.registers[1] ],
-			backEnd.lightScale * lightRegs[ lightStage->color.registers[2] ],
+			backEnd.lightScale * sunScale * lightRegs[ lightStage->color.registers[0] ],
+			backEnd.lightScale * sunScale * lightRegs[ lightStage->color.registers[1] ],
+			backEnd.lightScale * sunScale * lightRegs[ lightStage->color.registers[2] ],
 			lightRegs[ lightStage->color.registers[3] ]
 		};
 

@@ -687,6 +687,31 @@ void RB_FinishStageTexture( const textureStage_t *texture, const drawSurf_t *sur
 
 /*
 =================
+R_LightIntensityScale
+
+Retail Quake 4 sun lights are authored about as bright as an ordinary lamp.
+r_sunLightScale lifts parallel lights and large shadow-casting point lights
+(the outdoor suns); every other light keeps its authored brightness.
+=================
+*/
+float R_LightIntensityScale( const viewLight_t *vLight ) {
+	const float scale = r_sunLightScale.GetFloat();
+	if ( vLight == NULL || vLight->lightDef == NULL || scale == 1.0f ) {
+		return 1.0f;
+	}
+	const renderLight_t &parms = vLight->lightDef->parms;
+	if ( parms.parallel ) {
+		return scale;
+	}
+	if ( !parms.pointLight || parms.noShadows ) {
+		return 1.0f;
+	}
+	const float extent = Max( Max( idMath::Fabs( parms.lightRadius.x ), idMath::Fabs( parms.lightRadius.y ) ), idMath::Fabs( parms.lightRadius.z ) );
+	return extent > r_sunLightMinRadius.GetFloat() ? scale : 1.0f;
+}
+
+/*
+=================
 RB_DetermineLightScale
 
 Sets:
@@ -736,7 +761,7 @@ void RB_DetermineLightScale( void ) {
 		for ( i = 0 ; i < numStages ; i++ ) {
 			stage = shader->GetStage( i );
 			for ( j = 0 ; j < 3 ; j++ ) {
-				float	v = r_lightScale.GetFloat() * vLight->shaderRegisters[ stage->color.registers[j] ];
+				float	v = r_lightScale.GetFloat() * R_LightIntensityScale( vLight ) * vLight->shaderRegisters[ stage->color.registers[j] ];
 				if ( v > max ) {
 					max = v;
 				}
@@ -992,9 +1017,10 @@ void RB_CreateSingleDrawInteractionsFiltered( const drawSurf_t *surf, void (*Dra
 
 		// backEnd.lightScale is calculated so that lightColor[] will never exceed
 		// tr.backEndRendererMaxLight
-		lightColor[0] = backEnd.lightScale * lightRegs[ lightStage->color.registers[0] ];
-		lightColor[1] = backEnd.lightScale * lightRegs[ lightStage->color.registers[1] ];
-		lightColor[2] = backEnd.lightScale * lightRegs[ lightStage->color.registers[2] ];
+		const float sunScale = R_LightIntensityScale( vLight );
+		lightColor[0] = backEnd.lightScale * sunScale * lightRegs[ lightStage->color.registers[0] ];
+		lightColor[1] = backEnd.lightScale * sunScale * lightRegs[ lightStage->color.registers[1] ];
+		lightColor[2] = backEnd.lightScale * sunScale * lightRegs[ lightStage->color.registers[2] ];
 		lightColor[3] = lightRegs[ lightStage->color.registers[3] ];
 
 		// go through the individual stages
