@@ -204,7 +204,7 @@ def validate_disabled_upload_bridge_state() -> None:
         require(init_body, token, "disabled renderer upload bridge state")
 
     for token in (
-        "if ( glDeleteBuffersARB != NULL )",
+        "if ( glConfig.isInitialized && glDeleteBuffersARB != NULL )",
         "glDeleteBuffersARB( 1, &vbo )",
         "vbo = 0;",
     ):

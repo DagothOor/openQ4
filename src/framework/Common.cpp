@@ -4455,7 +4455,10 @@ void Com_ReloadGameModule_f( const idCmdArgs &args ) {
 
 		common->Printf( "============= ReloadGameModule failed ============\n" );
 		// Whatever was queued to run after the swap assumed the new module
-		// came up. Do not run it; the next successful swap overwrites it.
+		// came up. Do not run it; the next successful swap overwrites it. A
+		// dedicated server it was holding back goes with it, so a later listen
+		// server does not inherit the request.
+		idAsyncNetwork::AbandonDeferredDedicatedSpawn();
 #ifndef ID_DEDICATED
 		// ArenaCampaign::Shutdown deliberately preserves its transaction across
 		// the expected game_sp -> game_mp swap. If InitGame failed, that handoff

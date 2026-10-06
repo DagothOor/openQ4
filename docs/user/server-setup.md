@@ -13,8 +13,15 @@ The multiplayer menu's **Create Server** page hosts a listen server: you play
 on it while it serves the other players. **Server Type** decides who can join.
 **Internet** advertises the server to the master servers and accepts players
 from anywhere; **LAN** keeps it off the master servers and accepts only players
-on your local network. **Dedicated** cannot be started from the game yet and
-still starts a listen server, so use the dedicated server executable below.
+on your local network.
+
+Set **Dedicated** to **Yes** to host without playing, as in the original game.
+When you start the server, the game window closes and the openQ4 console window
+takes its place. The server runs there and accepts console commands such as
+`spawnServer mp/q4dm2`, `kick` and `quit`; close the console window to stop
+the server. To play on it from the same computer, start openQ4 again and join
+it from the multiplayer server browser. To run a server without starting the
+game first, use the dedicated server executable below.
 
 ## What You Need
 

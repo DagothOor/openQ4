@@ -644,6 +644,8 @@ public:
 	virtual int				GetReverb( int area );
 	virtual bool			SetReverb( int area, const char* reverbName, const char* fileName );
 
+	virtual void			ShutdownHW();
+
 	//-------------------------
 
 	// Before a sound is reloaded, any active voices using it must

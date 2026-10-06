@@ -91,6 +91,8 @@ idCVar				idAsyncNetwork::clientDownload( "net_clientDownload", "1", CVAR_SYSTEM
 
 int					idAsyncNetwork::realTime;
 master_t			idAsyncNetwork::masters[ MAX_MASTER_SERVERS ];
+bool				idAsyncNetwork::dedicatedSpawnDeferred = false;
+bool				idAsyncNetwork::dedicatedFromClient = false;
 
 /*
 ==================
@@ -463,10 +465,49 @@ void idAsyncNetwork::SetCheatsEnabled( bool enabled ) {
 
 /*
 ==================
+idAsyncNetwork::AbandonDeferredDedicatedSpawn
+==================
+*/
+void idAsyncNetwork::AbandonDeferredDedicatedSpawn( void ) {
+	dedicatedSpawnDeferred = false;
+}
+
+/*
+==================
+idAsyncNetwork::HoldDedicatedAcrossReload
+
+The server's map change queues spawnServer right after the reload, and that
+resumes the request as SpawnServer_f's own reloads do: the engine comes back with
+its renderer and session for the reload, then turns into a dedicated server again.
+Without a device the reload's session init would leave no worlds to spawn into.
+==================
+*/
+void idAsyncNetwork::HoldDedicatedAcrossReload( void ) {
+	if ( dedicatedFromClient && serverDedicated.GetInteger() == 1 ) {
+		dedicatedSpawnDeferred = true;
+		serverDedicated.SetInteger( 0 );
+	}
+}
+
+/*
+==================
 idAsyncNetwork::SpawnServer_f
+
+With net_serverDedicated 1, a client showing a window turns itself into a
+dedicated server here, as retail Quake4.exe 1.4.2 does: the window closes, the
+system console becomes the server's only interface, and the audio device is
+released. Before that the spawn may have to swap to game_mp, or reload the engine
+out of q4xbase. Both rebuild the renderer, the session's worlds and the menus for
+a client only, and the renderer reads net_serverDedicated as it starts, so the
+request is held back across the reload and resumed by the spawnServer it replays.
 ==================
 */
 void idAsyncNetwork::SpawnServer_f( const idCmdArgs &args ) {
+	if ( dedicatedSpawnDeferred ) {
+		dedicatedSpawnDeferred = false;
+		serverDedicated.SetInteger( 1 );
+	}
+	const bool holdDedicatedAcrossReload = serverDedicated.GetInteger() == 1 && renderSystem->IsOpenGLRunning();
 
     if ( !idStr::Icmp( fileSystem->GetActiveGameDir(), "q4xbase" ) ||
          !idStr::Icmp( cvarSystem->GetCVarString( "fs_game" ), "q4xbase" ) ) {
@@ -478,6 +519,10 @@ void idAsyncNetwork::SpawnServer_f( const idCmdArgs &args ) {
         if ( !idStr::Icmp( cvarSystem->GetCVarString( "si_gameType" ), "singleplayer" ) )
             cvarSystem->SetCVarString( "si_gameType", "DM" );
         cvarSystem->SetCVarString( "com_nextGameModule", "game_mp" );
+        if ( holdDedicatedAcrossReload ) {
+            dedicatedSpawnDeferred = true;
+            serverDedicated.SetInteger( 0 );
+        }
         cmdSystem->SetupReloadEngineMenu( args );
         return;
     }
@@ -508,9 +553,24 @@ void idAsyncNetwork::SpawnServer_f( const idCmdArgs &args ) {
 		if ( args.Argc() > 1 ) {
 			reloadArgs.AppendArg( args.Argv( 1 ) );
 		}
+		if ( holdDedicatedAcrossReload ) {
+			dedicatedSpawnDeferred = true;
+			serverDedicated.SetInteger( 0 );
+		}
 		cmdSystem->SetupReloadGameModule( reloadArgs );
 		return;
 	}
+
+#ifndef ID_DEDICATED
+	// Without a renderer device the client's session init leaves no worlds: a
+	// launch with net_serverDedicated 1, or an engine reload of a client that
+	// turned into a dedicated server outside a map change. A map cannot load,
+	// so refuse here instead of crashing in the map change.
+	if ( session->rw == NULL ) {
+		common->Warning( "spawnServer: the session has no game world, because this engine started without a renderer device; run openQ4-ded to host a dedicated server" );
+		return;
+	}
+#endif
 
 	com_asyncInput.SetBool( false );
 	// make sure the current system state is compatible with net_serverDedicated
@@ -523,11 +583,22 @@ void idAsyncNetwork::SpawnServer_f( const idCmdArgs &args ) {
 			break;
 		case 1:
 			if ( renderSystem->IsOpenGLRunning() ) {
-				Sys_ShowConsole( 1, false );
+				common->Printf( "Dedicated server: closing the game window; this console now runs the server, and closing it quits\n" );
+				// The console is the server's only window from here on, so closing
+				// it quits, as it does for openQ4-ded. A launch with a hidden game
+				// window keeps the console hidden too.
+				Sys_ShowConsole( cvarSystem->GetCVarBool( "r_hiddenWindow" ) ? 0 : 1, true );
 				renderSystem->ShutdownOpenGL();
+				// A dedicated server takes no single-instance lock (openQ4-ded never
+				// does), so the game can start again on this computer to join it.
+				Sys_ReleaseInstanceLock();
+				dedicatedFromClient = true;
 			}
+			// Release the audio device only, as retail does. Shutdown() deleted
+			// every sample while sound shaders, emitters and BSE effects still
+			// pointed at them.
 			soundSystem->SetMute( true );
-			soundSystem->Shutdown();
+			soundSystem->ShutdownHW();
 			break;
 	}
 	// use serverMapRestart if we already have a running server

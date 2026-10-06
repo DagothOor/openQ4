@@ -1070,6 +1070,15 @@ bool Sys_AlreadyRunning( void ) {
 	return false;
 }
 
+/*
+================
+Sys_ReleaseInstanceLock
+================
+*/
+void Sys_ReleaseInstanceLock( void ) {
+	Posix_ReleaseInstanceLock();
+}
+
 static pthread_t posix_mainThread;
 static bool posix_mainThreadRecorded = false;
 

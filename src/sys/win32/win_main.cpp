@@ -1838,6 +1838,8 @@ void Sys_StartAsyncThread(void) {
 	}
 }
 
+static HANDLE win_instanceMutex = NULL;
+
 /*
 ================
 Sys_AlreadyRunning
@@ -1848,13 +1850,25 @@ returns true if there is a copy of openQ4 running already
 bool Sys_AlreadyRunning(void) {
 #ifndef DEBUG
 	if (!win32.win_allowMultipleInstances.GetBool()) {
-		::CreateMutex(NULL, FALSE, "openQ4");
+		win_instanceMutex = ::CreateMutex(NULL, FALSE, "openQ4");
 		if (::GetLastError() == ERROR_ALREADY_EXISTS || ::GetLastError() == ERROR_ACCESS_DENIED) {
 			return true;
 		}
 	}
 #endif
 	return false;
+}
+
+/*
+================
+Sys_ReleaseInstanceLock
+================
+*/
+void Sys_ReleaseInstanceLock(void) {
+	if (win_instanceMutex != NULL) {
+		::CloseHandle(win_instanceMutex);
+		win_instanceMutex = NULL;
+	}
 }
 
 /*

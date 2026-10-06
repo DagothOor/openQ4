@@ -41,6 +41,7 @@ def main():
             ('query-thread','!R_ImagePolicyRendererThread() || !initialized','!initialized'),
             ('query-generation','!storageReady || !storage.generation ||','!storageReady ||'),
             ('fallback-fence','hasSync = path == UPLOAD_PATH_PERSISTENT && syncAvailable;','hasSync = requestedPath != UPLOAD_PATH_DISABLED && syncAvailable;'),
+            ('no-context-delete','if ( glConfig.isInitialized && glDeleteBuffersARB != NULL ) {','if ( glDeleteBuffersARB != NULL ) {'),
         ]
     results=[]
     for name,old,new in mutations:

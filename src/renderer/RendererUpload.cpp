@@ -55,7 +55,10 @@ static void R_RendererUpload_DeleteBufferName( unsigned int &vbo ) {
 	if ( vbo == 0 ) {
 		return;
 	}
-	if ( glDeleteBuffersARB != NULL ) {
+	// Without a context the name already died with it. ShutdownOpenGL leaves the
+	// vertex cache's names behind (a client that became a dedicated server), and
+	// renderer Shutdown frees them later; a GL call there has no context to use.
+	if ( glConfig.isInitialized && glDeleteBuffersARB != NULL ) {
 		glDeleteBuffersARB( 1, &vbo );
 	}
 	vbo = 0;

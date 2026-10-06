@@ -294,6 +294,9 @@ void			Sys_Error( const char *error, ...);
 void			Sys_Quit( void );
 
 bool			Sys_AlreadyRunning( void );
+// gives up the single-instance lock Sys_AlreadyRunning took, for a client that
+// became a dedicated server (which takes none), so the game can start again
+void			Sys_ReleaseInstanceLock( void );
 
 // note that this isn't journaled...
 char *			Sys_GetClipboardData( void );

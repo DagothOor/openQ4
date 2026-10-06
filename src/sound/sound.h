@@ -544,6 +544,13 @@ public:
 	virtual	int				GetNumAreas() = 0;
 	virtual	int				GetReverb( int area ) = 0;
 	virtual	bool			SetReverb( int area, const char* reverbName, const char* fileName ) = 0;
+
+	// Releases the audio device and every sample's audio data and sets s_noSound,
+	// for a client that turns into a dedicated server (SpawnServer_f). Unlike
+	// Shutdown() it keeps every sample object, because sound shaders keep
+	// pointers to them; samples loaded later become silent defaults, as on a
+	// dedicated server. Retail Quake4.exe 1.4.2 calls ShutdownHW there.
+	virtual void			ShutdownHW() = 0;
 };
 
 extern idSoundSystem*	soundSystem;

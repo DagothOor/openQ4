@@ -702,8 +702,12 @@ static bool Posix_ConsoleCreateWindow( void ) {
 	// Fatal errors reach this path after common->Shutdown() has released the
 	// registered cvar storage. A forced fatal window must therefore avoid every
 	// cvar access; normal console creation still requires a live cvar system.
+	// A console that quits on close is a dedicated server's only interface (a
+	// client that turned into one has no game window left), so the
+	// sys_consoleWindow opt-out does not apply to it.
 	if ( !s_consoleWindow.forceFatalWindow &&
-		 ( cvarSystem == NULL || !cvarSystem->IsInitialized() || !sys_consoleWindow.GetBool() ) ) {
+		 ( cvarSystem == NULL || !cvarSystem->IsInitialized() ||
+		   ( !sys_consoleWindow.GetBool() && !s_consoleWindow.quitOnClose ) ) ) {
 		return false;
 	}
 	if ( !Posix_ConsoleEnsureVideo() ) {
@@ -945,6 +949,22 @@ static void Posix_ConsoleBeginPress( float x, float y ) {
 }
 
 /*
+** Posix_ConsoleRequestQuit
+**
+** The fatal-error window runs its own event loop until exitRequested is set.
+** Anywhere else the engine is still running (a dedicated server's console, or
+** the console the Quit button sits on), so quit through the command buffer;
+** nothing outside the fatal loop reads exitRequested.
+*/
+static void Posix_ConsoleRequestQuit( void ) {
+	if ( s_consoleWindow.forceFatalWindow ) {
+		s_consoleWindow.exitRequested = true;
+		return;
+	}
+	Posix_ConsoleQueueCommand( "quit" );
+}
+
+/*
 ** Posix_ConsoleClickButton
 **
 ** Runs on button release over the rect the press started in, matching the
@@ -970,11 +990,7 @@ static void Posix_ConsoleClickButton( float x, float y ) {
 			Posix_ConsoleClearBuffer();
 			return;
 		case POSIX_CONSOLE_BUTTON_QUIT:
-			if ( s_consoleWindow.quitOnClose ) {
-				s_consoleWindow.exitRequested = true;
-				return;
-			}
-			Posix_ConsoleQueueCommand( "quit" );
+			Posix_ConsoleRequestQuit();
 			return;
 		default:
 			return;
@@ -983,7 +999,7 @@ static void Posix_ConsoleClickButton( float x, float y ) {
 
 static void Posix_ConsoleHandleClose( void ) {
 	if ( s_consoleWindow.quitOnClose ) {
-		s_consoleWindow.exitRequested = true;
+		Posix_ConsoleRequestQuit();
 	} else {
 		Posix_ConsoleHide();
 	}

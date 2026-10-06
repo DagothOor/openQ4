@@ -209,9 +209,19 @@ public:
 	// same message used for offline check and network reply
 	static void				BuildInvalidKeyMsg( idStr &msg, bool valid[ 2 ] );
 
+							// a failed game-module swap drops the spawnServer it was
+							// for, and with it a dedicated server it was holding back
+	static void				AbandonDeferredDedicatedSpawn( void );
+							// a server map change that reloads the engine first (an
+							// addon map, net_serverReloadEngine) brings a client that
+							// became a dedicated server back up as one for the reload
+	static void				HoldDedicatedAcrossReload( void );
+
 private:
 	static int				realTime;
 	static master_t			masters[ MAX_MASTER_SERVERS];	// master1 etc.
+	static bool				dedicatedSpawnDeferred;			// net_serverDedicated 1 held back across the reload before a spawn
+	static bool				dedicatedFromClient;			// this dedicated server was a client with a window
 
 	static void				SpawnServer_f( const idCmdArgs &args );
 	static void				NextMap_f( const idCmdArgs &args );

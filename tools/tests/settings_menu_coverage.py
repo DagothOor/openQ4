@@ -836,13 +836,144 @@ def validate_create_server_choices(mainmenu: str, session_menu: str) -> None:
         'cvarSystem->SetCVarBool( "net_LANServer", cvarSystem->GetCVarBool( "net_menulanserver" ) );',
         "startMultiplayer Server Type",
     )
-    # Dedicated keeps hosting a listen server, with a warning, until a client
-    # can become a dedicated server in process: from game_sp or q4xbase the
-    # reload before the spawn brings up no renderer or session worlds while
-    # net_serverDedicated is 1, and the sound shutdown leaves shaders pointing
-    # at freed samples. Honouring the row needs those fixed and probed first.
-    require(handler, "int dedicated = 0;", "startMultiplayer listen-server fallback")
-    require(handler, 'cvarSystem->GetCVarBool( "net_serverMenuDedicated" )', "startMultiplayer Dedicated warning")
+    # Dedicated asks SpawnServer for a dedicated server, which turns this client
+    # into one in process (validate_dedicated_conversion); it used to fall back
+    # to a listen server with a warning.
+    require(
+        handler,
+        'const int dedicated = cvarSystem->GetCVarBool( "net_serverMenuDedicated" ) ? 1 : 0;',
+        "startMultiplayer Dedicated",
+    )
+    require(handler, 'cvarSystem->SetCVarInteger( "net_serverDedicated", 1 );', "startMultiplayer Dedicated")
+    reject(handler, "int dedicated = 0;", "startMultiplayer Dedicated (listen-server fallback)")
+    reject(handler, "Dedicated is not available in the game yet", "startMultiplayer Dedicated (fallback warning)")
+
+
+def function_body(source_text: str, header: str, context: str) -> str:
+    start = source_text.find(header)
+    if start < 0:
+        raise AssertionError(f"Missing {header!r} in {context}")
+    end = source_text.find("\n}\n", start)
+    if end < 0:
+        raise AssertionError(f"Unterminated {header!r} in {context}")
+    return source_text[start : end + 2]
+
+
+def require_order(haystack: str, needles: list[str], context: str) -> None:
+    position = -1
+    for needle in needles:
+        found = haystack.find(needle, position + 1)
+        if found < 0:
+            raise AssertionError(f"Missing {needle!r} after the previous step in {context}")
+        position = found
+
+
+def validate_dedicated_conversion() -> None:
+    """Dedicated turns the running client into a dedicated server, as retail does.
+
+    SpawnServer_f closes the window, makes the system console the server's only
+    interface and releases the audio device. A spawn from game_sp or q4xbase
+    first reloads, which brings the renderer, the session's worlds and the menus
+    back only for a client, so net_serverDedicated 1 is held back across it and
+    resumed by the replayed spawnServer. The teardown must leave nothing that a
+    later frame or the final shutdown touches without its device.
+    """
+    network = read(ROOT / "src/framework/async/AsyncNetwork.cpp")
+    spawn = function_body(network, "void idAsyncNetwork::SpawnServer_f( const idCmdArgs &args ) {", "AsyncNetwork.cpp")
+    hold = "dedicatedSpawnDeferred = true;\n\t\t\tserverDedicated.SetInteger( 0 );"
+    require_order(
+        spawn,
+        [
+            "if ( dedicatedSpawnDeferred ) {\n\t\tdedicatedSpawnDeferred = false;\n\t\tserverDedicated.SetInteger( 1 );",
+            "serverDedicated.GetInteger() == 1 && renderSystem->IsOpenGLRunning()",
+            '"q4xbase"',
+            "dedicatedSpawnDeferred = true;\n            serverDedicated.SetInteger( 0 );",
+            "cmdSystem->SetupReloadEngineMenu( args );",
+            hold,
+            "cmdSystem->SetupReloadGameModule( reloadArgs );",
+            # a session without worlds (no device) cannot load a map
+            "if ( session->rw == NULL ) {",
+            "Sys_ShowConsole( cvarSystem->GetCVarBool( \"r_hiddenWindow\" ) ? 0 : 1, true );",
+            "renderSystem->ShutdownOpenGL();",
+            "Sys_ReleaseInstanceLock();",
+            "dedicatedFromClient = true;",
+            "soundSystem->ShutdownHW();",
+            "server.Spawn();",
+        ],
+        "SpawnServer_f dedicated conversion",
+    )
+    # Shutdown() deletes every sample while sound shaders keep pointers to them.
+    reject(spawn, "soundSystem->Shutdown();", "SpawnServer_f dedicated conversion")
+    hold_reload = function_body(network, "void idAsyncNetwork::HoldDedicatedAcrossReload( void ) {", "AsyncNetwork.cpp")
+    require_order(
+        hold_reload,
+        ["if ( dedicatedFromClient && serverDedicated.GetInteger() == 1 ) {", "dedicatedSpawnDeferred = true;",
+         "serverDedicated.SetInteger( 0 );"],
+        "dedicated hold across a map change's engine reload",
+    )
+    # A map change that reloads the engine (an addon map, net_serverReloadEngine)
+    # queues spawnServer after it; the converted server holds its request across.
+    server = read(ROOT / "src/framework/async/AsyncServer.cpp")
+    require_order(
+        server,
+        [
+            "idAsyncNetwork::HoldDedicatedAcrossReload();",
+            'cmdSystem->BufferCommandText( CMD_EXEC_NOW, "reloadEngine" );',
+            'cmdSystem->BufferCommandText( CMD_EXEC_APPEND, "spawnServer\\n" );',
+        ],
+        "server map change engine reload",
+    )
+
+    common = read(ROOT / "src/framework/Common.cpp")
+    swap = function_body(common, "void Com_ReloadGameModule_f( const idCmdArgs &args ) {", "Common.cpp")
+    require_order(
+        swap,
+        ["ReloadGameModule failed", "idAsyncNetwork::AbandonDeferredDedicatedSpawn();", "session->StartMenu();"],
+        "failed game-module swap",
+    )
+
+    sound = read(ROOT / "src/sound/snd_system.cpp")
+    _, no_sound_flags = cvar_signature(sound, "s_noSound", "snd_system.cpp")
+    # NOCHEAT as in retail: a spawn without cheats resets unarchived cheat CVars.
+    require(" ".join(sorted(no_sound_flags)), "CVAR_NOCHEAT", "s_noSound flags")
+    release = function_body(sound, "void idSoundSystemLocal::ShutdownHW()", "snd_system.cpp")
+    require_order(
+        release,
+        [
+            "s_noSound.SetBool( true );",
+            "emitter->channels[c]->Mute();",
+            "samples[i]->FreeData();",
+            "hardware.Shutdown();",
+            "hardware.ClearInitFailure();",
+        ],
+        "sound hardware release",
+    )
+    reject(release, "DeleteContents", "sound hardware release")
+    reject(release, "sampleHash.Free", "sound hardware release")
+
+    upload = read(ROOT / "src/renderer/RendererUpload.cpp")
+    delete = function_body(upload, "static void R_RendererUpload_DeleteBufferName( unsigned int &vbo ) {", "RendererUpload.cpp")
+    require(delete, "if ( glConfig.isInitialized && glDeleteBuffersARB != NULL ) {", "buffer delete without a context")
+
+    renderer = read(ROOT / "src/renderer/RenderSystem_init.cpp")
+    shutdown_gl = function_body(renderer, "void idRenderSystemLocal::ShutdownOpenGL( void ) {", "RenderSystem_init.cpp")
+    require_order(
+        shutdown_gl,
+        ["R_ShutdownFrameData();", "tr.viewDef = NULL; tr.primaryView = NULL; backEnd.viewDef = NULL;", "GLimp_Shutdown();"],
+        "ShutdownOpenGL view pointers",
+    )
+
+    posix = read(ROOT / "src/sys/posix/posix_syscon.cpp")
+    request = function_body(posix, "static void Posix_ConsoleRequestQuit( void ) {", "posix_syscon.cpp")
+    require_order(
+        request,
+        ["s_consoleWindow.forceFatalWindow", "s_consoleWindow.exitRequested = true;", 'Posix_ConsoleQueueCommand( "quit" );'],
+        "POSIX console quit request",
+    )
+    close = function_body(posix, "static void Posix_ConsoleHandleClose( void ) {", "posix_syscon.cpp")
+    require(close, "Posix_ConsoleRequestQuit();", "POSIX console close")
+    create = function_body(posix, "static bool Posix_ConsoleCreateWindow( void ) {", "posix_syscon.cpp")
+    require(create, "!sys_consoleWindow.GetBool() && !s_consoleWindow.quitOnClose", "POSIX dedicated console window")
 
 
 def main() -> None:
@@ -870,6 +1001,7 @@ def main() -> None:
     validate_performance_preset_wiring(common_cpp, system_gui, session_menu, registry_text, display_docs, locales)
     validate_ingame_menu_activation_contract(mainmenu, session_menu, session_cpp)
     validate_create_server_choices(mainmenu, session_menu)
+    validate_dedicated_conversion()
 
     require(mainmenu, '#include "guis/menu/settings/system.gui"', "System settings include")
     reject(mainmenu, "windowDef p_settings_sys", "mainmenu System pane extraction")

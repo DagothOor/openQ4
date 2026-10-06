@@ -1018,7 +1018,7 @@ def validate_install_error_console_contract() -> None:
     require(posix_console, "s_consoleWindow.forceFatalWindow = true;", "POSIX fatal console forced visibility")
     require(
         posix_console,
-        "if ( !s_consoleWindow.forceFatalWindow &&\n\t\t ( cvarSystem == NULL || !cvarSystem->IsInitialized() || !sys_consoleWindow.GetBool() ) )",
+        "if ( !s_consoleWindow.forceFatalWindow &&\n\t\t ( cvarSystem == NULL || !cvarSystem->IsInitialized() ||\n\t\t   ( !sys_consoleWindow.GetBool() && !s_consoleWindow.quitOnClose ) ) )",
         "POSIX fatal console avoids released cvar storage",
     )
     require(posix_console, "s_consoleWindow.exitRequested = true;", "POSIX fatal console quit/close exit")

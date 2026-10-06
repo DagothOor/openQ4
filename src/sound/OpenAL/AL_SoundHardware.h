@@ -89,6 +89,12 @@ public:
 	{
 		return initFailed;
 	}
+	// A deliberate release (a client that became a dedicated server) is not a
+	// device failure: stop that retry, or it would reopen the device.
+	void			ClearInitFailure()
+	{
+		initFailed = false;
+	}
 	bool			HasEFXFilters() const
 	{
 		return efxFiltersAvailable;

@@ -28,7 +28,7 @@ static unsigned checks=0;
 struct CVar { int value; int GetInteger() const {return value;} bool GetBool() const {return value!=0;} };
 static CVar r_rendererUploadMegs{2},r_rendererUploadFrameBuffers{3},r_rendererUploadPersistent{1};
 struct renderBackendCaps_t {bool hasSync=true,hasBufferStorage=true,hasMapBufferRange=true,hasVBO=true;};
-static struct {struct {bool persistentMappedUploads=true;} renderFeatures;} glConfig;
+static struct {bool isInitialized=true;struct {bool persistentMappedUploads=true;} renderFeatures;} glConfig;
 static struct DriverReport {unsigned flags=0;} quirks;
 constexpr unsigned RENDERER_DRIVER_QUIRK_DISABLE_PERSISTENT_UPLOADS=1;
 static const DriverReport& RendererDriverQuirks_LastReport(){return quirks;}
@@ -172,4 +172,12 @@ static void Unavailable(){
     Reset();const auto before=rg_uploadStorageGeneration.load();rg_uploadStorageGeneration=(std::numeric_limits<uint64_t>::max)();
     manager.Init(Caps(3));Refused(manager);CHECK(gl.buffers.empty());manager.Shutdown();rg_uploadStorageGeneration=before;
 }
-int main(){try{Basic();Failures();Orphan();Unavailable();std::printf("%u checks passed\n",checks);return 0;}catch(const std::exception& e){std::printf("%s\n",e.what());return 1;}}
+// ShutdownOpenGL (a client turning into a dedicated server) leaves the vertex
+// cache's buffer names behind; the context took them with it, so a later free
+// drops the name without a GL call into the dead context.
+static void NoContext(){
+    Reset();unsigned vbo=7;const auto calls=gl.calls;glConfig.isInitialized=false;
+    R_RendererUpload_DeleteBufferName(vbo);glConfig.isInitialized=true;
+    CHECK(vbo==0&&gl.calls==calls);
+}
+int main(){try{Basic();Failures();Orphan();Unavailable();NoContext();std::printf("%u checks passed\n",checks);return 0;}catch(const std::exception& e){std::printf("%s\n",e.what());return 1;}}

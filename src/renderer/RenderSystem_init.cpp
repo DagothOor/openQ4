@@ -6504,6 +6504,8 @@ void idRenderSystemLocal::ShutdownOpenGL( void ) {
 
 	// free the context and close the window
 	R_ShutdownFrameData();
+	// the views lived in the frame memory just freed
+	tr.viewDef = NULL; tr.primaryView = NULL; backEnd.viewDef = NULL;
 	R_GpuSkinning_ContractShutdown();
 	R_ClassicGuiDomain_ResetFrame();
 	R_ClassicCinematicPostDomain_ResetFrame();

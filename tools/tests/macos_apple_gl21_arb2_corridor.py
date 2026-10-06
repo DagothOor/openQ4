@@ -383,7 +383,7 @@ def validate_upload_and_vertex_cache_static_coverage() -> None:
         require(upload_init, token, "disabled renderer upload bridge state")
 
     for token in (
-        "if ( glDeleteBuffersARB != NULL )",
+        "if ( glConfig.isInitialized && glDeleteBuffersARB != NULL )",
         "glDeleteBuffersARB( 1, &vbo )",
         "vbo = 0;",
     ):

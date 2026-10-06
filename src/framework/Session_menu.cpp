@@ -3409,15 +3409,9 @@ void idSessionLocal::HandleMainMenuCommands( const char *menuCommand ) {
 			// Quake4.exe 1.4.2 reads here; Quake 4's menu never sets Doom 3's
 			// "server_type" and "dedicated" GUI keys.
 			cvarSystem->SetCVarBool( "net_LANServer", cvarSystem->GetCVarBool( "net_menulanserver" ) );
-			// Dedicated still hosts a listen server. Turning this client into a
-			// dedicated server is broken: from game_sp or q4xbase the reload before
-			// the spawn brings up no renderer or session worlds, and the sound
-			// shutdown leaves shaders pointing at freed samples. openQ4-ded hosts
-			// dedicated servers.
-			int dedicated = 0;
-			if ( cvarSystem->GetCVarBool( "net_serverMenuDedicated" ) ) {
-				common->Warning( "Create Server: Dedicated is not available in the game yet, so this starts a listen server; run openQ4-ded for a dedicated server" );
-			}
+			// Dedicated turns this client into a dedicated server in SpawnServer:
+			// the window closes and the system console runs the server.
+			const int dedicated = cvarSystem->GetCVarBool( "net_serverMenuDedicated" ) ? 1 : 0;
 			if ( gui_configServerRate.GetInteger() > 0 ) {
 				// guess the best rate for upstream, number of internet clients
 				if ( gui_configServerRate.GetInteger() == 5 || cvarSystem->GetCVarBool( "net_LANServer" ) ) {

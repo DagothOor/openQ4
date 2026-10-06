@@ -445,6 +445,9 @@ void idAsyncServer::ExecuteMapChange( void ) {
 				clients[ i ].clientState = SCS_ZOMBIE; // so we don't bother sending a disconnect
 			}
 		}
+		// a client that turned into a dedicated server reloads with its renderer
+		// and session, and the spawnServer below turns it into one again
+		idAsyncNetwork::HoldDedicatedAcrossReload();
 		cmdSystem->BufferCommandText( CMD_EXEC_NOW, "reloadEngine" );
 		serverReloadingEngine = true; // don't get caught in endless loop
 		cmdSystem->BufferCommandText( CMD_EXEC_APPEND, "spawnServer\n" );

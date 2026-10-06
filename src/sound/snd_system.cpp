@@ -30,7 +30,10 @@ If you have questions concerning this license or the applicable additional terms
 #include "snd_local.h"
 #include "SoundSettings.h"
 
-idCVar s_noSound( "s_noSound", "0", CVAR_BOOL, "returns NULL for all sounds loaded and does not update the sound rendering" );
+// NOCHEAT as in retail Quake4.exe 1.4.2: a multiplayer spawn or join without
+// cheats resets every other unarchived CVar, which switched a dedicated server's
+// silence (and a player's own s_noSound) back off.
+idCVar s_noSound( "s_noSound", "0", CVAR_SOUND | CVAR_BOOL | CVAR_NOCHEAT, "returns NULL for all sounds loaded and does not update the sound rendering" );
 idCVar s_volume( "s_volume", "0.5", CVAR_ARCHIVE | CVAR_FLOAT, "master volume (0-1)", 0.0f, 1.0f );
 idCVar s_musicVolume( "s_musicVolume", "0.5", CVAR_ARCHIVE | CVAR_FLOAT, "music volume (0-1)", 0.0f, 1.0f );
 idCVar s_speakerFraction( "s_speakerFraction", "0.65", CVAR_ARCHIVE | CVAR_FLOAT, "speaker attenuation fraction" );
@@ -468,6 +471,63 @@ void idSoundSystemLocal::Shutdown()
 	FreeStreamBuffers();
 	hardware.Shutdown();
 	reverb.Clear();
+}
+
+/*
+========================
+idSoundSystemLocal::ShutdownHW
+
+SpawnServer_f calls this when a client turns into a dedicated server, and on every
+spawn of openQ4-ded. The engine keeps running: sound shaders, emitters and BSE
+effects keep pointers to the sample objects, so unlike Shutdown() this keeps every
+one of them and frees only what the device and the decoded audio hold.
+========================
+*/
+void idSoundSystemLocal::ShutdownHW()
+{
+	// LoadResource makes every sample loaded from now on a short silent default,
+	// as on a dedicated server, and Render no longer drives the device.
+	s_noSound.SetBool( true );
+
+	// Release each channel's voice before the device destroys the voices.
+	for( int i = 0; i < soundWorlds.Num(); i++ )
+	{
+		idSoundWorldLocal* sw = soundWorlds[i];
+		if( sw == NULL )
+		{
+			continue;
+		}
+		for( int e = 0; e < sw->emitters.Num(); e++ )
+		{
+			idSoundEmitterLocal* emitter = sw->emitters[e];
+			if( emitter == NULL )
+			{
+				continue;
+			}
+			for( int c = 0; c < emitter->channels.Num(); c++ )
+			{
+				emitter->channels[c]->Mute();
+			}
+		}
+	}
+	// Free sample buffers while OpenAL is still current; FreeData also cancels
+	// a decode still running on a job worker.
+	for( int i = 0; i < samples.Num(); i++ )
+	{
+		samples[i]->FreeData();
+	}
+	decodingSamples.Clear();
+	FreeStreamBuffers();
+	if( hardware.GetOpenALDevice() != NULL )
+	{
+		hardware.Shutdown();
+	}
+	// After a failed init the device is retried every second while s_noSound
+	// holds, and a device it found would lift this silence again.
+	hardware.ClearInitFailure();
+
+	// Turning s_noSound off again reloads what the menus and the level hold.
+	needsRestart = true;
 }
 
 /*
