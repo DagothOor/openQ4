@@ -511,6 +511,11 @@
   keep sound off for every map they load instead of decoding each map's sounds,
   and keep the sound data that effects still read.
 
+- [x] A server you host keeps the network address and port set with `net_ip`,
+  `net_ip6` and `net_port`, as in retail Quake 4. Starting a match without
+  cheats reset them, so the next server you hosted, or a server reloading for
+  an addon map, listened on every interface and the default port.
+
 - [x] Consolidate SDK game sources and Awakening SP into the engine checkout;
   qualify campaign discovery, content/save isolation, stock/expansion save
   compatibility, multiplayer and Arena before archiving the historical repositories.

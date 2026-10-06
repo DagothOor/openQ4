@@ -137,7 +137,7 @@ def validate_shared_endpoint_parser() -> None:
 def validate_cross_platform_network_cvar_defaults() -> None:
     windows = read("src/sys/win32/win_net.cpp")
     posix = read("src/sys/posix/posix_net.cpp")
-    default = 'idCVar net_port( "net_port", "0", CVAR_SYSTEM | CVAR_INTEGER, "local IP port number" );'
+    default = 'idCVar net_port( "net_port", "0", CVAR_SYSTEM | CVAR_INTEGER | CVAR_NOCHEAT, "local IP port number" );'
     require(windows, default, "Windows automatic net_port default")
     require(posix, default, "POSIX automatic net_port default")
     reject(posix, 'idCVar net_port( "net_port", "",', "POSIX empty net_port default")

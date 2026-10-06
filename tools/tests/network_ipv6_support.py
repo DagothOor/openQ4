@@ -319,7 +319,7 @@ def validate_platform_ipv6_transport(relative_path: str, platform: str) -> None:
     require(receive, "ipv6First", f"{platform} receive family rotation")
 
     for token in (
-        'idCVar net_ip6( "net_ip6", "", CVAR_SYSTEM, "local IPv6 address, empty binds every interface" );',
+        'idCVar net_ip6( "net_ip6", "", CVAR_SYSTEM | CVAR_NOCHEAT, "local IPv6 address, empty binds every interface" );',
         'idCVar net_enableIPv4( "net_enableIPv4", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL, "bind an IPv4 socket" );',
         'idCVar net_enableIPv6( "net_enableIPv6", "1", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL, "bind an IPv6 socket" );',
         'idCVar net_mcast6addr( "net_mcast6addr", "ff02::1", CVAR_SYSTEM | CVAR_ARCHIVE, "IPv6 multicast group used for LAN server discovery" );',

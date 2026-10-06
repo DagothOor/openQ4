@@ -81,7 +81,7 @@ def validate_posix_resolver() -> None:
 
     require(
         source,
-        'idCVar net_port( "net_port", "0", CVAR_SYSTEM | CVAR_INTEGER, "local IP port number" );',
+        'idCVar net_port( "net_port", "0", CVAR_SYSTEM | CVAR_INTEGER | CVAR_NOCHEAT, "local IP port number" );',
         "POSIX automatic net_port default",
     )
     reject(source, 'idCVar net_port( "net_port", "",', "POSIX empty net_port default")
