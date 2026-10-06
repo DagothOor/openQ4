@@ -23,7 +23,9 @@ from pathlib import Path
 from typing import Any
 
 
-REPORT_SCHEMA_VERSION = 3
+# Must equal renderer_gameplay_benchmark.REPORT_SCHEMA_VERSION; the static
+# contract in tools/tests/renderer_gpu_skinning.py fails when the two drift.
+REPORT_SCHEMA_VERSION = 5
 EVIDENCE_SCHEMA_VERSION = 1
 EVIDENCE_KIND = "openq4-gpu-skinning-paired-evidence"
 DEFAULT_MINIMUM_CPU_P95_IMPROVEMENT = 1.0

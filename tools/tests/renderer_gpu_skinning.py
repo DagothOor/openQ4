@@ -596,6 +596,22 @@ def validate_source_discovery() -> None:
 def validate_paired_evidence_verifier() -> None:
     verifier = ROOT / "tools" / "validation" / "gpu_skinning_evidence.py"
     source = read(verifier)
+    # The verifier rejects every report whose schema it does not know, so a
+    # benchmark schema bump without it silently disables the promotion gate.
+    benchmark = read(ROOT / "tools" / "tests" / "renderer_gameplay_benchmark.py")
+    schema = re.compile(r"^REPORT_SCHEMA_VERSION = (\d+)$", re.MULTILINE)
+    verifier_schema = schema.search(source)
+    benchmark_schema = schema.search(benchmark)
+    if (
+        verifier_schema is None
+        or benchmark_schema is None
+        or verifier_schema.group(1) != benchmark_schema.group(1)
+    ):
+        raise AssertionError(
+            "GPU skinning evidence verifier and gameplay benchmark report schemas differ: "
+            f"{verifier_schema and verifier_schema.group(1)!r} vs "
+            f"{benchmark_schema and benchmark_schema.group(1)!r}"
+        )
     require_all(
         source,
         (
