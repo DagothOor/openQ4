@@ -28,11 +28,9 @@ bool R_ShadowMapPointLightAllowed( const renderLight_t &parms ) {
 	if ( !r_shadowMapPointLights.GetBool() ) {
 		return false;
 	}
-	// Distant off-centre sources already render through a synthesized
-	// projection instead of a cube map, so the cube-map size limit does not apply.
-	if ( R_ShadowMapUsesDistantPointProjection( parms ) ) {
-		return true;
-	}
+	// The limit also covers distant off-centre sources: a sun-sized light's
+	// single synthesized projection spans the whole map, so its texels are too
+	// coarse to hold ordinary shadows. Such lights keep stencil shadow volumes.
 	const float maxRadius = r_shadowMapPointMaxRadius.GetFloat();
 	if ( maxRadius <= 0.0f ) {
 		return true;

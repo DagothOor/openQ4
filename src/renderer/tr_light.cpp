@@ -1601,7 +1601,7 @@ bool R_ShadowMapLightWillUseShadowMaps( const idRenderLightLocal *lightDef ) {
 	// through synthesized projections (see shadow classification).
 	const bool pointLightPath = lightDef->parms.pointLight && !lightDef->parms.parallel
 		&& !R_ShadowMapUsesDistantPointProjection( lightDef->parms );
-	if ( lightDef->parms.pointLight && !lightDef->parms.parallel && !r_shadowMapPointLights.GetBool() ) {
+	if ( lightDef->parms.pointLight && !lightDef->parms.parallel && !R_ShadowMapPointLightAllowed( lightDef->parms ) ) {
 		return false;
 	}
 	if ( pointLightPath ) {

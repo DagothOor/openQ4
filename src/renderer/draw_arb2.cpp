@@ -6468,6 +6468,10 @@ static shadowMapLightSupportReason_t RB_ShadowMapLightSupportReason( const viewL
 		}
 		return RB_PointShadowMapEnsureResources() ? SHADOWMAP_SUPPORT_OK : SHADOWMAP_SUPPORT_RESOURCE_FAILURE;
 	}
+	// sun-sized distant sources keep stencil volumes (r_shadowMapPointMaxRadius)
+	if ( R_ClassifyShadowMapLight( vLight ).distantPointLight && !R_ShadowMapPointLightAllowed( vLight ) ) {
+		return SHADOWMAP_SUPPORT_POINT_DISABLED;
+	}
 	return RB_ShadowMapEnsureResources( vLight ) ? SHADOWMAP_SUPPORT_OK : SHADOWMAP_SUPPORT_RESOURCE_FAILURE;
 }
 
@@ -10240,6 +10244,8 @@ bool RB_ShadowMapEstimateArb2CacheOwnership( const viewLight_t *vLight, const vi
 		if ( !R_ShadowMapPointLightAllowed( vLight ) || !glConfig.cubeMapAvailable ) {
 			return false;
 		}
+	} else if ( R_ClassifyShadowMapLight( vLight ).distantPointLight && !R_ShadowMapPointLightAllowed( vLight ) ) {
+		return false;
 	}
 
 	estimate.valid = true;
