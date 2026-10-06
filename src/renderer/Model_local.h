@@ -185,6 +185,10 @@ public:
 	void						DeleteSurfacesWithNegativeId( void );
 	bool						FindSurfaceWithId( int id, int &surfaceNum );
 
+	// createBackSides false finishes surfaces that already carry their back
+	// sides, such as MD5R surfaces rebuilt 1:1 from packed meshes
+	void						FinishSurfaces( bool createBackSides );
+
 public:
 	idList<modelSurface_t>		surfaces;
 	idBounds					bounds;
@@ -312,6 +316,10 @@ typedef enum {
 	MD5R_SOURCE_LWO_ASE_FLT,
 	MD5R_SOURCE_PROC
 } rvMD5RSource_t;
+
+// The packed md5r*.vp programs read their joint palette from env[0..74], three
+// rows per transform, so a primitive batch can reference at most 25 joints.
+const int MD5R_MAX_PRIM_BATCH_TRANSFORMS = 25;
 
 struct rvMD5RGeometrySpec {
 								rvMD5RGeometrySpec() :
@@ -595,6 +603,7 @@ public:
 
 private:
 	bool						InitFromStaticModelInternal( const idRenderModelStatic &sourceModel, rvMD5RSource_t sourceType, idList<rvMD5RVertexBufferDesc> *sharedVertexBuffers, idList<rvMD5RIndexBufferDesc> *sharedIndexBuffers, idList<silEdge_t> *sharedSilEdges );
+	bool						AppendConvertedMD5Mesh( const idMD5Mesh &sourceMesh, int meshIdentifier );
 	const idList<rvMD5RVertexBufferDesc> &GetVertexBuffers() const;
 	const idList<rvMD5RIndexBufferDesc> &GetIndexBuffers() const;
 	const idList<silEdge_t> &GetSilhouetteEdges() const;

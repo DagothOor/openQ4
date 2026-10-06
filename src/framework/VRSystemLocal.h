@@ -26,6 +26,7 @@ extern idCVar vr_headOffsetLimit;
 extern idCVar vr_hudDistance;
 extern idCVar vr_hudWidth;
 extern idCVar vr_hudHeightOffset;
+extern idCVar vr_hudOnSight;
 extern idCVar vr_screenDistance;
 extern idCVar vr_screenWidth;
 extern idCVar vr_mirror;

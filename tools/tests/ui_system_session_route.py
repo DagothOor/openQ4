@@ -167,8 +167,9 @@ struct idSessionLocal {
     idUserInterface* guiRetainedHome=nullptr;int retainedHomeUpdates=0;
     void UpdateRetainedHome(){++retainedHomeUpdates;}void RetainedHomeFrameEvent(){CHECK(guiRetainedHome==nullptr);}
     void UpdateRetainedSubpage(){}
-    // Nor does the multiplayer card: these scenarios have no match.
+    // Nor does the multiplayer card, or a loading screen held over a join: these scenarios have no match.
     void UpdateRetainedMultiplayer(){}void RetainedMultiplayerFrameEvent(){}
+    idUserInterface* guiLoadingHold=nullptr;void UpdateRetainedLoadingHold(){}
     idUserInterface* guiRetainedMultiplayer=nullptr;
     void HandleRetainedMultiplayerRequest(idUserInterface*,const char*){CHECK(false);}void HandleGameMenuReturn(const char*){CHECK(false);}
     void HandleRetainedSessionRequest(idUserInterface*,const char*){CHECK(false);}

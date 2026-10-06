@@ -11101,6 +11101,15 @@ void RB_STD_T_RenderShaderPasses( const drawSurf_t *surf ) {
 			continue;
 		}
 
+		// A packed MD5R stage points the vertex array at its own client memory
+		// and leaves buffer 0 bound, which turns every later ac offset into a CPU
+		// address. Rebind the ambient cache before this stage derives pointers.
+		if ( R_TriHasPrimBatchMesh( tri ) ) {
+			ac = (idDrawVert *)vertexCache.Position( tri->ambientCache );
+			glVertexPointer( 3, GL_FLOAT, sizeof( idDrawVert ), RB_DrawVertAttributePointer( ac, offsetof( idDrawVert, xyz ) ) );
+			resetTexCoords = true;
+		}
+
 		if ( resetTexCoords ) {
 			glTexCoordPointer( 2, GL_FLOAT, sizeof( idDrawVert ), RB_DrawVertAttributePointer( ac, offsetof( idDrawVert, st ) ) );
 			resetTexCoords = false;

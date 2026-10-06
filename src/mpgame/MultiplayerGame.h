@@ -1230,6 +1230,33 @@ private:
 	bool			SetRetainedVoteField( int field, int value );
 	void			RetainedVoteLines( const voteStruct_t &data, idStrList &lines );
 	void			PublishRetainedVote( idUserInterface *card, bool &changed );
+	// The Settings pages (section 14.18): the player's name and clan, three
+	// model lists (the player's own model for the mode and team, the model
+	// forced on enemies and, in team modes, the one forced on teammates) by
+	// row, the stock rail color swatches and the custom crosshairs.
+	static const int RETAINED_MODEL_SLOTS = 3;
+	static const int RETAINED_MODEL_ROWS = 24;
+	static const int RETAINED_RAIL_COLORS = 7;
+	static const char *	RetainedRailColor( int row );
+	bool			RetainedModelChoice( int slot, idStr &cvar, idStrList &values, idStrList &names, int &current );
+	void			RetainedCrosshairs( idStrList &crosshairs );
+	void			PublishRetainedSettings( idUserInterface *card, bool &changed );
+	// The Escape card's Match page (section 14.18): Match Control, mirrored
+	// from the game's own projection of it on the menu (the match_* states),
+	// the status lines one key each and the lists' rows up to the card's
+	// rows for each (past them the page offers the stock page).
+	static const int RETAINED_MATCH_STATUS_LINES = 6;
+	static const int RETAINED_MATCH_TEAM_ROWS = 32;
+	static const int RETAINED_MATCH_REPLACEMENT_ROWS = 16;
+	static const int RETAINED_MATCH_PROPOSAL_ROWS = 6;
+	static const int RETAINED_MATCH_PROFILE_ROWS = 16;
+	static const int RETAINED_MATCH_RULE_ROWS = 34;
+	static const int RETAINED_MATCH_SERIES_MAP_ROWS = 16;
+	static const int RETAINED_MATCH_HISTORY_ROWS = 24;
+	static const int RETAINED_MATCH_EVIDENCE_ROWS = 5;
+	void			PublishRetainedMatch( idUserInterface *card, bool &changed );
+	void			PublishRetainedMatchList( idUserInterface *card, bool &changed, const char *list, const char *key, int count, int rows,
+						int columns );
 	bool			arenaEntranceCameraResolved;
 	// Which presentation the latched camera belongs to.  The entrance and the
 	// final tableau both latch a collision-safe anchor, but they resolve it

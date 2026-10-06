@@ -284,6 +284,8 @@ public:
 	float					GetCurrentCharge	( void ) const;
 
 	virtual void			UpdateCursorGUI		( idUserInterface* gui ) const;
+							// openQ4 VR: where the next shot leaves, for the aim beam
+	bool					GetMuzzleOrigin		( idVec3& origin ) const;
 
 	virtual bool			Fire				();
 
@@ -392,6 +394,15 @@ public:
 	virtual void	RunPostPhysics		( void );		
 	virtual void	Activate			( bool active );
 
+					// the whole vehicle turns after this turret (the GEV under g_vehicleMode)
+	bool			AlignsParent		( void ) const;
+					// openQ4 VR: the joint hangs below this turret's in the skeleton,
+					// so it swings round with it
+	bool			CarriesJoint		( jointHandle_t carried ) const;
+					// openQ4 VR: the point it swings about, when it turns in yaw and
+					// carries the given joint
+	bool			GetYawPivot			( jointHandle_t carried, idVec3& origin ) const;
+
 protected:
 
 	idBounds		angles;
@@ -411,6 +422,14 @@ protected:
 	// openQ4: The Awakening's "allowDisableMovement" (from the def, not saved)
 	bool			allowDisableMovement;
 	void			ReadMovementLock	( void );
+
+	// openQ4 VR: input rotation the turn rate has not applied yet, the aim it
+	// last saw, and whether the turret has turned to the aim since the seat
+	// was taken, and for which source; transient, so neither saved nor restored
+	idAngles		vrPendingInput;
+	idAngles		vrLastAim;
+	bool			vrAimTaken;
+	bool			vrAimFromHead;
 };
 
 //----------------------------------------------------------------

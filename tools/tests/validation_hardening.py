@@ -733,6 +733,9 @@ def validate_validation_wiring() -> None:
         "macos_dedicated_server_smoke.py",
         "windows_dedicated_server_smoke.py",
         "renderer_gameplay_benchmark.py",
+        # Vulkan support evidence runs need a staged client, a GPU and retail
+        # assets.
+        "renderer_vulkan_qualification.py",
         # Campaign runtime checks require user-supplied retail/expansion assets.
         "campaign_runtime.py",
         "campaign_selection_runtime.py",

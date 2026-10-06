@@ -1212,4 +1212,10 @@
 	"#str_231051"	"Altere uma configuração para votar."
 	"#str_231052"	"Bloqueado pelo servidor."
 	"#str_231053"	"Ninguém"
+	"#str_231054"	"APERTAR PARA FALAR"
+	"#str_231055"	"Não atribuída"
+	"#str_231056"	"TESTAR MICROFONE"
+	"#str_231057"	"O chat de voz não está disponível."
+	"#str_231058"	"Por arma"
+	"#str_231059"	"Digite um número inteiro de 0 a 10000."
 }

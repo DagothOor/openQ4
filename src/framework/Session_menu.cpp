@@ -109,12 +109,14 @@ static const int RETAINED_MP_PROTOCOL = 1;
 // Each card's pages that still hand off to their stock pages. While any
 // remain, the gate leaves that card's stock menu in place and only
 // ui_retainedMultiplayer opts into it. ui_retained_gate.py keeps each list
-// equal to its card's hand-off pages.
+// equal to its card's hand-off pages. (A built page may still open its stock
+// page for what it cannot edit yet: the Settings pages' name and clan, the
+// Match page's referee credential.)
 static const char *const RETAINED_MP_ESCAPE_MISSING_PAGES[] = {
-	"match", "settings", "voice", "admin", NULL
+	"admin", NULL
 };
 static const char *const RETAINED_MP_WELCOME_MISSING_PAGES[] = {
-	"settings", NULL
+	NULL
 };
 // The Team page's action slots (card.team_action); the game derives each
 // slot's action again from the player's state when it is chosen.
@@ -126,9 +128,60 @@ static const char *const RETAINED_MP_VOTE_FIELDS[] = {
 	"mpVoteMap", "mpVoteGameType", "mpVoteTimeLimit", "mpVoteFragLimit", "mpVoteCaptureLimit", "mpVoteTourneyLimit",
 	"mpVoteControlTime", "mpVoteBalance", "mpVoteShuffle", "mpVoteRestart", "mpVoteBuying", "mpVoteKick"
 };
+// The Settings pages' value controls, "<verb> <row>": the three model lists
+// (the game's slots 0 to 2) and the crosshair.
+static const char *const RETAINED_MP_APPEARANCE_VALUES[] = {
+	"mpModelSelf", "mpModelEnemy", "mpModelTeam", "mpCrosshair"
+};
+// The stock rail color swatches (card.rail); the game holds their settings.
+static const int RETAINED_MP_RAIL_COLORS = 7;
 // The Players page names players by client number (card.client), which the
 // game checks against its lists again.
 static const int RETAINED_MP_CLIENTS = MAX_ASYNC_CLIENTS;
+// The Match page's actions, by the card's index (card.match_op): the fixed
+// Match Control tokens the game's own menu emits for them, so the card never
+// sends text of its own (idMultiplayerGame::HandleMatchControlCommand). The
+// first, a refresh, asks the game to project its view again.
+static const char *const RETAINED_MP_MATCH_TOKENS[] = {
+	"refresh", "ready_toggle", "team_ready_toggle", "arm_force_ready", "timeout", "tech_pause", "resume",
+	"arm_forfeit", "arm_abort", "referee_logout", "action_side_a", "action_side_b",
+	"follow_prev", "follow_next", "follow_free", "confirm", "cancel_confirm",
+	"team_join_marine", "team_join_strogg", "team_spectate", "queue_join", "queue_defer", "queue_leave",
+	"roster_accept", "roster_leave", "roster_invite", "arm_roster_remove", "arm_roster_substitute", "role_assign",
+	"team_lock_toggle", "broadcaster_set", "arm_participant_remove", "series_contestant_bind",
+	"proposal_create", "proposal_yes", "proposal_no", "proposal_abstain", "proposal_cancel",
+	"rules_select_profile", "rules_stage_field", "arm_rules_commit", "rules_discard",
+	"series_stage", "arm_series_start", "arm_series_cancel", "arm_series_advance",
+	"arm_veto_ban", "arm_veto_pick", "arm_veto_decider", "arm_veto_side_marine", "arm_veto_side_strogg"
+};
+static const int RETAINED_MP_MATCH_ACTIONS = static_cast<int>( sizeof( RETAINED_MP_MATCH_TOKENS ) / sizeof( RETAINED_MP_MATCH_TOKENS[0] ) );
+// The Match page's lists, by the card's index (card.match_list): the stock
+// list on the game's menu and the fixed token that selects its row. The card
+// names a row by its index (card.match_row); the session sets the stock list's
+// own selection to it, and the game reads it back and checks it against its
+// model again, as for the stock list.
+static const char *const RETAINED_MP_MATCH_LISTS[][2] = {
+	{ "match_team_rows", "select_team_row" }, { "match_replacement_rows", "select_replacement_row" },
+	{ "match_proposal_rows", "select_proposal_row" }, { "match_profile_rows", "select_profile_row" },
+	{ "match_rule_rows", "select_rule_row" }, { "match_series_map_rows", "select_series_map" }
+};
+static const int RETAINED_MP_MATCH_LIST_COUNT = static_cast<int>( sizeof( RETAINED_MP_MATCH_LISTS ) / sizeof( RETAINED_MP_MATCH_LISTS[0] ) );
+// The most rows a Match Control list holds (MP_MATCH_CONTROL_MAX_TEAM_ROWS).
+static const int RETAINED_MP_MATCH_ROWS = 128;
+// The Match page's choices, "<verb> <value>", which the stock choices keep on
+// the game's menu and the game reads as it acts: the role an invitation or an
+// assignment gives, 1 to 4 (the protocol's roster roles), the proposal a
+// ballot or a cancellation goes to, 0 the global one and 1 the team's, and
+// the format a staged series takes, best of one, three or five.
+static const char *const RETAINED_MP_MATCH_CHOICES[] = { "mpMatchRole", "mpMatchScope", "mpMatchSeriesProfile" };
+static const int RETAINED_MP_MATCH_ROLES = 4;
+static const char *const RETAINED_MP_MATCH_SCOPES[] = { "global", "side" };
+static const char *const RETAINED_MP_MATCH_SERIES_PROFILES[] = { "best_of_one", "best_of_three", "best_of_five" };
+// The value to stage for a Match Control rule, "mpMatchRuleValue <value>",
+// which the stock field keeps on the game's menu: at most the largest value a
+// rule takes (the readiness threshold's basis points). The game checks the
+// rule's own bounds as it stages it.
+static const int RETAINED_MP_MATCH_RULE_VALUE_MAX = 10000;
 // The stock menu buttons the card's hand-offs press, by the card's page
 // index (card.stock_page), in the generator's order.
 static const char *const RETAINED_MP_STOCK_PAGES[] = {
@@ -166,17 +219,17 @@ static const char *Session_RetainedMultiplayerStockPage( bool welcome, int page,
 	return page >= 0 && page < count ? pages[ page ] : NULL;
 }
 
-// A Vote page field's request, "<verb> <value>": the field's index in
-// RETAINED_MP_VOTE_FIELDS and a whole number from -1 to 999.
-static bool Session_RetainedVoteField( const char *request, int &field, int &value ) {
+// A value control's request, "<verb> <value>": the verb's index in `verbs`
+// and a whole number from -1 to 999.
+static bool Session_RetainedValueRequest( const char *request, const char *const *verbs, int count, int &field, int &value ) {
 	const char *space = strchr( request, ' ' );
 	if ( space == NULL || space == request ) {
 		return false;
 	}
 	const int verbLength = static_cast<int>( space - request );
 	field = -1;
-	for ( int i = 0; i < static_cast<int>( sizeof( RETAINED_MP_VOTE_FIELDS ) / sizeof( RETAINED_MP_VOTE_FIELDS[0] ) ); i++ ) {
-		if ( static_cast<int>( strlen( RETAINED_MP_VOTE_FIELDS[ i ] ) ) == verbLength && !idStr::Icmpn( request, RETAINED_MP_VOTE_FIELDS[ i ], verbLength ) ) {
+	for ( int i = 0; i < count; i++ ) {
+		if ( static_cast<int>( strlen( verbs[ i ] ) ) == verbLength && !idStr::Icmpn( request, verbs[ i ], verbLength ) ) {
 			field = i;
 		}
 	}
@@ -188,6 +241,24 @@ static bool Session_RetainedVoteField( const char *request, int &field, int &val
 	}
 	value = digits ? atoi( number ) : 0;
 	return digits && value >= -1 && value <= 999;
+}
+
+// "mpMatchRuleValue <value>": a whole number from 0 to the largest value a
+// Match Control rule takes, in at most five digits.
+static bool Session_RetainedRuleValueRequest( const char *request, int &value ) {
+	static const char verb[] = "mpMatchRuleValue ";
+	const int verbLength = static_cast<int>( sizeof( verb ) ) - 1;
+	if ( idStr::Icmpn( request, verb, verbLength ) != 0 ) {
+		return false;
+	}
+	const char *number = request + verbLength;
+	const int length = static_cast<int>( strlen( number ) );
+	bool digits = length >= 1 && length <= 5;
+	for ( int i = 0; digits && i < length; i++ ) {
+		digits = number[ i ] >= '0' && number[ i ] <= '9';
+	}
+	value = digits ? atoi( number ) : 0;
+	return digits && value <= RETAINED_MP_MATCH_RULE_VALUE_MAX;
 }
 
 // The name of the key a prompt would show for `binding` (from the device
@@ -4340,9 +4411,12 @@ void idSessionLocal::GuiFrameEvents() {
 	sysEvent_t  ev;
 	idUserInterface	*gui;
 
+	// A loading screen held over a join gives way to the Welcome card.
+	UpdateRetainedLoadingHold();
+
 	// stop generating move and button commands when a local console or menu is active
 	// running here so SP, async networking and no game all go through it
-	if ( console->Active() || guiActive || guiTest || RetainedUI_IsOpen() ) {
+	if ( console->Active() || guiActive || guiTest || RetainedUI_IsOpen() || guiLoadingHold != NULL ) {
 		usercmdGen->InhibitUsercmd( INHIBIT_SESSION, true );
 	} else {
 		usercmdGen->InhibitUsercmd( INHIBIT_SESSION, false );
@@ -5494,6 +5568,8 @@ idUserInterface *idSessionLocal::SelectRetainedLoadingGui( idUserInterface *lega
 	retained->SetStateBool( "loading_mp", multiplayer );
 	retained->SetStateBool( "loading_intro", idStr::Icmp( legacy->Name(), "guis/loading/intro.gui" ) == 0 );
 	retained->SetStateBool( "loading_ready", false );
+	// Whole again after the last join's hand-off faded it out.
+	retained->HandleNamedEvent( "present" );
 	return retained;
 #endif
 }
@@ -5571,6 +5647,127 @@ static bool Session_IsGameMenu( idUserInterface *gui ) {
 
 bool idSessionLocal::RetainedMultiplayerCovers() const {
 	return guiRetainedMultiplayer != NULL && Session_IsGameMenu( guiActive );
+}
+
+/*
+===============
+idSessionLocal::BeginRetainedLoadingHold
+
+At the end of a multiplayer load the retained loading screen presented: a
+player who joins by the Welcome card (no ui_autoJoin, the card on) keeps the
+screen, reading JOINING, until the card presents (section 14.17), so the
+join never shows the bare match or the stock menu between them. The hold
+gives up after 5 s: a remote client's card took 2 to 3 s to come, the
+menu's first opening among it. False when the load ends as before, with
+the wipe.
+===============
+*/
+static const int RETAINED_LOADING_HOLD_MSEC = 5000;
+static const int RETAINED_LOADING_HANDOFF_MSEC = 250;
+
+bool idSessionLocal::BeginRetainedLoadingHold() {
+#ifdef ID_DEDICATED
+	return false;
+#else
+	ClearRetainedLoadingHold();
+	// ExecuteMapChange asks just before it marks the map spawned.
+	if ( !retainedLoadingActive || guiLoading == NULL || !IsMultiplayer() || readDemo != NULL ||
+			idAsyncNetwork::multiViewDemo.IsPlaying() || cvarSystem->GetCVarBool( "ui_autoJoin" ) ||
+			!Session_RetainedMultiplayerEnabled( true ) || retainedStock.FindIndex( RETAINED_MP_WELCOME_GUI ) >= 0 ||
+			Session_ModSuppliesFile( "guis/mpmain.gui" ) ) {
+		return false;
+	}
+	// The 5 s count from the first frame the presentation clock moves.
+	guiLoadingHold = guiLoading;
+	retainedLoadingHoldBegan = common->GetPresentationTime();
+	if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+		common->Printf( "RETAINED_LOADING_HOLD begin\n" );
+	}
+	return true;
+#endif
+}
+
+/*
+===============
+idSessionLocal::FadeRetainedLoadingHold
+
+The held screen fades out over 250 ms (80 ms under reduced motion), over the
+card that takes over or over the match; the session draws it until then.
+===============
+*/
+void idSessionLocal::FadeRetainedLoadingHold( const char *reason ) {
+#ifndef ID_DEDICATED
+	// Not before the clock moves after the load (UpdateRetainedLoadingHold).
+	if ( guiLoadingHold == NULL || retainedLoadingHoldFading || retainedLoadingHoldLive == 0 ) {
+		return;
+	}
+	const int now = common->GetPresentationTime();
+	guiLoadingHold->HandleNamedEvent( "handoff" );
+	retainedLoadingHoldFading = true;
+	retainedLoadingHoldUntil = now + RETAINED_LOADING_HANDOFF_MSEC;
+	if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+		common->Printf( "RETAINED_LOADING_HOLD fade=%s waited=%d\n", reason, now - retainedLoadingHoldLive );
+	}
+#endif
+}
+
+/*
+===============
+idSessionLocal::UpdateRetainedLoadingHold
+
+Each frame, before the card's own update: the hold fades once a card has
+presented, when anything else takes the screen, or after 5 s, and ends with
+its fade. A card that presents this frame starts the fade on the next, so its
+first frame, the slowest (the menu opening, the softening's first draw), draws
+under the screen and the fade plays on the quick frames after it. A new load
+or a stop drops the hold at once.
+===============
+*/
+void idSessionLocal::UpdateRetainedLoadingHold() {
+#ifndef ID_DEDICATED
+	if ( guiLoadingHold == NULL ) {
+		return;
+	}
+	if ( !mapSpawned || insideExecuteMapChange ) {
+		ClearRetainedLoadingHold();
+		return;
+	}
+	const int now = common->GetPresentationTime();
+	if ( retainedLoadingHoldFading ) {
+		if ( now >= retainedLoadingHoldUntil ) {
+			if ( cvarSystem->GetCVarBool( "ui_retainedTrace" ) ) {
+				common->Printf( "RETAINED_LOADING_HOLD end faded=%d\n", now - ( retainedLoadingHoldUntil - RETAINED_LOADING_HANDOFF_MSEC ) );
+			}
+			ClearRetainedLoadingHold();
+		}
+		return;
+	}
+	// The presentation clock stands still through the load and the rest of
+	// its frame, then catches up at once: the hold counts its 5 s, and may
+	// fade, only from the first frame the clock moves.
+	if ( retainedLoadingHoldLive == 0 ) {
+		if ( now == retainedLoadingHoldBegan ) {
+			return;
+		}
+		retainedLoadingHoldLive = now;
+		retainedLoadingHoldUntil = now + RETAINED_LOADING_HOLD_MSEC;
+	}
+	if ( guiRetainedMultiplayer != NULL ) {
+		FadeRetainedLoadingHold( "card" );
+	} else if ( RetainedUI_IsOpen() || ( guiActive != NULL && ( !Session_IsGameMenu( guiActive ) || retainedMultiplayerUncovered ) ) ) {
+		FadeRetainedLoadingHold( "screen" );
+	} else if ( now >= retainedLoadingHoldUntil ) {
+		FadeRetainedLoadingHold( "expired" );
+	}
+#endif
+}
+
+void idSessionLocal::ClearRetainedLoadingHold() {
+	guiLoadingHold = NULL;
+	retainedLoadingHoldBegan = 0;
+	retainedLoadingHoldLive = 0;
+	retainedLoadingHoldUntil = 0;
+	retainedLoadingHoldFading = false;
 }
 
 /*
@@ -5677,6 +5874,10 @@ void idSessionLocal::UpdateRetainedMultiplayer() {
 		card->SetStateBool( "mp.keys.vote_yes_bound", yesKey.Length() > 0 );
 		card->SetStateString( "mp.keys.vote_no", noKey.c_str() );
 		card->SetStateBool( "mp.keys.vote_no_bound", noKey.Length() > 0 );
+		// And the push-to-talk key, for the Voice page.
+		const idStr talkKey = Session_RetainedBoundKey( "_voiceChat" );
+		card->SetStateString( "mp.keys.voice_chat", talkKey.c_str() );
+		card->SetStateBool( "mp.keys.voice_chat_bound", talkKey.Length() > 0 );
 		card->StateChanged( now );
 		card->Activate( true, now );
 		card->HandleNamedEvent( "open" );
@@ -5764,10 +5965,14 @@ The card's verbs, each the stock menu's own command with its selection
 sound: Resume closes the menu, Main Menu leaves for the main menu with the
 match running, Disconnect (after the card's own confirmation) leaves the
 server, the Team page's and the Welcome card's Join page actions, the
-Players page's selection, Mute and Friend, and the Vote page's ballots, call
-and drafted fields go to the game, and a page still in development hands off
-to its stock page. Every other request is refused, as the card's own verbs
-are anywhere else.
+Players page's selection, Mute and Friend, the Vote page's ballots, call
+and drafted fields, the Match page's actions and list rows, and the
+Settings pages' models, rail color and crosshair go to the game (the Match
+page's choices and rule value wait on the game's menu, as the stock
+controls' values do); Controls, Game Options and System leave for the
+main menu's pages; and a page still in development, or one the card cannot
+edit yet (name and clan), hands off to its stock page. Every other request
+is refused, as the card's own verbs are anywhere else.
 ===============
 */
 void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, const char *request ) {
@@ -5798,6 +6003,56 @@ void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, con
 		// An action that is unavailable now keeps the menu open.
 		gameCommand = va( "play main_menu_selection ; retained welcome %d", slot );
 		command = gameCommand.c_str();
+	} else if ( !idStr::Icmp( request, "mpMatch" ) ) {
+		const int action = gui->State().GetInt( "card.match_op", "-1" );
+		if ( action < 0 || action >= RETAINED_MP_MATCH_ACTIONS ) {
+			common->Warning( "retained UI: the multiplayer card asked for match action %d", action );
+			return;
+		}
+		// Match Control's own fixed token; the game checks the action again
+		// against its accepted view and keeps the menu open. A refresh, which
+		// the page asks as it opens, makes no sound.
+		gameCommand = va( "%smatchControl %s", action == 0 ? "" : "play main_menu_selection ; ", RETAINED_MP_MATCH_TOKENS[ action ] );
+		command = gameCommand.c_str();
+	} else if ( !idStr::Icmp( request, "mpMatchSelect" ) ) {
+		const int list = gui->State().GetInt( "card.match_list", "-1" ), row = gui->State().GetInt( "card.match_row", "-1" );
+		if ( list < 0 || list >= RETAINED_MP_MATCH_LIST_COUNT || row < 0 || row >= RETAINED_MP_MATCH_ROWS ) {
+			common->Warning( "retained UI: the multiplayer card asked for row %d of match list %d", row, list );
+			return;
+		}
+		// The stock list's own selection on the game's menu, then its token;
+		// the menu stays open.
+		guiActive->SetStateInt( va( "%s_sel_0", RETAINED_MP_MATCH_LISTS[ list ][ 0 ] ), row );
+		gameCommand = va( "play main_menu_selection ; matchControl %s", RETAINED_MP_MATCH_LISTS[ list ][ 1 ] );
+		command = gameCommand.c_str();
+	} else if ( Session_RetainedValueRequest( request, RETAINED_MP_MATCH_CHOICES,
+		static_cast<int>( sizeof( RETAINED_MP_MATCH_CHOICES ) / sizeof( RETAINED_MP_MATCH_CHOICES[0] ) ), voteField, voteValue ) ) {
+		// Each choice's values: the roles 1 to 4, the ballot targets 0 and 1,
+		// the series formats 0 to 2.
+		static const int lowest[] = { 1, 0, 0 };
+		static const int highest[] = { RETAINED_MP_MATCH_ROLES, 1, 2 };
+		static const char *const choices[] = { "match role", "ballot target", "series format" };
+		static_assert( sizeof( lowest ) / sizeof( lowest[0] ) == sizeof( RETAINED_MP_MATCH_CHOICES ) / sizeof( RETAINED_MP_MATCH_CHOICES[0] ),
+			"one range for each Match page choice" );
+		if ( voteValue < lowest[ voteField ] || voteValue > highest[ voteField ] ) {
+			common->Warning( "retained UI: the multiplayer card chose %s %d", choices[ voteField ], voteValue );
+			return;
+		}
+		// The stock choice's own value on the game's menu, quietly; the game
+		// reads it as it acts.
+		if ( voteField == 0 ) {
+			guiActive->SetStateInt( "match_role_choice", voteValue );
+		} else if ( voteField == 1 ) {
+			guiActive->SetStateString( "match_proposal_scope_choice", RETAINED_MP_MATCH_SCOPES[ voteValue ] );
+		} else {
+			guiActive->SetStateString( "match_series_profile_choice", RETAINED_MP_MATCH_SERIES_PROFILES[ voteValue ] );
+		}
+		return;
+	} else if ( Session_RetainedRuleValueRequest( request, voteValue ) ) {
+		// The stock field's own value on the game's menu, quietly; the game
+		// checks it against the rule chosen as it stages it.
+		guiActive->SetStateInt( "match_rule_value", voteValue );
+		return;
 	} else if ( !idStr::Icmp( request, "mpTeamAction" ) ) {
 		const int slot = gui->State().GetInt( "card.team_action", "-1" );
 		if ( slot < 0 || slot >= RETAINED_MP_TEAM_SLOTS ) {
@@ -5814,10 +6069,31 @@ void idSessionLocal::HandleRetainedMultiplayerRequest( idUserInterface *gui, con
 			"play main_menu_selection ; retained vote no";
 	} else if ( !idStr::Icmp( request, "mpCallVote" ) ) {
 		command = "play main_menu_selection ; retained callVote";
-	} else if ( Session_RetainedVoteField( request, voteField, voteValue ) ) {
+	} else if ( Session_RetainedValueRequest( request, RETAINED_MP_VOTE_FIELDS,
+		static_cast<int>( sizeof( RETAINED_MP_VOTE_FIELDS ) / sizeof( RETAINED_MP_VOTE_FIELDS[0] ) ), voteField, voteValue ) ) {
 		// A drafted field changes quietly, and the menu stays open.
 		gameCommand = va( "retained voteSet %d %d", voteField, voteValue );
 		command = gameCommand.c_str();
+	} else if ( Session_RetainedValueRequest( request, RETAINED_MP_APPEARANCE_VALUES,
+		static_cast<int>( sizeof( RETAINED_MP_APPEARANCE_VALUES ) / sizeof( RETAINED_MP_APPEARANCE_VALUES[0] ) ), voteField, voteValue ) &&
+		voteValue >= 0 ) {
+		// A model or the crosshair changes quietly, and the menu stays open.
+		gameCommand = voteField < 3 ? va( "retained appearance %d %d", voteField, voteValue ) : va( "retained crosshair %d", voteValue );
+		command = gameCommand.c_str();
+	} else if ( !idStr::Icmp( request, "mpRail" ) ) {
+		const int rail = gui->State().GetInt( "card.rail", "-1" );
+		if ( rail < 0 || rail >= RETAINED_MP_RAIL_COLORS ) {
+			common->Warning( "retained UI: the multiplayer card asked for rail color %d", rail );
+			return;
+		}
+		gameCommand = va( "play main_menu_selection ; retained rail %d", rail );
+		command = gameCommand.c_str();
+	} else if ( !idStr::Icmp( request, "mpSettingsControls" ) ) {
+		command = "play main_menu_selection ; mainMenu fromMp_toControls";
+	} else if ( !idStr::Icmp( request, "mpSettingsGame" ) ) {
+		command = "play main_menu_selection ; mainMenu fromMp_toGameoptions";
+	} else if ( !idStr::Icmp( request, "mpSettingsSystem" ) ) {
+		command = "play main_menu_selection ; mainMenu fromMp_toSystem";
 	} else if ( !idStr::Icmp( request, "mpClose" ) ) {
 		command = "play main_menu_selection ; close";
 	} else if ( !idStr::Icmp( request, "mpMainMenu" ) ) {

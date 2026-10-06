@@ -155,6 +155,12 @@ private:
 	netadr_t			lastRconAddress;			// last rcon address we emitted to
 	int					lastRconTime;				// when last rcon emitted
 	rcon2ClientRequest_t	rcon2Request;
+	// The Admin page's password check ("rcon verifyRconPass"): the game hears
+	// whether the server accepted the password, as it did in Quake 4.
+	bool				rconVerifyPending;			// a check awaits its answer
+	bool				rconVerifyRefused;			// refused before sending; answered next frame
+	netadr_t			rconVerifyAddress;			// the server asked
+	int					rconVerifyTime;				// when the check was asked
 
 	idMsgChannel		channel;					// message channel to server
 	int					lastConnectTime;			// last time a connect message was sent
@@ -231,6 +237,7 @@ private:
 	void				SendRemoteConsole2Challenge( void );
 	void				SendRemoteConsole2Proof( void );
 	void				UpdateRemoteConsoleRequest( void );
+	void				AnswerRconVerify( bool success );
 };
 
 #endif /* !__ASYNCCLIENT_H__ */

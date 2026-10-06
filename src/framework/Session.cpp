@@ -3823,6 +3823,7 @@ void idSessionLocal::Clear() {
 	retainedLoadingTip = -1;
 	retainedLoadingTipSlot = 0;
 	retainedLoadingTipAt = 0;
+	ClearRetainedLoadingHold();
 	retainedRosterCount = 0;
 	retainedRosterConnecting = 0;
 	retainedRosterKnown = false;
@@ -3972,6 +3973,7 @@ void idSessionLocal::StopInternal( bool preserveWipe ) {
 		insideUpdateScreen = false;
 		openq4::NativeInputBeforeSessionChange();
 		insideExecuteMapChange = false;
+		ClearRetainedLoadingHold();
 
 		// drop all guis
 		SetGUI( NULL, NULL );
@@ -6563,6 +6565,8 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 	loadingAssetQueueStartPct = 0.0f;
 	// LoadLoadingGui turns it on when the retained loading screen presents.
 	retainedLoadingActive = false;
+	// The last load's screen may still be held over its join.
+	ClearRetainedLoadingHold();
 
 	// Start each load from a clean pacifier budget so a hitch recorded during the
 	// previous map change cannot keep throttling this one.
@@ -6966,8 +6970,11 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 		Sys_ClearInputEvents();
 	}
 
-	// capture the current screen and start a wipe
-	StartWipe( "gfx/wipes/fade_blend" );
+	// capture the current screen and start a wipe, unless a multiplayer join
+	// keeps the loading screen up for the Welcome card: its fade replaces it
+	if ( !BeginRetainedLoadingHold() ) {
+		StartWipe( "gfx/wipes/fade_blend" );
+	}
 
 	usercmdGen->Clear();
 
@@ -8443,6 +8450,12 @@ void idSessionLocal::Draw() {
 		demoBrowserMode = false;
 		UpdateDemoMenuGui();
 		guiDemoMenu->Redraw( presentationTime );
+	}
+
+	// A loading screen held over a multiplayer join covers the game and its
+	// menu until the Welcome card presents, and fades out over the card.
+	if ( guiLoadingHold != NULL && !insideExecuteMapChange ) {
+		guiLoadingHold->Redraw( presentationTime );
 	}
 
 	// draw the wipe material on top of this if it hasn't completed yet

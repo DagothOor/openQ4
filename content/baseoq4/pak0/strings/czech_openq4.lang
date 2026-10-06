@@ -1212,4 +1212,10 @@
 	"#str_231051"	"Změňte nastavení k hlasování."
 	"#str_231052"	"Uzamčeno serverem."
 	"#str_231053"	"Nikdo"
+	"#str_231054"	"STISKNI A MLUV"
+	"#str_231055"	"Nepřiřazeno"
+	"#str_231056"	"TEST MIKROFONU"
+	"#str_231057"	"Hlasový chat není k dispozici."
+	"#str_231058"	"Podle zbraně"
+	"#str_231059"	"Zadej celé číslo od 0 do 10000."
 }

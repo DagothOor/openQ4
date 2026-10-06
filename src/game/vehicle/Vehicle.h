@@ -90,7 +90,8 @@ public:
 	virtual idVec3			GetOrigin			( const idVec3& offset = vec3_zero ) const;
 
 	const idVec3&			GetEyeOrigin		( void ) const;
-	const idMat3&			GetEyeAxis			( void ) const;	
+	const idMat3&			GetEyeAxis			( void ) const;
+	jointHandle_t			GetEyeJoint			( void ) const;
 	rvVehicle*				GetParent			( void ) const;
 	idActor*				GetDriver			( void ) const;
 
@@ -108,6 +109,11 @@ public:
 
 	rvVehicleWeapon *		GetWeapon			( int weaponIndex );
 	rvVehicleWeapon *		GetActiveWeapon		( void );
+
+							// openQ4 VR: a turret here steers the whole vehicle after it
+	bool					TurretAlignsVehicle	( void ) const;
+							// openQ4 VR: the eye on its turret's axis, so aiming never moves the head
+	void					GetVRSeat			( idVec3& eye ) const;
 
 private:
 
@@ -346,6 +352,7 @@ ID_INLINE bool				rvVehiclePosition::IsOccupied ( void ) const	{ return mDriver.
 ID_INLINE bool				rvVehiclePosition::IsEngine ( void ) const		{ return fl.engine; }
 ID_INLINE const idVec3& 	rvVehiclePosition::GetEyeOrigin ( void ) const	{ return mEyeOrigin; }
 ID_INLINE const idMat3& 	rvVehiclePosition::GetEyeAxis ( void ) const	{ return mEyeAxis; }
+ID_INLINE jointHandle_t		rvVehiclePosition::GetEyeJoint ( void ) const	{ return mEyeJoint; }
 ID_INLINE rvVehicle*		rvVehiclePosition::GetParent ( void ) const		{ return mParent; }
 ID_INLINE idActor*			rvVehiclePosition::GetDriver ( void ) const		{ return mDriver; }
 ID_INLINE rvVehiclePart*	rvVehiclePosition::GetPart ( int partIndex )	{ return mParts[partIndex]; }

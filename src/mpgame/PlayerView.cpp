@@ -996,6 +996,10 @@ layer in front of them. Double vision and influence effects stand down.
 ===================
 */
 void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const vrFrameState_t &vrFrame, float trackingYaw ) {
+	// multiplayer has no vehicle in stereo, whose sights would hang the HUD on
+	// the line of sight; a single player seat must not leave it there
+	cvarSystem->SetCVarBool( "vr_hudOnSight", false );
+
 	idVec3 eyeOrigin;
 	idMat3 eyeAxis;
 	player->GetPresentationViewPos( eyeOrigin, eyeAxis );

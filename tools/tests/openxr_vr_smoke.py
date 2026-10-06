@@ -17,7 +17,9 @@ Checks:
 - with game time stopped, the weapon hand's aim marker (vr_aimLaser) is the
   only difference between captures: one small red dot in each eye, at the
   same height in both, whose disparity puts it in front of the player at a
-  plausible range, and a beam that adds more;
+  plausible range, and a beam that adds more; left-handed (vr_leftHanded)
+  the left controller aims instead, so its dot lands left of the right
+  hand's;
 - two hands: the off-hand grip squeezed on the foregrip raises the aim (the
   dot in both eyes), buzzes the off hand and opens no weapon wheel;
 - the comfort vignette: a smooth turn at full strength blacks out the eyes'
@@ -31,6 +33,8 @@ Checks:
   vr_roomScale 0 the same step leaves the whole distance as a lean;
 - physical crouch: a head 0.5 m down crouches the body (its eye drops by the
   crouch) and raising it stands the body again;
+- the off-hand stick walks the body where the head faces, and with
+  vr_moveDirection 1 where the off hand points;
 - a stick snap turn turns the body by vr_snapTurnAngle and a controller
   trigger press reaches the binding system;
 - the controller's menu button opens the pause menu on an opaque, world-locked
@@ -38,6 +42,9 @@ Checks:
   at it (the pointer is drawn where the ray meets the screen) and the trigger
   clicks Resume there, which closes the menu even though the desktop window
   holds no focus;
+- a vehicle in stereo: a walker, spawned and entered by script, turns its
+  cockpit 45 degrees after the head while the eye, on the cockpit's turning
+  axis, stays put, and the headset keeps the stereo view;
 - the runtime can end VR: the game carries on on the desktop, keeps
   vr_enable for the next launch and waits for vr_restart;
 - the log carries no errors.
@@ -71,9 +78,18 @@ EYE_SEPARATION_M = 0.064
 # For the aim marker the weapon hand points 10 degrees down from 0.35 m below
 # the eyes, so the shot meets the ground a few metres ahead.
 LASER_HAND_POSE = "0.2 1.25 -0.35 0 -10 0"
+# Left-handed (vr_leftHanded), the same aim from the left controller, 0.4 m
+# to the left, so its dot lands left of the right hand's.
+LEFT_LASER_HAND_POSE = "-0.2 1.25 -0.35 0 -10 0"
 # The off hand on the foregrip: 0.3 m along the laser pose's aim (10 degrees
 # down) and 5 cm above it, so holding the gun in both hands levels the aim.
 FOREGRIP_POSE = "0.2 1.248 -0.645 0 0 0"
+# Open ground ahead of airdefense1's start for a spawned walker; airdefense1
+# has walkers of its own, so it is precached.
+VEHICLE_ORIGIN = "10094 -6825 60"
+# Where the stick walks start: the smoke's standing spot near airdefense1's
+# start, facing the battlefield (x y z yaw, as getviewpos prints it).
+STICK_WALK_POSE = "10310.89 -6950.34 6.96 150.7"
 
 
 def read_events(path: Path) -> list[dict]:
@@ -92,6 +108,26 @@ def body_yaws(text: str) -> list[float]:
 
 def yaw_delta(before: float, after: float) -> float:
     return (after - before + 180.0) % 360.0 - 180.0
+
+
+def frame_guarded(commands: list[str]) -> list[str]:
+    """Lets frames run after every real-time wait and before every marker.
+
+    The runtime acts on the frame after a marker appears, and the script's
+    waits are in real time. A busy machine (peers building and testing on it)
+    can drop the stereo world to a few frames a second or stall it for over a
+    second: one frame begun before a cvar change then reached a capture after
+    it (a "laser off" frame still showed the dot), and a 1.2 s wait passed
+    with no frame at all, so vr_status reported the head before it moved.
+    """
+    guarded = []
+    for command in commands:
+        if command.startswith("condump vr_marker_"):
+            guarded.append("wait 2")
+        guarded.append(command)
+        if command.startswith("waitMsec "):
+            guarded.append("wait 3")
+    return guarded
 
 
 def changed_box(before, after, threshold=48):
@@ -156,6 +192,9 @@ def main(argv: list[str] | None = None) -> None:
         f"when {marker('laser_off')} capture {profile / 'xr_laser_off'}",
         f"when {marker('laser_dot')} capture {profile / 'xr_laser_dot'}",
         f"when {marker('laser_beam')} capture {profile / 'xr_laser_beam'}",
+        f"when {marker('left_aim')} hand left {LEFT_LASER_HAND_POSE}",
+        f"when {marker('left_off')} capture {profile / 'xr_left_off'}",
+        f"when {marker('left_dot')} capture {profile / 'xr_left_dot'}",
         f"when {marker('two_grab')} hand left {FOREGRIP_POSE}",
         f"when {marker('two_squeeze')} button left squeeze 1",
         f"when {marker('two_off')} capture {profile / 'xr_two_off'}",
@@ -177,6 +216,11 @@ def main(argv: list[str] | None = None) -> None:
         f"when {marker('room_back')} head 0 0 0 0 1.6 0",
         f"when {marker('crouch')} head 0 0 0 0 1.1 0",
         f"when {marker('rise')} head 0 0 0 0 1.6 0",
+        f"when {marker('stick_head')} stick left 0 1",
+        f"when {marker('stick_head_stop')} stick left 0 0",
+        f"when {marker('offhand_left')} hand left -0.2 1.25 -0.35 90 0 0",
+        f"when {marker('stick_hand')} stick left 0 1",
+        f"when {marker('stick_hand_stop')} stick left 0 0",
         f"when {marker('turn')} head 40 0 0",
         f"when {marker('turned')} capture {profile / 'xr_turned'}",
         f"when {marker('snap')} head 0 0 0",
@@ -190,6 +234,9 @@ def main(argv: list[str] | None = None) -> None:
         f"when {marker('pointed')} capture {profile / 'xr_menu'}",
         f"when {marker('click')} button right trigger 1",
         f"when {marker('unclick')} button right trigger 0",
+        f"when {marker('vehicle_look')} head -45 0 0",
+        f"when {marker('vehicle_cap')} capture {profile / 'xr_vehicle'}",
+        f"when {marker('vehicle_back')} head 0 0 0",
         f"when {marker('exit')} exit",
     ]
     (profile / "xr_script.txt").write_text("\n".join(script) + "\n", encoding="utf-8")
@@ -206,6 +253,10 @@ def main(argv: list[str] | None = None) -> None:
         "condump vr_marker_laser_off.txt", "waitMsec 500", "vr_aimLaser 1", "waitMsec 500",
         "condump vr_marker_laser_dot.txt", "waitMsec 500", "vr_aimLaser 2", "waitMsec 500",
         "condump vr_marker_laser_beam.txt", "waitMsec 500", "vr_aimLaser 1",
+        # left-handed: the left controller aims, still against the frozen world
+        "vr_leftHanded 1", "condump vr_marker_left_aim.txt", "waitMsec 400", "vr_aimLaser 0", "waitMsec 500",
+        "condump vr_marker_left_off.txt", "waitMsec 500", "vr_aimLaser 1", "waitMsec 500",
+        "condump vr_marker_left_dot.txt", "waitMsec 500", "vr_leftHanded 0",
         # two hands: the off-hand grip closing on the foregrip steadies the gun
         # along both palms instead of opening the weapon wheel
         "echo VR_TWO_HANDS", "condump vr_marker_two_grab.txt", "waitMsec 400",
@@ -237,6 +288,18 @@ def main(argv: list[str] | None = None) -> None:
         "echo VR_STANDING", "getviewpos", "condump vr_marker_crouch.txt", "waitMsec 1500",
         "echo VR_CROUCHED", "getviewpos", "condump vr_marker_rise.txt", "waitMsec 1500",
         "echo VR_RISEN", "getviewpos",
+        # walking with the off-hand stick: where the head faces, then
+        # (vr_moveDirection 1) where the off hand points, 90 degrees left. It
+        # tests how the stick becomes movement, so both walks start from the
+        # same spot and facing (the smooth turn above ends wherever its timing
+        # leaves it) and fly in noclip, where neither slope nor rock bends them
+        "noclip", f"setviewpos {STICK_WALK_POSE}", "waitMsec 500",
+        "echo VR_STICK_HEAD", "getviewpos", "condump vr_marker_stick_head.txt", "waitMsec 600",
+        "condump vr_marker_stick_head_stop.txt", "waitMsec 600", "echo VR_STICK_HEAD_DONE", "getviewpos",
+        "vr_moveDirection 1", "condump vr_marker_offhand_left.txt", f"setviewpos {STICK_WALK_POSE}", "waitMsec 500",
+        "echo VR_STICK_HAND", "getviewpos", "condump vr_marker_stick_hand.txt", "waitMsec 600",
+        "condump vr_marker_stick_hand_stop.txt", "waitMsec 600", "echo VR_STICK_HAND_DONE", "getviewpos",
+        "vr_moveDirection 0", "noclip", f"setviewpos {STICK_WALK_POSE}", "waitMsec 500",
         "condump vr_marker_turn.txt", "waitMsec 700",
         "condump vr_marker_turned.txt", "waitMsec 700",
         "echo VR_SNAP_BEFORE", "vr_status",
@@ -258,12 +321,21 @@ def main(argv: list[str] | None = None) -> None:
         # Resume dispatches on release, then the menu takes 250 ms to go; a
         # debug build draws the paused stereo world at only ~13 fps
         "condump vr_marker_unclick.txt", "waitMsec 2000",
+        # a walker in stereo: the cockpit turns after the head, about the eye
+        f'spawn vehicle_walker name vr_smoke_walker origin "{VEHICLE_ORIGIN}" angle 150.7', "waitMsec 2500",
+        'script "$player1.enterVehicle( $vr_smoke_walker );"', "waitMsec 3000",
+        "echo VR_VEHICLE_IN", "getviewpos",
+        "condump vr_marker_vehicle_look.txt", "waitMsec 2500",
+        "echo VR_VEHICLE_LOOKED", "getviewpos",
+        "condump vr_marker_vehicle_cap.txt", "waitMsec 500",
+        "condump vr_marker_vehicle_back.txt", "waitMsec 300",
+        'script "$player1.exitVehicle( 1 );"', "waitMsec 1000", "echo VR_VEHICLE_OUT",
         "condump vr_marker_exit.txt", "waitMsec 1500",
         "echo VR_AFTER_EXIT", "vr_status", "vr_enable",
         "echo VR_SMOKE_COMPLETE", "quit",
     ]
-    (game / "openxr_vr_smoke.cfg").write_text("\n".join(commands) + "\n", encoding="utf-8")
-    (game / "openxr_vr_smoke_menu.cfg").write_text("\n".join(menu_commands) + "\n", encoding="utf-8")
+    (game / "openxr_vr_smoke.cfg").write_text("\n".join(frame_guarded(commands)) + "\n", encoding="utf-8")
+    (game / "openxr_vr_smoke_menu.cfg").write_text("\n".join(frame_guarded(menu_commands)) + "\n", encoding="utf-8")
 
     launches = json.loads((ROOT / ".vscode/launch.json").read_text(encoding="utf-8"))
     launch = next(c for c in launches["configurations"] if c["name"] == "(SP) Main menu — GL")
@@ -348,16 +420,18 @@ def main(argv: list[str] | None = None) -> None:
     for e in events:
         if e.get("event") == "capture":
             stage = next(s for s in ("gameplay", "turned", "menu", "laser_off", "laser_dot", "laser_beam",
-                                     "two_off", "two_dot", "vignette", "zoom_off", "zoom_on")
+                                     "left_off", "left_dot", "two_off", "two_dot", "vignette", "zoom_off",
+                                     "zoom_on", "vehicle")
                          if f"xr_{s}_" in Path(e["path"]).name)
             captures[f"{stage}_{e['layer']}"] = e
     for name in ("gameplay_left", "gameplay_right", "gameplay_quad1", "turned_left", "turned_right", "menu_quad1",
                  "laser_off_left", "laser_off_right", "laser_dot_left", "laser_dot_right",
-                 "laser_beam_left", "laser_beam_right", "two_off_left", "two_off_right", "two_dot_left",
+                 "laser_beam_left", "laser_beam_right", "left_off_left", "left_off_right", "left_dot_left",
+                 "left_dot_right", "two_off_left", "two_off_right", "two_dot_left",
                  "two_dot_right", "vignette_left", "vignette_right", "zoom_off_left", "zoom_on_left",
-                 "zoom_on_quad1"):
+                 "zoom_on_quad1", "vehicle_left", "vehicle_right"):
         assert name in captures and captures[name]["written"], f"missing capture {name}: {sorted(captures)}"
-    for name in ("gameplay_left", "gameplay_right", "turned_left", "turned_right"):
+    for name in ("gameplay_left", "gameplay_right", "turned_left", "turned_right", "vehicle_left", "vehicle_right"):
         assert captures[name]["lit_fraction"] > 0.2, f"eye capture {name} is mostly black: {captures[name]}"
 
     def image(prefix: str, layer: str):
@@ -401,6 +475,26 @@ def main(argv: list[str] | None = None) -> None:
         f"a head 0.5 m down should crouch the body ({standing:.1f} to {crouched:.1f})"
     assert abs(risen - standing) < 3.0, f"raising the head should stand the body again ({standing:.1f}, {risen:.1f})"
 
+    # the off-hand stick walks where the head faces, and with vr_moveDirection 1
+    # where the off hand points, here 90 degrees left of the facing
+    def walked(start: str, end: str) -> tuple[float, float]:
+        poses = []
+        for tag in (start, end):
+            found = re.search(r"\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)\s+(-?\d+(?:\.\d+)?)",
+                              text.partition(tag)[2])
+            assert found, f"getviewpos after {tag} printed no view position"
+            poses.append([float(found.group(i)) for i in (1, 2, 4)])
+        (x0, y0, facing), (x1, y1, _) = poses
+        heading = math.degrees(math.atan2(y1 - y0, x1 - x0))
+        return math.hypot(x1 - x0, y1 - y0), yaw_delta(facing, heading)
+    head_walk, head_off = walked("VR_STICK_HEAD", "VR_STICK_HEAD_DONE")
+    assert head_walk > 10.0, f"the stick barely walked the body ({head_walk:.1f} units)"
+    assert abs(head_off) < 20.0, f"the stick should walk where the head faces, walked {head_off:.0f} degrees off it"
+    hand_walk, hand_off = walked("VR_STICK_HAND", "VR_STICK_HAND_DONE")
+    assert hand_walk > 10.0, f"the stick barely walked the body with vr_moveDirection 1 ({hand_walk:.1f} units)"
+    assert abs(hand_off - 90.0) < 25.0, \
+        f"with vr_moveDirection 1 the stick should walk where the off hand points, 90 degrees left, not {hand_off:.0f}"
+
     # a shot pulses the weapon hand, and only it (a hit would pulse both, for 90 ms)
     pulses = [e for e in events if e.get("event") == "haptic" and e.get("duration_ns") == 40_000_000]
     assert pulses, "firing the weapon did not vibrate a controller"
@@ -428,6 +522,19 @@ def main(argv: list[str] | None = None) -> None:
     assert disparity > 0.0, f"the marker's disparity puts it behind the eyes ({disparity:.5f})"
     marker_depth = EYE_SEPARATION_M / disparity
     assert 1.0 < marker_depth < 40.0, f"the marker fuses at {marker_depth:.2f} m, not on the ground a few metres ahead"
+
+    # left-handed (vr_leftHanded): the left controller aims, so its dot lands
+    # left of the right hand's, which aimed the same way from 0.4 m further right
+    left_handed_shift = []
+    for eye in ("left", "right"):
+        left_box, _ = changed_box(image("xr_left_off", eye), image("xr_left_dot", eye))
+        assert left_box is not None, f"the left-handed aim marker changed nothing in the {eye} eye"
+        assert left_box[2] - left_box[0] <= 24 and left_box[3] - left_box[1] <= 24, \
+            f"the {eye} eye changed beyond a small dot when aiming left-handed: {left_box}"
+        right_box, _ = changed_box(image("xr_laser_off", eye), image("xr_laser_dot", eye))
+        shift = (right_box[0] + right_box[2]) / 2.0 - (left_box[0] + left_box[2]) / 2.0
+        assert shift > 30.0, f"the left hand's dot should land left of the right hand's in the {eye} eye ({shift:.0f} px)"
+        left_handed_shift.append(shift)
 
     # two hands on the gun: the squeeze held the gun instead of opening the
     # weapon wheel, buzzed the off hand, and the aim rose with the front palm
@@ -477,8 +584,14 @@ def main(argv: list[str] | None = None) -> None:
     menu_log = text.partition("VR_TRIGGER_BIND_RAN")[2]
     assert "OpenXR: JOY7 down" in menu_log, "the controller's menu button never posted its key"
     assert "VR_MENU_OPEN" in menu_log, "the menu stage did not run"
+    # the runtime runs its script in order, so each capture's frame is found
+    # by its place among the script's captures
     capture_frames = [e["frame"] for e in events if e.get("event") == "script_command" and e.get("command") == "capture"]
-    menu_frames = [f for f in frames if f["frame"] >= capture_frames[-1]]
+    capture_order = [Path(line.split()[-1]).name for line in script if line.split()[2] == "capture"]
+    assert len(capture_frames) == len(capture_order), f"captures ran {len(capture_frames)} of {len(capture_order)}"
+    menu_capture = capture_frames[capture_order.index("xr_menu")]
+    vehicle_capture = capture_frames[capture_order.index("xr_vehicle")]
+    menu_frames = [f for f in frames if menu_capture <= f["frame"] < vehicle_capture]
     assert menu_frames, "no frame followed the menu capture"
     screen_layer = menu_frames[0]["layers"][-1]
     assert screen_layer["type"] == "quad" and not screen_layer["flags"] & 0x2 and abs(screen_layer["z"] + 2.5) < 0.01, \
@@ -501,6 +614,29 @@ def main(argv: list[str] | None = None) -> None:
     assert any([layer["type"] for layer in f["layers"]] == ["projection", "quad"] and f["layers"][1]["flags"] & 0x2
                for f in menu_frames), "clicking Resume with the pointer did not close the pause menu"
 
+    # a walker in stereo: its cockpit turns after the head, about the eye,
+    # which sits on the cockpit's turning axis (off it, a quarter turn would
+    # swing the eye some 70 units; pitching the cockpit may move it a unit or
+    # two, as a nod does), and the headset keeps the stereo view with the HUD
+    assert "VR vehicle rvVehicleWalker: its turns carry the view" in menu_log, "entering the walker seated no VR view"
+    def view_pose(after: str) -> list[float]:
+        found = re.search(r"\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)\s+(-?\d+(?:\.\d+)?)",
+                          menu_log.partition(after)[2])
+        assert found, f"getviewpos after {after} printed no view position"
+        return [float(found.group(i)) for i in range(1, 5)]
+    seated, looked = view_pose("VR_VEHICLE_IN"), view_pose("VR_VEHICLE_LOOKED")
+    cockpit_turn = yaw_delta(seated[3], looked[3])
+    assert abs(cockpit_turn + 45.0) < 3.0, f"the walker's cockpit should turn 45 degrees right after the head, not {cockpit_turn:.1f}"
+    eye_moved = math.dist(seated[:3], looked[:3])
+    assert eye_moved < 4.0, f"turning the cockpit moved the eye {eye_moved:.1f} units"
+    vehicle_frames = [f for f in frames if f["frame"] >= vehicle_capture]
+    assert vehicle_frames and [layer["type"] for layer in vehicle_frames[0]["layers"]] == ["projection", "quad"], \
+        f"the walker should present a stereo view and the HUD: {vehicle_frames[:1]}"
+    # the head aims the cockpit, so the HUD and its sights hang on the line of
+    # sight even though the controller aims on foot (where it hangs lower)
+    assert abs(vehicle_frames[0]["layers"][1]["y"]) < 0.01, \
+        f"in the walker the HUD should hang on the line of sight: {vehicle_frames[0]['layers'][1]}"
+
     # the runtime ends VR: the game carries on and keeps the player's setting
     before_exit, _, after_exit = menu_log.partition("VR_AFTER_EXIT")
     assert "OpenXR: the runtime ended the VR session" in before_exit, "the runtime's exit request was not honoured"
@@ -515,7 +651,10 @@ def main(argv: list[str] | None = None) -> None:
         for eye in ("left", "right"):
             image(f"xr_laser_{name}", eye).save(profile / f"xr_laser_{name}_{eye}.png")
     print(f"OpenXR VR smoke: PASS (eye difference {eye_difference:.2f}, head turn {turn_difference:.2f}, "
-          f"HUD coverage {covered:.3f}, aim marker at {marker_depth:.2f} m, pointer at {px},{py}); evidence={profile}")
+          f"HUD coverage {covered:.3f}, aim marker at {marker_depth:.2f} m, left hand's dot "
+          f"{min(left_handed_shift):.0f} px left, stick walks {head_off:.0f} and {hand_off:.0f} degrees off the facing, "
+          f"pointer at {px},{py}, "
+          f"walker cockpit turned {cockpit_turn:.1f}); evidence={profile}")
 
 
 if __name__ == "__main__":

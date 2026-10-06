@@ -982,6 +982,10 @@ Double vision and influence effects are flat-screen effects and stand down.
 ===================
 */
 void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const vrFrameState_t &vrFrame, float trackingYaw ) {
+	// a vehicle's turret follows the head, so its HUD sights hang on the line
+	// of sight, as in head aim, wherever the weapon hand points
+	cvarSystem->SetCVarBool( "vr_hudOnSight", player->IsInVehicle() );
+
 	idVec3 eyeOrigin;
 	idMat3 eyeAxis;
 	player->GetPresentationViewPos( eyeOrigin, eyeAxis );
@@ -1008,7 +1012,7 @@ void idPlayerView::VRView( idUserInterface *hud, const renderView_t *view, const
 	// cut across the magnified view
 	const int aimLaser = ( zoomScale < 1.0f && vrFrame.aimLaser == VR_AIM_LASER_BEAM ) ? VR_AIM_LASER_DOT : vrFrame.aimLaser;
 	// the edges of each eye darken while the stick moves or turns the player
-	const float vignette = VRComfortVignette( vrFrame );
+	const float vignette = VRComfortVignette( vrFrame, trackingYaw );
 	const idMaterial *vignetteMaterial = vignette > 0.01f ? declManager->FindMaterial( "_white" ) : NULL;
 
 	for ( int eye = 0; eye < VR_NUM_EYES; eye++ ) {
@@ -1043,25 +1047,29 @@ idPlayerView::VRComfortVignette
 
 openQ4 VR: how strongly to vignette this frame (vr_comfortVignette). It
 follows artificial motion only: the stick's walking and running (the
-player's velocity, which a room-scale step leaves alone) and smooth turning
-(the rate of the tracking yaw). A change of more than 15 degrees in one frame
-is a snap turn or a recentre, a cut rather than motion, and is ignored.
+player's velocity, which a room-scale step leaves alone), a vehicle's speed,
+and turning the head did not do (the rate of the tracking yaw: smooth turning,
+and the turns of a vehicle that carries the view). A change of more than 15
+degrees in one frame is a snap turn or a recentre, a cut rather than motion,
+and is ignored.
 ===================
 */
-float idPlayerView::VRComfortVignette( const vrFrameState_t &vrFrame ) {
+float idPlayerView::VRComfortVignette( const vrFrameState_t &vrFrame, float trackingYaw ) {
 	const float setting = idMath::ClampFloat( 0.0f, 1.0f, cvarSystem->GetCVarFloat( "vr_comfortVignette" ) );
 	const int now = Sys_Milliseconds();
 	const float seconds = vrComfortTime > 0 ? idMath::ClampFloat( 0.0f, 0.25f, ( now - vrComfortTime ) * 0.001f ) : 0.0f;
 	float turnRate = 0.0f;
 	if ( seconds > 0.0f ) {
-		const float delta = idMath::AngleNormalize180( vrFrame.bodyYaw - vrComfortYaw );
+		const float delta = idMath::AngleNormalize180( trackingYaw - vrComfortYaw );
 		if ( idMath::Fabs( delta ) < 15.0f ) {
 			turnRate = delta / seconds;
 		}
 	}
-	vrComfortYaw = vrFrame.bodyYaw;
+	vrComfortYaw = trackingYaw;
 	vrComfortTime = now;
-	const float target = setting > 0.0f ? VR_ComfortMotion( player->GetPhysics()->GetLinearVelocity().Length(), turnRate ) : 0.0f;
+	const rvVehicle *vehicle = player->IsInVehicle() ? player->GetVehicleController().GetVehicle() : NULL;
+	const idPhysics *motion = vehicle != NULL ? vehicle->GetPhysics() : player->GetPhysics();
+	const float target = setting > 0.0f ? VR_ComfortMotion( motion->GetLinearVelocity().Length(), turnRate ) : 0.0f;
 	vrComfort = VR_ComfortEase( vrComfort, target, seconds );
 	return vrComfort * setting;
 }

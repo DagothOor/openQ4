@@ -36,10 +36,10 @@ struct Font : Source {
 	}
 };
 struct Graphics : Device {
-	struct Rect { unsigned page; int x,y,w,h; };
-	std::vector<Rect> rects;
+	struct Rect { unsigned page; int x,y,w,h; unsigned long long sum; };
+	std::vector<Rect> rects, restored;
 	unsigned created = 0, uploads = 0, resets = 0;
-	bool failCreate = false, failUpload = false;
+	bool failCreate = false, failUpload = false, restoring = false;
 	bool CreatePage(unsigned page, int dimension, const char* name) override {
 		if (failCreate) return false;
 		Check(page == created && dimension == Cache::PageSize,"bounded sequential page creation");
@@ -49,13 +49,21 @@ struct Graphics : Device {
 	bool Upload(unsigned page, int x, int y, int w, int h, const unsigned char* data) override {
 		if (failUpload) return false;
 		Check(page < created && x >= 0 && y >= 0 && x+w <= Cache::PageSize && y+h <= Cache::PageSize,"subimage within allocated page");
-		for (const auto& r : rects) Check(r.page != page || x+w <= r.x || r.x+r.w <= x || y+h <= r.y || r.y+r.h <= y,"published glyph rectangles never overlap");
+		if (!restoring) for (const auto& r : rects) Check(r.page != page || x+w <= r.x || r.x+r.w <= x || y+h <= r.y || r.y+r.h <= y,"published glyph rectangles never overlap");
+		unsigned long long sum = 0;
 		for (int row = 0; row < h; ++row) for (int col = 0; col < w; ++col) {
 			const auto* pixel = data+(static_cast<size_t>(row)*w+col)*4;
 			Check(pixel[0] == 255 && pixel[1] == 255 && pixel[2] == 255,"straight white font coverage");
 			Check((pixel[3] == 0) == (row == 0 || col == 0 || row == h-1 || col == w-1),"transparent gutter separates neighboring glyphs");
+			sum = sum*131+pixel[3];
 		}
-		rects.push_back({page,x,y,w,h}); ++uploads; return true;
+		if (restoring) {
+			// A restore rewrites a published rectangle with the texels it held.
+			Check(std::any_of(rects.begin(),rects.end(),[&](const Rect& r) {
+				return r.page == page && r.x == x && r.y == y && r.w == w && r.h == h && r.sum == sum; }),"restore reuploads a published glyph unchanged");
+			restored.push_back({page,x,y,w,h,sum}); return true;
+		}
+		rects.push_back({page,x,y,w,h,sum}); ++uploads; return true;
 	}
 	void Reset() override { ++resets; created = uploads = 0; rects.clear(); }
 };
@@ -104,5 +112,31 @@ int main() {
 	cache.Reset();
 	for (unsigned i = 0; i < Cache::MaxFaces; ++i) Check(cache.Metrics("face"+std::to_string(i),16,metrics),"bounded metric identity");
 	Check(!cache.Metrics("overflow",16,metrics) && cache.Metrics("face0",16,metrics),"metric limit preserves existing handles");
+	// reloadImages reallocates a page empty. Every glyph on it is uploaded again
+	// into the rectangle its published UVs already name; nothing else changes.
+	cache.Reset(); source.blank = false;
+	std::vector<std::pair<int,unsigned>> requests;
+	for (unsigned cp = 'A'; cp <= 'E'; ++cp) requests.push_back({512,cp}); // three on page 0, two on page 1
+	for (unsigned cp = 'a'; cp <= 'c'; ++cp) requests.push_back({96,cp});  // beside the first three
+	std::vector<renderFontGlyph_t> published;
+	for (const auto& [size,cp] : requests) { Check(cache.Glyph("marine",size,cp,glyph),"restore fixture glyph"); published.push_back(glyph); }
+	Check(cache.Glyph("marine",96,' ',glyph) && cache.PageCount() == 2,"restore fixture spans two pages");
+	const unsigned pageCount = cache.PageCount(), glyphCount = cache.GlyphCount();
+	for (unsigned page = 0; page < pageCount; ++page) {
+		const auto placed = std::count_if(device.rects.begin(),device.rects.end(),[&](const auto& r) { return r.page == page; });
+		const int rasters = source.rasters;
+		device.restoring = true; device.restored.clear();
+		Check(cache.RestorePage(page),"every glyph on a reallocated page is restored");
+		device.restoring = false;
+		Check(static_cast<long>(device.restored.size()) == placed && source.rasters-rasters == placed,"restore uploads only that page's glyphs, once each");
+	}
+	Check(cache.PageCount() == pageCount && cache.GlyphCount() == glyphCount && device.created == pageCount,"restore neither opens pages nor publishes glyphs");
+	const int restoredRasters = source.rasters;
+	for (size_t i = 0; i < requests.size(); ++i)
+		Check(cache.Glyph("marine",requests[i].first,requests[i].second,glyph) && !std::memcmp(&glyph,&published[i],sizeof(glyph)),"published UVs stay valid after a restore");
+	Check(source.rasters == restoredRasters && !cache.RestorePage(pageCount),"restored glyphs stay cached; an unopened page has nothing to restore");
+	source.invalid = true; device.restoring = true; device.restored.clear();
+	Check(!cache.RestorePage(0) && device.restored.empty() && cache.GlyphCount() == glyphCount,"an unrasterizable glyph is reported and never moved");
+	source.invalid = false; device.restoring = false;
 	std::printf("Retained output font cache: %u checks passed\n",checks);
 }

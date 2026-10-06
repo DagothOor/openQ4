@@ -1215,4 +1215,11 @@
 	"#str_231051"	"Modifiez un réglage pour lancer un vote."
 	"#str_231052"	"Verrouillé par le serveur."
 	"#str_231053"	"Personne"
+	"#str_223001"	"Handicap"
+	"#str_231054"	"APPUYER POUR PARLER"
+	"#str_231055"	"Non assignée"
+	"#str_231056"	"TESTER LE MICRO"
+	"#str_231057"	"Le chat vocal n'est pas disponible."
+	"#str_231058"	"Selon l'arme"
+	"#str_231059"	"Entrez un nombre entier de 0 à 10000."
 }

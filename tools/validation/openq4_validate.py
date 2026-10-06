@@ -427,6 +427,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         root / "tools" / "tests" / "console_completion_contract.py",
         root / "tools" / "tests" / "arb_color_zero_floor_contract.py",
         root / "tools" / "tests" / "renderer_show_shadows_color_contract.py",
+        root / "tools" / "tests" / "renderer_md5r_conversion_contract.py",
         root / "tools" / "tests" / "competitive_match_layer.py",
         root / "tools" / "tests" / "competitive_match_localization.py",
         root / "tools" / "tests" / "decl_checksum_stability_contract.py",
@@ -612,6 +613,7 @@ def run_python_tests(args: argparse.Namespace, root: Path, env: dict[str, str]) 
         root / "tools" / "tests" / "windows_dedicated_server_smoke_contract.py",
     ]
     argument_checks = [
+        (root / "tools" / "tests" / "async_rcon_verify_contract.py", ['--mutations']),
         (root / "tools" / "tests" / "sp_turbo_weapon_wheel.py", []),
         (root / "tools" / "tests" / 'renderer_native_ui_output.py', []),
         (root / "tools" / "tests" / 'sys_event_queue_ownership.py', []),

@@ -52,7 +52,7 @@ struct idCmdArgs {
 template<class T> T Min(T a,T b) { return (std::min)(a,b); }
 struct idVec2 { idVec2(float=0,float=0) {} } vec2_origin;
 enum { SE_KEY=1,SE_MOUSE,K_TAB=10,K_SHIFT,K_UPARROW,K_DOWNARROW,K_LEFTARROW,K_RIGHTARROW,
-       K_ENTER,K_KP_ENTER,K_SPACE,K_ESCAPE,K_MOUSE1,K_JOY1,K_JOY2,K_JOY3,K_JOY4,K_JOY7,K_JOY8,K_JOY9,K_JOY10,K_JOY11,K_JOY12,
+       K_ENTER,K_KP_ENTER,K_SPACE,K_ESCAPE,K_MOUSE1,K_JOY1,K_JOY2,K_JOY3,K_JOY4,K_JOY7,K_JOY8,K_JOY9,K_JOY10,K_JOY11,K_JOY12,K_JOY15,K_JOY16,
        K_HOME,K_END,K_PGUP,K_PGDN,K_MWHEELUP,K_MWHEELDOWN,K_CTRL,K_ALT,K_RIGHT_ALT,K_BACKSPACE,K_DEL,K_INS,K_LAST_KEY=512 };
 struct idKeyInput { static inline bool shift=false; static bool IsDown(int key) { return key==K_SHIFT && shift; } };
 class idFile {
@@ -124,6 +124,12 @@ struct CVars {
     float GetCVarFloat(const char*) const { return brightness; }
     void SetCVarFloat(const char* name,float value) { assert(!std::strcmp(name,"r_brightness")); brightness=value; ++writes; history.emplace_back(name,value); }
     void SetCVarBool(const char* name,bool value) { assert(!std::strcmp(name,"r_shadows")); shadows=value; ++writes; history.emplace_back(name,value?1:0); }
+    // The player settings' text and integer forms.
+    std::map<std::string,std::string> strings;
+    const char* GetCVarString(const char* name) { return strings[name].c_str(); }
+    void SetCVarString(const char* name,const char* value) { strings[name]=value; ++writes; }
+    int GetCVarInteger(const char* name) { return std::atoi(strings[name].c_str()); }
+    void SetCVarInteger(const char* name,int value) { strings[name]=std::to_string(value); ++writes; }
 } cvars,*cvarSystem=&cvars;
 struct Console { bool open=false; bool Active() const { return open; } } consoleObject,*console=&consoleObject;
 static bool windowFocused=true;
@@ -1082,6 +1088,12 @@ static void CheckEventBridge() {
     };
     assert(ValidInvocation(valued("mpVoteMap",3.0),error) && ValidInvocation(valued("mpVoteKick",-1.0),error));
     assert(ValidInvocation(valued("mpVoteControlTime",999.0),error) && ValidInvocation(valued("mpVoteBalance",true),error));
+    // A Match Control rule's value is a whole number from 0 to 10000, the
+    // largest value a rule takes; the other verbs keep -1 to 999.
+    assert(ValidInvocation(valued("mpMatchRuleValue",10000.0),error) && ValidInvocation(valued("mpMatchRuleValue",0.0),error));
+    assert(ValidInvocation(valued("mpMatchScope",1.0),error) && !ValidInvocation(valued("mpMatchScope",1000.0),error));
+    for (const auto& bad : {valued("mpMatchRuleValue",10001.0),valued("mpMatchRuleValue",-1.0),valued("mpMatchRuleValue",2.5)})
+        assert(!ValidInvocation(bad,error));
     for (const auto& bad : {valued("mpVoteMap",3.5),valued("mpVoteMap",1000.0),valued("mpVoteMap",-2.0),valued("mpClose",1.0),
                             valued("mpVoteMap",std::string("3")),valued("mpVoteMap",std::numeric_limits<double>::infinity()),
                             ActionInvocation{"x","session.menuValue",{{"command",std::string("mpVoteMap")}}},
@@ -1095,6 +1107,30 @@ static void CheckEventBridge() {
     auto unlisted=valueAction; unlisted.arguments.at("command").literal=std::string("mpClose"); assert(!ValidOperation(unlisted));
     auto fixed=valueAction; fixed.arguments.at("value").inputValue=false; assert(!ValidOperation(fixed));
     auto computed=valueAction; computed.arguments.at("command").state="card.verb"; assert(!ValidOperation(computed));
+    // A player setting takes its stock control's values: a slider's range
+    // (whole numbers for an integer setting), a Boolean, or one of a list's
+    // values as its text; nothing else may be set.
+    const auto setting=[](const char* cvar,StateValue value) {
+        return ActionInvocation{"x","settings.player.set",{{"cvar",std::string(cvar)},{"value",value}}};
+    };
+    for (const auto& good : {setting("ui_handicap",1.0),setting("ui_handicap",100.0),setting("s_voiceVolume",.35),setting("s_micInputLevel",10.0),
+                             setting("s_voiceChatEcho",true),setting("cl_player_outline_enemy",std::string("0.35")),
+                             setting("cl_player_visibility_team_color",std::string("1 1 1")),setting("cl_player_outline_width",std::string("6.0"))})
+        assert(ValidInvocation(good,error));
+    for (const auto& bad : {setting("ui_handicap",0.0),setting("ui_handicap",50.5),setting("s_voiceVolume",1.5),setting("s_voiceChatEcho",1.0),
+                            setting("cl_player_outline_enemy",std::string("0.4")),setting("cl_player_outline_enemy",.35),
+                            setting("cl_player_outline_width",std::string("2")),setting("rcon_password",std::string("x")),
+                            setting("r_brightness",1.0),ActionInvocation{"x","settings.player.set",{{"cvar",std::string("ui_handicap")}}}})
+        assert(!ValidInvocation(bad,error));
+    Action settingAction; settingAction.operation="settings.player.set"; settingAction.inputType=0;
+    Expression handicap; handicap.type=2; handicap.literal=std::string("ui_handicap");
+    settingAction.arguments={{"cvar",handicap},{"value",operand}};
+    assert(ValidOperation(settingAction));
+    auto stringInput=settingAction; stringInput.arguments.at("value").type=2; assert(!ValidOperation(stringInput));
+    auto literalValue=settingAction; literalValue.arguments.at("value").inputValue=false; literalValue.arguments.at("value").literal=50.0;
+    assert(ValidOperation(literalValue));
+    literalValue.arguments.at("value").literal=0.0; assert(!ValidOperation(literalValue));
+    auto unknown=settingAction; unknown.arguments.at("cvar").literal=std::string("g_password"); assert(!ValidOperation(unknown));
     auto eventControl=modelTemplate; eventControl.events["selected"]={"selected",{}};
     eventControl.root.control->action.clear(); eventControl.root.control->event="SELECTED";
     assert(ValidateApplication(eventControl,error)); eventControl.events.clear(); assert(!ValidateApplication(eventControl,error));
@@ -2157,8 +2193,9 @@ static void CheckNumberDiagnosticBoundary() {
     assert(views.empty() && service.owners.empty());modelTemplate=original;eventPlans.clear();
 }
 // Q and E, and the shoulders, run the document's onTabPrevious and onTabNext
-// where it declares them: once per press, never on a repeat, never with Ctrl
-// or Alt, and never while a Number field is being edited.
+// where it declares them, and the triggers its onSectionPrevious and
+// onSectionNext: once per press, never on a repeat, never with Ctrl or Alt,
+// and never while a Number field is being edited.
 static void CheckTabKeys() {
     assert(views.empty());cvars=CVars{};consoleObject.open=false;windowFocused=true;
     eventPlans={};eventHistory.clear();
@@ -2185,6 +2222,16 @@ static void CheckTabKeys() {
     runtime.widgets.at("root").number->active=false;
     pulse(K_JOY2);
     assert(tabs().size()==6 && tabs().back()=="ontabnext");
+    const auto sections=[&]{std::vector<std::string> found;for(const auto& name:eventHistory)
+        if(name=="onsectionprevious" || name=="onsectionnext")found.push_back(name);return found;};
+    pulse(K_JOY16);pulse(K_JOY15);
+    assert(sections().empty() && tabs().size()==6);
+    eventPlans["onsectionprevious"]={};eventPlans["onsectionnext"]={};
+    pulse(K_JOY16);pulse(K_JOY15);
+    assert(sections()==std::vector<std::string>({"onsectionprevious","onsectionnext"}) && tabs().size()==6);
+    Key(gui,K_JOY15,true);Key(gui,K_JOY15,true);Key(gui,K_JOY15,false);
+    Key(gui,K_CTRL,true);pulse(K_JOY16);Key(gui,K_CTRL,false);
+    assert(sections().size()==3);
 }
 static void CheckNumberKeys() {
     assert(views.empty());const auto original=modelTemplate;

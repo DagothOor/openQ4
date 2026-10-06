@@ -192,6 +192,14 @@ for the original 24-station map. The generator and harness live in
 `tools/validation/generate_pbr_validation_map.py` and
 `tools/tests/renderer_pbr_laboratory.py`. Test content stays in an independent
 runtime under `.tmp/stock-runtime/`; it is not a shipped asset dependency.
+Every laboratory run, including each harness built on it, pins `com_fixedTic 1`:
+one simulation tic per presentation frame. Its `g_stopTime 0` setup windows
+spawn, remove, move and pose fixture entities and switch lights. Those changes
+reach the renderer only on simulation tics, while console `wait` counts
+presentation frames, so without the pin a contended machine can pass a whole
+window without a tic. The capture then shows the previous scene, and a respawned
+name can meet its unremoved predecessor (`Multiple entities named`), which ends
+the map.
 
 The [PBR audit](plans/2026-09-20-pbr-rendering-audit.md) records numerical BRDF and
 environment tests, rendered material/ownership controls, HDR float/display
@@ -233,6 +241,9 @@ The comparison keeps `r_rendererModernLightingParity 0`, exercising OpenGL's
 default admission of the exact authored fog/blend phase. Vulkan must report
 complete preview ownership for every enabled
 case and disabled ownership for the HDR/PBR-off controls. Restoration is exact.
+Like every laboratory run it pins `com_fixedTic 1`, and each capture's render
+world must also hold exactly one specimen and the intended fog/blend light, so a
+sequencing fault fails as such rather than as an image difference.
 `--compare-gl-report <report.json>` requires matching fixture/profile/harness
 provenance and retains the two-byte full-image gate in a separate
 `comparison.json`. The GPU HDR self-test additionally requires all 24 preview

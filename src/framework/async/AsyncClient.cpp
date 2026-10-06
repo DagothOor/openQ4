@@ -251,6 +251,10 @@ void idAsyncClient::Clear( void ) {
 	memset( &lastRconAddress, 0, sizeof( lastRconAddress ) );
 	idCrypto::SecureZero( &rcon2Request, sizeof( rcon2Request ) );
 	rcon2Request.state = RCON_REPLY_NONE;
+	rconVerifyPending = false;
+	rconVerifyRefused = false;
+	memset( &rconVerifyAddress, 0, sizeof( rconVerifyAddress ) );
+	rconVerifyTime = 0;
 	showUpdateMessage = false;
 	lastFrameDelta = 0;
 
@@ -652,6 +656,17 @@ idAsyncClient::RemoteConsole
 void idAsyncClient::RemoteConsole( const char *command ) {
 	netadr_t	adr;
 
+	// The Admin page's password check is answered to the game whatever
+	// becomes of it: by the server's reply, or false when it is refused here
+	// or times out (UpdateRemoteConsoleRequest).
+	const bool verify = command != NULL && idStr::Icmp( command, "verifyRconPass" ) == 0;
+	if ( verify ) {
+		rconVerifyPending = true;
+		rconVerifyRefused = true;
+		rconVerifyTime = realTime;
+		memset( &rconVerifyAddress, 0, sizeof( rconVerifyAddress ) );
+	}
+
 	if ( !InitPort() ) {
 		return;
 	}
@@ -699,6 +714,10 @@ void idAsyncClient::RemoteConsole( const char *command ) {
 		common->Warning( "sending legacy rcon password as plaintext because net_clientUseLegacyRcon is enabled" );
 		clientPort.SendPacket( adr, msg.GetData(), msg.GetSize() );
 		idCrypto::SecureZero( msgBuf, sizeof( msgBuf ) );
+		if ( verify ) {
+			rconVerifyRefused = false;
+			rconVerifyAddress = adr;
+		}
 		return;
 	}
 
@@ -720,6 +739,10 @@ void idAsyncClient::RemoteConsole( const char *command ) {
 		return;
 	}
 	idRcon2::HashRequest( rcon2Request.command, rcon2Request.requestDigest );
+	if ( verify ) {
+		rconVerifyRefused = false;
+		rconVerifyAddress = adr;
+	}
 	SendRemoteConsole2Challenge();
 }
 
@@ -774,6 +797,10 @@ void idAsyncClient::SendRemoteConsole2Proof( void ) {
 }
 
 void idAsyncClient::UpdateRemoteConsoleRequest( void ) {
+	if ( rconVerifyPending && ( rconVerifyRefused ||
+		AsyncClient_Elapsed( realTime, rconVerifyTime ) > RCON2_CLIENT_TIMEOUT_MSEC ) ) {
+		AnswerRconVerify( false );
+	}
 	if ( rcon2Request.state == RCON_REPLY_NONE ) {
 		return;
 	}
@@ -792,6 +819,24 @@ void idAsyncClient::UpdateRemoteConsoleRequest( void ) {
 		SendRemoteConsole2Challenge();
 	} else if ( rcon2Request.state == RCON_REPLY_OUTPUT ) {
 		SendRemoteConsole2Proof();
+	}
+}
+
+/*
+==================
+idAsyncClient::AnswerRconVerify
+
+Quake 4's Admin page asks "rcon verifyRconPass" to check the password it was
+given, then waits for the game to hear the answer.
+==================
+*/
+void idAsyncClient::AnswerRconVerify( bool success ) {
+	rconVerifyPending = false;
+	rconVerifyRefused = false;
+	memset( &rconVerifyAddress, 0, sizeof( rconVerifyAddress ) );
+	rconVerifyTime = 0;
+	if ( game != NULL ) {
+		game->ProcessRconReturn( success );
 	}
 }
 
@@ -1848,6 +1893,7 @@ idAsyncClient::ProcessPrintMessage
 ==================
 */
 void idAsyncClient::ProcessPrintMessage( const netadr_t from, const idBitMsg &msg ) {
+	char		raw[ MAX_STRING_CHARS ];
 	char		string[ MAX_STRING_CHARS ];
 	int			opcode;
 	int			game_opcode = ALLOW_YES;
@@ -1857,8 +1903,27 @@ void idAsyncClient::ProcessPrintMessage( const netadr_t from, const idBitMsg &ms
 	if ( opcode == SERVER_PRINT_GAMEDENY ) {
 		game_opcode = msg.ReadLong();
 	}
-	ReadLocalizedServerString( msg, string, MAX_STRING_CHARS );
+	msg.ReadString( raw, sizeof( raw ) );
+	// look up localized string. if the message is not an #str_ format, we'll just get it back unchanged
+	idStr::Copynz( string, common->GetLanguageDict()->GetString( raw ), sizeof( string ) );
 	common->Printf( "%s\n", string );
+	if ( opcode == SERVER_PRINT_RCON && game != NULL ) {
+		game->ReceiveRemoteConsoleOutput( string );
+	}
+	// The server's answer to the Admin page's password check: "rcon
+	// verified", or the bad password reply, by Doom 3's id from openQ4
+	// servers or Quake 4's from retail ones.
+	if ( opcode != SERVER_PRINT_GAMEDENY && rconVerifyPending && !rconVerifyRefused &&
+		AsyncClient_SameEndpoint( from, rconVerifyAddress ) ) {
+		if ( idStr::Cmp( raw, "#str_107250" ) == 0 ) {
+			AnswerRconVerify( true );
+			return;
+		}
+		if ( idStr::Cmp( raw, "#str_04847" ) == 0 || idStr::Cmp( raw, "#str_104847" ) == 0 ) {
+			AnswerRconVerify( false );
+			return;
+		}
+	}
 	guiNetMenu->SetStateString( "status", string );
 	if ( opcode == SERVER_PRINT_GAMEDENY ) {
 		if ( game_opcode == ALLOW_BADPASS ) {

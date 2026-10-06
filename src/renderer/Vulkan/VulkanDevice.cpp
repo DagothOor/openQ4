@@ -1447,6 +1447,29 @@ bool VK_Device_Init( const renderWindowServices_s *windowServices ) {
 			selected.index, vkCtx.deviceProperties.deviceName, selected.queueFamily,
 			selected.timestampValidBits, vkCtx.deviceProperties.limits.timestampPeriod );
 
+	// Qualification evidence names the exact driver a run used
+	// (tools/tests/renderer_vulkan_qualification.py reads this line). Driver
+	// properties are core in Vulkan 1.2, below the 1.3 floor checked above.
+	{
+		VkPhysicalDeviceDriverProperties driver = {};
+		driver.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+		VkPhysicalDeviceProperties2 query = {};
+		query.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+		query.pNext = &driver;
+		vkGetPhysicalDeviceProperties2( vkCtx.physicalDevice, &query );
+		driver.driverName[ VK_MAX_DRIVER_NAME_SIZE - 1 ] = '\0';
+		driver.driverInfo[ VK_MAX_DRIVER_INFO_SIZE - 1 ] = '\0';
+		common->Printf( "Vulkan: driver '%s' '%s' (driverID %d, driverVersion 0x%08x, vendorID 0x%04x, deviceID 0x%04x, deviceType %d, api %u.%u.%u)\n",
+				driver.driverName, driver.driverInfo, (int)driver.driverID,
+				(unsigned int)vkCtx.deviceProperties.driverVersion,
+				(unsigned int)vkCtx.deviceProperties.vendorID,
+				(unsigned int)vkCtx.deviceProperties.deviceID,
+				(int)vkCtx.deviceProperties.deviceType,
+				VK_API_VERSION_MAJOR( vkCtx.deviceProperties.apiVersion ),
+				VK_API_VERSION_MINOR( vkCtx.deviceProperties.apiVersion ),
+				VK_API_VERSION_PATCH( vkCtx.deviceProperties.apiVersion ) );
+	}
+
 	// light cookies are the only packed-16-bit users; widen them when the
 	// implementation has no R5G6B5 (Metal exposes it on Apple GPUs only)
 	{

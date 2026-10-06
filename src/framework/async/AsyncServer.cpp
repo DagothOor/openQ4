@@ -2660,6 +2660,18 @@ idAsyncServer::ExecuteRemoteConsoleCommand
 */
 void idAsyncServer::ExecuteRemoteConsoleCommand( const netadr_t from, const char *command, bool authenticated ) {
 	byte		msgBuf[952];
+
+	// Quake 4's Admin page sends this to check the password it was given.
+	// Reaching here means the password was accepted, so answer with the
+	// stock "rcon verified" string, which the client hands to the game,
+	// and run nothing.
+	if ( idStr::Icmp( command, "verifyRconPass" ) == 0 ) {
+		common->Printf( "%s remote console password check accepted from %s\n",
+			authenticated ? "authenticated" : "legacy plaintext", Sys_NetAdrToString( from ) );
+		PrintOOB( from, SERVER_PRINT_RCON, "#str_107250" );
+		return;
+	}
+
 	common->Printf( "%s remote console command accepted from %s\n",
 		authenticated ? "authenticated" : "legacy plaintext", Sys_NetAdrToString( from ) );
 

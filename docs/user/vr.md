@@ -190,6 +190,25 @@ still doesn't sit naturally, nudge it relative to the controller:
 If you played an earlier VR build, its offsets of -5 and -3 would push the gun
 out of your hand, so openQ4 resets that pair to 0 once at startup.
 
+## Vehicles and turrets
+
+In single player the hovertank, the walker and the mounted guns surround you
+in stereo like everything else. You sit at the point the turret turns about,
+and it turns after your head: look where you want to shoot, and the gun or
+the walker's cockpit follows at its own speed while you stay put. Pull the
+trigger to fire. The laser dot shows where the shots will land, and each shot
+kicks in your weapon hand. The left stick drives the way the vehicle faces.
+A vehicle that turns under you, such as a walker turning on the spot, turns
+your view with it, and the comfort vignette darkens the edges of your view
+while a vehicle moves you. Scripted rides seat you the same way, from the
+tram's rear gun to the drop pods. Your view stays level whatever the ride
+does, so a pod swung nose-up into its launch tube turns around you instead
+of tipping you onto your back.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `vr_vehicleStereo` | 1 | 1 vehicles and turrets in stereo, turned by your head; 0 on the floating screen, aimed with the controller |
+
 ## Multiplayer
 
 VR players can join any openQ4 server. Your aim reaches the server the same

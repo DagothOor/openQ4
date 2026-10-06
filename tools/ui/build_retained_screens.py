@@ -553,8 +553,9 @@ SOFT_FOCUS_BLUR = 5 * U   # modal.softfocus: a 5 u Gaussian (section 4)
 SOFT_FOCUS_SATURATION = 0.8
 
 
-def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_action: str,
-                 frame_leave_ms: float = 250, dim: tuple = ()) -> dict:
+def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_action: str | None,
+                 frame_leave_ms: float = 250, dim: tuple = (), *, yes_event: str | None = None,
+                 no_event: str | None = None) -> dict:
     """A stock confirmation modal (section 6) over the soft-focused screen: an
     additive glow behind the 480 dp dialog, and inside it the stock popup
     art's black 0.70 silhouette, inset so a 6 dp lit margin shows beside it,
@@ -645,8 +646,10 @@ def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_a
     # to the actions at 96 u.
     body = label(f"{ident}-body", body_key, {**absolute(left=33, top=71, width=width - 66, height=73),
         **typeface("lowpixel", 17, 22, [1, 1, 1, 0.8])})
-    yes = action_plate(doc, f"{ident}_yes", "#str_200157", 30, U * 96, action=yes_action)
-    no = action_plate(doc, f"{ident}_no", "#str_200158", width - 33 - 180, U * 96, event=hide)
+    # The modal's own programs may answer for it: `yes_event` in place of the
+    # session action, `no_event` for No and back; each must hide the modal.
+    yes = action_plate(doc, f"{ident}_yes", "#str_200157", 30, U * 96, action=None if yes_event else yes_action, event=yes_event)
+    no = action_plate(doc, f"{ident}_no", "#str_200158", width - 33 - 180, U * 96, event=no_event or hide)
     shown_contents = group(f"{ident}-contents", {**FULL, "display": keyword("none")}, [*title, body, yes, no])
     dialog = group(f"{ident}-dialog", absolute(left=left, top=top, width=width, height=height),
                    [glow, soft_glow, frame, shown_contents])
@@ -658,7 +661,7 @@ def confirmation(doc: Document, ident: str, title_key: str, body_key: str, yes_a
                                             "backdrop-saturate": number(1)})
     scrim = group(f"{ident}-scrim", {**FULL, "display": keyword("block"), "background-color": colour([0, 0, 0, 0])})
     node = group(ident, {**FULL, "display": keyword("none")}, [softened, scrim, stage],
-                 modal={"initialFocus": f"{ident}_no", "back": hide})
+                 modal={"initialFocus": f"{ident}_no", "back": no_event or hide})
     doc.bind(f"{ident}.display", ident, "display", {"op": "select", "args": [{"state": visible}, "block", "none"]})
     doc.bind(f"{ident}.contents", f"{ident}-contents", "display", {"op": "select", "args": [{"state": contents}, "block", "none"]})
     for part, soft in ((f"{ident}-softfocus", True), (f"{ident}-scrim", False), (f"{ident}-glow", False), (f"{ident}-glow-soft", True)):
@@ -2722,8 +2725,17 @@ def loading_document() -> dict:
                                     track("tip-b", "color", [(0, shown), (250, hidden)])])
     doc.timelines.add("tipB", 250, [track("tip-b", "color", [(0, hidden), (250, shown)]),
                                     track("tip-a", "color", [(0, shown), (250, hidden)])])
+    # A multiplayer join that ends at the Welcome card hands the screen over
+    # (section 14.17): the session keeps drawing it, reading JOINING, until
+    # the card presents, then plays handoff, the whole screen fading over
+    # 250 ms (the runtime's 80 ms under reduced motion) while the card's
+    # softening ramps in below. Each load presents it whole again.
+    doc.timelines.add("handoff", 250, [track("screen", "opacity", [(0, number(1)), (250, number(0))])])
+    doc.timelines.add("present", 1, [track("screen", "opacity", [(0, number(1)), (1, number(1))])])
+    doc.events["handoff"] = [{"op": "playTimeline", "timeline": "handoff"}]
+    doc.events["present"] = [{"op": "playTimeline", "timeline": "present"}]
     root = group("screen", {**FULL, "background-color": colour([0, 0, 0, 1]), "font-family": font("marine"),
-                            "font-size": length(16), "color": colour([1, 1, 1, 0.8])}, [
+                            "font-size": length(16), "color": colour([1, 1, 1, 0.8]), "opacity": number(1)}, [
         shot,
         vector("load-grid", dict(FULL), [grid_path()]),
         top_band, bottom_band, brackets, dot_matrix, identity, objectives, server, arsenal, tips, progress,

@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -38,8 +39,19 @@ struct ScreenHost final : Host {
 	struct Softened { float sigma = 0, saturation = 1; Bounds region; };
 	std::vector<Softened> softened;
 	std::string language = "english";
+	// The player settings the multiplayer card's Settings and Voice pages read back.
+	std::map<std::string,StateValue> cvars = {{"ui_handicap",100.0},{"s_voiceVolume",1.0},{"s_micInputLevel",5.0},
+		{"s_voiceChatSend",true},{"s_voiceChatReceive",true},{"s_voiceChatEcho",false},{"cl_player_outline_width",std::string("2.0")},
+		{"cl_player_outline_enemy",std::string("0")},{"cl_player_outline_team",std::string("0")},{"cl_player_rimlight_enemy",std::string("0")},
+		{"cl_player_rimlight_team",std::string("0")},{"cl_player_brightskin_enemy",std::string("0")},{"cl_player_brightskin_team",std::string("0")},
+		{"cl_player_visibility_enemy_color",std::string("1 0.12 0.05")},{"cl_player_visibility_team_color",std::string("1 0.12 0.05")},
+		{"cl_player_brightskin_enemy_color",std::string("1 0.05 0.02")},{"cl_player_brightskin_team_color",std::string("1 0.05 0.02")}};
 	bool ReadCVar(const std::string& name, size_t type, StateValue& value) override {
 		if (type == 2 && name == "sys_lang") { value = language; return true; }
+		if (const auto found = cvars.find(name); found != cvars.end()) {
+			if (found->second.index() != type) return false;
+			value = found->second; return true;
+		}
 		if (type != 1) return false;
 		if (name == "ui_retainedReducedMotion") { value = reducedMotion; return true; }
 		if (name == "ui_retainedSoftFocus") { value = softFocus; return true; }
@@ -138,13 +150,26 @@ static void CheckSchema() {
 static const std::set<std::string> SessionCommands = {"continue","singlePlayer","loadGame","saveGame","multiplayer","settings",
 	"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
 	"mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction","mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction",
-	"mpVoteYes","mpVoteNo","mpCallVote"};
+	"mpVoteYes","mpVoteNo","mpCallVote","mpRail","mpSettingsControls","mpSettingsGame","mpSettingsSystem","mpMatch","mpMatchSelect"};
 // The value controls' verbs, which carry the control's new value.
 static const std::set<std::string> SessionValueCommands = {"mpVoteMap","mpVoteGameType","mpVoteTimeLimit","mpVoteFragLimit",
-	"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart","mpVoteBuying","mpVoteKick"};
+	"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart","mpVoteBuying","mpVoteKick",
+	"mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair","mpMatchRole","mpMatchScope","mpMatchRuleValue",
+	"mpMatchSeriesProfile"};
+// The player settings the multiplayer card's Settings and Voice pages change.
+static const std::set<std::string> PlayerSettings = {"ui_handicap","cl_player_outline_enemy","cl_player_outline_team",
+	"cl_player_rimlight_enemy","cl_player_rimlight_team","cl_player_visibility_enemy_color","cl_player_visibility_team_color",
+	"cl_player_brightskin_enemy","cl_player_brightskin_team","cl_player_brightskin_enemy_color","cl_player_brightskin_team_color",
+	"cl_player_outline_width","s_voiceChatSend","s_voiceChatReceive","s_voiceChatEcho","s_voiceVolume","s_micInputLevel"};
 
 static void CheckSessionActions(const Document& document) {
 	for (const auto& [id,action] : document.Model().actions) {
+		if (action.operation == "settings.player.set") {
+			const auto cvar = action.arguments.find("cvar");
+			Check(cvar != action.arguments.end() && action.arguments.size() == 2 && PlayerSettings.contains(std::get<std::string>(cvar->second.literal)) &&
+				action.arguments.at("value").inputValue && action.inputType,"a setting control sets an allowlisted player setting");
+			continue;
+		}
 		const bool value = action.operation == "session.menuValue";
 		Check(action.operation == "session.menu" || value,"production screens request only session operations");
 		const auto command = action.arguments.find("command");
@@ -604,6 +629,551 @@ static void CheckVote(ScreenHost& host, const char* path) {
 	Check(!runtime.CanActivateControl("vote-row-map",4.1) && !runtime.CanActivateControl("vote-call",4.1),"the Vote page takes no input");
 }
 
+// The Escape card's Match page (section 14.18): Match Control's six sections
+// as an inner strip the triggers page; Status with the game's states and its
+// actions, each asking the game by its token's index and saying why it is
+// unavailable; the confirmations; and the sections still handing off.
+static void CheckMatch(ScreenHost& host, const char* path) {
+	const auto source = Read(path);
+	Runtime runtime(host);
+	std::vector<Diagnostic> diagnostics;
+	Check(runtime.Initialize() && runtime.LoadDocument(source,"guis/menu/mp_escape.q4ui",diagnostics),"the Escape card loads for its Match page");
+	Viewport viewport; viewport.canvasHeight = 720; viewport.width = 1280; viewport.height = 720;
+	std::string error;
+	Runtime::EventEffects effects;
+	const auto text = [&](const std::string& node, const char* property) {
+		const auto value = runtime.PresentedValue(node,property);
+		Check(value.has_value(),("a presented keyword: "+node+"."+property).c_str()); return value->text;
+	};
+	const auto number = [&](const std::string& node, const char* property) {
+		const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented value"); return static_cast<float>(value->data[0]);
+	};
+	const auto bounds = [&](const std::string& id) { Bounds b; Check(runtime.GetBounds(id,b),"a Match node is laid out"); return b; };
+	const auto section = [&]() { return std::get<double>(runtime.GetState().at("card.match_section")); };
+	// The session's RETAINED_MP_MATCH_TOKENS, by index.
+	enum { REFRESH, READY, TEAM_READY, ARM_FORCE_READY, TIMEOUT, TECH_PAUSE, RESUME, ARM_FORFEIT, ARM_ABORT, REFEREE_LOGOUT,
+		SIDE_A, SIDE_B, FOLLOW_PREV, FOLLOW_NEXT, FOLLOW_FREE, CONFIRM, CANCEL_CONFIRM, JOIN_MARINE, JOIN_STROGG, SPECTATE,
+		QUEUE_JOIN, QUEUE_DEFER, QUEUE_LEAVE, ROSTER_ACCEPT, ROSTER_LEAVE, ROSTER_INVITE, ARM_ROSTER_REMOVE, ARM_ROSTER_SUBSTITUTE,
+		ROLE_ASSIGN, TEAM_LOCK, BROADCASTER, ARM_PARTICIPANT_REMOVE, CONTESTANT_BIND, PROPOSAL_CREATE, PROPOSAL_YES, PROPOSAL_NO,
+		PROPOSAL_ABSTAIN, PROPOSAL_CANCEL, RULES_SELECT_PROFILE, RULES_STAGE, ARM_RULES_COMMIT, RULES_DISCARD, SERIES_STAGE,
+		ARM_SERIES_START, ARM_SERIES_CANCEL, ARM_SERIES_ADVANCE, ARM_VETO_BAN, ARM_VETO_PICK, ARM_VETO_DECIDER, ARM_VETO_SIDE_MARINE,
+		ARM_VETO_SIDE_STROGG };
+	const auto press = [&](MenuInput input, double at) { runtime.MenuAction(input,true,at); runtime.MenuAction(input,false,at+.01); };
+	const auto asked = [&](int token) {
+		return effects.actions.size() == 1 && std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpMatch" &&
+			std::get<double>(runtime.GetState().at("card.match_op")) == token;
+	};
+	// Before the game has an accepted view the page waits for one; opening it
+	// asks the game to project its view again.
+	Check(runtime.RunEvent("open",1,effects,error),"open the card");
+	Check(runtime.RunEvent("tab_match",1.01,effects,error) && asked(REFRESH),"opening the Match page asks for a refresh");
+	runtime.Frame(viewport,1.4);
+	Check(text("match-waiting","display") == "block" && text("match-status-live","display") == "none","with no view the page waits");
+	Check(runtime.FocusedControl() == "match-tab-status" && text("match-section-status","display") == "block" &&
+		text("match-section-teams","display") == "none","the page opens on its Status section");
+	// A warm-up a referee steers: Set ready and Abort unavailable, the rest not.
+	StateValues page = {{"mp.match.available",true},{"mp.match.phase",std::string("Warm-up | Round 1")},
+		{"mp.match.status0",std::string("Live | Round inactive")},{"mp.match.status1",std::string("Running | No pause")},
+		{"mp.match.status2",std::string("You: Player | Marine")},{"mp.match.result",std::string("Ready accepted.")},
+		{"mp.match.side.shown",true},{"mp.match.side.label",std::string("Action target")},
+		{"mp.match.side0.label",std::string("Marine")},{"mp.match.side0.available",true},{"mp.match.side0.selected",true},
+		{"mp.match.side1.label",std::string("Strogg")},{"mp.match.side1.available",true},{"mp.match.side1.selected",false},
+		{"mp.match.follow",false}};
+	const char* const operations[] = {"ready","team_ready","timeout","tech_pause","resume","force_ready","forfeit","abort",
+		"referee_login","referee_logout"};
+	for (const char* name : operations) {
+		const std::string key = std::string("mp.match.op.")+name, id = name;
+		page[key+".shown"] = id != "referee_logout";
+		page[key+".available"] = id != "ready" && id != "abort";
+		page[key+".label"] = id == "ready" ? std::string("Set ready") : id;
+		page[key+".reason"] = id == "ready" ? std::string("Readiness opens in the warm-up.") : id == "abort" ? std::string("Referees only.") :
+			std::string("");
+	}
+	Check(runtime.SetState(page,error,2),"publish the Match page");
+	runtime.Frame(viewport,2.3);
+	Check(text("match-waiting","display") == "none" && text("match-status-live","display") == "block","the page shows the match");
+	Check(text("match-phase","text") == "Warm-up | Round 1" && text("match-status-0","text") == "Live | Round inactive" &&
+		text("match-status-2","text") == "You: Player | Marine" && text("match-result","text") == "Ready accepted.",
+		"its phase, state lines and last result");
+	// The actions stack in a column beside the state, each in its row.
+	const char* const rows[] = {"match-ready","match-team-ready","match-timeout","match-tech-pause","match-resume","match-force-ready",
+		"match-forfeit","match-abort"};
+	const auto column = bounds("match-status-column"), page_box = bounds("page-match");
+	float previous = -1;
+	for (const char* row : rows) {
+		const auto box = bounds(row);
+		Check(box.y > previous && box.x >= column.x+column.width && box.x+box.width <= page_box.x+page_box.width+0.5f &&
+			box.y+box.height <= page_box.y+page_box.height+0.5f,"the actions stack beside the state, inside the page");
+		previous = box.y;
+	}
+	Check(bounds("match-result").y >= bounds("match-abort").y+bounds("match-abort").height,"the result follows the actions");
+	Check(Near(number("match-ready","opacity"),.6f,.001f) && text("match-ready-lock","display") == "block" &&
+		text("match-ready-reason","display") == "block" && text("match-ready-reason","text") == "Readiness opens in the warm-up.",
+		"an unavailable action dims with its lock and says why");
+	Check(Near(number("match-timeout","opacity"),1,.001f) && text("match-timeout-lock","display") == "none" &&
+		text("match-timeout-reason","display") == "none","an available one does not");
+	const auto label = bounds("match-team-ready-label"), reason = bounds("match-ready-reason");
+	Check(label.x+label.width <= reason.x,"the labels keep to their column");
+	Check(runtime.RunEvent("match_ready",2.4,effects,error) && effects.actions.empty(),"an unavailable action asks nothing");
+	Check(runtime.RunEvent("match_timeout",2.5,effects,error) && asked(TIMEOUT),"Request timeout asks the game");
+	Check(runtime.RunEvent("match_team_ready",2.55,effects,error) && asked(TEAM_READY) &&
+		runtime.RunEvent("match_tech_pause",2.56,effects,error) && asked(TECH_PAUSE) &&
+		runtime.RunEvent("match_resume",2.57,effects,error) && asked(RESUME),"as do Team ready, Technical pause and Resume");
+	// Forfeit arms the game's confirmation and asks first; Yes confirms it.
+	Check(runtime.RunEvent("match_forfeit",2.6,effects,error) && asked(ARM_FORFEIT),"Forfeit arms the game's confirmation");
+	runtime.Frame(viewport,2.9);
+	Check(text("matchForfeitModal","display") == "block" && text("matchForfeitModal-body","text") == "#str_41798","and asks first");
+	Check(runtime.RunEvent("matchForfeitModalYes",3,effects,error) && asked(CONFIRM),"Yes confirms it");
+	runtime.Frame(viewport,3.4);
+	Check(text("matchForfeitModal","display") == "none","and closes the modal");
+	// Force ready asks too; No, as back does, cancels the game's confirmation.
+	Check(runtime.RunEvent("match_force_ready",3.5,effects,error) && asked(ARM_FORCE_READY),"Force ready arms its confirmation");
+	runtime.Frame(viewport,3.8);
+	Check(text("matchForceReadyModal","display") == "block" && text("matchForceReadyModal-body","text") == "#str_41900","and asks first");
+	Check(runtime.RunEvent("matchForceReadyModalNo",3.9,effects,error) && asked(CANCEL_CONFIRM),"No cancels it");
+	runtime.Frame(viewport,4.3);
+	Check(text("matchForceReadyModal","display") == "none","and closes the modal");
+	Check(runtime.RunEvent("match_abort",4.4,effects,error) && effects.actions.empty(),"an unavailable Abort neither arms nor asks");
+	runtime.Frame(viewport,4.7);
+	Check(text("matchAbortModal","display") == "none","and no modal opens");
+	// The side an action applies to.
+	Check(text("match-side","display") == "block" && text("match-side-0-mark","display") == "block" &&
+		text("match-side-1-mark","display") == "none" && text("match-side-1-label","text") == "Strogg","the action target, Marine chosen");
+	Check(runtime.RunEvent("match_side_1",4.8,effects,error) && asked(SIDE_B),"choosing Strogg asks the game");
+	Check(runtime.SetState({{"mp.match.side0.available",false}},error,4.9) && runtime.RunEvent("match_side_0",4.95,effects,error) &&
+		effects.actions.empty(),"a side the player may not choose asks nothing");
+	// Signing in needs the credential, so it opens the stock page; signing out asks the game.
+	runtime.Frame(viewport,5);
+	Check(text("match-referee-login","display") == "block" && text("match-referee-logout","display") == "none","Sign in, not Sign out");
+	Check(runtime.RunEvent("match_referee_login",5.05,effects,error) && effects.actions.size() == 1 &&
+		std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpStockPage" &&
+		std::get<double>(runtime.GetState().at("card.stock_page")) == 3,"Sign in opens the stock Match Control page");
+	Check(runtime.SetState({{"mp.match.op.referee_login.available",false},{"mp.match.op.referee_login.reason",std::string("No referee password.")}},
+		error,5.1),"no referee password on the server");
+	runtime.Frame(viewport,5.15);
+	Check(text("match-referee-reason","text") == "No referee password." && runtime.RunEvent("match_referee_login",5.2,effects,error) &&
+		effects.actions.empty(),"Sign in then says why and asks nothing");
+	Check(runtime.SetState({{"mp.match.op.referee_login.shown",false},{"mp.match.op.referee_logout.shown",true},
+		{"mp.match.op.referee_logout.available",true}},error,5.3),"signed in");
+	runtime.Frame(viewport,5.35);
+	Check(text("match-referee-login","display") == "none" && text("match-referee-logout","display") == "block" &&
+		text("match-referee-reason","text").empty(),"Sign out, nothing to explain");
+	Check(runtime.RunEvent("match_referee_logout",5.4,effects,error) && asked(REFEREE_LOGOUT),"Sign out asks the game");
+	// A spectator's camera.
+	Check(text("match-follow","display") == "none","no camera controls for a player");
+	Check(runtime.SetState({{"mp.match.follow",true}},error,5.5),"spectating");
+	runtime.Frame(viewport,5.55);
+	Check(text("match-follow","display") == "flex","a spectator steps the camera");
+	Check(runtime.RunEvent("match_follow_previous",5.6,effects,error) && asked(FOLLOW_PREV) &&
+		runtime.RunEvent("match_follow_next",5.61,effects,error) && asked(FOLLOW_NEXT) &&
+		runtime.RunEvent("match_follow_free",5.62,effects,error) && asked(FOLLOW_FREE),"through the players or free");
+	// The triggers page the sections, around the strip.
+	Check(runtime.RunEvent("onSectionNext",6,effects,error) && section() == 1 && runtime.FocusedControl() == "match-tab-teams","a trigger pages on");
+	runtime.Frame(viewport,6.1);
+	Check(text("match-section-teams","display") == "block" && text("match-section-status","display") == "none","to the Teams section");
+	// Teams: each side's own row and its players, the player's own row chosen;
+	// the participants a substitution can bring in; the role; the actions.
+	StateValues teams = {{"mp.match.team.count",4.0},{"mp.match.team.more",false},{"mp.match.team.selected",1.0},
+		{"mp.match.replacement.count",1.0},{"mp.match.replacement.selected",-1.0},{"mp.match.replacement0.c0",std::string("Player")},
+		{"mp.match.role",2.0}};
+	const char* const teamRows[][5] = {{"0","0","Marine","Ready","Lock team"},{"1","0","Player","Marine","Player"},
+		{"0","1","Strogg","Not ready","Unlock team"},{"1","1","Bot","Strogg","Player"}};
+	for (int row = 0; row < 4; ++row) {
+		const std::string key = "mp.match.team"+std::to_string(row);
+		teams[key+".kind"] = std::stod(teamRows[row][0]); teams[key+".side"] = std::stod(teamRows[row][1]);
+		for (int column = 0; column < 3; ++column) teams[key+".c"+std::to_string(column)] = std::string(teamRows[row][2+column]);
+	}
+	const char* const teamOperations[] = {"join_marine","join_strogg","spectate","queue_join","queue_defer","queue_leave","roster_accept",
+		"roster_leave","roster_invite","roster_remove","roster_substitute","role_assign","team_lock","broadcaster","participant_remove",
+		"contestant_bind"};
+	for (const char* name : teamOperations) {
+		const std::string key = std::string("mp.match.op.")+name, id = name;
+		teams[key+".shown"] = id != "broadcaster" && id != "contestant_bind";
+		teams[key+".available"] = id == "join_strogg" || id == "spectate" || id == "roster_remove";
+		teams[key+".label"] = id;
+		teams[key+".reason"] = id == "join_marine" ? std::string("You are on that team.") : std::string("Captains only.");
+	}
+	Check(runtime.SetState(teams,error,6.15),"publish the Teams section");
+	runtime.Frame(viewport,6.2);
+	Check(text("match-teams-live","display") == "block" && text("match-teams-waiting","display") == "none","the Teams section shows the match");
+	for (int row = 0; row < 4; ++row)
+		Check(text("match-team-"+std::to_string(row),"display") == "block","each team row shows");
+	Check(text("match-team-4","display") == "none" && text("match-team-more","display") == "none","and no others");
+	Check(text("match-team-1-c0","text") == "Player" && text("match-team-1-c1","text") == "Marine" &&
+		text("match-team-2-c2","text") == "Unlock team","each row's columns");
+	const auto band = [&](const char* node) { const auto value = runtime.PresentedValue(node,"background-color");
+		Check(value.has_value(),"a row's band"); return *value; };
+	const auto marine = band("match-team-0-band"), strogg = band("match-team-2-band"), player = band("match-team-1-band");
+	Check(Near(static_cast<float>(marine.data[3]),.35f,.01f) && Near(static_cast<float>(marine.data[0]),0x6A/255.f,.01f) &&
+		Near(static_cast<float>(strogg.data[0]),1,.01f) && Near(static_cast<float>(strogg.data[1]),0x7B/255.f,.01f) &&
+		Near(static_cast<float>(player.data[3]),.06f,.01f),"a side's own row takes its team's color, a player's row the plain band");
+	Check(text("match-team-1-chosen","display") == "block" && text("match-team-0-chosen","display") == "none","the row chosen is lit");
+	Check(text("match-replacement-0","display") == "block" && text("match-replacement-0-c0","text") == "Player" &&
+		text("match-replacement-1","display") == "none","the participants a substitution can bring in");
+	const auto selected = [&](int list, int row) {
+		return effects.actions.size() == 1 && std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpMatchSelect" &&
+			std::get<double>(runtime.GetState().at("card.match_list")) == list && std::get<double>(runtime.GetState().at("card.match_row")) == row;
+	};
+	Check(text("match-teams-result","text") == "Ready accepted." &&
+		bounds("match-teams-result").y >= bounds("match-replacement-list").y+bounds("match-replacement-list").height,
+		"the latest result shows under the lists");
+	Check(runtime.RunEvent("match_team_3",6.25,effects,error) && selected(0,3),"choosing a team row names it to the game");
+	Check(runtime.RunEvent("match_replacement_0",6.26,effects,error) && selected(1,0),"as does choosing a participant");
+	// The lists and the actions share the section, inside the page.
+	const auto list = bounds("match-team-list"), actions = bounds("match-team-actions"), section_box = bounds("match-section-teams");
+	Check(list.x+list.width <= actions.x && actions.x+actions.width <= section_box.x+section_box.width+.5f &&
+		bounds("match-replacement-list").y >= list.y+list.height,"the lists lead, the actions beside them");
+	// The actions flow in their column; a hidden one takes no room.
+	const auto pitch = bounds("match-join-marine").height+6;
+	Check(pitch >= 42 && Near(bounds("match-join-strogg").y,bounds("match-join-marine").y+pitch,.5f) &&
+		Near(bounds("match-participant-remove").y,bounds("match-team-lock").y+pitch,.5f) &&
+		text("match-broadcaster","display") == "none" && text("match-contestant-bind","display") == "none",
+		"the team actions stack, the broadcaster's and the Duel binding only where they apply");
+	Check(text("match-join-marine-lock","display") == "block" && text("match-join-marine-reason","text") == "You are on that team.",
+		"an unavailable team action says why");
+	Check(runtime.RunEvent("match_join_marine",6.3,effects,error) && effects.actions.empty(),"and asks nothing");
+	Check(runtime.RunEvent("match_join_strogg",6.31,effects,error) && asked(JOIN_STROGG) &&
+		runtime.RunEvent("match_spectate",6.32,effects,error) && asked(SPECTATE),"Join Strogg and Spectate ask the game");
+	Check(runtime.RunEvent("match_roster_remove",6.35,effects,error) && asked(ARM_ROSTER_REMOVE),"Remove arms its confirmation");
+	runtime.Frame(viewport,6.6);
+	Check(text("matchRosterRemoveModal","display") == "block" && text("matchRosterRemoveModal-body","text") == "#str_41902","and asks first");
+	Check(runtime.RunEvent("matchRosterRemoveModalNo",6.65,effects,error) && asked(CANCEL_CONFIRM),"No cancels it");
+	runtime.Frame(viewport,7);
+	Check(text("matchRosterRemoveModal","display") == "none" && text("matchRosterSubstituteModal","display") == "none" &&
+		text("matchParticipantRemoveModal","display") == "none","no confirmation stays open");
+	// The role: a choice whose new value reaches the session.
+	Check(text("match-role","display") == "block" && text("match-bind-side","display") == "none","the role, not the Duel sides");
+	Check(runtime.FocusControl("match-role",7.05) && runtime.OpenChoicePopup("match-role",7.05),"the role unfolds");
+	runtime.Frame(viewport,7.1);
+	press(MenuInput::Down,7.15);
+	press(MenuInput::Accept,7.2);
+	const auto roleActions = runtime.TakeActions();
+	Check(roleActions.size() == 1 && roleActions[0].action == "mpMatchRole" && roleActions[0].proposal &&
+		std::get<double>(*roleActions[0].proposal) == 3,"choosing Coach asks for role 3");
+	if (roleActions.size() == 1 && roleActions[0].proposalToken) runtime.AcknowledgeControlProposal(roleActions[0].node,roleActions[0].proposalToken,true);
+	// Where a Duel side can be bound, its sides take the role's place.
+	Check(runtime.SetState({{"mp.match.op.contestant_bind.shown",true},{"mp.match.op.contestant_bind.available",true}},error,7.3),
+		"a Duel side can be bound");
+	runtime.Frame(viewport,7.4);
+	Check(text("match-role","display") == "none" && text("match-bind-side","display") == "block" &&
+		text("match-contestant-bind","display") == "block","the sides take the role's place, and Bind side shows");
+	Check(runtime.RunEvent("match_contestant_bind",7.45,effects,error) && asked(CONTESTANT_BIND),"Bind side asks the game");
+	// Past the card's rows the list offers the stock page.
+	Check(runtime.SetState({{"mp.match.team.more",true}},error,7.5),"more rows than the card has");
+	runtime.Frame(viewport,7.6);
+	Check(text("match-team-more","display") == "block","the list offers the stock page");
+	// Proposals: the running proposals, the ballot target and the ballots;
+	// the proposals to make, Create proposal and the latest result.
+	Check(runtime.RunEvent("onSectionNext",7.7,effects,error) && section() == 2,"on to Proposals");
+	StateValues proposals = {{"mp.match.proposal.global",std::string("Pause match | Global | Yes 1/3, No 0 | 0:25")},
+		{"mp.match.proposal.side",std::string("No additional details")},{"mp.match.scope",0.0},{"mp.match.proposal.count",2.0},
+		{"mp.match.proposal.more",false},{"mp.match.proposal.selected",0.0},{"mp.match.proposal0.c0",std::string("Pause match")},
+		{"mp.match.proposal0.c1",std::string("Global")},{"mp.match.proposal1.c0",std::string("Change rules")},
+		{"mp.match.proposal1.c1",std::string("Global")}};
+	for (const char* name : {"proposal_create","proposal_yes","proposal_no","proposal_abstain","proposal_cancel"}) {
+		const std::string key = std::string("mp.match.op.")+name, id = name;
+		proposals[key+".shown"] = true;
+		proposals[key+".available"] = id == "proposal_create" || id == "proposal_yes";
+		proposals[key+".label"] = id;
+		proposals[key+".reason"] = std::string("You already voted.");
+	}
+	Check(runtime.SetState(proposals,error,7.75),"publish the Proposals section");
+	runtime.Frame(viewport,7.8);
+	Check(text("match-proposals-live","display") == "block" && text("match-proposal-global","text") == "Pause match | Global | Yes 1/3, No 0 | 0:25" &&
+		text("match-proposal-side","text") == "No additional details","the running proposals");
+	Check(text("match-proposal-0","display") == "block" && text("match-proposal-1-c0","text") == "Change rules" &&
+		text("match-proposal-2","display") == "none" && text("match-proposal-0-chosen","display") == "block","the proposals to make");
+	const auto ballots = bounds("match-proposal-yes"), templates = bounds("match-proposal-list"), create = bounds("match-proposal-create");
+	Check(ballots.x+ballots.width <= templates.x && create.y >= templates.y+templates.height && Near(create.x,templates.x,.5f) &&
+		bounds("match-proposal-cancel").y+bounds("match-proposal-cancel").height <= bounds("match-section-proposals").y+289.5f,
+		"the ballots beside the proposals to make, Create proposal under them");
+	Check(runtime.RunEvent("match_proposal_1",7.85,effects,error) && selected(2,1),"choosing a proposal names it to the game");
+	Check(runtime.RunEvent("match_proposal_yes",7.86,effects,error) && asked(PROPOSAL_YES) &&
+		runtime.RunEvent("match_proposal_create",7.87,effects,error) && asked(PROPOSAL_CREATE),"Vote yes and Create proposal ask the game");
+	Check(runtime.RunEvent("match_proposal_no",7.88,effects,error) && effects.actions.empty() &&
+		text("match-proposal-no-reason","text") == "You already voted.","a refused ballot says why and asks nothing");
+	Check(text("match-proposals-result","text") == "Ready accepted.","the latest result");
+	Check(runtime.FocusControl("match-scope",7.9) && runtime.OpenChoicePopup("match-scope",7.9),"the ballot target unfolds");
+	runtime.Frame(viewport,7.95);
+	press(MenuInput::Down,8);
+	press(MenuInput::Accept,8.05);
+	const auto scopeActions = runtime.TakeActions();
+	Check(scopeActions.size() == 1 && scopeActions[0].action == "mpMatchScope" && scopeActions[0].proposal &&
+		std::get<double>(*scopeActions[0].proposal) == 1,"choosing the team proposal asks for target 1");
+	if (scopeActions.size() == 1 && scopeActions[0].proposalToken) runtime.AcknowledgeControlProposal(scopeActions[0].node,scopeActions[0].proposalToken,true);
+	// Rules: the committed rules, the profiles and the rule fields; the value to
+	// stage, the staged changes, the rule actions and the latest result.
+	Check(runtime.RunEvent("onSectionNext",8.1,effects,error) && section() == 3,"on to Rules");
+	StateValues rules = {{"mp.match.rules.summary",std::string("Competitive TDM | Next match | 3/ab12cd34")},
+		{"mp.match.rules.staged",std::string("Competitive TDM | Customized | 4/ef56 | 1")},{"mp.match.rule_value",15.0},
+		{"mp.match.profile.count",3.0},{"mp.match.profile.more",false},{"mp.match.profile.selected",1.0},
+		{"mp.match.rule.count",5.0},{"mp.match.rule.more",false},{"mp.match.rule.selected",2.0}};
+	for (int row = 0; row < 3; ++row) rules["mp.match.profile"+std::to_string(row)+".c0"] = std::string("Profile ")+std::to_string(row);
+	for (int row = 0; row < 5; ++row) {
+		const std::string key = "mp.match.rule"+std::to_string(row);
+		rules[key+".c0"] = std::string("Rule ")+std::to_string(row); rules[key+".c1"] = std::string("Number");
+		rules[key+".c2"] = std::string(row == 2 ? "10 -> 15" : "10");
+	}
+	for (const char* name : {"rules_select_profile","rules_stage","rules_commit","rules_discard"}) {
+		const std::string key = std::string("mp.match.op.")+name;
+		rules[key+".shown"] = true; rules[key+".available"] = true; rules[key+".label"] = std::string(name); rules[key+".reason"] = std::string("");
+	}
+	Check(runtime.SetState(rules,error,8.15),"publish the Rules section");
+	runtime.Frame(viewport,8.2);
+	Check(text("match-rules-live","display") == "block" && text("match-rules-summary","text") == "Competitive TDM | Next match | 3/ab12cd34" &&
+		text("match-rules-staged","text") == "Competitive TDM | Customized | 4/ef56 | 1","the committed and staged rules");
+	Check(text("match-profile-2","display") == "block" && text("match-profile-3","display") == "none" &&
+		text("match-rule-4","display") == "block" && text("match-rule-2-c2","text") == "10 -> 15" &&
+		text("match-rule-2-chosen","display") == "block","the profiles and the rule fields");
+	const auto ruleValue = runtime.GetWidgetState("match-rule-value");
+	Check(ruleValue && std::holds_alternative<double>(ruleValue->accepted) && std::get<double>(ruleValue->accepted) == 15 &&
+		text("match-rules-result","text") == "Ready accepted.","the value to stage and the result");
+	Check(runtime.RunEvent("match_profile_0",8.25,effects,error) && selected(3,0) &&
+		runtime.RunEvent("match_rule_4",8.26,effects,error) && selected(4,4),"choosing a profile or a rule names it to the game");
+	Check(runtime.RunEvent("match_rules_stage",8.27,effects,error) && asked(RULES_STAGE) &&
+		runtime.RunEvent("match_rules_select_profile",8.28,effects,error) && asked(RULES_SELECT_PROFILE),"Stage value and Select profile ask the game");
+	Check(runtime.RunEvent("match_rules_commit",8.3,effects,error) && asked(ARM_RULES_COMMIT),"Commit rules arms its confirmation");
+	runtime.Frame(viewport,8.6);
+	Check(text("matchRulesCommitModal","display") == "block" && text("matchRulesCommitModal-body","text") == "#str_41901","and asks first");
+	Check(runtime.RunEvent("matchRulesCommitModalYes",8.65,effects,error) && asked(CONFIRM),"Yes confirms it");
+	runtime.Frame(viewport,9);
+	// The value: a whole number the player types and commits. One past the
+	// largest a rule takes is held in the field as out of range and asks
+	// nothing; a value in range reaches the session.
+	const auto numberId = [&]() { return runtime.GetWidgetState("match-rule-value")->number->identity; };
+	const auto type = [&](const char* value, double at) {
+		const auto size = runtime.GetWidgetState("match-rule-value")->number->state.text.size();
+		return runtime.SetNumberSelection("match-rule-value",numberId(),0,size,error,at) &&
+			runtime.ReplaceNumberSelection("match-rule-value",numberId(),value,error,at);
+	};
+	Check(runtime.FocusControl("match-rule-value",9.05) && runtime.BeginNumberEdit("match-rule-value",error,9.05),"edit the value");
+	Check(type("20000",9.1) && !runtime.CommitNumberEdit("match-rule-value",numberId(),error,9.1) && runtime.TakeActions().empty(),
+		"a value past the largest asks nothing");
+	const auto refused = runtime.GetWidgetState("match-rule-value");
+	Check(refused && refused->number && refused->number->status == TextNumberStatus::OutOfRange,"and the field holds it as out of range");
+	Check(type("25",9.2) && runtime.CommitNumberEdit("match-rule-value",numberId(),error,9.2),"type 25 and commit it");
+	const auto valueActions = runtime.TakeActions();
+	Check(valueActions.size() == 1 && valueActions[0].action == "mpMatchRuleValue" && valueActions[0].proposal &&
+		std::get<double>(*valueActions[0].proposal) == 25,"the value reaches the session");
+	// The value comes back through the game; acknowledged once it has, as the
+	// adapter does for a number field, it settles without a conflict.
+	Check(valueActions.size() == 1 && valueActions[0].proposalToken,"the value waits for the game");
+	Check(runtime.SetState({{"mp.match.rule_value",25.0}},error,9.25),"the game takes the value");
+	runtime.Frame(viewport,9.3);
+	Check(runtime.AcknowledgeControlProposal(valueActions[0].node,valueActions[0].proposalToken,true),"and the field accepts it");
+	runtime.Frame(viewport,9.35);
+	const auto settled = runtime.GetWidgetState("match-rule-value");
+	Check(settled && (!settled->number || !settled->number->conflict) && std::holds_alternative<double>(settled->accepted) &&
+		std::get<double>(settled->accepted) == 25,"without a conflict");
+	// Series: the series, the map pool and the history; the format and the
+	// series and veto actions, each confirmed one asking first.
+	Check(runtime.RunEvent("onSectionNext",9.5,effects,error) && section() == 4,"on to Series");
+	StateValues series = {{"mp.match.series.summary",std::string("Map selection | Best of three | Score: 0-0")},{"mp.match.series_profile",1.0},
+		{"mp.match.series_map.count",3.0},{"mp.match.series_map.more",false},{"mp.match.series_map.selected",0.0},
+		{"mp.match.series_history.count",2.0},{"mp.match.series_history.more",false},{"mp.match.series_history.selected",-1.0}};
+	for (int row = 0; row < 3; ++row) {
+		const std::string key = "mp.match.series_map"+std::to_string(row);
+		series[key+".c0"] = std::string("Map ")+std::to_string(row); series[key+".c1"] = std::string(row == 0 ? "Banned" : "Available");
+		series[key+".c2"] = std::string(row == 0 ? "Marine" : "");
+	}
+	for (int row = 0; row < 2; ++row) {
+		const std::string key = "mp.match.series_history"+std::to_string(row);
+		series[key+".c0"] = std::string("Map ")+std::to_string(row); series[key+".c1"] = std::string("Ban");
+		series[key+".c2"] = std::string("Marine");
+	}
+	for (const char* name : {"series_stage","series_start","series_cancel","series_advance","veto_ban","veto_pick","veto_decider",
+			"veto_side_marine","veto_side_strogg"}) {
+		const std::string key = std::string("mp.match.op.")+name, id = name;
+		series[key+".shown"] = true;
+		series[key+".available"] = id == "series_stage" || id == "series_start" || id == "veto_ban";
+		series[key+".label"] = id;
+		series[key+".reason"] = std::string("Not your turn.");
+	}
+	Check(runtime.SetState(series,error,9.55),"publish the Series section");
+	runtime.Frame(viewport,9.6);
+	Check(text("match-series-live","display") == "block" && text("match-series-summary","text") == "Map selection | Best of three | Score: 0-0",
+		"the series");
+	Check(text("match-series-map-2","display") == "block" && text("match-series-map-3","display") == "none" &&
+		text("match-series-map-0-c1","text") == "Banned" && text("match-series-map-0-chosen","display") == "block" &&
+		text("match-series-history-1","display") == "block" && text("match-series-history-2","display") == "none" &&
+		text("match-series-history-0-c1","text") == "Ban","the map pool and the history");
+	Check(runtime.RunEvent("match_series_map_2",9.65,effects,error) && selected(5,2),"choosing a map names it to the game");
+	Check(runtime.RunEvent("match_series_history_0",9.66,effects,error) && effects.actions.empty(),"the history is only to read");
+	Check(runtime.RunEvent("match_series_stage",9.67,effects,error) && asked(SERIES_STAGE),"Stage series asks the game");
+	Check(runtime.RunEvent("match_series_start",9.7,effects,error) && asked(ARM_SERIES_START),"Start series arms its confirmation");
+	runtime.Frame(viewport,10);
+	Check(text("matchSeriesStartModal","display") == "block" && text("matchSeriesStartModal-body","text") == "#str_41905","and asks first");
+	Check(runtime.RunEvent("matchSeriesStartModalNo",10.05,effects,error) && asked(CANCEL_CONFIRM),"No cancels it");
+	runtime.Frame(viewport,10.4);
+	Check(runtime.RunEvent("match_veto_ban",10.45,effects,error) && asked(ARM_VETO_BAN),"Ban map arms its confirmation");
+	runtime.Frame(viewport,10.75);
+	Check(text("matchVetoBanModal","display") == "block" && text("matchVetoBanModal-body","text") == "#str_41907","and asks first");
+	Check(runtime.RunEvent("matchVetoBanModalYes",10.8,effects,error) && asked(CONFIRM),"Yes confirms it");
+	runtime.Frame(viewport,11.15);
+	Check(runtime.RunEvent("match_series_cancel",11.2,effects,error) && effects.actions.empty() &&
+		text("match-series-cancel-reason","text") == "Not your turn.","a refused action says why and asks nothing");
+	Check(runtime.FocusControl("match-series-format",11.25) && runtime.OpenChoicePopup("match-series-format",11.25),"the format unfolds");
+	runtime.Frame(viewport,11.3);
+	press(MenuInput::Down,11.35);
+	press(MenuInput::Accept,11.4);
+	const auto formatActions = runtime.TakeActions();
+	Check(formatActions.size() == 1 && formatActions[0].action == "mpMatchSeriesProfile" && formatActions[0].proposal &&
+		std::get<double>(*formatActions[0].proposal) == 2,"choosing best of five asks for format 2");
+	if (formatActions.size() == 1 && formatActions[0].proposalToken) runtime.AcknowledgeControlProposal(formatActions[0].node,formatActions[0].proposalToken,true);
+	// Evidence: the evidence's state and the recent evidence, with Refresh.
+	Check(runtime.RunEvent("onSectionNext",11.5,effects,error) && section() == 5,"on to Evidence");
+	Check(runtime.SetState({{"mp.match.evidence.summary",std::string("Recording | Report ready | No demo | 42")},
+		{"mp.match.evidence.count",2.0},{"mp.match.evidence.more",false},{"mp.match.evidence.selected",-1.0},
+		{"mp.match.evidence0.c0",std::string("Recording | Report ready | No demo | 42")},{"mp.match.evidence1.c0",std::string("Kill")}},error,11.55),
+		"publish the Evidence section");
+	runtime.Frame(viewport,11.6);
+	Check(text("match-evidence-live","display") == "block" && text("match-evidence-summary","text") == "Recording | Report ready | No demo | 42" &&
+		text("match-evidence-1","display") == "block" && text("match-evidence-1-c0","text") == "Kill" &&
+		text("match-evidence-2","display") == "none","the evidence and the recent evidence");
+	Check(runtime.RunEvent("match_evidence_1",11.65,effects,error) && effects.actions.empty(),"the evidence is only to read");
+	Check(runtime.RunEvent("match_evidence_refresh",11.7,effects,error) && asked(REFRESH),"Refresh asks the game for its view again");
+	Check(runtime.RunEvent("match_section_status",12,effects,error) && section() == 0 &&
+		runtime.RunEvent("onSectionPrevious",12.1,effects,error) && section() == 5 && runtime.FocusedControl() == "match-tab-evidence",
+		"back around the strip from Status to Evidence");
+	Check(runtime.RunEvent("tab_vote",12.2,effects,error) && runtime.RunEvent("onSectionNext",12.3,effects,error) && section() == 5,
+		"the triggers page sections only on the Match page");
+	runtime.Frame(viewport,12.6);
+	Check(!runtime.CanActivateControl("match-tab-status",12.6) && !runtime.CanActivateControl("match-evidence-refresh",12.6) &&
+		!runtime.CanActivateControl("match-team-0",12.6) && !runtime.CanActivateControl("match-role",12.6) &&
+		!runtime.CanActivateControl("match-rule-value",12.6) && !runtime.CanActivateControl("match-series-format",12.6),
+		"the Match page takes no input from another tab");
+}
+
+// The multiplayer cards' Settings pages and the Escape card's Voice page
+// (section 14.18): the player's rows, the rail color swatches, the
+// appearance table with the teammates' column only in team modes, the hand-
+// offs, and each control requesting its verb or player setting.
+static void CheckSettings(ScreenHost& host, const char* escapePath, const char* welcomePath) {
+	std::string error;
+	Runtime::EventEffects effects;
+	Viewport viewport; viewport.canvasHeight = 720; viewport.width = 1280; viewport.height = 720;
+	const auto press = [](Runtime& runtime, MenuInput input, double at) { runtime.MenuAction(input,true,at); runtime.MenuAction(input,false,at+.01); };
+	// The one action a control queued, resolved through its descriptor.
+	const auto taken = [&](Runtime& runtime, const char* action) {
+		const auto actions = runtime.TakeActions();
+		Check(actions.size() == 1 && actions[0].action == action,"a control requests its action");
+		ActionInvocation invocation;
+		const StateValue* input = actions[0].proposal ? &*actions[0].proposal : nullptr;
+		Check(runtime.ResolveAction(actions[0].action,invocation,error,input),"the action resolves");
+		if (actions[0].proposalToken) runtime.AcknowledgeControlProposal(actions[0].node,actions[0].proposalToken,true);
+		return invocation;
+	};
+	{
+		Runtime runtime(host);
+		std::vector<Diagnostic> diagnostics;
+		Check(runtime.Initialize() && runtime.LoadDocument(Read(escapePath),"guis/menu/mp_escape.q4ui",diagnostics),"the Escape card loads for its Settings page");
+		const auto bounds = [&](const std::string& id) { Bounds b; Check(runtime.GetBounds(id,b),"a settings node is laid out"); return b; };
+		const auto text = [&](const std::string& node, const char* property) {
+			const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented keyword"); return value->text;
+		};
+		StateValues page = {{"mp.settings.name",std::string("Anderson")},{"mp.settings.clan",std::string("Q4")},{"mp.settings.rail",3.0},
+			{"mp.model0_count",3.0},{"mp.model0.0",std::string("Marine")},{"mp.model0.1",std::string("Kane")},{"mp.model0.2",std::string("Rhodes")},
+			{"mp.model0",1.0},{"mp.model0.row_shown",true},{"mp.model1_count",2.0},{"mp.model1.0",std::string("Off")},
+			{"mp.model1.1",std::string("Kane")},{"mp.model1",0.0},{"mp.model1.row_shown",true},{"mp.model2_count",2.0},
+			{"mp.model2.0",std::string("Off")},{"mp.model2.1",std::string("Kane")},{"mp.model2",0.0},{"mp.model2.row_shown",true}};
+		Check(runtime.SetState(page,error,1),"publish the Settings page");
+		Check(runtime.RunEvent("open",1,effects,error) && runtime.RunEvent("tab_settings",1.01,effects,error),"open on the Settings tab");
+		runtime.Frame(viewport,1.4);
+		Check(runtime.FocusedControl() == "settings-name","the page opens on the player's name");
+		// The player's rows stack, the hand-off plates below them inside the page.
+		float previous = bounds("settings-name").y;
+		for (const char* row : {"settings-clan","settings-model","settings-rail","settings-handicap"}) {
+			const auto box = bounds(row);
+			Check(Near(box.y,previous+26,.01f) && Near(box.height,26,.01f),"the player's rows stack");
+			previous = box.y;
+		}
+		const auto system = bounds("settings-mpSettingsSystem"), pageBox = bounds("page-settings");
+		Check(bounds("settings-mpSettingsControls").y >= previous+26 && system.y+system.height <= pageBox.y+pageBox.height+.5f,
+			"Controls, Game Options and System follow inside the page");
+		// Name and clan hand off to the classic Settings page, which edits them.
+		Check(runtime.RunEvent("classic_settings",1.5,effects,error) && effects.actions.size() == 1 &&
+			std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpStockPage" &&
+			std::get<double>(runtime.GetState().at("card.stock_page")) == 4,"name and clan hand off to the classic Settings page");
+		// The swatch the player's tint matches stands taller; each asks the game for its color.
+		const auto chosen = runtime.PresentedValue("settings-rail-3-chip","transform"), other = runtime.PresentedValue("settings-rail-0-chip","transform");
+		Check(chosen && other && chosen->data[1] < -1 && Near(static_cast<float>(other->data[1]),0,.01f),"the player's rail color stands taller");
+		Check(runtime.RunEvent("rail_5",1.6,effects,error) && effects.actions.size() == 1 &&
+			std::get<std::string>(effects.actions[0].arguments.at("command")) == "mpRail" &&
+			std::get<double>(runtime.GetState().at("card.rail")) == 5,"a swatch asks for its color");
+		// The handicap slider and the appearance lists set their player settings.
+		Check(runtime.FocusControl("settings-handicap",1.7),"focus the handicap");
+		press(runtime,MenuInput::Left,1.71);
+		auto invocation = taken(runtime,"set.ui_handicap");
+		Check(invocation.operation == "settings.player.set" && std::get<std::string>(invocation.arguments.at("cvar")) == "ui_handicap" &&
+			std::get<double>(invocation.arguments.at("value")) == 99,"Left lowers the handicap");
+		Check(runtime.FocusControl("settings-row-1-opponents",1.8) && runtime.OpenChoicePopup("settings-row-1-opponents",1.8),"the opponents' outline unfolds");
+		runtime.Frame(viewport,1.85);
+		press(runtime,MenuInput::Down,1.9);
+		press(runtime,MenuInput::Accept,1.95);
+		invocation = taken(runtime,"set.cl_player_outline_enemy");
+		Check(std::get<std::string>(invocation.arguments.at("value")) == "0.35","a level takes its stock value");
+		Check(runtime.FocusControl("settings-row-0-teammates",2) && runtime.OpenChoicePopup("settings-row-0-teammates",2),"the teammates' model unfolds");
+		runtime.Frame(viewport,2.05);
+		press(runtime,MenuInput::Down,2.1);
+		press(runtime,MenuInput::Accept,2.15);
+		Check(std::get<double>(taken(runtime,"mpModelTeam").arguments.at("value")) == 1,"a model asks the game for its row");
+		const auto opponents = bounds("settings-row-1-opponents"), teammates = bounds("settings-row-1-teammates");
+		Check(opponents.x+opponents.width <= teammates.x && Near(opponents.y,teammates.y,.01f),"the teammates' cell stands beside the opponents'");
+		Check(text("settings-team-note","display") == "none","no team-mode note in a team mode");
+		// Outside team modes the teammates' column goes and the note says why.
+		Check(runtime.SetState({{"mp.model2.row_shown",false}},error,2.2),"a deathmatch");
+		runtime.Frame(viewport,2.3);
+		Check(text("settings-row-1-teammates","display") == "none" && text("settings-heading-teammates","display") == "none" &&
+			text("settings-team-note","display") == "block" && !runtime.FocusControl("settings-row-0-teammates",2.31),
+			"outside team modes only the opponents' column shows");
+		// System leaves for the main menu's page.
+		Check(runtime.FocusControl("settings-mpSettingsSystem",2.4),"focus System");
+		press(runtime,MenuInput::Accept,2.41);
+		Check(taken(runtime,"mpSettingsSystem").operation == "session.menu","System leaves for the main menu's page");
+		// The Voice page: its toggles and sliders set their settings; the
+		// push-to-talk key shows when bound; the test waits for voice chat.
+		Check(runtime.RunEvent("tab_voice",3,effects,error),"to the Voice tab");
+		runtime.Frame(viewport,3.3);
+		Check(runtime.FocusedControl() == "voice-send","the Voice page opens on sending voice");
+		press(runtime,MenuInput::Accept,3.31);
+		invocation = taken(runtime,"set.s_voiceChatSend");
+		Check(std::get<std::string>(invocation.arguments.at("cvar")) == "s_voiceChatSend" && !std::get<bool>(invocation.arguments.at("value")),
+			"accept stops sending voice");
+		Check(runtime.FocusControl("voice-volume",3.4),"focus the receive volume");
+		press(runtime,MenuInput::Left,3.41);
+		Check(std::abs(std::get<double>(taken(runtime,"set.s_voiceVolume").arguments.at("value"))-.95) < 1e-6,"Left lowers the volume a step");
+		Check(text("voice-unbound","display") == "block" && text("voice-key","display") == "none","an unbound key says so");
+		Check(runtime.SetState({{"mp.keys.voice_chat",std::string("V")},{"mp.keys.voice_chat_bound",true}},error,3.5),"bind push to talk");
+		runtime.Frame(viewport,3.6);
+		Check(text("voice-unbound","display") == "none" && text("voice-key","display") == "block","the bound key shows");
+		Check(text("voice-test-lock","display") == "block" && text("voice-test-reason","display") == "block","the test is unavailable and says why");
+		Check(runtime.RunEvent("voice_test",3.7,effects,error) && effects.actions.empty(),"and asks nothing");
+	}
+	{
+		Runtime runtime(host);
+		std::vector<Diagnostic> diagnostics;
+		Check(runtime.Initialize() && runtime.LoadDocument(Read(welcomePath),"guis/menu/mp_welcome.q4ui",diagnostics),"the Welcome card loads for its Settings page");
+		const auto text = [&](const std::string& node, const char* property) {
+			const auto value = runtime.PresentedValue(node,property); Check(value.has_value(),"a presented keyword"); return value->text;
+		};
+		Check(runtime.SetState({{"mp.crosshair",0.0},{"mp.model0_count",1.0},{"mp.model0.0",std::string("Marine")},{"mp.model0",0.0}},error,1),
+			"publish Welcome's Settings page");
+		Check(runtime.RunEvent("open",1,effects,error) && runtime.RunEvent("tab_settings",1.01,effects,error),"open on Welcome's Settings tab");
+		runtime.Frame(viewport,1.4);
+		Check(runtime.FocusedControl() == "settings-name","Welcome's Settings opens on the player's name");
+		Check(text("settings-crosshair-weapon","display") == "block" && text("settings-crosshair-image","display") == "none",
+			"each weapon's own crosshair, said in words");
+		Check(runtime.SetState({{"mp.crosshair",3.0},{"mp.crosshair_image",std::string("gfx/guis/crosshairs/crosshair_lightninggun")}},error,1.5),
+			"a custom crosshair");
+		runtime.Frame(viewport,1.6);
+		Check(text("settings-crosshair-weapon","display") == "none" && text("settings-crosshair-image","display") == "block","the custom one shows");
+		Check(runtime.FocusControl("settings-crosshair",1.7),"focus the crosshair");
+		press(runtime,MenuInput::Right,1.71);
+		const auto invocation = taken(runtime,"mpCrosshair");
+		Check(invocation.operation == "session.menuValue" && std::get<double>(invocation.arguments.at("value")) == 4,"Right asks for the next crosshair");
+	}
+}
+
 // The multiplayer Welcome card (section 14.18): centered, each mode's join
 // choices, a refused team card, the Players page without choices, the hand-off
 // to the join panel's settings, Spectate on Back and Leave Server asking first.
@@ -695,9 +1265,9 @@ static void CheckWelcome(ScreenHost& host, const char* path) {
 	Check(runtime.FocusedControl() == "tab-players" && !runtime.CanActivateControl("players-a-0",4.2),"rows are not choices on Welcome");
 	Check(text("players-a-1","display") == "block" && text("players-a-2","display") == "none" &&
 		text("players-a-1-marker","display") == "block","the lists show their players and the player's own row");
-	// Settings hands off to the join panel's settings for now.
-	Check(runtime.RunEvent("stock_settings",4.3,effects,error) && asked("mpStockPage") &&
-		std::get<double>(runtime.GetState().at("card.stock_page")) == 3,"Settings hands off to the join panel's settings");
+	// Settings' name and clan hand off to the classic Settings page, which edits them.
+	Check(runtime.RunEvent("classic_settings",4.3,effects,error) && asked("mpStockPage") &&
+		std::get<double>(runtime.GetState().at("card.stock_page")) == 3,"name and clan hand off to the classic Settings page");
 	// Back spectates for now; Leave Server asks first.
 	Check(runtime.RunEvent("onBack",4.4,effects,error) && asked("mpClose"),"Back closes the card and the player spectates");
 	Check(runtime.RunEvent("leaveModalShow",4.5,effects,error),"Leave Server asks first");
@@ -1575,6 +2145,36 @@ int main(int argc, char** argv) {
 		const auto mpTips = runtime.PresentedValue("tips","display");
 		Check(mpTips && mpTips->text == "none","multiplayer shows its arsenal instead of tips");
 		Check(runtime.SetState({{"loading_mp",false},{"loading_tip_a",std::string("")},{"loading_tip_b",std::string("")}},error,10.8),"reset");
+		// A multiplayer join hands the screen to the Welcome card: handoff fades
+		// it whole over 250 ms (80 ms under reduced motion), and present makes
+		// it whole again for the next load.
+		const auto opacity = [&]() {
+			const auto value = runtime.PresentedValue("screen","opacity");
+			Check(value.has_value(),"the screen's opacity");
+			return static_cast<float>(value->data[0]);
+		};
+		runtime.Frame(viewport,11);
+		Check(Near(opacity(),1,.001f),"the screen presents whole");
+		Check(runtime.RunEvent("handoff",11,effects,error),"handoff plays");
+		runtime.Frame(viewport,11.125);
+		Check(opacity() > .3f && opacity() < .7f,"half way through the hand-off");
+		runtime.Frame(viewport,11.26);
+		Check(Near(opacity(),0,.001f),"handed off after 250 ms");
+		Check(runtime.RunEvent("present",11.5,effects,error),"present plays");
+		runtime.Frame(viewport,11.51);
+		Check(Near(opacity(),1,.001f),"whole again for the next load");
+		host.reducedMotion = true;
+		runtime.SetReducedMotion(true,12);
+		Check(runtime.RunEvent("handoff",12,effects,error),"handoff under reduced motion");
+		runtime.Frame(viewport,12.04);
+		Check(opacity() > .3f && opacity() < .7f,"half way after 40 ms");
+		runtime.Frame(viewport,12.09);
+		Check(Near(opacity(),0,.001f),"handed off within 80 ms");
+		Check(runtime.RunEvent("present",12.2,effects,error),"present under reduced motion");
+		runtime.Frame(viewport,12.21);
+		Check(Near(opacity(),1,.001f),"whole again");
+		host.reducedMotion = false;
+		runtime.SetReducedMotion(false,12.3);
 	}
 	// The Single Player page and its Campaign sub-page (sections 8 and 9, the
 	// sub-page level of 1.10): their rest states, going deeper and Back.
@@ -1761,6 +2361,8 @@ int main(int argc, char** argv) {
 	}
 	CheckEscape(host,argv[7]);
 	CheckVote(host,argv[7]);
+	CheckMatch(host,argv[7]);
+	CheckSettings(host,argv[7],argv[8]);
 	CheckWelcome(host,argv[8]);
 	Check(host.errors == 0,"no retained diagnostics");
 	std::printf("retained screens: %d checks passed\n",checks);

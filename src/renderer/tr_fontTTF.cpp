@@ -1490,19 +1490,22 @@ public:
 		return true;
 	}
 };
+void RetainedFontPageImage(idImage* image);
 class RetainedFontDevice final : public openq4::fonts::Device {
 public:
 	bool CreatePage(unsigned page, int dimension, const char* name) override {
-		idImageOpts opts;
-		opts.textureType = TT_2D; opts.format = FMT_RGBA8; opts.colorFormat = CFM_DEFAULT;
-		opts.width = opts.height = dimension; opts.numLevels = 1; opts.isPersistant = true;
-		idImage* image = globalImages->ScratchImage(name,&opts,TF_LINEAR,TR_CLAMP,TD_LOOKUP_TABLE_RGBA);
-		if (!image || !image->IsLoaded()) return false;
+		if (dimension != openq4::fonts::Cache::PageSize) return false;
+		// A scratch page would come back from reloadImages reallocated and
+		// empty while every glyph on it stays published. A generated page is
+		// rebuilt instead: the cache rasterizes its glyphs into the same places.
+		idImage* image = globalImages->ImageFromFunction(name,RetainedFontPageImage);
+		if (!image) return false;
 		images[page] = image;
-		std::vector<byte> clear(static_cast<size_t>(dimension)*dimension*4,255);
-		for (size_t i = 3; i < clear.size(); i += 4) clear[i] = 0;
-		image->SubImageUpload(0,0,0,0,dimension,dimension,clear.data());
-		return true;
+		// A new image ran its generator before this page owned it, and one kept
+		// from before a Reset has no storage. Allocate it now. An image of the
+		// same name made elsewhere has no page generator and is refused.
+		image->Reload(true);
+		return image->IsLoaded() && image->GetOpts().width == dimension && image->GetOpts().height == dimension;
 	}
 	bool Upload(unsigned page, int x, int y, int width, int height, const unsigned char* rgba) override {
 		if (!images[page] || !images[page]->IsLoaded()) return false;
@@ -1512,12 +1515,33 @@ public:
 	void Reset() override {
 		for (auto& image : images) { if (image) image->PurgeImage(); image = NULL; }
 	}
+	bool Owns(const idImage* image, unsigned& page) const {
+		for (unsigned i = 0; i < openq4::fonts::Cache::MaxPages; ++i) if (images[i] == image) { page = i; return true; }
+		return false;
+	}
 private:
 	idImage* images[openq4::fonts::Cache::MaxPages] = {};
 };
 RetainedFontSource retainedFontSource;
 RetainedFontDevice retainedFontDevice;
 openq4::fonts::Cache retainedFontCache(retainedFontSource,retainedFontDevice);
+void RetainedFontPageImage(idImage* image) {
+	// A page released by Reset stays empty until the cache opens it again.
+	unsigned page = 0;
+	if (!retainedFontDevice.Owns(image,page)) return;
+	const int dimension = openq4::fonts::Cache::PageSize;
+	idImageOpts opts;
+	opts.textureType = TT_2D; opts.format = FMT_RGBA8; opts.colorFormat = CFM_DEFAULT;
+	opts.width = opts.height = dimension; opts.numLevels = 1; opts.isPersistant = true;
+	image->AllocImage(opts,TF_LINEAR,TR_CLAMP);
+	if (!image->IsLoaded()) return;
+	std::vector<byte> clear(static_cast<size_t>(dimension)*dimension*4,255);
+	for (size_t i = 3; i < clear.size(); i += 4) clear[i] = 0;
+	image->SubImageUpload(0,0,0,0,dimension,dimension,clear.data());
+	// A page still being opened has no glyphs yet.
+	if (page < retainedFontCache.PageCount() && !retainedFontCache.RestorePage(page))
+		common->Warning("Retained font page %s could not restore every glyph",image->GetName());
+}
 }
 bool idRenderSystemLocal::GetRetainedFontMetrics(const char* face, int pixels, renderFontMetrics_t& out) {
 	return face && retainedFontCache.Metrics(face,pixels,out);

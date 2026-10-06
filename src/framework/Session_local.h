@@ -267,6 +267,14 @@ public:
 	void				NoteRetainedLoadingPlayer( const idDict &userInfo );
 	void				NoteRetainedLoadingConnecting( int count );
 	void				PublishRetainedLoadingServer( const idDict &serverInfo );
+	// A multiplayer join that ends at the Welcome card keeps its loading
+	// screen up, reading JOINING, until the card presents or 5 s pass, then
+	// fades it out over the card (section 14.17); user commands wait
+	// meanwhile.
+	bool				BeginRetainedLoadingHold();
+	void				FadeRetainedLoadingHold( const char *reason );
+	void				UpdateRetainedLoadingHold();
+	void				ClearRetainedLoadingHold();
 	static const int	RETAINED_ROSTER_SLOTS = 32;
 	idStr				retainedRosterName[ RETAINED_ROSTER_SLOTS ];
 	int					retainedRosterTeam[ RETAINED_ROSTER_SLOTS ];	// 0 Marine, 1 Strogg, -1 spectating
@@ -505,6 +513,11 @@ public:
 	int					retainedLoadingTip;		// index of the tip showing (-1: none)
 	int					retainedLoadingTipSlot;	// the label slot showing it (0: a, 1: b)
 	int					retainedLoadingTipAt;	// presentation time it was shown
+	idUserInterface *	guiLoadingHold;				// the loading screen held over a join (NULL: none)
+	int					retainedLoadingHoldBegan;	// presentation time the hold began (the load's, stale)
+	int					retainedLoadingHoldLive;	// the first presentation time after it (0: not yet)
+	int					retainedLoadingHoldUntil;	// when it gives up, or once fading, when the fade ends
+	bool				retainedLoadingHoldFading;
 	idListGUI *			guiMainMenu_MapList;		// easy map list handling
 	idUserInterface *	guiDemoMenu;
 	idListGUI *			guiDemoList;

@@ -101,7 +101,7 @@ private:
 	int					liquidViewContents;	// remembered while fading back out
 
 	// openQ4 VR: the comfort vignette, eased, and the tracking yaw it last saw
-	float				VRComfortVignette( const vrFrameState_t &vrFrame );
+	float				VRComfortVignette( const vrFrameState_t &vrFrame, float trackingYaw );
 	float				vrComfort;
 	float				vrComfortYaw;
 	int					vrComfortTime;

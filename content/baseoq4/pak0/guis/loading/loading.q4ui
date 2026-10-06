@@ -136,7 +136,9 @@
   "load_icon_b_20": {"type": "number", "initial": 1}
  },
  "events": {
-  "FinishedLoading": [{"op": "setState", "values": {"loading_ready": true}}, {"op": "playTimeline", "timeline": "continuePulse"}]
+  "FinishedLoading": [{"op": "setState", "values": {"loading_ready": true}}, {"op": "playTimeline", "timeline": "continuePulse"}],
+  "handoff": [{"op": "playTimeline", "timeline": "handoff"}],
+  "present": [{"op": "playTimeline", "timeline": "present"}]
  },
  "bindings": [
   {"id": "load-shot.image", "node": "load-shot", "property": "image", "value": {"state": "loading_levelshot"}},
@@ -1354,6 +1356,28 @@
      ]
     }
    ]
+  },
+  {
+   "id": "handoff",
+   "durationMs": 250,
+   "tracks": [
+    {
+     "node": "screen",
+     "property": "opacity",
+     "keys": [{"atMs": 0, "value": {"type": "number", "value": 1}}, {"atMs": 250, "value": {"type": "number", "value": 0}}]
+    }
+   ]
+  },
+  {
+   "id": "present",
+   "durationMs": 1,
+   "tracks": [
+    {
+     "node": "screen",
+     "property": "opacity",
+     "keys": [{"atMs": 0, "value": {"type": "number", "value": 1}}, {"atMs": 1, "value": {"type": "number", "value": 1}}]
+    }
+   ]
   }
  ],
  "root": {
@@ -1368,7 +1392,8 @@
    "background-color": {"type": "color", "value": [0, 0, 0, 1]},
    "font-family": {"type": "font", "value": "marine"},
    "font-size": {"type": "length", "value": 16, "unit": "dp"},
-   "color": {"type": "color", "value": [1, 1, 1, 0.8]}
+   "color": {"type": "color", "value": [1, 1, 1, 0.8]},
+   "opacity": {"type": "number", "value": 1}
   },
   "children": [
    {

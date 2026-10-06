@@ -114,6 +114,7 @@ jobs:
             tools/tests/in_game_difficulty_restart.py \
             tools/tests/async_drop_client_contract.py \
             tools/tests/async_client_frame_contract.py \
+            tools/tests/async_rcon_verify_contract.py \
             tools/tests/async_session_command_contract.py \
             tools/tests/async_usercmd_window_contract.py \
             tools/tests/base64_input_safety.py \
@@ -126,6 +127,7 @@ jobs:
             tools/tests/console_completion_contract.py \
             tools/tests/arb_color_zero_floor_contract.py \
             tools/tests/renderer_show_shadows_color_contract.py \
+            tools/tests/renderer_md5r_conversion_contract.py \
             tools/tests/competitive_match_layer.py \
             tools/tests/mp_control_smoke.py \
             tools/tests/mp_series_smoke.py \
@@ -296,6 +298,7 @@ jobs:
             tools/tests/renderer_vulkan_gui_residency.py \
             tools/tests/renderer_vulkan_md5r_compatibility.py \
             tools/tests/renderer_vulkan_probe_safety.py \
+            tools/tests/renderer_vulkan_qualification.py \
             tools/tests/renderer_vulkan_shadow_compatibility.py \
             tools/tests/renderer_vulkan_world_interaction_compatibility.py \
             tools/tests/rigid_body_recovery_diagnostics.py \
@@ -479,6 +482,7 @@ jobs:
           python tools/tests/in_game_difficulty_restart.py
           python tools/tests/async_drop_client_contract.py
           python tools/tests/async_client_frame_contract.py
+          python tools/tests/async_rcon_verify_contract.py --mutations
           python tools/tests/async_session_command_contract.py
           python tools/tests/async_usercmd_window_contract.py
           python tools/tests/base64_input_safety.py
@@ -489,6 +493,7 @@ jobs:
           python tools/tests/console_completion_contract.py
           python tools/tests/arb_color_zero_floor_contract.py
           python tools/tests/renderer_show_shadows_color_contract.py
+          python tools/tests/renderer_md5r_conversion_contract.py
           python tools/tests/competitive_match_layer.py
           python tools/tests/competitive_match_localization.py
           python tools/tests/decl_checksum_stability_contract.py

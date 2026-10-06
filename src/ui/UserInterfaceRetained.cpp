@@ -74,27 +74,70 @@ bool SessionMenuCommand(const std::string& command) {
 		"mods","demos","updates","credits","quit","resume","restartLevel","quitToMenu",
         "campaigns","campaignQuake4","campaignAwakening","campaignArena","campaignBack","campaignHome",
         "mpClose","mpMainMenu","mpDisconnect","mpStockPage","mpTeamAction",
-        "mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction","mpVoteYes","mpVoteNo","mpCallVote"};
+        "mpSelectPlayer","mpMute","mpFriend","mpWelcomeAction","mpVoteYes","mpVoteNo","mpCallVote",
+        "mpRail","mpSettingsControls","mpSettingsGame","mpSettingsSystem","mpMatch","mpMatchSelect"};
 	return commands.contains(command);
 }
 
 // Session verbs a value control may request with its new value: the
-// multiplayer card's Vote page fields. The session maps each verb to its
-// field and the game checks the value against the field's rules.
+// multiplayer card's Vote page fields, its Settings pages' model lists and
+// crosshair, and its Match page's role, ballot target, rule value and series
+// format. The
+// session maps each verb to its field and the game checks the value against
+// the field's rules.
 bool SessionMenuValueCommand(const std::string& command) {
 	static const std::set<std::string> commands = {"mpVoteMap","mpVoteGameType","mpVoteTimeLimit","mpVoteFragLimit",
 		"mpVoteCaptureLimit","mpVoteTourneyLimit","mpVoteControlTime","mpVoteBalance","mpVoteShuffle","mpVoteRestart",
-		"mpVoteBuying","mpVoteKick"};
+		"mpVoteBuying","mpVoteKick","mpModelSelf","mpModelEnemy","mpModelTeam","mpCrosshair","mpMatchRole","mpMatchScope","mpMatchRuleValue",
+		"mpMatchSeriesProfile"};
 	return commands.contains(command);
+}
+
+// The player settings a retained page may change ("settings.player.set"):
+// the multiplayer card's Settings and Voice pages. Each takes what its stock
+// control offers: a slider's range (whole numbers for an integer setting), a
+// Boolean, or one of a list's values, which pages read back as the setting's
+// text so a float list matches exactly.
+struct PlayerSetting { size_t type; double minimum = 0, maximum = 0; bool integer = false; std::vector<std::string> choices; };
+const PlayerSetting* FindPlayerSetting(const std::string& cvar) {
+	static const std::vector<std::string> levels = {"0","0.35","0.7","1"};
+	static const std::vector<std::string> effects = {"1 0.12 0.05","1 0.45 0.05","1 0.9 0.15","0.1 0.85 0.25","0.1 0.9 0.95","0.3 0.45 1",
+		"1 0.15 0.85","1 1 1"};
+	static const std::vector<std::string> bright = {"1 0.05 0.02","1 0.4 0.02","1 0.88 0.1","0.05 1 0.22","0.05 0.9 1","0.25 0.4 1",
+		"1 0.1 0.85","1 1 1"};
+	static const std::map<std::string,PlayerSetting> settings = {
+		{"ui_handicap",{0,1,100,true}},
+		{"cl_player_outline_enemy",{2,0,0,false,levels}},{"cl_player_outline_team",{2,0,0,false,levels}},
+		{"cl_player_rimlight_enemy",{2,0,0,false,levels}},{"cl_player_rimlight_team",{2,0,0,false,levels}},
+		{"cl_player_brightskin_enemy",{2,0,0,false,levels}},{"cl_player_brightskin_team",{2,0,0,false,levels}},
+		{"cl_player_visibility_enemy_color",{2,0,0,false,effects}},{"cl_player_visibility_team_color",{2,0,0,false,effects}},
+		{"cl_player_brightskin_enemy_color",{2,0,0,false,bright}},{"cl_player_brightskin_team_color",{2,0,0,false,bright}},
+		{"cl_player_outline_width",{2,0,0,false,{"1.0","1.5","2.0","3.0","4.0","6.0"}}},
+		{"s_voiceChatSend",{1}},{"s_voiceChatReceive",{1}},{"s_voiceChatEcho",{1}},
+		{"s_voiceVolume",{0,0,1}},{"s_micInputLevel",{0,0,10}}};
+	const auto found = settings.find(cvar);
+	return found == settings.end() ? nullptr : &found->second;
+}
+
+bool PlayerSettingValue(const std::string& cvar, const StateValue& value) {
+	const auto* setting = FindPlayerSetting(cvar);
+	if (!setting || value.index() != setting->type) return false;
+	if (setting->type == 1) return true;
+	if (setting->type == 2) return std::find(setting->choices.begin(),setting->choices.end(),std::get<std::string>(value)) != setting->choices.end();
+	const double number = std::get<double>(value);
+	return std::isfinite(number) && number >= setting->minimum && number <= setting->maximum && (!setting->integer || number == std::floor(number));
 }
 
 // A value a session verb carries: a whole number from -1 to 999, or a
 // Boolean as 1 or 0.
-std::optional<int> SessionMenuValue(const StateValue& value) {
+// A value verb's operand: a whole number from -1 to 999, or for a Match
+// Control rule's value from 0 to 10000, the largest value a rule takes.
+std::optional<int> SessionMenuValue(const std::string& command, const StateValue& value) {
 	if (std::holds_alternative<bool>(value)) return std::get<bool>(value) ? 1 : 0;
 	if (!std::holds_alternative<double>(value)) return {};
 	const double number = std::get<double>(value);
-	if (!std::isfinite(number) || number != std::floor(number) || number < -1 || number > 999) return {};
+	const bool rule = command == "mpMatchRuleValue";
+	if (!std::isfinite(number) || number != std::floor(number) || number < (rule ? 0 : -1) || number > (rule ? 10000 : 999)) return {};
 	return static_cast<int>(number);
 }
 
@@ -107,6 +150,17 @@ bool ValidOperation(const Action& action) {
 		const auto& expression = command->second;
 		const bool literal = expression.op.empty() && expression.state.empty() && expression.presentation.empty() && !expression.inputValue;
 		return !literal || SessionMenuCommand(std::get<std::string>(expression.literal));
+	}
+	if (action.operation == "settings.player.set") {
+		// A literal setting, and the control's value or a literal one it takes.
+		const auto cvar = action.arguments.find("cvar"), value = action.arguments.find("value");
+		if (action.arguments.size() != 2 || cvar == action.arguments.end() || value == action.arguments.end() || cvar->second.type != 2) return false;
+		const auto literal = [](const Expression& expression) {
+			return expression.op.empty() && expression.state.empty() && expression.presentation.empty() && !expression.inputValue;
+		};
+		const auto* setting = literal(cvar->second) ? FindPlayerSetting(std::get<std::string>(cvar->second.literal)) : nullptr;
+		if (!setting || value->second.type != setting->type) return false;
+		return value->second.inputValue || (literal(value->second) && PlayerSettingValue(std::get<std::string>(cvar->second.literal),value->second.literal));
 	}
 	if (action.operation == "session.menuValue") {
 		// A literal value verb, and the control's own value as its operand.
@@ -132,11 +186,17 @@ bool ValidInvocation(const ActionInvocation& invocation, std::string& error) {
 			std::holds_alternative<std::string>(command->second) && SessionMenuCommand(std::get<std::string>(command->second))) return true;
 		error = "Unsupported session menu request: "+invocation.action; return false;
 	}
+	if (invocation.operation == "settings.player.set") {
+		const auto cvar = invocation.arguments.find("cvar"), value = invocation.arguments.find("value");
+		if (invocation.arguments.size() == 2 && cvar != invocation.arguments.end() && value != invocation.arguments.end() &&
+			std::holds_alternative<std::string>(cvar->second) && PlayerSettingValue(std::get<std::string>(cvar->second),value->second)) return true;
+		error = "Unsupported player setting request: "+invocation.action; return false;
+	}
 	if (invocation.operation == "session.menuValue") {
 		const auto command = invocation.arguments.find("command"), value = invocation.arguments.find("value");
 		if (invocation.arguments.size() == 2 && command != invocation.arguments.end() && value != invocation.arguments.end() &&
 			std::holds_alternative<std::string>(command->second) && SessionMenuValueCommand(std::get<std::string>(command->second)) &&
-			SessionMenuValue(value->second)) return true;
+			SessionMenuValue(std::get<std::string>(command->second),value->second)) return true;
 		error = "Unsupported session value request: "+invocation.action; return false;
 	}
 	const auto value = invocation.arguments.find("value");
@@ -293,6 +353,25 @@ struct idUserInterfaceRetained::Impl {
 	// Accepted session.menu verbs, in order, for the session to take after a
 	// dispatch; they never survive a source, save or resource replacement.
 	std::vector<std::string> sessionRequests;
+	// A number field's value sent to the session comes back through the
+	// field's bound state a frame or two later. The runtime accepts a number
+	// only once it reads it back, so its proposal is acknowledged then, and
+	// refused if the value has not come back within a second.
+	struct SessionNumberProposal { std::string control; std::uint64_t token = 0; double value = 0, deadline = 0; };
+	std::vector<SessionNumberProposal> sessionNumbers;
+	void SettleSessionNumbers() {
+		auto* runtime = RuntimeView();
+		if (!runtime) return;
+		const double now = RetainedUI_PresentationTime();
+		for (auto it = sessionNumbers.begin(); it != sessionNumbers.end();) {
+			const auto widget = runtime->GetWidgetState(it->control);
+			const bool current = widget && widget->proposalToken == it->token;
+			const bool readBack = current && std::holds_alternative<double>(widget->accepted) && std::get<double>(widget->accepted) == it->value;
+			if (current && !readBack && now < it->deadline) { ++it; continue; }
+			if (current) runtime->AcknowledgeControlProposal(it->control,it->token,readBack);
+			it = sessionNumbers.erase(it);
+		}
+	}
 	bool interactive = true, interactiveSet = false, unique = false, active = false;
 	bool suspended = false, pointerVisible = false, close = false, worldReported = false;
 	bool unavailable = false;
@@ -332,7 +411,12 @@ struct idUserInterfaceRetained::Impl {
 				runtime->AcknowledgeControlProposal(action.control,action.proposalToken,false);
 			return discard;
 		}),actions.end());
-		if (discardPrograms) sessionRequests.clear();
+		if (discardPrograms) {
+			sessionRequests.clear();
+			if (auto* runtime = RuntimeView())
+				for (const auto& number : sessionNumbers) runtime->AcknowledgeControlProposal(number.control,number.token,false);
+			sessionNumbers.clear();
+		}
 		if (auto* runtime = RuntimeView()) {
 			if (cancelRuntime) runtime->CancelInput(RetainedUI_PresentationTime());
 			runtime->ReleaseInputSources(); runtime->TakeActions();
@@ -516,10 +600,12 @@ struct idUserInterfaceRetained::Impl {
 		return !pause;
 	}
 	// Q and E, and the shoulder buttons, page a document's tabs where it
-	// declares onTabPrevious and onTabNext. A field being edited keeps its keys,
-	// and Ctrl or Alt leave them to shortcuts.
+	// declares onTabPrevious and onTabNext; the triggers page the lists within
+	// a page where it declares onSectionPrevious and onSectionNext. A field
+	// being edited keeps its keys, and Ctrl or Alt leave them to shortcuts.
 	bool TabKey(int key, const openq4::KeyEventMetadata* metadata) {
-		const char* name = key == 'q' || key == K_JOY1 ? "onTabPrevious" : key == 'e' || key == K_JOY2 ? "onTabNext" : nullptr;
+		const char* name = key == 'q' || key == K_JOY1 ? "onTabPrevious" : key == 'e' || key == K_JOY2 ? "onTabNext" :
+			key == K_JOY16 ? "onSectionPrevious" : key == K_JOY15 ? "onSectionNext" : nullptr;
 		if (!name || !RuntimeView()->HasEvent(name)) return false;
 		const bool control = metadata ? metadata->control : held.contains(K_CTRL) || idKeyInput::IsDown(K_CTRL);
 		const bool alt = metadata ? metadata->alt : held.contains(K_ALT) || held.contains(K_RIGHT_ALT) || idKeyInput::IsDown(K_ALT) || idKeyInput::IsDown(K_RIGHT_ALT);
@@ -870,6 +956,8 @@ void idUserInterfaceRetained::Redraw(int time, bool useAspectCorrection) {
 	const bool drawn = RetainedUI_DrawViewRoot(impl->view,viewport);
 	// Timeline completion programs run inside the frame; publish their writes.
 	if (auto* runtime = impl->RuntimeView()) impl->PublishWrites(runtime->TakeCompletionWrites());
+	// The frame read the bound state back; settle the number fields it answers.
+	impl->SettleSessionNumbers();
 	if (drawn && impl->active && impl->interactive) {
 		// A restored world frame alone cannot arm Keep. Require this owner and
 		// its actually activatable Revert control to have reached the draw path.
@@ -961,14 +1049,46 @@ bool idUserInterfaceRetained::DispatchApplicationActions(const char* command, bo
 				Name(),command.c_str(),accepted ? 1 : 0);
 			continue;
 		}
+		if (invocation.operation == "settings.player.set") {
+			// Validated again at resolution; the setting reads back through the
+			// page's CVar state.
+			const auto& cvar = std::get<std::string>(invocation.arguments.at("cvar"));
+			const auto& value = invocation.arguments.at("value");
+			const auto* setting = FindPlayerSetting(cvar);
+			bool accepted = setting && PlayerSettingValue(cvar,value);
+			if (accepted && std::holds_alternative<bool>(value)) {
+				cvarSystem->SetCVarBool(cvar.c_str(),std::get<bool>(value));
+				accepted = cvarSystem->GetCVarBool(cvar.c_str()) == std::get<bool>(value);
+			} else if (accepted && std::holds_alternative<std::string>(value)) {
+				cvarSystem->SetCVarString(cvar.c_str(),std::get<std::string>(value).c_str());
+				accepted = std::get<std::string>(value) == cvarSystem->GetCVarString(cvar.c_str());
+			} else if (accepted && setting->integer) {
+				cvarSystem->SetCVarInteger(cvar.c_str(),static_cast<int>(std::get<double>(value)));
+				accepted = cvarSystem->GetCVarInteger(cvar.c_str()) == static_cast<int>(std::get<double>(value));
+			} else if (accepted) {
+				cvarSystem->SetCVarFloat(cvar.c_str(),static_cast<float>(std::get<double>(value)));
+				accepted = cvarSystem->GetCVarFloat(cvar.c_str()) == static_cast<float>(std::get<double>(value));
+			}
+			if (!accepted) impl->Error("Player setting request was not applied: "+cvar);
+			if (pending.proposalToken) impl->RuntimeView()->AcknowledgeControlProposal(pending.control,pending.proposalToken,accepted);
+			if (cvarSystem->GetCVarBool("ui_retainedTrace")) common->Printf("RETAINED_GUI_SETTING path=%s cvar=%s value=%s accepted=%d\n",
+				Name(),cvar.c_str(),cvarSystem->GetCVarString(cvar.c_str()),accepted ? 1 : 0);
+			continue;
+		}
 		if (invocation.operation == "session.menuValue") {
 			// Validated again at resolution; the session reads "<verb> <value>".
-			const auto value = SessionMenuValue(invocation.arguments.at("value"));
+			const auto value = SessionMenuValue(std::get<std::string>(invocation.arguments.at("command")),invocation.arguments.at("value"));
 			const auto request = std::get<std::string>(invocation.arguments.at("command"))+" "+std::to_string(value.value_or(0));
 			const bool accepted = value && impl->sessionRequests.size() < 64;
 			if (accepted) impl->sessionRequests.push_back(request);
 			else impl->Error(value ? "Session menu request queue exceeded 64 requests" : "Session value request out of range");
-			if (pending.proposalToken) impl->RuntimeView()->AcknowledgeControlProposal(pending.control,pending.proposalToken,accepted);
+			if (pending.proposalToken) {
+				// A number field waits for its value to come back (SettleSessionNumbers).
+				const auto widget = impl->RuntimeView()->GetWidgetState(pending.control);
+				if (accepted && widget && widget->role == ControlRole::Number && impl->sessionNumbers.size() < 64)
+					impl->sessionNumbers.push_back({pending.control,pending.proposalToken,static_cast<double>(*value),RetainedUI_PresentationTime()+1});
+				else impl->RuntimeView()->AcknowledgeControlProposal(pending.control,pending.proposalToken,accepted);
+			}
 			if (cvarSystem->GetCVarBool("ui_retainedTrace")) common->Printf("RETAINED_GUI_SESSION path=%s command=%s accepted=%d\n",
 				Name(),request.c_str(),accepted ? 1 : 0);
 			continue;

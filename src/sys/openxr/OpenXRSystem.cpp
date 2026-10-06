@@ -2148,8 +2148,9 @@ void idVRSystemOpenXR::EndFrame( void ) {
 			quad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
 			quad.space = viewSpace;
 			quad.pose = VR_IdentityPose();
-			// head aim draws the HUD crosshair: keep it on the line of sight
-			quad.pose.position.y = vr_aimMode.GetInteger() == VR_AIM_HAND ? vr_hudHeightOffset.GetFloat() : 0.0f;
+			// head aim draws the HUD crosshair, and so do the sights of a
+			// vehicle whose turret follows the head: keep them on the line of sight
+			quad.pose.position.y = ( vr_aimMode.GetInteger() == VR_AIM_HAND && !vr_hudOnSight.GetBool() ) ? vr_hudHeightOffset.GetFloat() : 0.0f;
 			quad.pose.position.z = -idMath::ClampFloat( 0.5f, 5.0f, vr_hudDistance.GetFloat() );
 			quad.size.width = idMath::ClampFloat( 0.3f, 4.0f, vr_hudWidth.GetFloat() );
 			quad.size.height = quad.size.width * screenHeight / screenWidth;

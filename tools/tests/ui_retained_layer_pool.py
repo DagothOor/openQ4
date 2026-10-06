@@ -226,6 +226,8 @@ struct Renderer {
     std::vector<std::unique_ptr<idImage>> images;
     std::vector<std::unique_ptr<idRenderTexture>> targets;
     idRenderTexture* bound=reinterpret_cast<idRenderTexture*>(1);
+    int fontResets=0;
+    void ResetRetainedFontCache(){++fontResets;}
     idImage* CreateImage(const char* name,idImageOpts* options,int filter){
         assert(options->format==FMT_RGBA8 && options->numLevels==1 && options->isPersistant);
         images.push_back(std::make_unique<idImage>(idImage{name,options->width,options->height,filter}));
@@ -264,6 +266,9 @@ struct Host {
     const idMaterial* blurScratchMaterial=nullptr;
     bool backdropCreated=false;
     int blurWidth=0,blurHeight=0;
+    std::vector<int> meshes;
+    std::vector<std::string> scalableFaces,fonts;
+    bool fontFallbackReported=false;
 '''
 SOFT_MAIN = r'''
 };
@@ -332,7 +337,20 @@ int main(){
     host.ClearLayers();destination.destroyed=false;host.layers.resize(3);host.layers[2].target=&destination;
     declarations.scratch.state=DS_DEFAULTED;
     assert(!host.SoftenBackdrop(3,4,.9f,region) && !host.blurScratch && renderer.targets.back()->destroyed);
-    std::puts("retained soft focus: capture, separable passes, regions, GL row order and target lifetime passed");
+    // A fatal error in startup tears the host down before any renderer loads:
+    // the reset drops every handle and calls nothing.
+    destination.destroyed=false;host.layers.resize(3);host.layers[2].target=&destination;host.blurScratch=&destination;
+    host.meshes.push_back(1);host.scalableFaces.push_back("face");host.fonts.push_back("font");host.fontFallbackReported=true;
+    const size_t callsBefore=renderer.calls.size();const int resetsBefore=renderer.fontResets;
+    renderSystem=nullptr;host.Reset();renderSystem=&renderer;
+    assert(renderer.calls.size()==callsBefore && renderer.fontResets==resetsBefore && !destination.destroyed);
+    assert(host.layers.empty() && !host.blurScratch && host.meshes.empty() && host.scalableFaces.empty() && host.fonts.empty() &&
+        !host.fontFallbackReported && !host.backdropCreated);
+    // With a renderer the reset clears its font cache and destroys the targets.
+    host.layers.resize(1);host.layers[0].target=&destination;
+    host.Reset();
+    assert(renderer.fontResets==resetsBefore+1 && destination.destroyed && host.layers.empty());
+    std::puts("retained soft focus: capture, separable passes, regions, GL row order, target lifetime and a reset with no renderer passed");
 }
 '''
 
@@ -369,7 +387,7 @@ def main():
         subprocess.run([str(drawBinary)],check=True)
         soft=Path(temp)/'soft.cpp';softBinary=Path(temp)/'soft.exe'
         soft_bodies=[function_body(source_text,signature).replace(' override','') for signature in (
-            'bool SoftenBackdrop(','bool EnsureBlurTargets(','void DrawBlurPass(','void ClearLayers(')]
+            'bool SoftenBackdrop(','bool EnsureBlurTargets(','void DrawBlurPass(','void ClearLayers(','void Reset(')]
         soft.write_text(SOFT_SUPPORT+'\n'.join(soft_bodies)+SOFT_MAIN,encoding='utf-8')
         subprocess.run([compiler,'-std=c++17',str(soft),'-o',str(softBinary)],check=True)
         subprocess.run([str(softBinary)],check=True)

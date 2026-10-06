@@ -51,6 +51,47 @@
 
 /*
 ====================
+RB_GLES_IsMainScenePostProcessView
+
+A copy of RB_IsMainScenePostProcessView, which is static in draw_common.cpp:
+true for the root 3D view of a loaded map, the view gfxInfo's MSAA report
+describes. Keep the two identical.
+====================
+*/
+static bool RB_GLES_IsMainScenePostProcessView( const viewDef_t *viewDef ) {
+	if ( viewDef == NULL ) {
+		return false;
+	}
+
+	// fullscreen 2D GUI and menu passes carry no view entities
+	if ( viewDef->viewEntitys == NULL ) {
+		return false;
+	}
+
+	// a portal sky contributes to the root view that follows it
+	if ( ( viewDef->renderFlags & RF_PORTAL_SKY ) != 0 ) {
+		return false;
+	}
+
+	// skies, mirrors, remote cameras and render demos feed the root view
+	if ( viewDef->isSubview
+		|| viewDef->superView != NULL
+		|| viewDef->subviewSurface != NULL
+		|| viewDef->renderView.viewID < 0 ) {
+		return false;
+	}
+
+	// a GUI renderDef preview draws its own map-less world over the menu
+	if ( viewDef->renderWorld != NULL && viewDef->renderWorld->mapName.Length() == 0 ) {
+		return false;
+	}
+
+	// x-ray subviews take their own shading path
+	return !viewDef->isXraySubview;
+}
+
+/*
+====================
 RB_DrawView
 
 Reproduces the bookkeeping of the desktop implementation (tr_render.cpp)
@@ -81,6 +122,26 @@ void RB_DrawView( const void *data ) {
 	}
 
 	backEnd.pc.c_surfaces += backEnd.viewDef->numDrawSurfs;
+
+	// gfxInfo reports the MSAA this scene got. Record it as RB_STD_DrawView
+	// does on desktop, line for line: the color samples of the render texture
+	// the view draws into (the game's forward target) or the window's. The VR
+	// stand-in for the window (R_GetDefaultRenderTarget) stays in, although
+	// this module never presents to OpenXR. Render textures are single-sample
+	// here, where glTexImage2DMultisample is a NULL stub, so only a scene drawn
+	// straight into the window is multisampled. Captures keep the gameplay
+	// frame's record: a levelshot, envshot or light-grid view bypasses the
+	// game's target.
+	if ( RB_GLES_IsMainScenePostProcessView( backEnd.viewDef )
+			&& !tr.takingScreenshot && tr.tiledViewport[0] == 0 ) {
+		idRenderTexture *sceneTarget = backEnd.renderTexture != NULL
+			? backEnd.renderTexture : R_GetDefaultRenderTarget();
+		const idImage *sceneColor = sceneTarget != NULL && sceneTarget->GetNumColorImages() > 0
+			? sceneTarget->GetColorImage( 0 ) : NULL;
+		backEnd.mainSceneTargetContext = tr.glContextGeneration;
+		backEnd.mainSceneTargetIsWindow = ( sceneTarget == NULL );
+		backEnd.mainSceneTargetSamples = sceneColor != NULL ? Max( 0, sceneColor->GetOpts().numMSAASamples ) : 0;
+	}
 
 	if ( RB_GLESD3_Active() ) {
 		// gles_d3 renders the view itself, the way RB_STD_DrawView does on

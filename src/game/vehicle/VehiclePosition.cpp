@@ -600,6 +600,53 @@ void rvVehiclePosition::GetEyePosition( idVec3& origin, idMat3& axis ) const {
 
 /*
 ================
+rvVehiclePosition::TurretAlignsVehicle
+
+openQ4 VR: true when a turret of this position steers the whole vehicle
+after it (the GEV under g_vehicleMode), so the vehicle's turns follow the
+driver's aim instead of carrying it.
+================
+*/
+bool rvVehiclePosition::TurretAlignsVehicle( void ) const {
+	for ( int i = 0; i < mParts.Num(); i++ ) {
+		const rvVehiclePart* part = mParts[ i ];
+		if ( part != NULL && part->IsType( rvVehicleTurret::GetClassType() ) && static_cast<const rvVehicleTurret*>( part )->AlignsParent() ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/*
+================
+rvVehiclePosition::GetVRSeat
+
+openQ4 VR: the eye, moved onto the axis its turret turns about. The eye joint
+sits off that axis (ahead of or behind a gun's pivot), so as the turret
+swings after the head the eye would swing round with it, a metre and more
+for a quarter turn; on the axis the turret turns about the head. The eye
+keeps its height above the axis, so the vehicle's own animation (a walker
+standing up) still carries it, and a gun or cockpit pitching after the head
+moves it a few centimetres, as a neck moves the eyes in a nod. An eye no
+turret carries stays where its joint is.
+================
+*/
+void rvVehiclePosition::GetVRSeat( idVec3& eye ) const {
+	idVec3 axisOrigin;
+	idMat3 axis;
+	GetEyePosition( eye, axis );
+	for ( int i = 0; i < mParts.Num(); i++ ) {
+		const rvVehiclePart* part = mParts[ i ];
+		if ( part != NULL && part->IsType( rvVehicleTurret::GetClassType() ) && static_cast<const rvVehicleTurret*>( part )->GetYawPivot( mEyeJoint, axisOrigin ) ) {
+			const idVec3 up = GetParent()->GetAxis()[ 2 ];
+			eye = axisOrigin + up * ( ( eye - axisOrigin ) * up );
+			return;
+		}
+	}
+}
+
+/*
+================
 rvVehiclePosition::GetDriverPosition
 ================
 */

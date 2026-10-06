@@ -352,6 +352,23 @@
   `renderer_vulkan_shadow_compatibility.py` pins the footprint bias on all
   three receivers and both upload paths.
 
+- [x] Make the multiplayer Admin page's password check work. The page sends
+  `rcon verifyRconPass` and waits for the game to hear the answer; the server
+  ran it as an unknown command and the client never passed an answer on, so
+  the page never opened. The server now answers the check with Quake 4's
+  "rcon verified" string without running anything, and the client hands that
+  answer, or the bad-password reply, to the game when it comes from the
+  server asked, and answers false itself when it refuses the check before
+  sending (no password, or one shorter than rcon2's 12 bytes) or after 10
+  seconds without a reply. The client also hands the server's remote-console
+  output to the game, as Quake 4 did, so the Admin page's console shows it.
+  Evidence: `async_rcon_verify_contract.py` compiles the client and server
+  code and catches nine reverted rules; two-process probes, on OpenGL with the
+  classic menu in English and on Vulkan through the multiplayer card's
+  hand-off in German, show a wrong password returning to Join Team, a short
+  one refused, the right one (18 and 27 characters) opening the admin
+  controls, and `rcon si_name` reaching the Admin console.
+
 - [x] Make `r_resolutionScaleMode 2` and `3` reach single player. The SP game
   renders its below-native scene into its own targets and presented them with
   a full-screen material, a bilinear stretch, so the modes never applied. It
@@ -372,8 +389,8 @@
   and `renderer_native_ui_output.py` pin the routing, refusals and filter
   restore.
 
-- [x] Promote the Vulkan renderer to a preview on Windows x64 (user
-  sign-off 2026-10-04). It stays experimental on Linux and macOS, OpenGL stays
+- [x] Promote the Vulkan renderer to a stable, supported opt-in renderer on
+  Windows x64 (user sign-off 2026-10-04). It stays experimental on Linux and macOS, OpenGL stays
   the default and `best` still resolves to `gl`. README, the user guides,
   `TECHNICAL.md`, the platform-support tiers, the capability matrix, the
   `r_renderApi` help text and the release notes now say so.
@@ -458,16 +475,23 @@
   pose; every stock weapon checked; earlier builds' archived offsets reset
   once), two-handed aim with the off hand on the foregrip, a comfort
   vignette during stick movement and smooth turning, scope zoom that
-  magnifies each eye, and a Virtual
+  magnifies each eye, single player vehicles and turrets in stereo (the eye
+  on the turret's axis, the turret following the head, the seat keeping its
+  own facing through the vehicle bind; the tram gun, the medical table, the
+  bed and both drop pod rides probed start to finish), a weapon wheel that no longer turns
+  the world, and a Virtual
   Reality section in
   Settings > Game Options (twelve rows, twelve languages). Building that section
   fixed the Game Options and display section selectors, which ignored clicks.
   The VR math core passes natively and under ASan/UBSan on Linux; the source
   contract, `openxr_vr_smoke.py` and `openxr_vr_menu_smoke.py` pass against
   the in-tree OpenXR test runtime on Air Defense 1 (stereo parallax, head
-  tracking, HUD alpha, snap turn, the aim dot fusing on the shot's path, a shot
+  tracking, HUD alpha, snap turn, the aim dot fusing on the shot's path and
+  following the left controller when left-handed, the stick walking where
+  the head faces or the off hand points, a shot
   pulsing the weapon hand, a room-scale step walking the body, trigger
-  binding, a click on Resume with the window unfocused, changing Laser Sight
+  binding, a click on Resume with the window unfocused, a walker's cockpit
+  turning 45 degrees after the head about a fixed eye, changing Laser Sight
   in the Virtual Reality section by pointing, localised action names, ending
   VR from the runtime); the Linux sources and loader compile under GCC. A run
   on real headset hardware is still open. See the
@@ -563,6 +587,28 @@
   `effective=4 reason=gl-max-clamp`, and the foundation self-tests are
   unchanged. See [display settings](../user/display-settings.md).
 
+- [x] Make `gfxInfo` report the MSAA the 3D scene actually rendered with on
+  OpenGL ES too. The ES renderer module, which Android uses, draws views
+  through its own backend, and that backend never recorded where the scene
+  drew, so its report kept predicting from `r_multiSamples`. Render targets are
+  single-sample there, so it always printed
+  `effective=0 reason=texture-msaa-unavailable`, even when the scene drew
+  straight into a multisampled window, which is the route with Post AA and the
+  post effects off, and `reason=supersampling` above 100% scale. It now
+  records the scene the way desktop OpenGL does: a scene drawn into the window
+  reports the window's samples (`default-framebuffer`, or
+  `default-framebuffer-single-sample` for a window without any), one drawn into
+  the game's targets reports `texture-msaa-unavailable`, and screenshots keep
+  the gameplay frame's report. Rendering is unchanged. Under Mesa llvmpipe's
+  OpenGL ES 3.2 on Xvfb, which gives the window 4x MSAA, Air Defense 1 at 8x
+  now reports `effective=4 reason=default-framebuffer` on the window route and
+  `texture-msaa-unavailable` at 150%, where it reported `effective=0` with
+  `texture-msaa-unavailable` and `supersampling`. A report taken right after an
+  `envshot` keeps the gameplay frame's value. The ES module does not compile on
+  main at the moment, because shared renderer code calls desktop-only GL. These
+  runs merged in the fix from the pending Android review round. An Android
+  device was not tested.
+
 - [x] Draw the OpenGL `r_showShadows` stencil shadow volumes in colour again.
   Modes 1 and 3 drew black lines and the additive mode 2 drew nothing, because
   the stock shadow vertex programs (`shadow.vp` and the `md5rshadow` family)
@@ -571,9 +617,51 @@
   the renderer, and ordinary stencil shadows are untouched. On Air Defense 1
   all three modes match the Vulkan view and the `r_useShadowVertexProgram 0`
   path, including after `vid_restart`, and normal frames before and after the
-  debug view are pixel-identical. Packed MD5R volumes take the same program;
-  the opt-in MD5R conversions did not put any in view, so that path has no
-  runtime capture.
+  debug view are pixel-identical. Packed MD5R volumes take the same program:
+  since the MD5R conversion fix, Air Defense 1 with `r_convertMD5toMD5R 1`
+  colours the walker's and the weapon's volumes as the unconverted frame does.
+
+- [x] Make skinned models converted by the opt-in `r_convertMD5toMD5R` draw
+  like their MD5 sources. On OpenGL, converted characters and the first-person
+  weapon drew as black shapes and cast no shadows. The md5r vertex programs
+  posed them correctly, but the CPU copy every other consumer reads (bounds,
+  culling, light triangles, shadow volumes, the classic draw paths) stayed in
+  the bind pose. The converter also left out the normals, colours, shadow
+  stream and 25-joint batch split the packed paths need, and the packed shadow
+  draw extruded skinned streams with the unskinned `md5rshadow.vp`. The
+  converter now packs meshes the way retail Quake 4 did, so OpenGL lights,
+  shadows and depth-tests converted models through `md5rinteraction1/4.vp`,
+  `md5rshadow1/4.vp` and `md5rsimple1/4.vp`. Vulkan's CPU-skinned path now
+  skins the authored basis like the MD5 path does instead of re-deriving it.
+  Old conversions in the generated cache are rebuilt on first load. On Air
+  Defense 1 at a fixed game tick, converted and unconverted frames match on
+  OpenGL and Vulkan, including the walker's and the weapon's `r_showShadows`
+  volumes: the weapon is pixel-identical and the walker's only differences are
+  sky particles. `renderer_md5r_conversion_contract.py` pins the converter,
+  the skinned sil-trace copy and the packed shadow program choice.
+
+- [x] Make static models converted by the opt-in `r_convertStaticToMD5R` load
+  and draw like the originals. The report that Air Defense 1 never finished
+  loading with it was not a slow converter. Its 127 static models convert in
+  about 0.3 s in a debug build, plus about 1 s of collision extraction that
+  the unconverted load pays later anyway. The 2026-10-03 run that hit its
+  240 s limit was four to six times slow even in phases with no MD5R work.
+  The first frame did crash the OpenGL driver, though, and in a hidden-window
+  run the crash dialog leaves the client waiting. A packed stage left buffer
+  0 bound, so the next stage's classic colour array took its ambient-cache
+  offset as a CPU address, and the packed stage draw never gave the md5r
+  stage programs their vertex colours. Each stage now rebinds the ambient
+  cache, and the packed stage feeds its own colours. Converted models also
+  drew their two-sided lit surfaces twice: the converter packs the back-side
+  copies the source model made, and surface generation then made more.
+  Surfaces now stay 1:1 with the packed meshes, as in retail. On Air Defense 1
+  at a fixed game tick, converted and unconverted frames match on OpenGL and
+  Vulkan apart from particles, and `r_showLightCount` over the pod-crash roof
+  matches where it doubled before. In three alternating cold-load pairs on a
+  busy machine (debug build), whole loads swung between 67 and 124 s in
+  either mode, while the model and collision precache, where conversion
+  happens, stayed within a second of the unconverted run.
+  `renderer_md5r_conversion_contract.py` pins both fixes.
 
 - [x] Turn shadow maps on in the `quality` and `ultra` performance presets and
   default projected-light filtering to PCSS-lite (`r_shadowMapFilterMode 2`)
@@ -1363,13 +1451,29 @@
   map, game type, limits, team options and a player to kick, sending only
   what you changed (the classic page also sends the current map, which makes
   the server refuse the vote); its Server page shows the server's message,
-  rules and map rotation. Its other pages still open the classic pages for
-  now. With the same setting, joining a server opens a matching
-  Welcome card: team cards that join each team (and say why when the balance
-  rule refuses one), Auto join naming the team it picks, Spectate, the
-  server's rules and the players; Esc spectates for now, and the menu key
-  brings it back until you join. The prompt bars' Select now reads correctly
-  in Spanish and Italian.
+  rules and map rotation; its Settings page sets your model, rail color and
+  handicap and how opponents and teammates look (forced models, outlines,
+  rim light, brightskin and their colors), with Controls, Game Options and
+  System a step away; its Voice page sets voice chat's switches and volumes;
+  and its Match page shows Match Control's state and its readiness, pause,
+  forfeit and abort actions, its teams and rosters with the team, queue and
+  roster actions and the role an invitation gives, its proposals with their
+  ballots, its rules with their profiles and a value to stage, its series
+  with the map pool, the veto and the history, and its evidence, each action
+  saying why it is unavailable and asking first where the classic page does,
+  with the triggers paging Match Control's sections. Its Admin page and the
+  referee sign-in still open the classic pages for now.
+  The prompt bars' Select now reads correctly in Spanish and Italian.
+
+- Joining a server without automatic joining now opens the new Welcome card
+  over the softened match instead of the classic join panel. The loading
+  screen stays up, reading JOINING, until the card is ready, then fades into
+  it, so the join no longer flashes the bare match first. The card offers team
+  cards that join each team (and say why when the balance rule refuses one),
+  Auto join naming the team it picks, Spectate, the server's rules, the
+  players, and your name, model, rail color and crosshair. Esc spectates for
+  now, and the menu key brings it back until you join. Set `ui_retained 0` to
+  keep the classic menus.
 
 - The classic multiplayer Players page's Add Friend button now marks the
   player as your friend in the lists and on the scoreboard. It did nothing on
