@@ -354,14 +354,41 @@ the pak), a central-directory seek, a 64 KiB read buffer, and an inflate window.
 `idFile_InZip::Timestamp` then returns a hardcoded `0`. Every one of those opens
 is performed to receive a constant.
 
+## 2026-10-06 search-path lookup cost
+
+Ranked item 1 below assumed the timestamp probe cost was the PK4 member open.
+That was only part of it. Answering null-buffer `ReadFile` calls for PK4
+members from the central-directory index (the length is now kept per entry)
+left the probe phase at 382--426 ms, because every lookup of a packed asset
+first fails an `fopen` in each loose search directory ahead of its pak:
+`fs_savepath`, `fs_cdpath` and `fs_basepath` for each game directory. On this
+machine a failed open costs 25--35 microseconds, and the stock directories
+almost never contain `textures/`, `models/` or `sound/` at all.
+
+During a level load each directory on the way to a loose file is now checked
+once and remembered, and a lookup under a missing directory skips the open
+(see [search-path lookups](loading-cache-modernization.md#search-path-lookups)).
+One `game/airdefense1` load skipped **60,854** failed opens for **176**
+directory checks. Same binary, same warm `fs_savepath`, 1280x720 hidden
+window, OpenGL, `fs_cacheLooseDirectories` alternated, three pairs after a
+warm-up load:
+
+| `fs_cacheLooseDirectories` | Map load (ms) | Image probe phase (ms) |
+|---|---|---|
+| `0` | 14,255 / 14,162 / 15,310 | 381.7 / 415.4 / 426.2 |
+| `1` | 13,843 / 12,978 / 12,648 | 138.1 / 131.9 / 117.3 |
+
+The median load fell from 14,255 ms to 12,978 ms (-9%) and the median probe
+phase from 415 ms to 132 ms. The memo also covers every other lookup in the
+load (declarations, models, sounds), which is why the total gain is larger
+than the probe phase alone. The remaining probe time is DDS header reads,
+which are already memoized per load.
+
 ### Ranked remaining work
 
-1. Answer the source timestamp probe without opening the PK4 member. Worth
-   371--732 ms depending on configuration, needs no threading, and the length a
-   null-buffer `ReadFile` also returns is already in the central directory the
-   pak keeps open. The care required is in the side effects the current path has
-   on the way past: pure-pak status, `pak->referenced`, the asset log, and the
-   learned level-load manifest.
+1. **Done 2026-10-06** (see above): the timestamp probe no longer opens PK4
+   members, and loose search directories are checked once per load instead of
+   once per lookup.
 2. Parallel level image read. This is the real bulk, but it is reads, not
    decode, and the obvious design does not work: `FinishLevelLoadCache`
    (`Session.cpp`) joins the pipeline and drains every handle before

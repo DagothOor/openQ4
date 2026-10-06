@@ -146,7 +146,10 @@ def validate_isolation() -> None:
     assert 'const bool awakeningAllowed = false;' in startup
     dll = function_body(fs, 'void idFileSystemLocal::FindDLL(')
     assert 'q4xbase' in dll and 'OPENQ4_GAMEDIR' in dll
-    open_file = function_body(fs, 'idFile *idFileSystemLocal::OpenFileReadFlags(')
+    # OpenFileReadFlags delegates to the search shared with length-only queries
+    flags_entry = function_body(fs, 'idFile *idFileSystemLocal::OpenFileReadFlags(')
+    assert 'return OpenFileReadSearch(' in flags_entry
+    open_file = function_body(fs, 'idFile *idFileSystemLocal::OpenFileReadSearch(')
     for name in ('guis/menu/', 'guis/mainmenu.gui', 'guis/arena_menu.gui', 'guis/campaign_menu.gui', 'default.cfg'):
         assert name in open_file, f'campaign content can override engine navigation: {name}'
     assert 'protectCampaignNavigation = !gameFolder.Icmp( "q4xbase" )' in open_file

@@ -358,6 +358,30 @@ individual settings:
 - With openQ4 closed, delete any or all of the `generated/` subdirectories above
   for a clean rebuild. Never delete the original retail/mod source files.
 
+## Search-path lookups
+
+Two lookup shortcuts are independent of the experiment above and are on for
+every load:
+
+- A length or timestamp query (`ReadFile` with a null buffer) for a pk4 member
+  is answered from the pak's central-directory index. The member is not
+  opened, and the query is not recorded in the learned manifest, because no
+  payload is read. The pak is still marked referenced and the asset log still
+  records the path.
+- Between `BeginLevelLoadCache` and the end of the load, every loose search
+  directory on the way to a file is checked once, top-down from its search
+  root, and a lookup under a directory known to be missing skips the `fopen`.
+  `CreateOSPath`, which every engine directory creation goes through, forgets
+  all negative answers, so generated files written during the load are found.
+  A directory created by another program mid-load is seen from the next load.
+  `fs_cacheLooseDirectories 0` restores the classic open in every directory;
+  the memo is always off with `fs_caseSensitiveOS 1` (the non-Windows default),
+  where case is resolved through directory listings.
+
+`com_showLevelLoadTimes 1` prints `Loose search directories: N opens skipped,
+M directory checks` at the end of each load. The measurements are in the
+[Air Defense 1 evidence](airdefense1-optimization-evidence.md#2026-10-06-search-path-lookup-cost).
+
 ## Evidence status
 
 The implementation contract above is source-backed. Focused native format and

@@ -90,6 +90,7 @@ jobs:
             tools/tests/chat_gameplay_smoke.py \
             tools/tests/chat_history.py \
             tools/tests/filesystem_find_file_contract.py \
+            tools/tests/filesystem_length_probe_contract.py \
             tools/tests/generate_file_memory_test.py \
             tools/tests/gui_clipping_contract.py \
             tools/tests/gui_transition_operand_contract.py \
@@ -467,6 +468,7 @@ jobs:
           python tools/tests/aas_settings_contract.py
           python tools/tests/chat_history.py
           python tools/tests/filesystem_find_file_contract.py
+          python tools/tests/filesystem_length_probe_contract.py
           python tools/tests/gui_clipping_contract.py
           python tools/tests/gui_transition_operand_contract.py --mutations
           python tools/tests/gui_state_debug_log_contract.py --mutations

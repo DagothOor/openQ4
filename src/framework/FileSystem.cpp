@@ -37,10 +37,15 @@ If you have questions concerning this license or the applicable additional terms
 
 #include <errno.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <limits>
 #include <mutex>
 #include <thread>
 #include <algorithm>
+#include <atomic>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #if defined( USE_SDL3 )
@@ -1333,8 +1338,16 @@ static bool FS_AutoDiscoverBasePath( idStr &basePath ) {
 typedef struct fileInPack_s {
 	idStr				name;						// name of the file
 	uint32_t			pos;						// classic-ZIP central-directory position
+	uint32_t			size;						// uncompressed size from the central directory
 	struct fileInPack_s * next;						// next file in the hash
 } fileInPack_t;
+
+// A length/timestamp query against a pk4 member, answered from the pak's
+// central-directory index instead of opening the member.
+typedef struct packMemberProbe_s {
+	bool				found;
+	int					length;
+} packMemberProbe_t;
 
 typedef enum {
 	BINARY_UNKNOWN = 0,
@@ -1568,6 +1581,7 @@ private:
 	static idCVar			fs_caseSensitiveOS;
 	static idCVar			fs_searchAddons;
 	static idCVar			fs_validateOfficialPaks;
+	static idCVar			fs_cacheLooseDirectories;
 
 	backgroundDownload_t *	backgroundDownloads;
 	backgroundDownload_t	defaultBackgroundDownload;
@@ -1586,6 +1600,14 @@ private:
 	idStr					currentAssetLogUnfiltered;
 	idStrList				assetLog;
 	idLevelLoadCacheManager *levelLoadCache;
+
+	// Level-load memo of loose search directories, keyed by lower-case OS path
+	// with '/' separators. See LooseDirectoryMissing.
+	std::mutex				looseDirectoryLock;
+	std::unordered_map<std::string, bool> looseDirectoryExists;
+	std::atomic<bool>		looseDirectoryCacheActive;
+	int						looseDirectoryChecks;	// directory stats performed
+	int						looseDirectorySkips;	// loose opens avoided
 
 	int						gamePakForOS[ MAX_GAME_OS ];
 
@@ -1609,6 +1631,10 @@ private:
 	void					BuildLevelLoadContentKey( idStr &key ) const;
 	void					RecordOpenedLevelLoadSource( const char *relativePath, idFile *file );
 	idFile *				UsePreloadedLevelLoadSource( const char *relativePath, idFile *file );
+	idFile *				OpenFileReadSearch( const char *relativePath, int searchFlags, pack_t **foundInPak, bool allowCopyFiles, const char* gamedir, packMemberProbe_t *probe );
+	void					SetLooseDirectoryCacheActive( bool active );
+	bool					LooseDirectoryMissing( const directory_t *dir, const char *relativePath );
+	bool					LooseDirectoryMissingLocked( const std::string &key, const std::string &osPath );
 	int						AddUnique( const char *name, idStrList &list, idHashIndex &hashIndex ) const;
 	void					GetExtensionList( const char *extension, idStrList &extensionList ) const;
 	int						GetFileList( const char *relativePath, const idStrList &extensions, idStrList &list, idHashIndex &hashIndex, bool fullRelativePath, const char* gamedir = NULL );
@@ -1677,6 +1703,7 @@ idCVar	idFileSystemLocal::fs_caseSensitiveOS( "fs_caseSensitiveOS", "1", CVAR_SY
 #endif
 idCVar	idFileSystemLocal::fs_searchAddons( "fs_searchAddons", "0", CVAR_SYSTEM | CVAR_BOOL, "search all addon pk4s ( disables addon functionality )" );
 idCVar	idFileSystemLocal::fs_validateOfficialPaks( "fs_validateOfficialPaks", "1", CVAR_SYSTEM | CVAR_INIT | CVAR_BOOL, "verify required official q4base media pk4 checksums on startup" );
+idCVar	idFileSystemLocal::fs_cacheLooseDirectories( "fs_cacheLooseDirectories", "1", CVAR_SYSTEM | CVAR_BOOL, "during a level load, remember which loose search-path directories do not exist, so a lookup skips them instead of failing an open in each (case-insensitive filesystems only)" );
 
 idFileSystemLocal	fileSystemLocal;
 idFileSystem *		fileSystem = &fileSystemLocal;
@@ -1707,6 +1734,9 @@ idFileSystemLocal::idFileSystemLocal( void ) {
 	currentAssetLogUnfiltered.Clear();
 	assetLog.Clear();
 	levelLoadCache = NULL;
+	looseDirectoryCacheActive = false;
+	looseDirectoryChecks = 0;
+	looseDirectorySkips = 0;
 	backgroundDownloads = NULL;
 	defaultBackgroundDownload.next = NULL;
 	defaultBackgroundDownload.opcode = DLTYPE_FILE;
@@ -1779,6 +1809,7 @@ idFile *idFileSystemLocal::UsePreloadedLevelLoadSource( const char *relativePath
 
 void idFileSystemLocal::BeginLevelLoadCache( const char *mapKey, const char *gameMode,
 		const char *entityFilter, const char *settingsKey ) {
+	SetLooseDirectoryCacheActive( true );
 	if ( levelLoadCache == NULL ) {
 		return;
 	}
@@ -1797,6 +1828,11 @@ void idFileSystemLocal::ReleaseLevelLoadCache( void ) {
 	if ( levelLoadCache != NULL ) {
 		levelLoadCache->Release();
 	}
+	if ( looseDirectoryCacheActive && cvarSystem->GetCVarBool( "com_showLevelLoadTimes" ) ) {
+		common->Printf( "Loose search directories: %d opens skipped, %d directory checks\n",
+			looseDirectorySkips, looseDirectoryChecks );
+	}
+	SetLooseDirectoryCacheActive( false );
 }
 
 // Engine-only lifecycle hook. Keeping this outside the public filesystem ABI
@@ -1810,6 +1846,116 @@ void idFileSystemLocal::CancelLevelLoadCache( void ) {
 	if ( levelLoadCache != NULL ) {
 		levelLoadCache->Cancel();
 	}
+	SetLooseDirectoryCacheActive( false );
+}
+
+/*
+===========
+Loose search-directory memo
+
+Every lookup of a packed asset first tries an fopen in each loose directory
+search path ahead of its pak (fs_savepath, fs_cdpath and fs_basepath for each
+game directory). On Windows each failed open costs ~25-35 usec, and a level
+load performs thousands of lookups, mostly for paths whose directories do not
+exist at all outside the paks (textures/, models/, sound/...).
+
+Between BeginLevelLoadCache and ReleaseLevelLoadCache the existence of each
+directory on the way to a loose file is checked once, top-down from the
+search root, and remembered. A lookup under a directory known to be missing
+skips the open. Every directory the engine creates goes through CreateOSPath,
+which forgets all negative answers, so files written during the load are
+always found; only a directory created by another process mid-load is not
+seen until the next level load. A case-sensitive filesystem resolves case
+through directory listings, so the memo stays off there.
+===========
+*/
+static bool FS_IsOSDirectory( const char *osPath ) {
+#ifdef _WIN32
+	struct _stat64 info;
+	return _stat64( osPath, &info ) == 0 && ( info.st_mode & _S_IFMT ) == _S_IFDIR;
+#else
+	struct stat info;
+	return stat( osPath, &info ) == 0 && S_ISDIR( info.st_mode );
+#endif
+}
+
+static void FS_AppendLooseDirectoryKey( std::string &key, const char *text, size_t length ) {
+	for ( size_t i = 0; i < length; ++i ) {
+		const char c = text[ i ];
+		if ( c == '\\' || c == '/' ) {
+			key += '/';
+		} else if ( c >= 'A' && c <= 'Z' ) {
+			key += static_cast<char>( c - 'A' + 'a' );
+		} else {
+			key += c;
+		}
+	}
+}
+
+void idFileSystemLocal::SetLooseDirectoryCacheActive( bool active ) {
+	std::lock_guard<std::mutex> lock( looseDirectoryLock );
+	looseDirectoryExists.clear();
+	looseDirectoryChecks = 0;
+	looseDirectorySkips = 0;
+	looseDirectoryCacheActive = active && fs_cacheLooseDirectories.GetBool() && !fs_caseSensitiveOS.GetBool();
+}
+
+bool idFileSystemLocal::LooseDirectoryMissingLocked( const std::string &key, const std::string &osPath ) {
+	const auto found = looseDirectoryExists.find( key );
+	if ( found != looseDirectoryExists.end() ) {
+		return !found->second;
+	}
+	const bool exists = FS_IsOSDirectory( osPath.c_str() );
+	looseDirectoryChecks++;
+	looseDirectoryExists.emplace( key, exists );
+	return !exists;
+}
+
+bool idFileSystemLocal::LooseDirectoryMissing( const directory_t *dir, const char *relativePath ) {
+	if ( !looseDirectoryCacheActive ) {
+		return false;
+	}
+	// the search root, then each directory segment of the relative path
+	std::string osPath( dir->path.c_str() );
+	while ( !osPath.empty() && ( osPath.back() == '/' || osPath.back() == '\\' ) ) {
+		osPath.pop_back();
+	}
+	if ( dir->gamedir.Length() > 0 ) {
+		osPath += PATHSEPERATOR_CHAR;
+		osPath += dir->gamedir.c_str();
+	}
+	std::string key;
+	key.reserve( osPath.size() + 64 );
+	FS_AppendLooseDirectoryKey( key, osPath.c_str(), osPath.size() );
+
+	std::lock_guard<std::mutex> lock( looseDirectoryLock );
+	if ( !looseDirectoryCacheActive ) {
+		return false;
+	}
+	bool missing = LooseDirectoryMissingLocked( key, osPath );
+	const char *segment = relativePath;
+	while ( !missing ) {
+		const char *end = segment;
+		while ( *end != '\0' && *end != '/' && *end != '\\' ) {
+			end++;
+		}
+		if ( *end == '\0' ) {
+			break;	// the file name itself; its directory exists
+		}
+		const size_t length = static_cast<size_t>( end - segment );
+		if ( length > 0 ) {
+			osPath += PATHSEPERATOR_CHAR;
+			osPath.append( segment, length );
+			key += '/';
+			FS_AppendLooseDirectoryKey( key, segment, length );
+			missing = LooseDirectoryMissingLocked( key, osPath );
+		}
+		segment = end + 1;
+	}
+	if ( missing ) {
+		looseDirectorySkips++;
+	}
+	return missing;
 }
 
 void idFileSystemLocal::RecordLevelLoadResource( const levelLoadResourceType_t type,
@@ -2104,6 +2250,14 @@ void idFileSystemLocal::CreateOSPath( const char *OSPath ) {
 			*ofs = 0;
 			Sys_Mkdir( path );
 			*ofs = PATHSEPERATOR_CHAR;
+		}
+	}
+
+	// a directory remembered as missing may exist now
+	if ( looseDirectoryCacheActive ) {
+		std::lock_guard<std::mutex> lock( looseDirectoryLock );
+		for ( auto entry = looseDirectoryExists.begin(); entry != looseDirectoryExists.end(); ) {
+			entry = entry->second ? std::next( entry ) : looseDirectoryExists.erase( entry );
 		}
 	}
 
@@ -2760,7 +2914,23 @@ int idFileSystemLocal::ReadFile( const char *relativePath, void **buffer, ID_TIM
 	}
 
 	// look for it in the filesystem or pack files
-	f = OpenFileRead( relativePath, ( buffer != NULL ) );
+	if ( !buffer ) {
+		// A null buffer asks only for the length and timestamp. Opening a pk4
+		// member for that reopens the pak, seeks its local header and sets up
+		// an inflate stream, all to learn a length the central directory
+		// already holds and a timestamp that is always 0 (idFile_InZip). Image
+		// staleness checks make ~1,700 of these per level load.
+		packMemberProbe_t probe;
+		f = OpenFileReadSearch( relativePath, FSFLAG_SEARCH_DIRS | FSFLAG_SEARCH_PAKS, NULL, false, NULL, &probe );
+		if ( probe.found ) {
+			if ( timestamp ) {
+				*timestamp = 0;
+			}
+			return probe.length;
+		}
+	} else {
+		f = OpenFileRead( relativePath, true );
+	}
 	if ( f == NULL ) {
 		if ( buffer ) {
 			*buffer = NULL;
@@ -3244,6 +3414,8 @@ pack_t *idFileSystemLocal::LoadZipFile( const char *zipfile ) {
 			break;
 		}
 		buildBuffer[i].pos = static_cast<uint32_t>( fileInfoPosition );
+		// bounded above by INT_MAX, so it also fits the legacy int length
+		buildBuffer[i].size = static_cast<uint32_t>( file_info.uncompressed_size );
 		// add the file to the hash
 		buildBuffer[i].next = pack->hashTable[hash];
 		pack->hashTable[hash] = &buildBuffer[i];
@@ -6730,6 +6902,23 @@ separate file or a ZIP file.
 ===========
 */
 idFile *idFileSystemLocal::OpenFileReadFlags( const char *relativePath, int searchFlags, pack_t **foundInPak, bool allowCopyFiles, const char* gamedir ) {
+	return OpenFileReadSearch( relativePath, searchFlags, foundInPak, allowCopyFiles, gamedir, NULL );
+}
+
+/*
+===========
+idFileSystemLocal::OpenFileReadSearch
+
+The search behind OpenFileReadFlags. With a probe, a pk4 member that wins the
+search is reported through it rather than opened: the probe receives the
+member's uncompressed length and NULL is returned. The pak is still marked
+referenced and the asset log still records the path, exactly as an open would.
+Only the level-load source manifest is skipped, since nothing is read.
+Directory files are opened as usual, so callers handle a returned file the
+same way with or without a probe.
+===========
+*/
+idFile *idFileSystemLocal::OpenFileReadSearch( const char *relativePath, int searchFlags, pack_t **foundInPak, bool allowCopyFiles, const char* gamedir, packMemberProbe_t *probe ) {
 	searchpath_t *	search;
 	idStr			netpath;
 	pack_t *		pak;
@@ -6749,6 +6938,10 @@ idFile *idFileSystemLocal::OpenFileReadFlags( const char *relativePath, int sear
 	if ( foundInPak ) {
 		*foundInPak = NULL;
 	}
+	if ( probe ) {
+		probe->found = false;
+		probe->length = -1;
+	}
 
 	// qpaths are not supposed to have a leading slash
 	if ( relativePath[0] == '/' || relativePath[0] == '\\' ) {
@@ -6757,11 +6950,11 @@ idFile *idFileSystemLocal::OpenFileReadFlags( const char *relativePath, int sear
 
 	// make absolutely sure that it can't back up the path.
 	// The searchpaths do guarantee that something will always
-	// be prepended, so we don't need to worry about "c:" or "//limbo" 
+	// be prepended, so we don't need to worry about "c:" or "//limbo"
 	if ( strstr( relativePath, ".." ) || strstr( relativePath, "::" ) ) {
 		return NULL;
 	}
-	
+
 	// edge case
 	if ( relativePath[0] == '\0' ) {
 		return NULL;
@@ -6800,6 +6993,10 @@ idFile *idFileSystemLocal::OpenFileReadFlags( const char *relativePath, int sear
 				}
 			}
 			
+			if ( LooseDirectoryMissing( dir, relativePath ) ) {
+				continue;
+			}
+
 			netpath = BuildOSPath( dir->path, dir->gamedir, relativePath );
 			fp = OpenOSFileCorrectName( netpath, "rb" );
 			if ( !fp ) {
@@ -6928,9 +7125,12 @@ idFile *idFileSystemLocal::OpenFileReadFlags( const char *relativePath, int sear
 			for ( pakFile = pak->hashTable[hash]; pakFile; pakFile = pakFile->next ) {
 				// case and separator insensitive comparisons
 				if ( !FilenameCompare( pakFile->name, relativePath ) ) {
-					idFile_InZip *file = ReadFileFromZip( pak, pakFile, relativePath );
-					if ( file == NULL ) {
-						continue;
+					idFile_InZip *file = NULL;
+					if ( probe == NULL ) {
+						file = ReadFileFromZip( pak, pakFile, relativePath );
+						if ( file == NULL ) {
+							continue;
+						}
 					}
 
 					if ( foundInPak ) {
@@ -6949,6 +7149,11 @@ idFile *idFileSystemLocal::OpenFileReadFlags( const char *relativePath, int sear
 						common->Printf( "idFileSystem::OpenFileRead: %s (found in '%s')\n", relativePath, pak->pakFilename.c_str() );
 					}
 					AddAssetLogEntry( relativePath );
+					if ( probe != NULL ) {
+						probe->found = true;
+						probe->length = static_cast<int>( pakFile->size );
+						return NULL;
+					}
 					RecordOpenedLevelLoadSource( relativePath, file );
 					return UsePreloadedLevelLoadSource( relativePath, file );
 				}
@@ -6963,9 +7168,12 @@ idFile *idFileSystemLocal::OpenFileReadFlags( const char *relativePath, int sear
 			pak = search->pack;
 			for ( pakFile = pak->hashTable[hash]; pakFile; pakFile = pakFile->next ) {
 				if ( !FilenameCompare( pakFile->name, relativePath ) ) {
-					idFile_InZip *file = ReadFileFromZip( pak, pakFile, relativePath );
-					if ( file == NULL ) {
-						continue;
+					idFile_InZip *file = NULL;
+					if ( probe == NULL ) {
+						file = ReadFileFromZip( pak, pakFile, relativePath );
+						if ( file == NULL ) {
+							continue;
+						}
 					}
 					if ( foundInPak ) {
 						*foundInPak = pak;
@@ -6975,6 +7183,11 @@ idFile *idFileSystemLocal::OpenFileReadFlags( const char *relativePath, int sear
 						common->Printf( "idFileSystem::OpenFileRead: %s (found in addon pk4 '%s')\n", relativePath, search->pack->pakFilename.c_str() );
 					}
 					AddAssetLogEntry( relativePath );
+					if ( probe != NULL ) {
+						probe->found = true;
+						probe->length = static_cast<int>( pakFile->size );
+						return NULL;
+					}
 					RecordOpenedLevelLoadSource( relativePath, file );
 					return UsePreloadedLevelLoadSource( relativePath, file );
 				}

@@ -2,6 +2,18 @@
 
 ## 0.13.2 release candidate
 
+- [x] Cut the search-path cost of a level load (idTech 5 track, Air Defense 1
+  register item 1). A null-buffer `ReadFile` for a pk4 member is answered from
+  the central-directory index (the uncompressed size is kept per entry) instead
+  of reopening the pak, and is no longer recorded in the learned manifest.
+  During a level load each loose search directory on the way to a file is
+  checked once and a lookup under a missing directory skips its `fopen`
+  (`fs_cacheLooseDirectories`, Windows/case-insensitive only; `CreateOSPath`
+  drops negative answers). One `game/airdefense1` load skipped 60,854 failed
+  opens for 176 directory checks; same-binary median load 14,255 -> 12,978 ms,
+  image probe phase 415 -> 132 ms. `filesystem_length_probe_contract.py`
+  compiles the real search, probe, memo and `CreateOSPath` bodies.
+
 - [x] Play retail Quake 4's per-area reverb. openQ4 read neither reverb file
   and no sound reached its single Generic reverb, because the send was gated by
   a shader wet level that defaults to 0. It now loads `efxs/<map>.efx` or
