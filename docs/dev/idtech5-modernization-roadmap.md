@@ -373,9 +373,19 @@ or PBR work multiplies the parity surface.
   content, after ordinary streaming is reliable. The official BFG drop does not
   provide idTech 5's virtual-texturing implementation, and stock Quake 4 assets
   must never depend on this path.
-- GPU skinning plus jobbed animation/model preparation.
+- GPU skinning plus jobbed animation/model preparation. **Measured 2026-10-06:**
+  stock maps skin about 1,500 vertices per frame, so GPU skinning stays opt-in
+  until animation-heavy content justifies batched dispatch and persistent
+  per-mesh buffers ([evidence](gpu-skinning-modernization.md#2026-10-06-promotion-attempt-not-beneficial-for-stock-content)).
 - Background shader/pipeline compilation with deterministic cache keys and an
-  always-available synchronous fallback.
+  always-available synchronous fallback. **Measured 2026-10-06, not needed for
+  stock content:** a whole Vulkan airdefense1 session with a full camera sweep
+  creates 33 pipelines (49 ms in total and one 11 ms creation from an empty
+  cache; 4 ms in total from a restored one), and stock materials need no
+  runtime SPIR-V compilation. Vulkan now times every pipeline creation
+  (`gfxInfo`), logs what each map created, and writes the driver's pipeline
+  cache atomically before every level load as well as at shutdown, so a
+  session that crashes keeps what earlier maps compiled.
 
 ### Networking and operations
 

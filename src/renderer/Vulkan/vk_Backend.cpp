@@ -1634,6 +1634,7 @@ void R_RenderGraphResources_Shutdown( void ) {
 // render-graph pool, so report those instead.
 void R_RenderGraphResources_PrintGfxInfo( void ) {
 	VK_Device_PrintMemoryInfo();
+	VK_Device_PrintPipelineInfo();
 }
 
 void R_RendererVulkanMemoryInfo_f( const idCmdArgs &args ) {

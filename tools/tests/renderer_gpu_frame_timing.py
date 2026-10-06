@@ -100,6 +100,40 @@ int main() {
         subprocess.run([str(binary)], check=True)
 
 
+def validate_vulkan_pipeline_creation_accounting() -> None:
+    """Pipelines compile synchronously at first use: time every creation and
+    keep the driver cache durable across levels and crashes."""
+    device = read(RENDERER / "Vulkan" / "VulkanDevice.cpp")
+    render_system = read(RENDERER / "RenderSystem_init.cpp")
+    backend = read(RENDERER / "Vulkan" / "vk_Backend.cpp")
+    creations = timed = 0
+    for source_path in sorted((RENDERER / "Vulkan").glob("*.cpp")):
+        source = read(source_path)
+        creations += source.count("vkCreateGraphicsPipelines(") + source.count("vkCreateComputePipelines(")
+        timed += source.count("VK_Device_RecordPipelineCreation(")
+    # VulkanDevice.cpp defines the recorder; it creates no pipelines itself
+    timed -= device.count("void VK_Device_RecordPipelineCreation(")
+    if creations == 0 or timed != creations:
+        raise AssertionError(
+            f"every Vulkan pipeline creation must be timed ({timed} timed of {creations})"
+        )
+    save = function_body(device, "static void VK_Device_SavePipelineCache(")
+    staged = save.find("fileSystem->WriteFile( VK_PIPELINE_CACHE_STAGED_FILE")
+    promote = save.find("fileSystem->PromoteFile( VK_PIPELINE_CACHE_STAGED_FILE, VK_PIPELINE_CACHE_FILE")
+    if staged < 0 or promote < 0 or staged > promote:
+        raise AssertionError("the pipeline cache must be staged and atomically promoted")
+    if "OpenFileWrite( VK_PIPELINE_CACHE_FILE" in device:
+        raise AssertionError("the pipeline cache must never be written in place")
+    persist = function_body(device, "void VK_Device_PersistPipelineCache(")
+    require(persist, "pipelineCreationsSincePersist <= 0", "skip unchanged pipeline caches")
+    require(persist, "VK_Device_SavePipelineCache();", "persisted pipeline cache")
+    shutdown = function_body(device, "void VK_Device_Shutdown(")
+    require(shutdown, "VK_Device_PersistPipelineCache(", "shutdown pipeline cache write")
+    begin_level = function_body(render_system, "void idRenderSystemLocal::BeginLevelLoad(")
+    require(begin_level, "VK_Device_PersistPipelineCache(", "per-level pipeline cache write")
+    require(backend, "VK_Device_PrintPipelineInfo();", "gfxInfo pipeline accounting")
+
+
 def main() -> int:
     public_header = read(RENDERER / "RenderSystem.h")
     companion_header_path = GAME_ROOT / "src" / "renderer" / "RenderSystem.h"
@@ -283,6 +317,8 @@ def main() -> int:
     native_test = read(ROOT / "tools" / "tests" / "native" / "GpuFrameTimingTest.cpp")
     require(native_test, "INT_MAX, INT_MIN", "native frame-wrap test")
     require(native_test, "state.generation, 0, 1", "native zero-duration test")
+
+    validate_vulkan_pipeline_creation_accounting()
 
     print("renderer GPU frame timing contracts: PASS")
     return 0

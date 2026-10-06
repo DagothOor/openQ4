@@ -873,10 +873,18 @@ session re-compiles every pipeline the moment its material/state combination is
 first drawn, which shows up as first-encounter hitching rather than as a lower
 average frame rate. The blob is a disposable generated cache under fs_savepath:
 it is read from the savepath only, never from a PK4, and a blob that does not
-match this device is discarded rather than handed to the driver.
+match this device is discarded rather than handed to the driver. It is written
+back at shutdown and before every level load, through a staged file and an
+atomic replace. Measured 2026-10-06 (Intel Xe, airdefense1 plus a full camera
+sweep): the whole session creates 33 pipelines, 49 ms in total with a slowest
+creation of 11 ms from an empty cache, and 4 ms in total (slowest 0.5 ms) from
+a restored one, so stock content needs no background or prewarmed compilation.
 ====================
 */
 static const char *VK_PIPELINE_CACHE_FILE = "generated/vulkan/pipeline.cache";
+static const char *VK_PIPELINE_CACHE_STAGED_FILE = "generated/vulkan/pipeline.cache.partial";
+// a creation this slow is a visible hitch at any refresh rate
+static const uint64 VK_PIPELINE_SLOW_CREATE_US = 4000;
 
 // VkPipelineCacheHeaderVersionOne: 32 bytes, little-endian.
 static const int VK_PIPELINE_CACHE_HEADER_BYTES = 32;
@@ -951,6 +959,7 @@ static bool VK_Device_CreatePipelineCache( void ) {
 				static_cast<int>( res ) );
 		return false;
 	}
+	vkCtx.pipelineCacheBytes = blobBytes > 0 ? static_cast<size_t>( blobBytes ) : 0;
 	common->Printf( "Vulkan: pipeline cache %s\n", blobBytes > 0 ? "restored" : "created empty" );
 	return true;
 }
@@ -964,17 +973,69 @@ static void VK_Device_SavePipelineCache( void ) {
 			|| blobBytes < (size_t)VK_PIPELINE_CACHE_HEADER_BYTES ) {
 		return;
 	}
+	if ( blobBytes >= static_cast<size_t>( 256 << 20 ) ) {
+		return;	// the loader would refuse it anyway
+	}
 	byte *blob = (byte *)Mem_Alloc( (int)blobBytes );
 	if ( vkGetPipelineCacheData( vkCtx.device, vkCtx.pipelineCache, &blobBytes, blob ) != VK_SUCCESS ) {
 		Mem_Free( blob );
 		return;
 	}
-	idFile *file = fileSystem->OpenFileWrite( VK_PIPELINE_CACHE_FILE, "fs_savepath" );
-	if ( file != NULL ) {
-		file->Write( blob, (int)blobBytes );
-		fileSystem->CloseFile( file );
+	// Stage, then replace atomically: the loader only checks the header, and a
+	// blob truncated by a crash mid-write would reach the driver behind a
+	// valid one.
+	if ( fileSystem->WriteFile( VK_PIPELINE_CACHE_STAGED_FILE, blob, (int)blobBytes, "fs_savepath" )
+				== (int)blobBytes
+			&& fileSystem->PromoteFile( VK_PIPELINE_CACHE_STAGED_FILE, VK_PIPELINE_CACHE_FILE,
+				"fs_savepath" ) ) {
+		vkCtx.pipelineCacheBytes = blobBytes;
+	} else {
+		fileSystem->RemoveFileChecked( VK_PIPELINE_CACHE_STAGED_FILE, "fs_savepath" );
+		common->Warning( "Vulkan: could not write the pipeline cache" );
 	}
 	Mem_Free( blob );
+}
+
+void VK_Device_RecordPipelineCreation( uint64 microseconds ) {
+	vkCtx.pipelineCreationsSincePersist++;
+	vkCtx.pipelineCreateMicrosecondsSincePersist += microseconds;
+	vkCtx.pipelineCreateMaxMicrosecondsSincePersist =
+			Max( vkCtx.pipelineCreateMaxMicrosecondsSincePersist, microseconds );
+	vkCtx.pipelineCreations++;
+	vkCtx.pipelineCreateMicroseconds += microseconds;
+	vkCtx.pipelineCreateMaxMicroseconds = Max( vkCtx.pipelineCreateMaxMicroseconds, microseconds );
+	if ( microseconds >= VK_PIPELINE_SLOW_CREATE_US ) {
+		vkCtx.pipelineSlowCreationsSincePersist++;
+		vkCtx.pipelineSlowCreations++;
+	}
+}
+
+void VK_Device_PersistPipelineCache( const char *reason ) {
+	if ( vkCtx.device == VK_NULL_HANDLE || vkCtx.pipelineCache == VK_NULL_HANDLE
+			|| vkCtx.pipelineCreationsSincePersist <= 0 ) {
+		return;	// nothing new to keep
+	}
+	common->Printf( "Vulkan: %d pipelines created %s (%.1f ms total, slowest %.1f ms, %d over %.0f ms)\n",
+		vkCtx.pipelineCreationsSincePersist, reason != NULL ? reason : "",
+		static_cast<double>( vkCtx.pipelineCreateMicrosecondsSincePersist ) / 1000.0,
+		static_cast<double>( vkCtx.pipelineCreateMaxMicrosecondsSincePersist ) / 1000.0,
+		vkCtx.pipelineSlowCreationsSincePersist,
+		static_cast<double>( VK_PIPELINE_SLOW_CREATE_US ) / 1000.0 );
+	VK_Device_SavePipelineCache();
+	vkCtx.pipelineCreationsSincePersist = 0;
+	vkCtx.pipelineCreateMicrosecondsSincePersist = 0;
+	vkCtx.pipelineCreateMaxMicrosecondsSincePersist = 0;
+	vkCtx.pipelineSlowCreationsSincePersist = 0;
+}
+
+void VK_Device_PrintPipelineInfo( void ) {
+	common->Printf( "Vulkan pipelines: created=%d totalMs=%.1f maxMs=%.1f slow=%d sincePersist=%d cache=%s (%llu KiB)\n",
+		vkCtx.pipelineCreations,
+		static_cast<double>( vkCtx.pipelineCreateMicroseconds ) / 1000.0,
+		static_cast<double>( vkCtx.pipelineCreateMaxMicroseconds ) / 1000.0,
+		vkCtx.pipelineSlowCreations, vkCtx.pipelineCreationsSincePersist,
+		vkCtx.pipelineCache != VK_NULL_HANDLE ? "active" : "unavailable",
+		static_cast<unsigned long long>( vkCtx.pipelineCacheBytes / 1024 ) );
 }
 
 void VK_Device_WaitIdleForTiming( void ) {
@@ -1500,7 +1561,7 @@ void VK_Device_Shutdown( void ) {
 		vkDeviceWaitIdle( vkCtx.device );
 	}
 	if ( vkCtx.pipelineCache != VK_NULL_HANDLE ) {
-		VK_Device_SavePipelineCache();
+		VK_Device_PersistPipelineCache( "this session" );
 		vkDestroyPipelineCache( vkCtx.device, vkCtx.pipelineCache, NULL );
 		vkCtx.pipelineCache = VK_NULL_HANDLE;
 	}

@@ -43,6 +43,7 @@
 #ifndef UINT_MAX
 #define UINT_MAX	0xffffffffu
 #endif
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include "volk.h"
@@ -1019,7 +1020,13 @@ static VkPipeline VK_Exec_CreatePipeline( VkShaderModule vertModule, VkShaderMod
 	gpci.layout = layout;
 
 	VkPipeline pipeline = VK_NULL_HANDLE;
-	if ( vkCreateGraphicsPipelines( vkCtx.device, vkCtx.pipelineCache, 1, &gpci, NULL, &pipeline ) != VK_SUCCESS ) {
+	const std::chrono::steady_clock::time_point createStart = std::chrono::steady_clock::now();
+	const VkResult createResult = vkCreateGraphicsPipelines( vkCtx.device, vkCtx.pipelineCache,
+			1, &gpci, NULL, &pipeline );
+	VK_Device_RecordPipelineCreation( static_cast<uint64>(
+			std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::steady_clock::now() - createStart ).count() ) );
+	if ( createResult != VK_SUCCESS ) {
 		common->Warning( "Vulkan: pipeline creation failed (blend 0x%x)", blendBits );
 		return VK_NULL_HANDLE;
 	}
@@ -2816,8 +2823,13 @@ static bool VK_GpuSkinning_InitResources( void ) {
 	cpci.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
 	cpci.stage = stage;
 	cpci.layout = vkExec.gpuSkinningPipelineLayout;
-	if ( vkCreateComputePipelines( vkCtx.device, vkCtx.pipelineCache, 1, &cpci, NULL,
-			&vkExec.gpuSkinningPipeline ) != VK_SUCCESS ) {
+	const std::chrono::steady_clock::time_point createStart = std::chrono::steady_clock::now();
+	const VkResult createResult = vkCreateComputePipelines( vkCtx.device, vkCtx.pipelineCache,
+			1, &cpci, NULL, &vkExec.gpuSkinningPipeline );
+	VK_Device_RecordPipelineCreation( static_cast<uint64>(
+			std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::steady_clock::now() - createStart ).count() ) );
+	if ( createResult != VK_SUCCESS ) {
 		common->Warning( "Vulkan: GPU skinning compute pipeline creation failed" );
 		VK_GpuSkinning_DestroyResources();
 		return false;

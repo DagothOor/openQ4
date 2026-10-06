@@ -6344,6 +6344,11 @@ idRenderSystemLocal::BeginLevelLoad
 */
 void idRenderSystemLocal::BeginLevelLoad( void ) {
 	R_RendererMetrics_ResetGpuFrameTiming( "begin level load" );
+#ifdef OPENQ4_RENDERER_VK_MODULE
+	// keep what the last map compiled even if this session never exits cleanly
+	extern void VK_Device_PersistPipelineCache( const char *reason );
+	VK_Device_PersistPipelineCache( "since the last save" );
+#endif
 	// SetUnderwaterView is the only writer of this state, and it is driven by the game
 	// each frame. A map change started while the player was submerged would otherwise
 	// leave the effect live across the whole loading screen and into the first frames

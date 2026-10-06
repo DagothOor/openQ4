@@ -136,6 +136,16 @@ typedef struct vkDeviceContext_s {
 	// disposable fs_savepath cache so a session does not re-compile every
 	// pipeline the last one already built.
 	VkPipelineCache		pipelineCache;
+	// Creation cost since the blob was last written, and for the whole device.
+	int					pipelineCreationsSincePersist;
+	uint64				pipelineCreateMicrosecondsSincePersist;
+	uint64				pipelineCreateMaxMicrosecondsSincePersist;
+	int					pipelineSlowCreationsSincePersist;
+	int					pipelineCreations;
+	uint64				pipelineCreateMicroseconds;
+	uint64				pipelineCreateMaxMicroseconds;
+	int					pipelineSlowCreations;
+	size_t				pipelineCacheBytes;	// size of the blob last read or written
 
 	// --- Phase D ---
 	VmaAllocator		allocator;
@@ -216,6 +226,18 @@ void	VK_Device_CountDrawIndexed( int indexCount, int vertexCount );
 // per-heap VMA usage, budget and live allocations (gfxInfo,
 // rendererVulkanMemoryInfo)
 void	VK_Device_PrintMemoryInfo( void );
+
+// Pipelines are created synchronously at first use, so their creation time is
+// time the frame that first draws a state combination waits. Every
+// vkCreate*Pipelines call reports its duration here.
+void	VK_Device_RecordPipelineCreation( uint64 microseconds );
+// Writes the pipeline cache blob back to fs_savepath through a staged file and
+// an atomic replace (a crash mid-write never leaves a truncated blob), and logs
+// what was created since the last write. Called at shutdown and before each
+// level load, so a session that does not exit cleanly keeps what earlier maps
+// compiled.
+void	VK_Device_PersistPipelineCache( const char *reason );
+void	VK_Device_PrintPipelineInfo( void );
 
 // acquires, records a dynamic-rendering clear with the given color, and
 // presents; handles OUT_OF_DATE/SUBOPTIMAL by recreating and retrying once
