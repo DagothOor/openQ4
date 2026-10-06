@@ -253,6 +253,7 @@ private:
 	idList<idDrawVert>			gpuBindPoseVerts;	// immutable output-vertex bind pose
 	idList<gpuSkinningVertex_t> gpuSkinningVerts;	// dedicated four-weight stream
 	int						gpuSkinningNumJoints;
+	int						gpuSkinningJointBound;	// highest influencing joint + 1
 	gpuSkinningFallbackReason_t gpuSkinningFallback;
 
 	bool						UpdateLod( const struct renderEntity_s *ent, const struct viewEntity_s *viewEnt, const modelSurface_t *surf );
@@ -406,6 +407,7 @@ struct rvMD5RMesh {
 									numTransforms( 0 ),
 									deformInfo( NULL ),
 									gpuSkinningSourceVerts( 0 ),
+									gpuSkinningJointBound( 0 ),
 									gpuSkinningFallback( GPU_SKINNING_FALLBACK_MISSING_SKIN_VERTICES ) {
 									bounds.Clear();
 								}
@@ -437,6 +439,7 @@ struct rvMD5RMesh {
 	idList<idDrawVert>			gpuBindPoseVerts;
 	idList<gpuSkinningVertex_t> gpuSkinningVerts;
 	int						gpuSkinningSourceVerts;
+	int						gpuSkinningJointBound;	// highest influencing transform + 1
 	gpuSkinningFallbackReason_t gpuSkinningFallback;
 };
 

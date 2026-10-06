@@ -77,6 +77,9 @@ typedef struct gpuSkinningSurface_s {
 	gpuSkinningJointPalette_t palette;
 	gpuSkinningFallbackReason_t fallbackReason;
 	bool					signedWeights;
+	// Joint bound the source model validated every packed influence against
+	// when it built the immutable sidecar; 0 validates every vertex per use.
+	int					prevalidatedJoints;
 } gpuSkinningSurface_t;
 
 typedef struct gpuSkinningStats_s {
@@ -118,7 +121,8 @@ bool R_GpuSkinning_AttachSurfaceContract( srfTriangles_s *tri,
 	const idDrawVert *bindPoseVerts, const gpuSkinningVertex_t *skinVerts,
 	int numVerts, const float *jointMatrices, int numJoints,
 	int sourceMatrixStrideFloats, bool signedWeights,
-	gpuSkinningFallbackReason_t sourceFallback = GPU_SKINNING_FALLBACK_NONE );
+	gpuSkinningFallbackReason_t sourceFallback = GPU_SKINNING_FALLBACK_NONE,
+	int sidecarJointBound = 0 );
 void R_GpuSkinning_ReferenceSurfaceContract( srfTriangles_s *tri,
 	const srfTriangles_s *reference );
 bool R_GpuSkinning_GetSurface( const srfTriangles_s *tri,
@@ -143,6 +147,11 @@ bool R_GpuSkinning_RunSelfTest( void );
 
 // Implemented once by each backend module. The shared gate validates the
 // surface before it reaches this seam; false requests the existing CPU cache.
+// A backend that skins the surface later in the frame instead (Vulkan) sets
+// tri->gpuSkinningDeferred before returning false: the front end then builds
+// that CPU cache from current positions without deriving normals/tangents,
+// and the backend must complete it on the CPU before any draw reads it if its
+// dispatch is refused.
 void R_BackendGpuSkinning_Init( const renderBackendCaps_t &caps );
 void R_BackendGpuSkinning_Shutdown( void );
 bool R_BackendGpuSkinning_PrepareAmbientCache( srfTriangles_s *tri, bool needsLighting );

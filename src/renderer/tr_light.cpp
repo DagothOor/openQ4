@@ -250,17 +250,21 @@ bool R_CreateAmbientCache( srfTriangles_t *tri, bool needsLighting ) {
 	if ( tri->ambientCache ) {
 		return true;
 	}
+	tri->gpuSkinningDeferred = false;
 	if ( R_GpuSkinning_IsCandidate( tri )
 		&& R_GpuSkinning_PrepareAmbientCache( tri, needsLighting ) ) {
 		return true;
 	}
-	// we are going to use it for drawing, so make sure we have the tangents and normals
-	if ( needsLighting && !tri->tangentsCalculated ) {
+	// we are going to use it for drawing, so make sure we have the tangents and normals,
+	// unless a backend skins this surface later in the frame: it owns that work
+	// and completes this stream itself if it cannot
+	if ( needsLighting && !tri->tangentsCalculated && !tri->gpuSkinningDeferred ) {
 		R_DeriveTangents( tri );
 	}
 
 	vertexCache.Alloc( tri->verts, tri->numVerts * sizeof( tri->verts[0] ), &tri->ambientCache );
 	if ( !tri->ambientCache ) {
+		tri->gpuSkinningDeferred = false;
 		return false;
 	}
 	return true;
@@ -280,6 +284,7 @@ bool R_CreatePackedSurfaceFrameCaches( srfTriangles_t *tri, bool needsLighting, 
 	if ( tri == NULL || tri->numVerts <= 0 ) {
 		return false;
 	}
+	tri->gpuSkinningDeferred = false;
 	const bool gpuPrepared = tri->ambientCache == NULL
 		&& R_GpuSkinning_IsCandidate( tri )
 		&& R_GpuSkinning_PrepareAmbientCache( tri, needsLighting );
@@ -301,10 +306,17 @@ bool R_CreatePackedSurfaceFrameCaches( srfTriangles_t *tri, bool needsLighting, 
 #endif
 
 	if ( sourceVerts == NULL && !gpuPrepared ) {
+		tri->gpuSkinningDeferred = false;
 		return false;
 	}
+	// a deferring backend completes the stream from tri->verts, so a packed
+	// copy keeps the established CPU path
+	if ( sourceVerts != tri->verts ) {
+		tri->gpuSkinningDeferred = false;
+	}
 
-	if ( !gpuPrepared && needsLighting && !tri->tangentsCalculated && sourceVerts == tri->verts ) {
+	if ( !gpuPrepared && needsLighting && !tri->tangentsCalculated && sourceVerts == tri->verts
+		&& !tri->gpuSkinningDeferred ) {
 		R_DeriveTangents( tri );
 		sourceVerts = tri->verts;
 	}
@@ -313,6 +325,7 @@ bool R_CreatePackedSurfaceFrameCaches( srfTriangles_t *tri, bool needsLighting, 
 		tri->ambientCache = vertexCache.AllocFrameTemp( sourceVerts,
 			tri->numVerts * sizeof( sourceVerts[0] ) );
 		if ( !tri->ambientCache ) {
+			tri->gpuSkinningDeferred = false;
 			return false;
 		}
 	}
@@ -367,6 +380,7 @@ static srfTriangles_t *R_CreateFrameSubmitTri( srfTriangles_t *tri, bool needsLi
 	// dynamic-model snapshot. It must never free the source allocation.
 	submitTri->gpuSkinningJointPaletteAlloc = NULL;
 	submitTri->numGpuSkinningJointPaletteAllocJoints = 0;
+	submitTri->gpuSkinningDeferred = false;
 	// sourceVerts may be a re-ordered packed copy: never pair it with the
 	// source surface's captured pose
 	submitTri->previousPositions = NULL;

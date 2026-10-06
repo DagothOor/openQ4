@@ -860,6 +860,14 @@ static void R_ExpandDeform( drawSurf_t *surf ) {
 		newTri->verts = ac;
 		R_DeriveTangents( newTri, false );
 		newTri->verts = NULL;
+	} else if ( !tri->tangentsCalculated ) {
+		// A GPU-skinned pose (or a deferred basis) leaves the CPU vertices with
+		// current positions only. Derive the basis into the copy over the source
+		// topology, so seams and mirrored vertices still share their normals.
+		srfTriangles_t basisTri = *tri;
+		basisTri.verts = ac;
+		basisTri.facePlanes = NULL;
+		R_DeriveTangents( &basisTri, false );
 	}
 #else
 	newTri->numVerts = tri->numVerts;

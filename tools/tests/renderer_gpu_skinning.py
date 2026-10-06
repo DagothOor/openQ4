@@ -622,11 +622,212 @@ def validate_paired_evidence_verifier() -> None:
         )
 
 
+def validate_admission_cost_contract() -> None:
+    """GPU admission must not cost the CPU work it exists to remove."""
+    header = read(RENDERER / "GpuSkinning.h")
+    model_header = read(RENDERER / "Model.h")
+    shared = read(RENDERER / "GpuSkinning.cpp")
+    md5 = read(RENDERER / "Model_md5.cpp")
+    md5r = read(RENDERER / "Model_md5r.cpp")
+    geometry = read(ROOT / "src" / "render_geo" / "RenderGeometryTriSurf.cpp")
+    tr_light = read(RENDERER / "tr_light.cpp")
+    deform = read(RENDERER / "tr_deform.cpp")
+    vk = read(RENDERER / "Vulkan" / "vk_GuiExecutor.cpp")
+
+    # Immutable sidecars are validated once, when the model packs them; every
+    # later use (admission, scene packets, stencil volumes, backend dispatch)
+    # only proves the palette still covers the sidecar's joint bound.
+    require_all(
+        header + model_header,
+        (
+            "int\t\t\t\t\tprevalidatedJoints;",
+            "int sidecarJointBound = 0 );",
+            "gpuSkinningPrevalidatedJoints;",
+            "bool\t\t\t\t\t\tgpuSkinningDeferred;",
+        ),
+        "prevalidated sidecar and deferred-basis ABI",
+    )
+    validate = braced_body(
+        shared, "gpuSkinningFallbackReason_t R_GpuSkinning_ValidateSurface(", "surface validation"
+    )
+    require_order(
+        validate,
+        (
+            "surface.palette.generation != rg_gpuSkinningGeneration",
+            "if ( surface.prevalidatedJoints > 0 )",
+            "surface.prevalidatedJoints <= surface.palette.numJoints",
+            "for ( int vertexIndex = 0; vertexIndex < surface.numVerts; ++vertexIndex )",
+        ),
+        "stale-palette gate before the O(1) prevalidated bound",
+    )
+    attach = braced_body(shared, "bool R_GpuSkinning_AttachSurfaceContract(", "surface attachment")
+    require_all(
+        attach,
+        (
+            "if ( sidecarJointBound > numJoints )",
+            "GPU_SKINNING_FALLBACK_JOINT_INDEX",
+            "tri->gpuSkinningPrevalidatedJoints = Max( sidecarJointBound, 0 );",
+        ),
+        "attach-time sidecar bound",
+    )
+    require(
+        braced_body(shared, "bool R_GpuSkinning_GetSurface(", "surface lookup"),
+        "surface.prevalidatedJoints = tri->gpuSkinningPrevalidatedJoints;",
+        "prevalidated bound reaching validation",
+    )
+    self_test = braced_body(shared, "bool R_GpuSkinning_RunSelfTest(", "GPU skinning self-test")
+    require_all(
+        self_test,
+        ("outOfRange.jointIndices[0] = 7;", "surface.prevalidatedJoints = 5;"),
+        "self-tested per-vertex and prevalidated joint bounds",
+    )
+    require_all(
+        md5,
+        (
+            "static_cast<int>( result.maxJointIndex ) + 1",
+            "GPU_SKINNING_JOINT_FLOATS, false, gpuSkinningFallback, gpuSkinningJointBound );",
+        ),
+        "classic MD5 packed joint bound",
+    )
+    require_all(
+        md5r,
+        (
+            "static_cast<int>( packResult.maxJointIndex ) + 1",
+            "mesh.gpuSkinningFallback, mesh.gpuSkinningJointBound );",
+        ),
+        "MD5R packed joint bound",
+    )
+    clear = braced_body(
+        geometry, "void R_ClearStaticGpuSkinningJointPalette(", "contract clear"
+    )
+    require_all(
+        clear,
+        ("tri->gpuSkinningPrevalidatedJoints = 0;", "tri->gpuSkinningDeferred = false;"),
+        "contract clear resets prevalidation and deferral",
+    )
+    reference = braced_body(
+        geometry, "void R_ReferenceStaticGpuSkinning(", "GPU skinning reference ownership"
+    )
+    require(reference, "tri->gpuSkinningDeferred = false;", "reference never inherits a deferred stream")
+
+    # Vulkan cannot dispatch while the front end builds models. An accepted
+    # surface skips the CPU basis derivation the compute pass replaces; the
+    # backend completes the CPU stream before any draw if the dispatch is refused.
+    ambient = braced_body(tr_light, "bool R_CreateAmbientCache(", "ambient cache creation")
+    require_order(
+        ambient,
+        (
+            "tri->gpuSkinningDeferred = false;",
+            "R_GpuSkinning_PrepareAmbientCache( tri, needsLighting )",
+            "if ( needsLighting && !tri->tangentsCalculated && !tri->gpuSkinningDeferred )",
+            "vertexCache.Alloc( tri->verts",
+        ),
+        "deferred basis skips only the derivation",
+    )
+    packed = braced_body(
+        tr_light, "bool R_CreatePackedSurfaceFrameCaches(", "packed frame caches"
+    )
+    require_order(
+        packed,
+        (
+            "tri->gpuSkinningDeferred = false;",
+            "R_GpuSkinning_PrepareAmbientCache( tri, needsLighting )",
+            "if ( sourceVerts != tri->verts )",
+            "&& !tri->gpuSkinningDeferred ) {",
+        ),
+        "packed copies keep the established CPU basis",
+    )
+    hook = braced_body(
+        vk, "bool R_BackendGpuSkinning_PrepareAmbientCache(", "Vulkan admission hook"
+    )
+    require_order(
+        hook,
+        (
+            "!vkGpuSkinningBackendRequested || !vkExec.gpuSkinningAvailable",
+            "GPU_SKINNING_FALLBACK_BACKEND_UNAVAILABLE",
+            "tri->gpuSkinningDeferred = true;",
+            "return false;",
+        ),
+        "Vulkan defers only when its compute path exists",
+    )
+    prepare = braced_body(
+        vk, "static bool VK_GpuSkinning_PrepareView(", "Vulkan view preparation"
+    )
+    require_order(
+        prepare,
+        ("VK_GpuSkinning_DispatchView( viewDef )", "VK_GpuSkinning_RepairDeferredView( viewDef );"),
+        "dispatch before deferred-basis repair",
+    )
+    repair_view = braced_body(
+        vk, "static void VK_GpuSkinning_RepairDeferredView(", "Vulkan deferred view repair"
+    )
+    require_all(
+        repair_view,
+        (
+            "viewDef->drawSurfs[ surfNum ]",
+            "vLight->localInteractions",
+            "vLight->globalInteractions",
+            "vLight->translucentInteractions",
+            "surf->nextOnLight",
+        ),
+        "every lit and ambient draw of the view",
+    )
+    repair_geometry = braced_body(
+        vk, "static void VK_GpuSkinning_RepairDeferredGeometry(", "Vulkan deferred geometry"
+    )
+    require_order(
+        repair_geometry,
+        (
+            "geo->ambientSurface != NULL ? geo->ambientSurface : geo",
+            "if ( !tri->gpuSkinningDeferred )",
+            "vkExec.gpuSkinningMemo[ memoIndex ].vertexOffset >= 0",
+            "VK_GpuSkinning_RepairDeferredSurface( tri );",
+        ),
+        "repair only surfaces the compute pass did not cover",
+    )
+    repair_surface = braced_body(
+        vk, "static void VK_GpuSkinning_RepairDeferredSurface(", "Vulkan deferred surface repair"
+    )
+    require_order(
+        repair_surface,
+        (
+            "tri->gpuSkinningDeferred = false;",
+            "R_DeriveTangents( tri );",
+            "VK_Exec_CPUCacheValid( tri->ambientCache, false, vertexBytes )",
+            "memcpy( vertexCache.Position( tri->ambientCache ), tri->verts, vertexBytes );",
+            "vkExec.vertMemo[ memoIndex ].vertKey = NULL;",
+        ),
+        "complete CPU stream replaces any ring copy of the incomplete one",
+    )
+    require_all(
+        vk,
+        ("deferred=%llu cpuRepairs=%llu",),
+        "Vulkan deferral diagnostics",
+    )
+
+    # A CPU expand deform offsets along normals the GPU-skinned pose lacks.
+    expand = braced_body(deform, "static void R_ExpandDeform(", "expand deform")
+    require_order(
+        expand,
+        (
+            "R_CopyDeformSourceTriangles( tri, newTri, ac );",
+            "} else if ( !tri->tangentsCalculated ) {",
+            "srfTriangles_t basisTri = *tri;",
+            "basisTri.verts = ac;",
+            "basisTri.facePlanes = NULL;",
+            "R_DeriveTangents( &basisTri, false );",
+            "ac[i].xyz += ac[i].normal * dist;",
+        ),
+        "expand deform derives the basis of a GPU-skinned pose",
+    )
+
+
 def main() -> int:
     validate_shared_renderer_contracts()
     validate_four_weight_contract()
     validate_model_integration_and_ownership()
     validate_backend_execution_and_cpu_invariants()
+    validate_admission_cost_contract()
     validate_runtime_commands_matrix_and_docs()
     validate_source_discovery()
     validate_paired_evidence_verifier()

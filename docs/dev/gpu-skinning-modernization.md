@@ -55,6 +55,14 @@ compute support, and backend submission failures all select the complete CPU
 path. The fallback reason remains visible in diagnostics and is never treated
 as successful GPU admission.
 
+The per-vertex rules are proven once, when the model packs its immutable
+sidecar. The model records the highest joint any influence uses, and the
+attach rejects a palette that cannot cover it. Every later use of the surface
+(admission, scene packets, stencil-volume classification, backend dispatch)
+then checks only the palette header, generation, and that bound, instead of
+walking every vertex several times per frame. A sidecar without a recorded
+bound keeps the full per-vertex validation.
+
 ## Ownership and CPU invariants
 
 Immutable bind-pose and four-weight sidecars are owned by the source render
@@ -109,13 +117,33 @@ Host-to-compute and compute-to-vertex barriers make the ownership transition
 explicit. The separate stencil-shadow binding never consumes the computed
 stream.
 
+Because the front end cannot record compute, Vulkan accepts an admitted
+surface as *deferred* instead of returning a prepared stream. The CPU ambient
+cache it still allocates (the draw memo key and the fallback) then carries the
+current positions only: the front end skips the normal/tangent derivation that
+the compute pass replaces. Before the view's first draw, every deferred
+surface reachable from the view's surface list or a light's interaction chains
+that the dispatch did not cover (disabled, unavailable, out of ring or memo
+space, refused validation) is completed on the CPU, its cache rewritten, and
+any ring copy of the incomplete stream retired. Shadow-map casters read only
+positions, which a deferred stream already holds. Before this, a Vulkan
+GPU-skinned surface paid for both the compute pass and the full CPU tangent
+derivation, so enabling the feature could cost CPU time instead of saving it.
+
+A CPU `deform expand` offsets along vertex normals that a GPU-skinned pose does
+not carry on the CPU, so it derives the basis into its own copy over the source
+topology (seams and mirrored vertices still share their normals) whenever the
+source tangents were not calculated.
+
 ## Controls and diagnostics
 
 `r_gpuSkinning` is archived, experimental, and defaults to `0`. It is safe to
 toggle for an A/B capture; a renderer restart is not required. `gfxInfo`
 reports backend availability and the shared counters distinguish eligible,
 admitted, dispatched, and CPU-fallback work, including vertices, joints,
-palette bytes, and fallback reasons.
+palette bytes, and fallback reasons. The Vulkan line adds `deferred` (surfaces
+accepted without a CPU basis) and `cpuRepairs` (deferred surfaces the dispatch
+did not cover and the CPU completed).
 
 The dependency-light `RendererContractsTest` validates ordered/repeated passes,
 clip conversion, viewport orientation, semantic layouts, and typed buffer

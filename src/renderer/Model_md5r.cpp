@@ -5126,7 +5126,7 @@ static bool R_MD5R_AttachGpuSkinningContract( const rvMD5RMesh &mesh,
 	return R_GpuSkinning_AttachSurfaceContract( tri, mesh.gpuBindPoseVerts.Ptr(),
 		mesh.gpuSkinningVerts.Ptr(), sidecarVertexCount,
 		tri->skinToModelTransforms, tri->numSkinToModelTransforms, 16, true,
-		mesh.gpuSkinningFallback );
+		mesh.gpuSkinningFallback, mesh.gpuSkinningJointBound );
 }
 #endif
 
@@ -5142,6 +5142,7 @@ void rvRenderModelMD5R::BuildGpuSkinningSidecar( rvMD5RMesh &mesh ) const {
 	mesh.gpuBindPoseVerts.Clear();
 	mesh.gpuSkinningVerts.Clear();
 	mesh.gpuSkinningSourceVerts = 0;
+	mesh.gpuSkinningJointBound = 0;
 	mesh.gpuSkinningFallback = GPU_SKINNING_FALLBACK_NONE;
 
 	const idList<rvMD5RVertexBufferDesc> &vertexBuffers = GetVertexBuffers();
@@ -5206,9 +5207,13 @@ void rvRenderModelMD5R::BuildGpuSkinningSidecar( rvMD5RMesh &mesh ) const {
 
 				gpuSkinningPackResult_t packResult;
 				if ( !R_GpuSkinning_PackVertexExact( influences, GPU_SKINNING_INFLUENCES,
-					totalTransformCount, true, mesh.gpuSkinningVerts[destVertexIndex], packResult )
-					&& mesh.gpuSkinningFallback == GPU_SKINNING_FALLBACK_NONE ) {
-					mesh.gpuSkinningFallback = packResult.reason;
+					totalTransformCount, true, mesh.gpuSkinningVerts[destVertexIndex], packResult ) ) {
+					if ( mesh.gpuSkinningFallback == GPU_SKINNING_FALLBACK_NONE ) {
+						mesh.gpuSkinningFallback = packResult.reason;
+					}
+				} else {
+					mesh.gpuSkinningJointBound = Max( mesh.gpuSkinningJointBound,
+						static_cast<int>( packResult.maxJointIndex ) + 1 );
 				}
 			}
 			destVertexBase += primBatch.drawGeoSpec.vertexCount;

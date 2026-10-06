@@ -808,6 +808,7 @@ idMD5Mesh::idMD5Mesh() {
 	surfaceNum		= 0;
 	currentTime		= 0.0f;
 	gpuSkinningNumJoints = 0;
+	gpuSkinningJointBound = 0;
 	gpuSkinningFallback = GPU_SKINNING_FALLBACK_MISSING_SKIN_VERTICES;
 }
 
@@ -1080,6 +1081,7 @@ void idMD5Mesh::BuildGpuSkinningSidecar( int numJoints ) {
 	gpuBindPoseVerts.Clear();
 	gpuSkinningVerts.Clear();
 	gpuSkinningNumJoints = numJoints;
+	gpuSkinningJointBound = 0;
 	gpuSkinningFallback = GPU_SKINNING_FALLBACK_NONE;
 	if ( deformInfo == NULL || baseVectors == NULL || weights == NULL
 		|| deformInfo->numOutputVerts <= 0 ) {
@@ -1123,9 +1125,13 @@ void idMD5Mesh::BuildGpuSkinningSidecar( int numJoints ) {
 
 		gpuSkinningPackResult_t result;
 		if ( !R_GpuSkinning_PackVertexExact( influences.Ptr(), influences.Num(), numJoints,
-			false, gpuSkinningVerts[vertexIndex], result )
-			&& gpuSkinningFallback == GPU_SKINNING_FALLBACK_NONE ) {
-			gpuSkinningFallback = result.reason;
+			false, gpuSkinningVerts[vertexIndex], result ) ) {
+			if ( gpuSkinningFallback == GPU_SKINNING_FALLBACK_NONE ) {
+				gpuSkinningFallback = result.reason;
+			}
+		} else {
+			gpuSkinningJointBound = Max( gpuSkinningJointBound,
+				static_cast<int>( result.maxJointIndex ) + 1 );
 		}
 		weightCursor += groupCount;
 	}
@@ -1260,7 +1266,7 @@ void idMD5Mesh::UpdateSurface( const struct renderEntity_s *ent, const idJointMa
 		gpuSkinningContractAttached = R_GpuSkinning_AttachSurfaceContract(
 			tri, gpuBindPoseVerts.Ptr(), gpuSkinningVerts.Ptr(), gpuBindPoseVerts.Num(),
 			entJoints != NULL ? entJoints[0].ToFloatPtr() : NULL, gpuSkinningNumJoints,
-			GPU_SKINNING_JOINT_FLOATS, false, gpuSkinningFallback );
+			GPU_SKINNING_JOINT_FLOATS, false, gpuSkinningFallback, gpuSkinningJointBound );
 	}
 
 	const uint64 cpuSkinStart = R_GpuSkinning_ReadMicroseconds();

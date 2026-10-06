@@ -734,6 +734,8 @@ void R_ClearStaticGpuSkinningJointPalette( srfTriangles_t *tri ) {
 	tri->gpuSkinningPaletteGeneration = 0;
 	tri->gpuSkinningFallbackReason = 0;
 	tri->gpuSkinningSignedWeights = false;
+	tri->gpuSkinningPrevalidatedJoints = 0;
+	tri->gpuSkinningDeferred = false;
 }
 
 /*
@@ -798,6 +800,9 @@ void R_ReferenceStaticGpuSkinning( srfTriangles_t *tri, const srfTriangles_t *re
 	tri->gpuSkinningPaletteGeneration = reference->gpuSkinningPaletteGeneration;
 	tri->gpuSkinningFallbackReason = reference->gpuSkinningFallbackReason;
 	tri->gpuSkinningSignedWeights = reference->gpuSkinningSignedWeights;
+	tri->gpuSkinningPrevalidatedJoints = reference->gpuSkinningPrevalidatedJoints;
+	// deferral describes the reference's own ambient stream, never this one
+	tri->gpuSkinningDeferred = false;
 }
 
 /*
@@ -819,6 +824,8 @@ bool R_CopyStaticGpuSkinning( srfTriangles_t *tri, const srfTriangles_t *source 
 	tri->gpuSkinningFallbackReason = source->gpuSkinningFallbackReason;
 	tri->gpuSkinningSignedWeights = source->gpuSkinningSignedWeights;
 	tri->gpuSkinningPaletteGeneration = source->gpuSkinningPaletteGeneration;
+	tri->gpuSkinningPrevalidatedJoints = source->gpuSkinningPrevalidatedJoints;
+	tri->gpuSkinningDeferred = false;
 
 	if ( source->gpuSkinningJointPalette == NULL || source->numGpuSkinningJoints <= 0 ) {
 		tri->gpuSkinningJointPalette = NULL;

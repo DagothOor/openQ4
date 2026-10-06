@@ -183,7 +183,7 @@ bool R_GpuSkinning_AttachSurfaceContract( srfTriangles_s *tri,
 	const idDrawVert *bindPoseVerts, const gpuSkinningVertex_t *skinVerts,
 	int numVerts, const float *jointMatrices, int numJoints,
 	int sourceMatrixStrideFloats, bool signedWeights,
-	gpuSkinningFallbackReason_t sourceFallback ) {
+	gpuSkinningFallbackReason_t sourceFallback, int sidecarJointBound ) {
 	if ( tri == NULL ) {
 		return false;
 	}
@@ -206,6 +206,13 @@ bool R_GpuSkinning_AttachSurfaceContract( srfTriangles_s *tri,
 	}
 	if ( jointMatrices == NULL || numJoints <= 0 || numJoints > GPU_SKINNING_MAX_JOINTS ) {
 		R_GpuSkinning_ClearSurfaceContract( tri, GPU_SKINNING_FALLBACK_JOINT_COUNT );
+		return false;
+	}
+	// A prevalidated sidecar names the highest joint any of its influences
+	// uses; a palette that cannot cover it fails here once instead of on
+	// every per-vertex validation of every use.
+	if ( sidecarJointBound > numJoints ) {
+		R_GpuSkinning_ClearSurfaceContract( tri, GPU_SKINNING_FALLBACK_JOINT_INDEX );
 		return false;
 	}
 	if ( sourceMatrixStrideFloats < GPU_SKINNING_JOINT_FLOATS
@@ -232,6 +239,7 @@ bool R_GpuSkinning_AttachSurfaceContract( srfTriangles_s *tri,
 	tri->gpuSkinningPaletteGeneration = rg_gpuSkinningGeneration;
 	tri->gpuSkinningFallbackReason = GPU_SKINNING_FALLBACK_NONE;
 	tri->gpuSkinningSignedWeights = signedWeights;
+	tri->gpuSkinningPrevalidatedJoints = Max( sidecarJointBound, 0 );
 	return true;
 }
 
@@ -264,6 +272,14 @@ gpuSkinningFallbackReason_t R_GpuSkinning_ValidateSurface(
 	}
 	if ( surface.palette.generation == 0 || surface.palette.generation != rg_gpuSkinningGeneration ) {
 		return GPU_SKINNING_FALLBACK_STALE_PALETTE;
+	}
+	if ( surface.prevalidatedJoints > 0 ) {
+		// The model validated every influence of this immutable sidecar when it
+		// built it, and the attach copied only finite joints. A surface is
+		// checked several times per frame (admission, scene packets, stencil
+		// volumes, backend dispatch), so only prove the palette still covers it.
+		return surface.prevalidatedJoints <= surface.palette.numJoints
+			? GPU_SKINNING_FALLBACK_NONE : GPU_SKINNING_FALLBACK_JOINT_INDEX;
 	}
 	for ( int jointIndex = 0; jointIndex < surface.palette.numJoints; ++jointIndex ) {
 		const float *matrix = surface.palette.matrices
@@ -313,6 +329,7 @@ bool R_GpuSkinning_GetSurface( const srfTriangles_s *tri,
 	memset( &surface.palette.buffer, 0, sizeof( surface.palette.buffer ) );
 	surface.fallbackReason = static_cast<gpuSkinningFallbackReason_t>( tri->gpuSkinningFallbackReason );
 	surface.signedWeights = tri->gpuSkinningSignedWeights;
+	surface.prevalidatedJoints = tri->gpuSkinningPrevalidatedJoints;
 	surface.fallbackReason = R_GpuSkinning_ValidateSurface( surface );
 	return surface.fallbackReason == GPU_SKINNING_FALLBACK_NONE;
 }
@@ -593,6 +610,31 @@ bool R_GpuSkinning_RunSelfTest( void ) {
 	if ( R_GpuSkinning_ValidateSurface( surface ) != GPU_SKINNING_FALLBACK_JOINT_COUNT ) {
 		return false;
 	}
+	surface.palette.matrixStrideFloats = GPU_SKINNING_JOINT_FLOATS;
+
+	// A prevalidated sidecar is proven once at build: per use, only the bound
+	// against the palette counts, and the stale-palette gate still applies.
+	gpuSkinningVertex_t outOfRange = packed;
+	outOfRange.jointIndices[0] = 7;
+	surface.skinVerts = &outOfRange;
+	if ( R_GpuSkinning_ValidateSurface( surface ) != GPU_SKINNING_FALLBACK_JOINT_INDEX ) {
+		return false;
+	}
+	surface.skinVerts = &packed;
+	surface.prevalidatedJoints = 2;
+	if ( R_GpuSkinning_ValidateSurface( surface ) != GPU_SKINNING_FALLBACK_NONE ) {
+		return false;
+	}
+	surface.prevalidatedJoints = 5;
+	if ( R_GpuSkinning_ValidateSurface( surface ) != GPU_SKINNING_FALLBACK_JOINT_INDEX ) {
+		return false;
+	}
+	surface.prevalidatedJoints = 2;
+	surface.palette.generation = rg_gpuSkinningGeneration + 1;
+	if ( R_GpuSkinning_ValidateSurface( surface ) != GPU_SKINNING_FALLBACK_STALE_PALETTE ) {
+		return false;
+	}
+	surface.palette.generation = rg_gpuSkinningGeneration;
 
 	return R_GpuSkinning_CompareVertexCPU( bindPose, bindPose, 0.0f, 0.0f );
 }

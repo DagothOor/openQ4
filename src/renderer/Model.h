@@ -206,6 +206,13 @@ typedef struct srfTriangles_s {
 	unsigned int				gpuSkinningPaletteGeneration;
 	int							gpuSkinningFallbackReason;
 	bool						gpuSkinningSignedWeights;
+	// Joint bound the model validated every influence of its immutable skin
+	// sidecar against when it built it (0 = validate each use).
+	int							gpuSkinningPrevalidatedJoints;
+	// A backend that skins this surface later in the frame (Vulkan) accepted
+	// it: the CPU ambient stream holds current positions only, and the backend
+	// completes it on the CPU before any draw if its dispatch is refused.
+	bool						gpuSkinningDeferred;
 
 	// Temporal reprojection of posed (skinned) surfaces. positionsFrame is the
 	// renderer frame whose pose verts holds; just before the next pose replaces

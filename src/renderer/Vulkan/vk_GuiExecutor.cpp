@@ -574,6 +574,8 @@ typedef struct vkGuiExecutor_s {
 	uint64				gpuSkinningRingFallbacks;
 	uint64				gpuSkinningMemoFallbacks;
 	uint64				gpuSkinningValidationFallbacks;
+	uint64				gpuSkinningDeferredSurfaces;
+	uint64				gpuSkinningDeferredRepairs;
 } vkGuiExecutor_t;
 
 static vkGuiExecutor_t vkExec;
@@ -7417,7 +7419,7 @@ static int VK_GpuSkinning_FindMemo( const void *ambientKey, bool reserve,
 
 /*
 ====================
-VK_GpuSkinning_PrepareView
+VK_GpuSkinning_DispatchView
 
 The front end cannot dispatch while building dynamic models, so Vulkan keeps
 its CPU ambient cache as a correctness fallback. Immediately before a 3D view
@@ -7428,7 +7430,7 @@ memo key, so depth, interactions, ambient passes, shadow maps, subviews, and
 view models all consume the same result without learning a skinning ABI.
 ====================
 */
-static bool VK_GpuSkinning_PrepareView( const viewDef_t *viewDef ) {
+static bool VK_GpuSkinning_DispatchView( const viewDef_t *viewDef ) {
 	if ( viewDef == NULL || viewDef->drawSurfs == NULL || viewDef->numDrawSurfs <= 0
 			|| !r_gpuSkinning.GetBool() || !vkGpuSkinningBackendRequested
 			|| !vkExec.gpuSkinningAvailable || !vkExec.frameOpen
@@ -7662,6 +7664,111 @@ static bool VK_GpuSkinning_PrepareView( const viewDef_t *viewDef ) {
 		common->Printf( "Vulkan: GPU skinning dispatched %d surfaces (%llu vertices)\n",
 			dispatchCount, static_cast<unsigned long long>( vkExec.gpuSkinningVertices ) );
 	}
+	return true;
+}
+
+static bool VK_Exec_CPUCacheValid( const vertCache_t *cache,
+		const bool indexBuffer, const size_t requiredBytes );
+
+/*
+====================
+VK_GpuSkinning_RepairDeferredSurface
+
+The front end skipped the normal/tangent derivation of a surface it handed to
+the compute pass. When that pass did not produce its stream, finish the
+complete CPU stream the front end would otherwise have built, before any draw
+of this view reads it, and retire any ring copy of the incomplete one.
+====================
+*/
+static void VK_GpuSkinning_RepairDeferredSurface( srfTriangles_t *tri ) {
+	tri->gpuSkinningDeferred = false;
+	vkExec.gpuSkinningDeferredRepairs++;
+	if ( tri->verts == NULL || tri->numVerts <= 0 ) {
+		return;
+	}
+	if ( !tri->tangentsCalculated ) {
+		R_DeriveTangents( tri );
+	}
+	const size_t vertexBytes = static_cast<size_t>( tri->numVerts ) * sizeof( idDrawVert );
+	if ( !VK_Exec_CPUCacheValid( tri->ambientCache, false, vertexBytes ) ) {
+		return;
+	}
+	memcpy( vertexCache.Position( tri->ambientCache ), tri->verts, vertexBytes );
+	const unsigned int memoIndex = static_cast<unsigned int>(
+			( reinterpret_cast<uintptr_t>( tri->ambientCache ) >> 4 )
+			& ( VK_TRI_MEMO_SIZE - 1 ) );
+	if ( vkExec.vertMemo[ memoIndex ].vertKey == tri->ambientCache ) {
+		vkExec.vertMemo[ memoIndex ].vertKey = NULL;
+	}
+}
+
+static void VK_GpuSkinning_RepairDeferredGeometry( const srfTriangles_t *geo ) {
+	if ( geo == NULL ) {
+		return;
+	}
+	// light-tris chains share their ambient surface's vertex stream
+	srfTriangles_t *tri = const_cast<srfTriangles_t *>(
+			geo->ambientSurface != NULL ? geo->ambientSurface : geo );
+	if ( !tri->gpuSkinningDeferred ) {
+		return;
+	}
+	bool existing = false;
+	const int memoIndex = VK_GpuSkinning_FindMemo( tri->ambientCache, false, existing );
+	if ( existing && memoIndex >= 0
+			&& vkExec.gpuSkinningMemo[ memoIndex ].vertexOffset >= 0 ) {
+		return;
+	}
+	VK_GpuSkinning_RepairDeferredSurface( tri );
+}
+
+/*
+====================
+VK_GpuSkinning_RepairDeferredView
+
+Every lit or ambient draw of the view reaches its vertex stream through the
+view's surface list or a light's interaction chains (a deformed copy replaces
+its source in the former, so the source is only reachable through the
+latter). Shadow-map casters read positions alone, which a deferred stream
+already holds.
+====================
+*/
+static void VK_GpuSkinning_RepairDeferredView( const viewDef_t *viewDef ) {
+	if ( viewDef == NULL ) {
+		return;
+	}
+	if ( viewDef->drawSurfs != NULL ) {
+		for ( int surfNum = 0; surfNum < viewDef->numDrawSurfs; ++surfNum ) {
+			const drawSurf_t *drawSurf = viewDef->drawSurfs[ surfNum ];
+			VK_GpuSkinning_RepairDeferredGeometry( drawSurf != NULL ? drawSurf->geo : NULL );
+		}
+	}
+	for ( const viewLight_t *vLight = viewDef->viewLights; vLight != NULL; vLight = vLight->next ) {
+		const drawSurf_t *chains[ 3 ] = {
+			vLight->localInteractions, vLight->globalInteractions,
+			vLight->translucentInteractions
+		};
+		for ( int chain = 0; chain < 3; ++chain ) {
+			for ( const drawSurf_t *surf = chains[ chain ]; surf != NULL; surf = surf->nextOnLight ) {
+				VK_GpuSkinning_RepairDeferredGeometry( surf->geo );
+			}
+		}
+	}
+}
+
+/*
+====================
+VK_GpuSkinning_PrepareView
+
+Dispatch the view's eligible surfaces, then complete on the CPU every deferred
+surface the dispatch did not cover (disabled, unavailable, out of ring or memo
+space, or refused validation). False means the view must be skipped.
+====================
+*/
+static bool VK_GpuSkinning_PrepareView( const viewDef_t *viewDef ) {
+	if ( !VK_GpuSkinning_DispatchView( viewDef ) ) {
+		return false;
+	}
+	VK_GpuSkinning_RepairDeferredView( viewDef );
 	return true;
 }
 
@@ -14513,6 +14620,9 @@ Vulkan cannot record compute while dynamic models are being built on the
 front end. Returning false from PrepareAmbientCache intentionally requests
 the established CPU cache as the fail-closed fallback; Draw3D can later
 replace its ring upload with compute output while a command buffer is active.
+An accepted surface is marked deferred, so that cache holds the current
+positions without the normal/tangent derivation the compute pass replaces;
+VK_GpuSkinning_PrepareView completes it on the CPU if the dispatch is refused.
 ====================
 */
 void R_BackendGpuSkinning_Init( const renderBackendCaps_t &caps ) {
@@ -14528,11 +14638,17 @@ void R_BackendGpuSkinning_Shutdown( void ) {
 
 bool R_BackendGpuSkinning_PrepareAmbientCache( srfTriangles_t *tri,
 		bool needsLighting ) {
-	(void)tri;
 	(void)needsLighting;
-	if ( vkExec.initialized
-			&& ( !vkGpuSkinningBackendRequested || !vkExec.gpuSkinningAvailable ) ) {
+	if ( !vkExec.initialized ) {
+		return false;
+	}
+	if ( !vkGpuSkinningBackendRequested || !vkExec.gpuSkinningAvailable ) {
 		R_GpuSkinning_RecordFallback( GPU_SKINNING_FALLBACK_BACKEND_UNAVAILABLE );
+		return false;
+	}
+	if ( tri != NULL ) {
+		tri->gpuSkinningDeferred = true;
+		vkExec.gpuSkinningDeferredSurfaces++;
 	}
 	return false;
 }
@@ -14543,13 +14659,16 @@ void R_BackendGpuSkinning_PrintGfxInfo( void ) {
 			: ( vkExec.initialized ? "unavailable" : "pending executor initialization" );
 	common->Printf(
 			"GPU skinning compute (Vulkan): %s, dispatches=%llu vertices=%llu "
-			"fallbacks(validation=%llu ring=%llu memo=%llu)\n",
+			"fallbacks(validation=%llu ring=%llu memo=%llu) "
+			"deferred=%llu cpuRepairs=%llu\n",
 			status,
 			static_cast<unsigned long long>( vkExec.gpuSkinningDispatches ),
 			static_cast<unsigned long long>( vkExec.gpuSkinningVertices ),
 			static_cast<unsigned long long>( vkExec.gpuSkinningValidationFallbacks ),
 			static_cast<unsigned long long>( vkExec.gpuSkinningRingFallbacks ),
-			static_cast<unsigned long long>( vkExec.gpuSkinningMemoFallbacks ) );
+			static_cast<unsigned long long>( vkExec.gpuSkinningMemoFallbacks ),
+			static_cast<unsigned long long>( vkExec.gpuSkinningDeferredSurfaces ),
+			static_cast<unsigned long long>( vkExec.gpuSkinningDeferredRepairs ) );
 }
 
 // Exercise the real attachment/capture path on the active device. The readback
