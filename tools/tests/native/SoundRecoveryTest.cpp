@@ -119,6 +119,24 @@ static void TargetsAndResolution() {
             CHECK(SoundRecovery_ValidateRealized(target,observed,e)==expected);
         }
     }
+    // The device's own layout (0) is realized by any concrete layout the device
+    // settles on, and leaves automatic HRTF to it; forced HRTF still means stereo.
+    for(int h=0;h<=2;++h) {
+        d=Data();d.requested.speakers=6;d.mode=SoundRecoveryMode::Surround51;d.hrtfPolicy=h;r=Record(d);
+        CHECK(SoundRecovery_BuildTarget(r,{0,false,48},target,e));
+        CHECK(target.Value()->mode==(h==2?SoundRecoveryMode::StereoHrtf:SoundRecoveryMode::DeviceLayout));
+        CHECK(SoundRecovery_Encode(target,f,e));SoundRecoveryRecord pending;CHECK(SoundRecovery_Decode(f,SoundRecoveryUse::PendingTarget,pending,e));
+        CHECK(pending.Value()->mode==target.Value()->mode&&pending.Value()->requested.speakers==0);
+        for(int mode=0;mode<9;++mode)for(bool on:{false,true}) {
+            auto a=d;a.requested={0,false,48};a.mode=SoundRecoveryMode(mode);a.hrtf=on?SoundRecoveryHrtf::ExactOn:SoundRecoveryHrtf::ExactOff;
+            a.hrtfSpecifier=on?"Default":"";SoundRecoveryRecord observed;
+            if(!SoundRecovery_BuildObserved(a,observed,e))continue;
+            const bool expected=h==2?(a.mode==SoundRecoveryMode::StereoHrtf&&on):(h!=1||!on);
+            CHECK(SoundRecovery_ValidateRealized(target,observed,e)==expected);
+        }
+    }
+    // An exact observation is always concrete.
+    d=Data();d.mode=SoundRecoveryMode::DeviceLayout;{SoundRecoveryRecord bad;CHECK(!SoundRecovery_BuildObserved(d,bad,e));}
     d=Data();r=Record(d);prior=target.Value();CHECK(!SoundRecovery_BuildTarget(r,{2,true,48},target,e));CHECK(target.Value()==prior);
     d.hrtfPolicy=2;d.hrtf=SoundRecoveryHrtf::ExactOn;d.hrtfSpecifier="Specific";r=Record(d);
     CHECK(!SoundRecovery_BuildTarget(r,{6,false,48},target,e));

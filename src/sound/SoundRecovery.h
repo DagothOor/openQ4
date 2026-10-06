@@ -15,7 +15,7 @@ using SoundRecoveryFields=std::map<std::string,SoundRecoveryValue>;
 enum class SoundRecoveryUse { Restore, PendingTarget, ConfirmedTarget };
 enum class SoundRecoveryForm { Exact, Request };
 enum class SoundRecoveryMode { Mono, Stereo, StereoBasic, StereoUhj, StereoHrtf,
-    Quad, Surround51, Surround61, Surround71, StereoFamily };
+    Quad, Surround51, Surround61, Surround71, StereoFamily, DeviceLayout };
 enum class SoundRecoveryHrtf { ExactOff, ExactOn, RequestOff, RequestOn, RequestAuto };
 struct SoundRecoveryProvider {
     std::string vendor{""}, renderer{""}, version{""};

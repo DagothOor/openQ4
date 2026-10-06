@@ -68,7 +68,7 @@ ALCdevice* device=reinterpret_cast<ALCdevice*>(0x1000); ALCcontext* context=rein
 ALenum alError=AL_NO_ERROR; ALCenum alcError=ALC_NO_ERROR;
 bool connected=true,support=true,resetResult=true,ignoreReset=false,resetFalseButApplied=false,efxSupport=true,filterMutation=false;
 int mode=ALC_STEREO_SOFT,hrtf=0,status=ALC_HRTF_DISABLED_SOFT,calls=0,writes=0,resets=0,failWrite=0;
-int stereoObserved=0,callbackAt=0,callbackKind=0,writesAtCallback=0;bool reentryRejected=false;
+int deviceLayout=ALC_STEREO_SOFT,stereoObserved=0,callbackAt=0,callbackKind=0,writesAtCallback=0;bool reentryRejected=false;
 SoundSettingsPolicy* callerPolicy=nullptr;SoundSettingsLease* callerLease=nullptr;
 SoundSettingsPolicy policyMutation{3,true,999};
 void Tick();
@@ -93,7 +93,7 @@ void AL_APIENTRY GenFilters(ALsizei n,ALuint* x) noexcept {for(int i=0;i<n;++i)i
 void AL_APIENTRY DelFilters(ALsizei n,const ALuint* x) noexcept {for(int i=0;i<n;++i)if(Write())filters.erase(x[i]);}
 void AL_APIENTRY Filteri(ALuint x,ALenum p,ALint v) noexcept {if(Write()&&(!filters.count(x)||p!=AL_FILTER_TYPE||v!=AL_FILTER_LOWPASS))alError=AL_INVALID_VALUE;}
 void AL_APIENTRY Filterf(ALuint x,ALenum p,ALfloat v) noexcept {if(Write()){if(!filters.count(x))alError=AL_INVALID_VALUE;else filters[x][p==AL_LOWPASS_GAIN?0:1]=v;}}
-ALCboolean ALC_APIENTRY Reset(ALCdevice*,const ALCint* attrs) noexcept {Tick();++resets;if(!resetResult&&!resetFalseButApplied)return ALC_FALSE;if(!ignoreReset){for(int i=0;attrs[i];i+=2){if(attrs[i]==ALC_OUTPUT_MODE_SOFT)mode=attrs[i+1]==ALC_STEREO_SOFT&&stereoObserved?stereoObserved:attrs[i+1];if(attrs[i]==ALC_HRTF_SOFT && attrs[i+1]!=ALC_DONT_CARE_SOFT)hrtf=attrs[i+1];}status=hrtf?ALC_HRTF_ENABLED_SOFT:ALC_HRTF_DISABLED_SOFT;}return resetResult?ALC_TRUE:ALC_FALSE;}
+ALCboolean ALC_APIENTRY Reset(ALCdevice*,const ALCint* attrs) noexcept {Tick();++resets;if(!resetResult&&!resetFalseButApplied)return ALC_FALSE;if(!ignoreReset){for(int i=0;attrs[i];i+=2){if(attrs[i]==ALC_OUTPUT_MODE_SOFT)mode=attrs[i+1]==ALC_ANY_SOFT?deviceLayout:attrs[i+1]==ALC_STEREO_SOFT&&stereoObserved?stereoObserved:attrs[i+1];if(attrs[i]==ALC_HRTF_SOFT && attrs[i+1]!=ALC_DONT_CARE_SOFT)hrtf=attrs[i+1];}status=hrtf?ALC_HRTF_ENABLED_SOFT:ALC_HRTF_DISABLED_SOFT;}return resetResult?ALC_TRUE:ALC_FALSE;}
 }
 extern "C" {
 ALenum AL_APIENTRY alGetError() noexcept {Fake::Tick();const auto e=Fake::alError;Fake::alError=AL_NO_ERROR;return e;}
@@ -145,7 +145,7 @@ static void ResetFixture(bool efx=false) {
 	auto& h=soundSystemLocal.hardware;h.openalDevice=Fake::device;h.openalContext=Fake::context;h.voices.resize(3);
 	Fake::context=reinterpret_cast<ALCcontext*>(0x2000);h.openalContext=Fake::context;Fake::alError=0;Fake::alcError=0;Fake::mode=ALC_STEREO_SOFT;Fake::hrtf=0;Fake::status=ALC_HRTF_DISABLED_SOFT;
 	Fake::connected=true;Fake::support=true;Fake::efxSupport=true;Fake::resetResult=true;Fake::ignoreReset=false;Fake::resetFalseButApplied=false;Fake::filterMutation=false;
-	Fake::calls=Fake::writes=Fake::resets=Fake::failWrite=0;Fake::stereoObserved=Fake::callbackAt=Fake::callbackKind=Fake::writesAtCallback=0;Fake::reentryRejected=false;Fake::listener=1;Fake::actual=Fake::defaultName="Physical";Fake::missingProc.clear();
+	Fake::calls=Fake::writes=Fake::resets=Fake::failWrite=0;Fake::deviceLayout=ALC_STEREO_SOFT;Fake::stereoObserved=Fake::callbackAt=Fake::callbackKind=Fake::writesAtCallback=0;Fake::reentryRejected=false;Fake::listener=1;Fake::actual=Fake::defaultName="Physical";Fake::missingProc.clear();
 	Fake::sources.clear();Fake::slots.clear();Fake::effects.clear();Fake::filters.clear();
 	Fake::callerPolicy=nullptr;Fake::callerLease=nullptr;
 	for(unsigned i=0;i<3;++i){h.voices[i].openalSource=i+1;h.voices[i].soundSettingsSourceGeneration=SoundSettings_SourceCreated();Fake::sources[i+1]={};h.voices[i].openalDirectFilter=20+i*2;h.voices[i].openalAuxFilter=21+i*2;Fake::filters[20+i*2]={1,1};Fake::filters[21+i*2]={1,1};}
@@ -157,11 +157,12 @@ static void Patch(const SoundSettingsPolicy& p){s_numberOfSpeakers.value=p.speak
 static SoundSettingsLease Begin(SoundSettingsPolicy target,SoundSettingsObservation& b){SoundSettingsLease l;CHECK(SoundSettings_Begin(1,2,target,l,b,error,sizeof(error)));CHECK(l.token&&l.owner==1&&l.request==2);return l;}
 static void Complete(SoundSettingsLease l){SoundSettingsObservation o;CHECK(!SoundSettings_Finish(l,o,error,sizeof(error)));soundSystemLocal.Render();const bool finished=SoundSettings_Finish(l,o,error,sizeof(error));if(!finished)std::fprintf(stderr,"finish: %s phase=%u gen=%llu route=%llu update=%llu attempted=%llu calls=%d writes=%d fail=%d\n",error,unsigned(state.phase),(unsigned long long)generation,(unsigned long long)state.routing.routingGeneration,(unsigned long long)state.routing.routingUpdate,(unsigned long long)state.attemptUpdate,Fake::calls,Fake::writes,Fake::failWrite);CHECK(finished);CHECK(o.routingUpdate>0&&o.routingGeneration==o.generation);CHECK(o.sourceCount==3);CHECK(!SoundSettings_BlockAutomaticRestart());}
 static void Positive() {
-	for(bool baseEfx:{false,true})for(bool targetEfx:{false,true})for(int speakers:{2,6})for(bool mute:{false,true}) {
-		ResetFixture(baseEfx);soundSystemLocal.muted=mute;SoundSettingsObservation b,o;SoundSettingsPolicy p{speakers,targetEfx,12};auto l=Begin(p,b);
+	for(bool baseEfx:{false,true})for(bool targetEfx:{false,true})for(int speakers:{0,2,6})for(bool mute:{false,true}) {
+		// The device's own layout (0) settles on whatever the endpoint offers.
+		ResetFixture(baseEfx);Fake::deviceLayout=ALC_SURROUND_7_1_SOFT;soundSystemLocal.muted=mute;SoundSettingsObservation b,o;SoundSettingsPolicy p{speakers,targetEfx,12};auto l=Begin(p,b);
 		CHECK(b.requested.efx==baseEfx&&b.efx==baseEfx&&b.muted==mute&&b.outputMode==ALC_STEREO_SOFT);
 		CHECK(Fake::writes==0&&b.sourceCount==3&&b.routingGeneration==0);Patch(p);CHECK(SoundSettings_TryApply(l,o,error,sizeof(error)));
-		CHECK(o.outputMode==(speakers==6?ALC_SURROUND_5_1_SOFT:ALC_STEREO_SOFT));CHECK(o.efx==targetEfx&&o.sourceCount==3);
+		CHECK(o.outputMode==(speakers==6?ALC_SURROUND_5_1_SOFT:speakers==2?ALC_STEREO_SOFT:ALC_SURROUND_7_1_SOFT));CHECK(o.efx==targetEfx&&o.sourceCount==3);
 		// Applying EFX off drops the area reverb slots and their sends before the shared slot.
 		CHECK((soundSystemLocal.hardware.areaReverbReleases>0)==!targetEfx);
 		for(unsigned i=0;i<3;++i){CHECK(o.sources[i].source==i+1);CHECK(o.sources[i].lifetime==soundSystemLocal.hardware.voices[i].soundSettingsSourceGeneration);CHECK(Fake::sources[i+1].slot==(targetEfx?o.slot:0));CHECK(Fake::sources[i+1].direct!=0);}
@@ -172,6 +173,11 @@ static void Positive() {
 	// that observed baseline when changing only the channel budget, and restore it.
 	ResetFixture();s_useEAXReverb.value=1;s_numberOfSpeakers.value=6;s_openALHRTF.value=2;Fake::mode=ALC_STEREO_HRTF_SOFT;Fake::hrtf=1;Fake::status=ALC_HRTF_ENABLED_SOFT;
 	l=Begin({6,true,8},b);Patch({6,true,8});CHECK(SoundSettings_TryApply(l,o,error,sizeof(error)));CHECK(!o.efx&&o.hrtf&&o.outputMode==ALC_STEREO_HRTF_SOFT&&Fake::resets==0);Patch(b.requested);CHECK(SoundSettings_TryRestore(l,o,error,sizeof(error)));Complete(l);
+	// Leaving forced 5.1 for the device's layout on headphones: the reset asks for
+	// any layout and leaves HRTF to OpenAL, which may switch it on.
+	ResetFixture();s_numberOfSpeakers.value=6;Fake::mode=ALC_SURROUND_5_1_SOFT;Fake::deviceLayout=ALC_STEREO_HRTF_SOFT;Fake::hrtf=1;
+	l=Begin({0,false,48},b);Patch({0,false,48});CHECK(SoundSettings_TryApply(l,o,error,sizeof(error)));CHECK(Fake::resets==1&&o.outputMode==ALC_STEREO_HRTF_SOFT&&o.hrtf);Complete(l);
+	CHECK(soundSystemLocal.hardware.openedSpeakerCount==0);
 }
 static void Negative() {
 	for(int which=0;which<12;++which){ResetFixture();SoundSettingsLease l{9,9,9};SoundSettingsObservation b;b.generation=777;

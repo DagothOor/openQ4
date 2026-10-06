@@ -34,7 +34,7 @@ If you have questions concerning this license or the applicable additional terms
 	#include "../../../doomclassic/doom/i_sound.h"
 #endif
 
-idCVar s_showLevelMeter( "s_showLevelMeter", "0", CVAR_BOOL | CVAR_ARCHIVE, "Show VU meter" );
+idCVar s_showLevelMeter( "s_showLevelMeter", "0", CVAR_BOOL, "Show VU meter" );
 idCVar s_meterTopTime( "s_meterTopTime", "1000", CVAR_INTEGER | CVAR_ARCHIVE, "How long (in milliseconds) peaks are displayed on the VU meter" );
 idCVar s_meterPosition( "s_meterPosition", "100 100 20 200", CVAR_ARCHIVE, "VU meter location (x y w h)" );
 idCVar s_device( "s_device", "-1", CVAR_INTEGER | CVAR_ARCHIVE, "Which audio device to use (listDevices to list, -1 for default)" );
@@ -49,6 +49,7 @@ static const char* OPENQ4_AUDIO_DEVICE_DEFAULT_CHOICE = "__OPENQ4_DEFAULT_AUDIO_
 static const int OPENQ4_OPENAL_HRTF_AUTO = 0;
 static const int OPENQ4_OPENAL_HRTF_OFF = 1;
 static const int OPENQ4_OPENAL_HRTF_ON = 2;
+static const int OPENQ4_OPENAL_SPEAKERS_DEVICE = 0;
 static const int OPENQ4_OPENAL_SPEAKERS_STEREO = 2;
 static const int OPENQ4_OPENAL_SPEAKERS_SURROUND = 6;
 
@@ -327,12 +328,21 @@ static const char* openQ4_HrtfModeName( const int mode )
 
 static int openQ4_GetSpeakerCount()
 {
-	return ( s_numberOfSpeakers.GetInteger() == OPENQ4_OPENAL_SPEAKERS_SURROUND ) ? OPENQ4_OPENAL_SPEAKERS_SURROUND : OPENQ4_OPENAL_SPEAKERS_STEREO;
+	const int speakers = s_numberOfSpeakers.GetInteger();
+	return ( speakers == OPENQ4_OPENAL_SPEAKERS_STEREO || speakers == OPENQ4_OPENAL_SPEAKERS_SURROUND ) ? speakers : OPENQ4_OPENAL_SPEAKERS_DEVICE;
 }
 
 static const char* openQ4_SpeakerCountName( const int speakerCount )
 {
-	return ( speakerCount == OPENQ4_OPENAL_SPEAKERS_SURROUND ) ? "5.1 surround" : "stereo";
+	switch( speakerCount )
+	{
+		case OPENQ4_OPENAL_SPEAKERS_STEREO:
+			return "stereo";
+		case OPENQ4_OPENAL_SPEAKERS_SURROUND:
+			return "5.1 surround";
+		default:
+			return "device layout";
+	}
 }
 
 #if defined( ALC_OUTPUT_MODE_SOFT ) && defined( ALC_ANY_SOFT ) && defined( ALC_STEREO_SOFT ) && defined( ALC_SURROUND_5_1_SOFT )
@@ -393,7 +403,15 @@ static ALCint openQ4_GetRequestedOutputMode()
 		return ALC_STEREO_HRTF_SOFT;
 	}
 #endif
-	return ( openQ4_GetSpeakerCount() == OPENQ4_OPENAL_SPEAKERS_SURROUND ) ? ALC_SURROUND_5_1_SOFT : ALC_STEREO_SOFT;
+	switch( openQ4_GetSpeakerCount() )
+	{
+		case OPENQ4_OPENAL_SPEAKERS_SURROUND:
+			return ALC_SURROUND_5_1_SOFT;
+		case OPENQ4_OPENAL_SPEAKERS_STEREO:
+			return ALC_STEREO_SOFT;
+		default:
+			return ALC_ANY_SOFT;
+	}
 }
 
 static const ALCint* openQ4_BuildOutputModeContextAttributes( ALCdevice* device, ALCint attributes[ 3 ] )
@@ -1618,7 +1636,7 @@ void idSoundHardware_OpenAL::Shutdown()
 	deferredUpdatesActive = false;
 	openedWithDefaultFallback = false;
 	openedHrtfMode = OPENQ4_OPENAL_HRTF_AUTO;
-	openedSpeakerCount = OPENQ4_OPENAL_SPEAKERS_SURROUND;
+	openedSpeakerCount = OPENQ4_OPENAL_SPEAKERS_DEVICE;
 	openedRequestedDeviceName.Clear();
 	openedActiveDeviceName.Clear();
 	openedDefaultDeviceName.Clear();

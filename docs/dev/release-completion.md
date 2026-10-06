@@ -19,6 +19,21 @@
   `openq4-sound-reverb-core`, `sound_settings.py` (a new mutant) and
   `sound_retail_reverb_contract.py` pin it.
 
+- [x] Audit the audio cvar defaults against Quake4.exe and Quake4Ded.exe 1.4.2
+  (their cvar objects hold name, default and description together) and modern
+  output devices. `s_numberOfSpeakers` defaulted to 6 and the three top
+  presets forced it, so OpenAL Soft opened 5.1 on headphones, Windows downmixed
+  it and automatic HRTF never engaged (seen on a Realtek headphone endpoint).
+  It now defaults to `0`, the device's own layout: no output-mode request, any
+  realized layout accepted by the checked settings and recovery paths (new
+  `device-layout` recovery mode), every preset sets 0, and the Audio menu row
+  reads `Auto;Off;On`. `s_radioChatterFraction` 0.5 was a guess; retail is
+  0.9. `s_quadraticFalloff` 1 was Doom 3's; retail is 0 and unarchived.
+  `s_openALEfxDebugMode` and `s_showLevelMeter` are no longer archived. A
+  one-time migration (`s_audioDefaultsMigrated`) moves the archived 6, 0.5 and
+  1. Every other audio default already matched retail or is openQ4-only and
+  sound. `sound_settings.py` and `sound_recovery.py` cover the device layout.
+
 - [x] PBR production readiness, Stage A: complete roughness and AO shading on
   both backends. Multiple-scattering energy compensation on every specular
   lobe, specular and multi-bounce occlusion, horizon occlusion, AO on authored

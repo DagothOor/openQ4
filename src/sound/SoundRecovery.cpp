@@ -26,7 +26,7 @@ bool Utf8(const std::string& value,bool required=false) noexcept {
     }
     return true;
 }
-bool Policy(SoundSettingsPolicy p) noexcept { return (p.speakers==2 || p.speakers==6) && p.maxEmitterChannels>=1 && p.maxEmitterChannels<=48; }
+bool Policy(SoundSettingsPolicy p) noexcept { return (p.speakers==0 || p.speakers==2 || p.speakers==6) && p.maxEmitterChannels>=1 && p.maxEmitterChannels<=48; }
 bool SamePolicy(SoundSettingsPolicy a,SoundSettingsPolicy b) noexcept { return a.speakers==b.speakers && a.efx==b.efx && a.maxEmitterChannels==b.maxEmitterChannels; }
 bool Provider(const SoundRecoveryProvider& p) noexcept { return Utf8(p.vendor,true)&&Utf8(p.renderer,true)&&Utf8(p.version,true); }
 const char* Mode(SoundRecoveryMode value) noexcept {
@@ -36,6 +36,7 @@ const char* Mode(SoundRecoveryMode value) noexcept {
     case SoundRecoveryMode::StereoHrtf:return "stereo-hrtf";case SoundRecoveryMode::Quad:return "quad";
     case SoundRecoveryMode::Surround51:return "surround-5.1";case SoundRecoveryMode::Surround61:return "surround-6.1";
     case SoundRecoveryMode::Surround71:return "surround-7.1";case SoundRecoveryMode::StereoFamily:return "stereo-family";
+    case SoundRecoveryMode::DeviceLayout:return "device-layout";
     } return nullptr;
 }
 const char* Hrtf(SoundRecoveryHrtf value) noexcept {
@@ -56,13 +57,13 @@ bool Valid(const SoundRecoveryData& d) noexcept {
     const bool on=d.hrtf==SoundRecoveryHrtf::ExactOn || d.hrtf==SoundRecoveryHrtf::RequestOn;
     const bool off=d.hrtf==SoundRecoveryHrtf::ExactOff || d.hrtf==SoundRecoveryHrtf::RequestOff;
     if (d.form==SoundRecoveryForm::Exact) {
-        if (d.mode==SoundRecoveryMode::StereoFamily || (!on && !off) ||
+        if (d.mode==SoundRecoveryMode::StereoFamily || d.mode==SoundRecoveryMode::DeviceLayout || (!on && !off) ||
             (d.hrtf!=SoundRecoveryHrtf::ExactOn && d.hrtf!=SoundRecoveryHrtf::ExactOff) || d.hrtfReason<0 || d.hrtfReason>65535) return false;
     } else if (d.hrtfReason!=0) return false;
     if (d.hrtf==SoundRecoveryHrtf::ExactOn ? d.hrtfSpecifier.empty() : !d.hrtfSpecifier.empty()) return false;
     if (d.mode==SoundRecoveryMode::StereoHrtf && !on) return false;
     if (on && d.mode!=SoundRecoveryMode::Stereo && d.mode!=SoundRecoveryMode::StereoHrtf && d.mode!=SoundRecoveryMode::StereoFamily) return false;
-    if (d.hrtf==SoundRecoveryHrtf::RequestAuto && d.mode!=SoundRecoveryMode::StereoFamily) return false;
+    if (d.hrtf==SoundRecoveryHrtf::RequestAuto && d.mode!=SoundRecoveryMode::StereoFamily && d.mode!=SoundRecoveryMode::DeviceLayout) return false;
     return true;
 }
 bool AllowedUse(const SoundRecoveryData& d,SoundRecoveryUse use) noexcept {
@@ -138,7 +139,8 @@ bool SoundRecovery_BuildTarget(const SoundRecoveryRecord& baseline,SoundSettings
                 if (before->hrtfPolicy==2) return Fail(error,"Surround and forced HRTF conflict");
                 candidate->mode=SoundRecoveryMode::Surround51;candidate->hrtf=SoundRecoveryHrtf::RequestOff;
             } else {
-                candidate->mode=before->hrtfPolicy==2?SoundRecoveryMode::StereoHrtf:SoundRecoveryMode::StereoFamily;
+                const auto open=target.speakers==0?SoundRecoveryMode::DeviceLayout:SoundRecoveryMode::StereoFamily;
+                candidate->mode=before->hrtfPolicy==2?SoundRecoveryMode::StereoHrtf:open;
                 candidate->hrtf=before->hrtfPolicy==2?SoundRecoveryHrtf::RequestOn:before->hrtfPolicy==1?SoundRecoveryHrtf::RequestOff:SoundRecoveryHrtf::RequestAuto;
             }
         }
@@ -150,7 +152,8 @@ bool SoundRecovery_ValidateRealized(const SoundRecoveryRecord& request,const Sou
     const auto* r=request.Value();const auto* a=actual.Value();
     if (!r || !a || !Valid(*r) || !Valid(*a) || a->form!=SoundRecoveryForm::Exact || !SameRoute(*r,*a) || !SamePolicy(r->requested,a->requested))
         return Fail(error,"Audio recovery target identity or requested policy changed");
-    if (r->mode==SoundRecoveryMode::StereoFamily ? !Stereo(a->mode) : r->mode!=a->mode) return Fail(error,"Actual audio output differs from the target");
+    if (r->mode==SoundRecoveryMode::DeviceLayout ? a->mode==SoundRecoveryMode::StereoFamily || a->mode==SoundRecoveryMode::DeviceLayout :
+        r->mode==SoundRecoveryMode::StereoFamily ? !Stereo(a->mode) : r->mode!=a->mode) return Fail(error,"Actual audio output differs from the target");
     const bool on=a->hrtf==SoundRecoveryHrtf::ExactOn;
     if (((r->hrtf==SoundRecoveryHrtf::ExactOn || r->hrtf==SoundRecoveryHrtf::RequestOn) && !on) ||
         ((r->hrtf==SoundRecoveryHrtf::ExactOff || r->hrtf==SoundRecoveryHrtf::RequestOff) && on) ||
@@ -176,7 +179,7 @@ bool SoundRecovery_Decode(const SoundRecoveryFields& input,SoundRecoveryUse use,
         else if (str("form")=="request") candidate->form=SoundRecoveryForm::Request;
         else return Fail(error,"Unknown audio recovery form");
         if (input.size()!=(candidate->form==SoundRecoveryForm::Exact?19u:18u)) return Fail(error,"Unknown or missing audio recovery field");
-        if (!number("requested.speakers",2,6,candidate->requested.speakers) ||
+        if (!number("requested.speakers",0,6,candidate->requested.speakers) ||
             !number("requested.emitterLimit",1,48,candidate->requested.maxEmitterChannels) ||
             !number("dependency.hrtf",0,2,candidate->hrtfPolicy) ||
             !number("dependency.efxDebug",(std::numeric_limits<int>::min)(),(std::numeric_limits<int>::max)(),candidate->efxDebug)) return Fail(error,"Invalid audio recovery integer");
@@ -184,7 +187,7 @@ bool SoundRecovery_Decode(const SoundRecoveryFields& input,SoundRecoveryUse use,
         candidate->provider.vendor=str("provider.vendor");candidate->provider.renderer=str("provider.renderer");candidate->provider.version=str("provider.version");
         candidate->requestedDevice=str("device.requested");candidate->actualDevice=str("device.actual");candidate->defaultDevice=str("device.defaultAtCapture");candidate->hrtfSpecifier=str("hrtf.specifier");
         bool found=false;
-        for (int i=0;i<=int(SoundRecoveryMode::StereoFamily);++i) if (str("output.mode")==Mode(static_cast<SoundRecoveryMode>(i))) {candidate->mode=static_cast<SoundRecoveryMode>(i);found=true;break;}
+        for (int i=0;i<=int(SoundRecoveryMode::DeviceLayout);++i) if (str("output.mode")==Mode(static_cast<SoundRecoveryMode>(i))) {candidate->mode=static_cast<SoundRecoveryMode>(i);found=true;break;}
         if (!found) return Fail(error,"Unknown audio output mode");
         found=false;
         for (int i=0;i<=int(SoundRecoveryHrtf::RequestAuto);++i) if (str("hrtf.mode")==Hrtf(static_cast<SoundRecoveryHrtf>(i))) {candidate->hrtf=static_cast<SoundRecoveryHrtf>(i);found=true;break;}

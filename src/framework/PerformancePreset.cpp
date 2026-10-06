@@ -10,22 +10,22 @@ static const std::array<PerformancePreset,PerformancePresetCount> Presets{{
 		50, 0, 0, 30,
 		1, 512, 1, 1, 1, 1,
 		0, 512, 1, 0, 0, 0, 0, 0, 1, 8, 3,
-		2, 0, 24 },
+		0, 0, 24 },
 	{ "lowpower", 0, "low",
 		75, 0, 0, 30,
 		1, 1024, 1, 1, 1, 1,
 		0, 512, 1, 0, 0, 0, 0, 0, 1, 8, 3,
-		2, 0, 32 },
+		0, 0, 32 },
 	{ "performance", 1, "baseline",
 		85, 0, 1, 60,
 		2, 0, 0, 0, 1, 0,
 		0, 1024, 2, 0, 0, 0, 0, 0, 1, 16, 4,
-		2, 0, 40 },
+		0, 0, 40 },
 	{ "balanced", 2, "baseline",
 		100, 2, 1, 120,
 		4, 0, 0, 0, 1, 0,
 		0, 1024, 0, 0, 0, 0, 0, 0, 1, 16, 4,
-		6, 1, 48 },
+		0, 1, 48 },
 	// The two top tiers turn shadow maps on now that the pipeline is stable; every
 	// tier below keeps the stock stencil shadows. Filtering follows the renderer's
 	// own defaults (PCSS-lite) rather than a preset target.
@@ -33,7 +33,7 @@ static const std::array<PerformancePreset,PerformancePresetCount> Presets{{
 		100, 4, 1, 144,
 		8, 0, 0, 0, 1, 0,
 		1, 1024, 0, 0, 0, 0, 0, 0, 1, 32, 4,
-		6, 1, 48 },
+		0, 1, 48 },
 	// image_usePrecompressedTextures stays at 1 here even though retail's top
 	// machine spec used 0. In openQ4 that cvar also gates user-supplied DDS
 	// replacement packs, so 0 silently discarded a player's high-resolution BC7
@@ -43,7 +43,7 @@ static const std::array<PerformancePreset,PerformancePresetCount> Presets{{
 		100, 8, 1, 240,
 		16, 0, 0, 0, 1, 0,
 		1, 2048, 0, 0, 0, 0, 0, 0, 1, 32, 4,
-		6, 1, 48 }
+		0, 1, 48 }
 }};
 static const std::array<const char*,PerformancePresetTargetCount> Targets{{
 	"com_performancePreset",

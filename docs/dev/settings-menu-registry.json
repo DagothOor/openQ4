@@ -1201,14 +1201,15 @@
       ],
       "widget_type": "choice",
       "label_key": "#str_200152",
-      "choices_key": "#str_200059",
+      "choices_key": "#str_229980",
       "values": [
+        "0",
         "2",
         "6"
       ],
       "target_type": "cvar",
       "target": "s_numberOfSpeakers",
-      "default": "6",
+      "default": "0",
       "restart_required": false,
       "accessibility": "Standard focusable choiceDef row."
     },

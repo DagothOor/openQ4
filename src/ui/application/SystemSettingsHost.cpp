@@ -318,7 +318,7 @@ const std::vector<SystemSettingDescriptor>& SystemSettingsHost::Catalog() {
 		Number("r_shadowMapMaxUpdatesPerView", 0, 1024), Number("r_shadowMapSize", 128, 4096), Boolean("r_useShadowMap"),
 		Number("s_maxEmitterChannels", 1, 48, "", SystemSettingAudioRestart),
 		Number("s_maxSoundsPerShader", 0, 32, "", SystemSettingNextMap),
-		Number("s_numberOfSpeakers", 2, 6, "", SystemSettingAudioRestart, {2,6}),
+		Number("s_numberOfSpeakers", 0, 6, "", SystemSettingAudioRestart, {0,2,6}),
 		Boolean("s_useEAXReverb", "", SystemSettingAudioRestart)
 	};
 	return catalog;

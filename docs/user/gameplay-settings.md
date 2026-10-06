@@ -18,6 +18,7 @@ The auto-skip cinematics, corpse cleanup, and corpse sink controls are also avai
 | `s_musicVolume` | `0.5` | Client audio | Controls music volume independently of the main sound mix. |
 | `s_useEAXReverb` | `1` | Client audio | Quake 4's per-area room reverb, as the level designers set it up. See [Room Reverb](#room-reverb). |
 | `s_useEAXOcclusion` | `1` | Client audio | Closed doors muffle the sounds behind them. Works while `s_useEAXReverb` is on. |
+| `s_numberOfSpeakers` | `0` | Client audio | Speaker layout. `0` follows your output device, `2` forces stereo, `6` forces 5.1. See [Speaker Layout](#speaker-layout). |
 | `hud_damageNumbers` | `0` | Multiplayer client | Floating damage numbers over the players you hit. `0` off, `1` opponents only, `2` all damage you deal. |
 | `hud_damageNumberStyle` | `1` | Multiplayer client | How damage numbers are coloured. `1` white through red, `2` one colour per damage band, `3` one colour per weapon. |
 | `hud_damageNumberScale` | `1` | Multiplayer client | Damage number size multiplier, `0.25` to `4`. |
@@ -183,6 +184,26 @@ Notes:
   the original game does.
 - `listReverbs` lists the reverbs, the current map's areas and the reverbs playing around you.
   `s_showReverb 1` prints a line whenever they change.
+
+## Speaker Layout
+
+openQ4 now follows your audio device by default. Headphones and stereo speakers get stereo, with
+OpenAL Soft's 3D headphone audio (HRTF) switching on by itself when the system reports headphones,
+and a 5.1 or 7.1 system gets all of its channels.
+
+The in-game menu exposes this as `Settings -> Audio -> Surround Speakers`: `Auto`, `Off` (stereo)
+or `On` (5.1).
+
+Behavior:
+- `s_numberOfSpeakers 0` (default, `Auto`): use the output device's own layout.
+- `s_numberOfSpeakers 2` (`Off`): always stereo, as the original game's default.
+- `s_numberOfSpeakers 6` (`On`): always 5.1. On a stereo device the system downmixes it, and
+  headphone HRTF cannot engage, so pick this only for a 5.1 system that misreports its layout.
+
+Notes:
+- Earlier openQ4 builds asked for 5.1 on every device. A saved `6` from those builds moves to `0`
+  once. A saved `2` is kept.
+- `s_openALHRTF` chooses headphone HRTF: `0` automatic (default), `1` off, `2` on.
 
 ## Hit Marker
 

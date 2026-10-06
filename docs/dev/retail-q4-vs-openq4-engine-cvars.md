@@ -370,8 +370,8 @@ Generated on 2026-04-19.
 
 | CVar | openQ4 source(s) | Retail evidence | Note |
 | --- | --- | --- | --- |
-| `s_quadraticFalloff` | src/sound/snd_world.cpp:41 | sound/default/snd_world.cpp:1742<br>sound/default/snd_world.cpp:937 | Implemented for retail distance-falloff parity; full retail metadata should be re-extracted in the next cvar audit. |
-| `s_radioChatterFraction` | src/sound/snd_system.cpp:36 | sound/default/snd_world.cpp:952 | Implemented for the retail radio-chatter attenuation branch; full retail metadata should be re-extracted in the next cvar audit. |
+| `s_quadraticFalloff` | src/sound/snd_world.cpp:318 | sound/default/snd_world.cpp:1742<br>sound/default/snd_world.cpp:937 | Implemented for retail distance-falloff parity. Quake 4 1.4.2 (client and dedicated) defaults it to `0` (linear) with flags `SND ST`, not archived; openQ4 matches since 2026-10-06, and migrates the old archived `1` once. |
+| `s_radioChatterFraction` | src/sound/snd_system.cpp:37 | sound/default/snd_world.cpp:952 | Implemented for the retail radio-chatter attenuation branch. Quake 4 1.4.2 defaults it to `0.9` (flags `SND ST AR`); openQ4 matches since 2026-10-06, and migrates the old archived `0.5` once. |
 | `s_frequencyShift` | src/sound/snd_system.cpp:37 | sound/default/snd_world.cpp:1127 | Implemented for retail frequency-shift gating; full retail metadata should be re-extracted in the next cvar audit. |
 | `s_skipStartSound` | src/sound/snd_emitter.cpp:35 | sound/default/snd_emitter.cpp:534 | Implemented for retail start-sound suppression diagnostics; full retail metadata should be re-extracted in the next cvar audit. |
 | `s_useEAXOcclusion` | src/sound/snd_system.cpp:1007 | sound/default/snd_system.cpp:2005<br>sound/default/snd_world.cpp:2179 | Implemented with the retail area reverb (EAX source occlusion); retail flags `SND ST AR`, default `1`. See [retail-audio-reverb.md](retail-audio-reverb.md). |
@@ -419,9 +419,9 @@ Generated on 2026-04-19.
 | `s_meterTopTime` | default, flags | `2000` | `1000` | `SND ST AR` | `ST AR` | `int` | `int` |
 | `s_musicVolume` | flags | `0.5` | `0.5` | `SND ST AR` | `ST AR` | `float [0, 1]` | `float [0, 1]` |
 | `s_noSound` | default, flags | `1` | `0` | `SND ST RO` | `ST CH` | `bool` | `bool` |
-| `s_numberOfSpeakers` | default, flags, type/range | `2` | `6` | `SND ST AR` | `ST AR` | `string` | `int` |
+| `s_numberOfSpeakers` | default, flags, type/range | `2` | `0` | `SND ST AR` | `ST AR` | `string` | `int` (`0` = device layout, `2`, `6`) |
 | `s_playDefaultSound` | flags | `1` | `1` | `SND ST AR` | `ST CH` | `bool` | `bool` |
-| `s_showLevelMeter` | flags | `0` | `0` | `SND ST CH` | `ST AR` | `bool` | `bool` |
+| `s_showLevelMeter` | flags | `0` | `0` | `SND ST CH` | `ST` | `bool` | `bool` |
 | `s_showStartSound` | flags, type/range | `0` | `0` | `SND ST CH` | `ST CH` | `int` | `bool` |
 | `s_singleEmitter` | default, flags | `-1` | `0` | `SND ST CH` | `ST CH` | `int` | `int` |
 | `s_speakerFraction` | flags | `0.65` | `0.65` | `SND ST AR` | `ST AR` | `float` | `float` |

@@ -1124,11 +1124,11 @@
 						visible	1
 						forecolor	1,0.745,0.137,0.8
 						choiceType	1
-						choices	"#str_200059"
+						choices	"#str_229980"
 						cvar	s_numberOfSpeakers
 						textscale	0.24
 						font	"fonts/lowpixel"
-						values	"2;6"
+						values	"0;2;6"
 
 						onAction {
 							set "cmd" "play main_menu_selection" ; 

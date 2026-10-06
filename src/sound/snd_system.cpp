@@ -34,14 +34,17 @@ idCVar s_noSound( "s_noSound", "0", CVAR_BOOL, "returns NULL for all sounds load
 idCVar s_volume( "s_volume", "0.5", CVAR_ARCHIVE | CVAR_FLOAT, "master volume (0-1)", 0.0f, 1.0f );
 idCVar s_musicVolume( "s_musicVolume", "0.5", CVAR_ARCHIVE | CVAR_FLOAT, "music volume (0-1)", 0.0f, 1.0f );
 idCVar s_speakerFraction( "s_speakerFraction", "0.65", CVAR_ARCHIVE | CVAR_FLOAT, "speaker attenuation fraction" );
-idCVar s_radioChatterFraction( "s_radioChatterFraction", "0.5", CVAR_ARCHIVE | CVAR_FLOAT, "radio chatter attenuation fraction" );
+idCVar s_radioChatterFraction( "s_radioChatterFraction", "0.9", CVAR_ARCHIVE | CVAR_FLOAT, "radio chatter attenuation fraction" );
 idCVar s_frequencyShift( "s_frequencyShift", "1", CVAR_BOOL, "enable sound shader frequency shift playback" );
 idCVar s_useOpenAL( "s_useOpenAL", "1", CVAR_ARCHIVE | CVAR_BOOL, "use OpenAL audio backend" );
 idCVar s_deviceName( "s_deviceName", "", CVAR_ARCHIVE, "OpenAL device name override" );
 idCVar s_useEAXReverb( "s_useEAXReverb", "1", CVAR_SOUND | CVAR_ARCHIVE | CVAR_BOOL, "use EAX reverb if available" );
 idCVar s_openALHRTF( "s_openALHRTF", "0", CVAR_ARCHIVE | CVAR_INTEGER, "OpenAL Soft HRTF mode: 0 = auto, 1 = off, 2 = on", 0, 2, idCmdSystem::ArgCompletion_Integer<0,2> );
-idCVar s_openALEfxDebugMode( "s_openALEfxDebugMode", "0", CVAR_ARCHIVE | CVAR_INTEGER, "OpenAL wet/dry debug mode (0=normal, 1=wet-only, 2=dry-only)" );
-idCVar s_numberOfSpeakers( "s_numberOfSpeakers", "6", CVAR_ARCHIVE | CVAR_INTEGER, "number of speakers (2 or 6)" );
+idCVar s_openALEfxDebugMode( "s_openALEfxDebugMode", "0", CVAR_INTEGER, "OpenAL wet/dry debug mode (0=normal, 1=wet-only, 2=dry-only)" );
+// 0 leaves the layout to the output device, so headphones get stereo (and OpenAL
+// Soft's automatic HRTF) and a 5.1 or 7.1 system gets its own channels. Requesting
+// 5.1 everywhere made Windows downmix it on every stereo endpoint.
+idCVar s_numberOfSpeakers( "s_numberOfSpeakers", "0", CVAR_ARCHIVE | CVAR_INTEGER, "speaker layout: 0 = the output device's own layout, 2 = stereo, 6 = 5.1 surround" );
 idCVar s_warnOnMissingSamples( "s_warnOnMissingSamples", "0", CVAR_ARCHIVE | CVAR_BOOL, "warn when falling back to default sound samples" );
 idCVar s_controllerRumble( "s_controllerRumble", "1", CVAR_ARCHIVE | CVAR_BOOL, "sound-side controller rumble master switch; input menu uses in_joystickRumble" );
 // alBufferData copies a sample's PCM into OpenAL's own storage, so holding on to

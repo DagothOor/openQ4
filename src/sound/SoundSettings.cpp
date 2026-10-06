@@ -32,7 +32,7 @@ bool Same(const SoundSettingsPolicy& a,const SoundSettingsPolicy& b) noexcept {
 	return a.speakers==b.speakers && a.efx==b.efx && a.maxEmitterChannels==b.maxEmitterChannels;
 }
 bool Valid(const SoundSettingsPolicy& p) noexcept {
-	return (p.speakers==2 || p.speakers==6) && p.maxEmitterChannels>=1 && p.maxEmitterChannels<=48;
+	return (p.speakers==0 || p.speakers==2 || p.speakers==6) && p.maxEmitterChannels>=1 && p.maxEmitterChannels<=48;
 }
 SoundSettingsPolicy Policy() noexcept {
 	return {s_numberOfSpeakers.GetInteger(),s_useEAXReverb.GetBool(),s_maxEmitterChannels.GetInteger()};
@@ -91,7 +91,10 @@ template<class F> bool Native(F&& operation) {
 	const bool result=operation();
 	return SoundSettings_NativeOperationCurrent() && result;
 }
+bool KnownOutput(int mode) noexcept;
 bool OutputMatches(int observed,int requested) noexcept {
+	// The device's own layout: any mode the device settles on realizes it.
+	if (requested==ALC_ANY_SOFT) return KnownOutput(observed);
 	if (requested==ALC_STEREO_SOFT) return observed==ALC_STEREO_SOFT || observed==ALC_STEREO_BASIC_SOFT ||
 		observed==ALC_STEREO_UHJ_SOFT || observed==ALC_STEREO_HRTF_SOFT;
 	return observed==requested;
@@ -330,11 +333,11 @@ bool Attempt(SoundSettingsLease lease,bool restore,SoundSettingsObservation& out
 	if (state.phase!=SoundSettingsPhase::Failed && !Actual(current,state.expected)) {
 		state.phase=SoundSettingsPhase::Invalidated; return Fail(error,size,"Audio output changed outside the owned request.");
 	}
-	const bool automaticStereo=!restore && state.target.speakers==2 && state.target.speakers!=state.baseline.requested.speakers && state.baseline.requestedHrtf==0;
+	const bool automaticStereo=!restore && state.target.speakers!=6 && state.target.speakers!=state.baseline.requested.speakers && state.baseline.requestedHrtf==0;
 	auto desired=state.baseline;
 	if (!restore) {
 		if (state.target.speakers!=state.baseline.requested.speakers) {
-			desired.outputMode=state.target.speakers==6?ALC_SURROUND_5_1_SOFT:ALC_STEREO_SOFT;
+			desired.outputMode=state.target.speakers==6?ALC_SURROUND_5_1_SOFT:state.target.speakers==2?ALC_STEREO_SOFT:ALC_ANY_SOFT;
 			desired.hrtf=false;
 			if (state.baseline.requestedHrtf==2) { desired.outputMode=ALC_STEREO_HRTF_SOFT; desired.hrtf=true; }
 		}
