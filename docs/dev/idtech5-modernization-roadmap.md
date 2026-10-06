@@ -86,6 +86,21 @@ when a status differs or a narrower qualification is needed.
 | Temporal presentation | **Implemented; automatic below native resolution by default (2026-10-06)** | OpenGL and Vulkan share native-resolution history ownership, TAA/TAAU, camera/depth reprojection, camera/capture resets, and native-resolution UI composition. The velocity pass owns every moving surface per pixel: exact vectors for rigid entities, skinned surfaces (previous model-space positions captured before each pose) and the depth-hacked weapon; per-pixel reactive coverage for particles, effects, GUIs, subviews and translucent moving geometry. The resolve uses YCoCg variance clipping, nearest-depth velocity, Catmull-Rom history and present-only CAS sharpening. `r_temporalAA 2` (default) engages only below native resolution; SMAA remains the rollback. Clean package, platform, driver, and retained human-review promotion remain open. |
 | Modern PBR quality and idTech 6-like follow-ons | **Implemented for the scoped roadmap; default-off; local Windows gate passed; release promotion pending** | Guarded direct metallic/roughness lighting, analytic fallback IBL, authored bounded OpenGL specular probes, atomic bounded OpenGL clustered decals, and three independent GL/Vulkan screen-space leaves now cover the scoped quality plan. The shared native presentation tail provides bounded 16-slice view-aligned froxel integration, bounded 16-step depth-normal SSR, and fixed eight-tap depth-derived SSGI. The effects deliberately do not claim shadowed light-injected volumetrics, material-roughness reflections, or world-space GI. This does not establish broad authored scene coverage or whole-frame lighting promotion: `MODERN_LIGHTING_PARITY_PROVEN_DOMAINS` remains `0`, while complete GPU-driven visible ownership and optional sparse residency remain later follow-ons. |
 
+### 2026-10-06 gap review
+
+Each remaining idTech 5/6 renderer item was either finished by default, measured
+and found not to pay for stock content, or deferred for a stated reason:
+
+| Item | Outcome |
+|---|---|
+| Temporal AA / upscaling (idTech 6 TSSAA) | **Done, default.** Complete per-pixel motion ownership; `r_temporalAA 2` upscales whenever the scene renders below native resolution ([temporal presentation](temporal-presentation.md)). |
+| Level-load streaming | **Done for images, default.** Worker-thread DDS reads, hardware SHA-256, immutable OpenGL texture storage and the loose-file memo: warm OpenGL Air Defense 1 about 14 s to about 9 s ([evidence](airdefense1-optimization-evidence.md)). General asset streaming stays open. |
+| Shader/pipeline caches | **Done; no background compilation needed.** Vulkan's pipeline cache is written atomically per level; a whole stock session creates 33 pipelines (49 ms cold, 4 ms warm). |
+| GPU skinning | **Not beneficial for stock content.** Vulkan no longer pays the CPU work it replaces, but stock maps skin about 1,500 vertices per frame (about 15 microseconds of CPU); `r_gpuSkinning` stays opt-in ([evidence](gpu-skinning-modernization.md#2026-10-06-promotion-attempt-not-beneficial-for-stock-content)). |
+| True HDR display output | **Deferred:** needs HDR display hardware to verify. |
+| Shadowed light-injected volumetrics | **Deferred to an authored opt-in:** shadow maps exist only inside each backend's light loop, and stock maps stage their shafts with beams and fog lights. |
+| `com_levelLoadModernization` default | **Deferred:** now 3.4 s slower on a first visit (was 6.6 s) and 1.1-1.5 s faster warm; the per-file `Sync()` and cache-key audit decide promotion. |
+
 Milestones A, B, and C have completed their implementation and local integration
 gates. **Milestone D scoped implementation is complete.** Its default-off
 corridors cover four complete fixed-classic domains, a bounded in-world GUI
