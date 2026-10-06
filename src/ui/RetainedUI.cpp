@@ -57,11 +57,13 @@ idCVar ui_retainedScale("ui_retainedScale", "1", CVAR_GUI | CVAR_FLOAT | CVAR_AR
 	"retained UI density multiplier", .75f, 2.f);
 idCVar ui_retainedTextScale("ui_retainedTextScale", "1", CVAR_GUI | CVAR_FLOAT | CVAR_ARCHIVE,
 	"retained UI text size multiplier, independent of furniture", 1.f, 2.f);
-idCVar ui_retainedDensity("ui_retainedDensity", "0", CVAR_GUI | CVAR_FLOAT,
+// The unarchived test settings are CVAR_NOCHEAT, as the session's opt-ins are,
+// so joining or hosting a server without cheats does not reset them.
+idCVar ui_retainedDensity("ui_retainedDensity", "0", CVAR_GUI | CVAR_FLOAT | CVAR_NOCHEAT,
 	"retained UI test density override; zero uses the window display scale", 0.f, 8.f);
 idCVar ui_retainedReducedMotion("ui_retainedReducedMotion", "0", CVAR_GUI | CVAR_BOOL | CVAR_ARCHIVE,
 	"reduce decorative motion in the retained UI preview");
-idCVar ui_retainedTrace("ui_retainedTrace", "0", CVAR_GUI | CVAR_BOOL,
+idCVar ui_retainedTrace("ui_retainedTrace", "0", CVAR_GUI | CVAR_BOOL | CVAR_NOCHEAT,
 	"trace retained event commits and typed application dispatch for semantic validation");
 idCVar ui_retainedOpaqueBacking("ui_retainedOpaqueBacking", "0", CVAR_GUI | CVAR_BOOL | CVAR_ARCHIVE,
 	"draw the opaque scrim behind retained modals instead of softening the screen beneath");

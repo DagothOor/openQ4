@@ -51,8 +51,12 @@ idCVar	idSessionLocal::gui_configServerRate( "gui_configServerRate", "0", CVAR_G
 idCVar gui_set_sys_scroll( "gui_set_sys_scroll", "0", CVAR_GUI | CVAR_INTEGER, "display menu scroll step", 0, 28 );
 idCVar gui_set_audio_scroll( "gui_set_audio_scroll", "0", CVAR_GUI | CVAR_INTEGER, "audio menu scroll step", 0.0f, 0.0f );
 idCVar gui_set_game_scroll( "gui_set_game_scroll", "0", CVAR_GUI | CVAR_INTEGER, "game menu scroll step", 0, 61 );
-idCVar ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL, "use the in-development retained SYSTEM page, which ui_retained includes only once every stock setting works there" );
-idCVar ui_retainedMultiplayer( "ui_retainedMultiplayer", "0", CVAR_GUI | CVAR_BOOL, "use the in-development retained multiplayer menu card, which ui_retained includes only once all its pages are built" );
+// The opt-ins are unarchived, so each lasts until the player quits, and
+// CVAR_NOCHEAT, because the engine counts any other unarchived CVar as a
+// cheat: joining or hosting a server without cheats resets it to its default,
+// and a player cannot set it during a match, where both pages open.
+idCVar ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL | CVAR_NOCHEAT, "use the in-development retained SYSTEM page, which ui_retained includes only once every stock setting works there" );
+idCVar ui_retainedMultiplayer( "ui_retainedMultiplayer", "0", CVAR_GUI | CVAR_BOOL | CVAR_NOCHEAT, "use the in-development retained multiplayer menu card, which ui_retained includes only once all its pages are built" );
 // The single gate for the retained (RmlUi) interface, on by default. Each
 // screen presents its stock GUI instead when its retained document is missing
 // or cannot load, or when the legacy menu it covers lacks a page it hands off

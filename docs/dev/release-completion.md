@@ -1350,6 +1350,12 @@
   player as your friend in the lists and on the scoreboard. It did nothing on
   PC, which has no friends service.
 
+- Menu development: `ui_retainedMultiplayer 1` and `ui_retainedSystem 1` now
+  stay on when you join or host a multiplayer game, and you can turn them on
+  or off during a match. Joining or hosting a game without cheats used to
+  switch both back off, so the multiplayer cards never appeared after a
+  normal join. Neither setting is saved, so each still lasts until you quit.
+
 - The opt-in SYSTEM page adds **Preload Light Grids** under Irradiance Volumes.
   Apply saves it without a Keep/Revert question, since it takes effect when the
   next map loads, and a line under it says whether the current map preloads or

@@ -1818,6 +1818,17 @@ def main() -> int:
     # stock screens persists.
     assert 'idCVar ui_retained( "ui_retained", "1", CVAR_GUI | CVAR_BOOL | CVAR_ARCHIVE, ' in menu, 'ui_retained must default to 1 and be archived'
     assert 'ui_retainedSystem( "ui_retainedSystem", "0", CVAR_GUI | CVAR_BOOL' in menu
+    # The opt-ins and the runtime's test settings last until the player quits,
+    # and survive a multiplayer join: any other unarchived CVar is a cheat,
+    # which joining or hosting a server without cheats resets to its default
+    # (ResetFlaggedVariables( CVAR_CHEAT )) and a player cannot set in a match.
+    host = (ROOT / 'src/ui/RetainedUI.cpp').read_text(encoding='utf-8')
+    for text, name in ((menu, 'ui_retainedSystem'), (menu, 'ui_retainedMultiplayer'),
+                       (host, 'ui_retainedDensity'), (host, 'ui_retainedTrace')):
+        declared = re.search(rf'idCVar {name}\(\s*"{name}",\s*"[^"]*",\s*([A-Z_ |]+),', text)
+        assert declared, f'{name} is no longer declared where the gate looks for it'
+        flags = {flag.strip() for flag in declared.group(1).split('|')}
+        assert 'CVAR_NOCHEAT' in flags and 'CVAR_ARCHIVE' not in flags, f'{name} must stay unarchived and CVAR_NOCHEAT: {sorted(flags)}'
     assert ('return ui_retainedSystem.GetBool() || ( Session_RetainedScreensEnabled() &&\n'
             '\t\tRETAINED_SYSTEM_MISSING_SETTINGS[0] == NULL && RETAINED_SYSTEM_INCOMPLETE_SETTINGS[0] == NULL );') in menu
     # The SYSTEM page joins the gate once it has a control for every setting of
