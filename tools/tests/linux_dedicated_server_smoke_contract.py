@@ -86,6 +86,23 @@ def main() -> None:
         '#ifdef ID_DEDICATED\n\tcommon->Printf( "Dedicated server: skipping client GUI preload.\\n" );\n#else',
         "dedicated session client-GUI exclusion",
     )
+    # A dedicated server never has a device. Session init's no-device guard is
+    # the client's only and follows the command registrations, so a dedicated
+    # server registers rescanSI (which copies its settings into each map it
+    # spawns) and allocates the worlds a map needs; without them it could not
+    # spawn a map at all.
+    init = session[session.index("void idSessionLocal::Init() {") :]
+    init = init[: init.index("\n}\n")]
+    guard = "#ifndef ID_DEDICATED\n\t// A rejected recoverable restart can leave no device"
+    require(init, guard, "client-only session no-device guard")
+    require_count(init, "IsOpenGLRunning() ) return;", 1, "session init")
+    if not (
+        init.index('AddCommand( "rescanSI"')
+        < init.index(guard)
+        < init.index("IsOpenGLRunning() ) return;")
+        < init.index("rw = renderSystem->AllocRenderWorld();")
+    ):
+        raise AssertionError("session init must register its commands before the client-only no-device guard")
     # The dedicated server never creates a context, so idRenderSystem::Shutdown()
     # tears down a vertex cache that Init() never touched. That used to be
     # guarded at the call site with glConfig.isInitialized, which was wrong in

@@ -9028,10 +9028,6 @@ void idSessionLocal::Init() {
 	cmdSystem->AddCommand( "openq4_system", Session_SystemSettings_f, CMD_FL_SYSTEM, "open, return or inspect the opt-in normal SYSTEM child without device input" );
 	cmdSystem->AddCommand( "ui_retainedStatus", Session_RetainedStatus_f, CMD_FL_SYSTEM, "report the ui_retained gate and the live retained screens" );
 #endif
-	// A rejected recoverable restart can leave no device until the next safe
-	// settings frame restores it. Never issue drawing commands into that gap.
-	if ( !renderSystem || !renderSystem->IsOpenGLRunning() ) return;
-
 #ifndef	ID_DEDICATED
 	cmdSystem->AddCommand( "GuiEvent", Session_GuiEvent_f, CMD_FL_SYSTEM, "sends a named event to the active gui" );
 	cmdSystem->AddCommand( "openq4_guiSet", Session_OpenQ4GuiSet_f, CMD_FL_SYSTEM | CMD_FL_CHEAT, "sets an existing active GUI variable for engine-scripted layout validation" );
@@ -9048,6 +9044,15 @@ void idSessionLocal::Init() {
 	cmdSystem->AddCommand( "rescanSI", Session_RescanSI_f, CMD_FL_SYSTEM, "internal - rescan serverinfo cvars and tell game" );
 
 	cmdSystem->AddCommand( "hitch", Session_Hitch_f, CMD_FL_SYSTEM|CMD_FL_CHEAT, "hitches the game" );
+
+#ifndef ID_DEDICATED
+	// A rejected recoverable restart can leave no device until the next safe
+	// settings frame restores it. Never issue drawing commands into that gap.
+	// The commands above draw nothing, so they register regardless; a
+	// dedicated server never has a device, and spawning a map needs its
+	// worlds below and rescanSI, which copies its settings into the map.
+	if ( !renderSystem || !renderSystem->IsOpenGLRunning() ) return;
+#endif
 
 	// the same idRenderWorld will be used for all games
 	// and demos, insuring that level specific models
