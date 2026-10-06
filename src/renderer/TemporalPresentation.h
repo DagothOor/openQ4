@@ -73,6 +73,36 @@ void R_TemporalPresentation_MarkCurrentFrameCapture( const char *reason );
 // jitter before the projection matrix is built. Repeated calls for the same
 // frame-allocated view are harmless.
 void R_TemporalPresentation_PrepareView( struct viewDef_s *viewDef );
+
+// Exact motion for posed surfaces. A model's pose update calls Capture just
+// before it overwrites verts, so a surface drawn last frame keeps that frame's
+// model-space positions; MarkPositionsDrawn records that verts were drawn this
+// frame without a new pose (animation LOD). PreviousPositionCache uploads the
+// capture as a frame-temp idVec3 stream for one main-view drawSurf.
+void R_TemporalPresentation_CapturePreviousPositions( struct srfTriangles_s *tri );
+void R_TemporalPresentation_MarkPositionsDrawn( struct srfTriangles_s *tri );
+struct vertCache_s *R_TemporalPresentation_PreviousPositionCache(
+	const struct drawSurf_s *drawSurf );
+// History rejection [0,1] written for particles, effects and translucent
+// entity surfaces (r_temporalAAReactiveEffects).
+float R_TemporalPresentation_EffectReactiveStrength( void );
+// Contrast-adaptive sharpening [0,1] for presenting a resolved temporal
+// history (r_temporalAASharpness); never written back into the history.
+float R_TemporalPresentation_PresentSharpness( void );
+
+// What the last temporal velocity pass owned per pixel, for
+// rendererTemporalPresentationStatus. Surfaces, not pixels.
+typedef struct temporalOwnershipStats_s {
+	int		frameNumber;
+	int		rigid;			// exact vectors from a previous model transform
+	int		posed;			// exact vectors from previous model-space positions
+	int		weapon;			// exact view-weapon surfaces (counted in rigid/posed too)
+	int		reactive;		// reactive coverage
+	int		missed;			// could not be drawn: the view falls back to screen regions
+	bool	complete;
+} temporalOwnershipStats_t;
+
+void R_TemporalPresentation_RecordOwnership( const temporalOwnershipStats_t &stats );
 void R_TemporalPresentation_FinalizeViewProjection( struct viewDef_s *viewDef );
 unsigned long long R_TemporalPresentation_ViewIdentity(
 	const struct viewDef_s *viewDef );

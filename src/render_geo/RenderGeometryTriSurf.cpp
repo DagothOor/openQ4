@@ -416,6 +416,12 @@ void R_ReallyFreeStaticTriSurf( srfTriangles_t *tri ) {
 
 	R_FreeStaticTriSurfVertexCaches( tri );
 
+	if ( tri->previousPositions != NULL ) {
+		Mem_Free16( tri->previousPositions );
+		tri->previousPositions = NULL;
+		tri->numPreviousPositions = 0;
+	}
+
 	if ( tri->verts != NULL ) {
 		// R_CreateLightTris points tri->verts at the verts of the ambient surface
 		if ( tri->ambientSurface == NULL || tri->verts != tri->ambientSurface->verts ) {

@@ -143,7 +143,9 @@ enum vkPostPassKind_t {
 	VK_POST_CEL_OUTLINE,
 	VK_POST_UNDERWATER,
 	VK_POST_DEBUG_VIEW,
-	VK_POST_HDR_LUMINANCE
+	VK_POST_HDR_LUMINANCE,
+	VK_POST_MOTION_VECTORS_PREVIOUS,
+	VK_POST_MOTION_VECTORS_REACTIVE
 };
 
 // scene shader modules, created the first time a pass needs one
@@ -160,6 +162,9 @@ enum vkPostSceneModule_t {
 	VK_POST_MODULE_UNDERWATER,
 	VK_POST_MODULE_DEBUG_VIEW,
 	VK_POST_MODULE_HDR_LUMINANCE,
+	VK_POST_MODULE_MOTION_VECTORS_PREVIOUS_VERT,
+	VK_POST_MODULE_MOTION_VECTORS_REACTIVE_VERT,
+	VK_POST_MODULE_MOTION_VECTORS_REACTIVE_FRAG,
 	VK_POST_SCENE_MODULE_COUNT
 };
 
@@ -181,7 +186,10 @@ static const vkPostModuleSource_t vkPostSceneModuleSources[ VK_POST_SCENE_MODULE
 	{ vk_post_celoutline_frag_spv, vk_post_celoutline_frag_spv_size, "post cel outline fragment" },
 	{ vk_post_underwater_frag_spv, vk_post_underwater_frag_spv_size, "post underwater fragment" },
 	{ vk_post_debug_view_frag_spv, vk_post_debug_view_frag_spv_size, "post debug view fragment" },
-	{ vk_post_hdr_luminance_frag_spv, vk_post_hdr_luminance_frag_spv_size, "HDR luminance reduction fragment" }
+	{ vk_post_hdr_luminance_frag_spv, vk_post_hdr_luminance_frag_spv_size, "HDR luminance reduction fragment" },
+	{ vk_post_motionvectors_previous_vert_spv, vk_post_motionvectors_previous_vert_spv_size, "post posed motion vector vertex" },
+	{ vk_post_motionvectors_reactive_vert_spv, vk_post_motionvectors_reactive_vert_spv_size, "post reactive coverage vertex" },
+	{ vk_post_motionvectors_reactive_frag_spv, vk_post_motionvectors_reactive_frag_spv_size, "post reactive coverage fragment" }
 };
 
 // RB_BLOOM_MAX_LEVELS and RB_BLOOM_BASE_WEIGHTS (draw_common.cpp)
@@ -1480,6 +1488,67 @@ static void VK_Post_UpdateMotionEntityHistory( const viewDef_t *viewDef ) {
 	VK_Post_UpdateMotionEntityHistory( viewDef, vkPostMotionEntityHistory, vkPostMotionNextEntityHistory );
 }
 
+static int VK_Post_CompareMotionEntityHistory( const void *a, const void *b ) {
+	return static_cast<const vkPostMotionEntityHistory_t *>( a )->entityIndex
+		- static_cast<const vkPostMotionEntityHistory_t *>( b )->entityIndex;
+}
+
+// TAA's transform history covers every moving entity the next frame may draw
+// exactly (rigid or posed, the view weapon included), sorted for lookups.
+static void VK_Post_UpdateTemporalMotionEntityHistory( const viewDef_t *viewDef,
+		idList<vkPostMotionEntityHistory_t> &history, idList<vkPostMotionEntityHistory_t> &nextHistory ) {
+	nextHistory.Clear();
+	for ( int i = 0; i < viewDef->numDrawSurfs; i++ ) {
+		const drawSurf_t *surf = viewDef->drawSurfs[ i ];
+		if ( surf == NULL || surf->space == NULL || surf->space->entityDef == NULL
+				|| surf->space->entityDef->index < 0
+				|| ( surf->space->entityDef->parms.hModel != NULL
+					&& surf->space->entityDef->parms.hModel->IsStaticWorldModel() ) ) {
+			continue;
+		}
+		vkPostMotionEntityHistory_t &entry = nextHistory.Alloc();
+		entry.entityIndex = surf->space->entityDef->index;
+		entry.model = surf->space->entityDef->parms.hModel;
+		memcpy( entry.modelMatrix, surf->space->modelMatrix, sizeof( entry.modelMatrix ) );
+	}
+	if ( nextHistory.Num() > 1 ) {
+		qsort( nextHistory.Ptr(), nextHistory.Num(), sizeof( vkPostMotionEntityHistory_t ),
+			VK_Post_CompareMotionEntityHistory );
+		int unique = 1;
+		for ( int i = 1; i < nextHistory.Num(); i++ ) {
+			if ( nextHistory[ i ].entityIndex != nextHistory[ unique - 1 ].entityIndex ) {
+				nextHistory[ unique++ ] = nextHistory[ i ];
+			}
+		}
+		nextHistory.SetNum( unique, false );
+	}
+	history.Swap( nextHistory );
+	nextHistory.Clear();
+}
+
+static bool VK_Post_FindTemporalMotionEntityHistory( const idList<vkPostMotionEntityHistory_t> &history,
+		const idRenderEntityLocal *entity, float previousModelMatrix[ 16 ] ) {
+	int low = 0;
+	int high = history.Num() - 1;
+	while ( low <= high ) {
+		const int middle = ( low + high ) >> 1;
+		const int key = history[ middle ].entityIndex;
+		if ( key == entity->index ) {
+			if ( history[ middle ].model != entity->parms.hModel ) {
+				return false;
+			}
+			memcpy( previousModelMatrix, history[ middle ].modelMatrix, sizeof( float ) * 16 );
+			return true;
+		}
+		if ( key < entity->index ) {
+			low = middle + 1;
+		} else {
+			high = middle - 1;
+		}
+	}
+	return false;
+}
+
 static bool VK_Post_EnsureColorTarget( idImage *&image, idRenderTexture *&target, const char *name,
 		int width, int height, textureFilter_t filter, const char *label ) {
 	if ( width <= 0 || height <= 0 ) {
@@ -1517,6 +1586,13 @@ typedef struct vkPostMotionVectorPush_s {
 	float	currentMvp[ 16 ];
 	float	previousMvp[ 16 ];
 } vkPostMotionVectorPush_t;
+
+// post_motionvectors_reactive: the same 128-byte range, read as one matrix
+// and a parameter vector
+typedef struct vkPostReactiveCoveragePush_s {
+	float	currentMvp[ 16 ];
+	float	params[ 4 ];			// x: reactive strength
+} vkPostReactiveCoveragePush_t;
 
 /*
 ====================
@@ -1556,6 +1632,25 @@ static bool VK_Post_RenderMotionVectors( const viewDef_t *viewDef, const vkPostM
 	VkCommandBuffer cmd = VK_Exec_ActiveCmd();
 	const VkPipeline pipeline = VK_Exec_ExtraPipeline( VK_POST_MOTION_VECTORS, vertModule, fragModule,
 			GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO, VK_EXTRA_VERTEX_POSITION, 0 );
+	// Temporal AA owns every moving surface per pixel: posed surfaces add a
+	// previous-position stream, everything without exact motion marks the blue
+	// reactive channel only. Motion blur keeps the rigid-only pass.
+	VkPipeline previousPipeline = VK_NULL_HANDLE;
+	VkPipeline reactivePipeline = VK_NULL_HANDLE;
+	if ( temporal ) {
+		const VkShaderModule previousVertModule = VK_Post_SceneModule( VK_POST_MODULE_MOTION_VECTORS_PREVIOUS_VERT );
+		const VkShaderModule reactiveVertModule = VK_Post_SceneModule( VK_POST_MODULE_MOTION_VECTORS_REACTIVE_VERT );
+		const VkShaderModule reactiveFragModule = VK_Post_SceneModule( VK_POST_MODULE_MOTION_VECTORS_REACTIVE_FRAG );
+		if ( previousVertModule != VK_NULL_HANDLE ) {
+			previousPipeline = VK_Exec_ExtraPipeline( VK_POST_MOTION_VECTORS_PREVIOUS, previousVertModule, fragModule,
+				GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO, VK_EXTRA_VERTEX_POSITION_PREVIOUS, 0 );
+		}
+		if ( reactiveVertModule != VK_NULL_HANDLE && reactiveFragModule != VK_NULL_HANDLE ) {
+			reactivePipeline = VK_Exec_ExtraPipeline( VK_POST_MOTION_VECTORS_REACTIVE, reactiveVertModule, reactiveFragModule,
+				GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO | GLS_REDMASK | GLS_GREENMASK | GLS_ALPHAMASK,
+				VK_EXTRA_VERTEX_POSITION, 0 );
+		}
+	}
 	// Sample the depth image using its recorded row order, including
 	// both canonical scene depth and normalized post captures.
 	const vkImageEntry_t *depthEntry = VK_Image_GetEntry( depthImage->GetDeviceHandle() );
@@ -1583,22 +1678,81 @@ static bool VK_Post_RenderMotionVectors( const viewDef_t *viewDef, const vkPostM
 		vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 6, 1, &uniformSet, 1, &dynamicOffset );
 
 		const int slot = VK_Exec_ActiveFrameSlot();
+		VkPipeline boundPipeline = pipeline;
+		bool weaponDepthRange = false;
+		temporalOwnershipStats_t ownership;
+		memset( &ownership, 0, sizeof( ownership ) );
+		ownership.frameNumber = backEnd.frameCount;
 		for ( int i = 0; i < viewDef->numDrawSurfs; i++ ) {
 			const drawSurf_t *surf = viewDef->drawSurfs[ i ];
-			if ( !R_ScenePackets_TemporalRigidMotionEligible( surf ) ) {
+			temporalSurfaceMotion_t motion = TEMPORAL_SURFACE_MOTION_NONE;
+			if ( temporal ) {
+				motion = R_ScenePackets_TemporalSurfaceMotion( surf );
+			} else if ( R_ScenePackets_TemporalRigidMotionEligible( surf ) ) {
+				motion = TEMPORAL_SURFACE_MOTION_RIGID;
+			}
+			if ( motion == TEMPORAL_SURFACE_MOTION_NONE ) {
 				continue;
 			}
-			if ( temporal ) { ++vkTemporalMotionEligible; }
+			if ( temporal && motion != TEMPORAL_SURFACE_MOTION_REACTIVE ) { ++vkTemporalMotionEligible; }
+			// a surface that should move exactly but cannot owns no history at all
+			bool noHistory = false;
 			float previousModelMatrix[ 16 ];
-			if ( !VK_Post_FindMotionEntityHistory( entityHistory, surf->space->entityDef, previousModelMatrix ) ) {
-				complete = false;
-				continue;
+			if ( motion != TEMPORAL_SURFACE_MOTION_REACTIVE && !( temporal
+					? VK_Post_FindTemporalMotionEntityHistory( entityHistory, surf->space->entityDef, previousModelMatrix )
+					: VK_Post_FindMotionEntityHistory( entityHistory, surf->space->entityDef, previousModelMatrix ) ) ) {
+				if ( !temporal ) {
+					complete = false;
+					continue;
+				}
+				// newly visible: no previous transform, so it owns no history yet
+				motion = TEMPORAL_SURFACE_MOTION_REACTIVE;
+				noHistory = true;
 			}
 			const srfTriangles_t *tri = surf->geo;
 			if ( tri->ambientCache == NULL || tri->indexes == NULL
 					|| !VK_Exec_BindTriGeometry( cmd, slot, tri ) ) {
 				complete = false;
+				ownership.missed++;
 				continue;
+			}
+			if ( motion == TEMPORAL_SURFACE_MOTION_PREVIOUS_POSITIONS
+					&& ( previousPipeline == VK_NULL_HANDLE
+						|| !VK_Exec_BindPreviousPositions( cmd, slot, surf ) ) ) {
+				motion = TEMPORAL_SURFACE_MOTION_REACTIVE;
+				noHistory = true;
+			}
+			const VkPipeline wantedPipeline = motion == TEMPORAL_SURFACE_MOTION_REACTIVE ? reactivePipeline
+				: ( motion == TEMPORAL_SURFACE_MOTION_PREVIOUS_POSITIONS ? previousPipeline : pipeline );
+			if ( wantedPipeline == VK_NULL_HANDLE ) {
+				complete = false;
+				ownership.missed++;
+				continue;
+			}
+			if ( motion == TEMPORAL_SURFACE_MOTION_REACTIVE ) {
+				ownership.reactive++;
+			} else {
+				if ( motion == TEMPORAL_SURFACE_MOTION_PREVIOUS_POSITIONS ) {
+					ownership.posed++;
+				} else {
+					ownership.rigid++;
+				}
+				if ( surf->space->weaponDepthHack ) {
+					ownership.weapon++;
+				}
+			}
+			if ( wantedPipeline != boundPipeline ) {
+				// every variant shares the interaction layout, so the bound
+				// depth and uniform sets stay valid
+				vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, wantedPipeline );
+				boundPipeline = wantedPipeline;
+			}
+			// the view weapon is drawn into depth range 0..0.5
+			const bool wantWeaponRange = temporal && surf->space->weaponDepthHack;
+			if ( wantWeaponRange != weaponDepthRange ) {
+				weaponDepthRange = wantWeaponRange;
+				viewport.maxDepth = wantWeaponRange ? 0.5f : 1.0f;
+				vkCmdSetViewport( cmd, 0, 1, &viewport );
 			}
 
 			// TAA runs after scene scaling restores the view rectangles. Scale
@@ -1634,6 +1788,19 @@ static bool VK_Post_RenderMotionVectors( const viewDef_t *viewDef, const vkPostM
 					break;
 			}
 
+			if ( motion == TEMPORAL_SURFACE_MOTION_REACTIVE ) {
+				vkPostReactiveCoveragePush_t push;
+				VK_BuildSurfMVP( viewDef, surf, push.currentMvp );
+				push.params[ 0 ] = noHistory ? 1.0f : R_ScenePackets_TemporalSurfaceReactiveStrength( surf );
+				push.params[ 1 ] = push.params[ 2 ] = push.params[ 3 ] = 0.0f;
+				vkCmdPushConstants( cmd, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+						0, sizeof( push ), &push );
+				vkCmdDrawIndexed( cmd, (uint32_t)tri->numIndexes, 1, 0, 0, 0 );
+				drew = true;
+				continue;
+			}
+			// The weapon's depth hack only rescales clip z, which the vector
+			// ignores, so last frame's plain projection still matches.
 			vkPostMotionVectorPush_t push;
 			VK_BuildSurfMVP( viewDef, surf, push.currentMvp );
 			float previousModelView[ 16 ];
@@ -1645,7 +1812,15 @@ static bool VK_Post_RenderMotionVectors( const viewDef_t *viewDef, const vkPostM
 			if ( temporal ) { ++vkTemporalMotionDrawn; }
 			drew = true;
 		}
+		if ( weaponDepthRange ) {
+			viewport.maxDepth = 1.0f;
+			vkCmdSetViewport( cmd, 0, 1, &viewport );
+		}
 		vkCmdSetFrontFace( cmd, VK_Exec_CanonicalFrontFace() );
+		if ( temporal ) {
+			ownership.complete = complete;
+			R_TemporalPresentation_RecordOwnership( ownership );
+		}
 	}
 	if ( drew ) { VK_Exec_MarkColorOrigin( false ); }
 	complete = VK_Exec_SetRenderTarget( sceneTarget, sceneCubeFace ) && complete;
@@ -1673,8 +1848,10 @@ idImage *VK_PostProcess_TemporalMotionVectors( const viewDef_t *viewDef,
 		depthImage, VK_Exec_ActiveRenderTexture(), vkTemporalMotionEntityHistory,
 		vkTemporalMotionImage, vkTemporalMotionTarget, width, height, true, complete );
 	vkTemporalMotionComplete = complete;
-	if ( drawn && complete ) { ++vkTemporalMotionCompletedViews; }
-	return drawn ? vkTemporalMotionImage : NULL;
+	if ( complete ) { ++vkTemporalMotionCompletedViews; }
+	// A complete per-pixel target is meaningful even when nothing moved: its
+	// cleared texels say "camera reprojection, no reactive coverage".
+	return ( drawn || complete ) ? vkTemporalMotionImage : NULL;
 }
 
 void VK_PostProcess_CommitTemporalMotion( const viewDef_t *viewDef,
@@ -1685,7 +1862,7 @@ void VK_PostProcess_CommitTemporalMotion( const viewDef_t *viewDef,
 		VK_PostProcess_ResetTemporalMotion();
 		return;
 	}
-	VK_Post_UpdateMotionEntityHistory( viewDef, vkTemporalMotionEntityHistory, vkTemporalMotionNextEntityHistory );
+	VK_Post_UpdateTemporalMotionEntityHistory( viewDef, vkTemporalMotionEntityHistory, vkTemporalMotionNextEntityHistory );
 	vkTemporalMotionGeneration = generation;
 	vkTemporalMotionViewIdentity = viewDef->temporalViewIdentity;
 	vkTemporalMotionFrame = backEnd.frameCount;

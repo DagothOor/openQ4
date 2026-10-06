@@ -206,6 +206,16 @@ typedef struct srfTriangles_s {
 	unsigned int				gpuSkinningPaletteGeneration;
 	int							gpuSkinningFallbackReason;
 	bool						gpuSkinningSignedWeights;
+
+	// Temporal reprojection of posed (skinned) surfaces. positionsFrame is the
+	// renderer frame whose pose verts holds; just before the next pose replaces
+	// it, R_CaptureTemporalPreviousPositions copies those positions into
+	// previousPositions, which then describe the surface as it was drawn on
+	// previousPositionsFrame - 1. Owned by the tri, freed with it.
+	idVec3 *					previousPositions;
+	int							numPreviousPositions;
+	int							previousPositionsFrame;
+	int							positionsFrame;
 } srfTriangles_t;
 
 static const int STF_SOFT_PARTICLE_CANDIDATE = 1 << 0;

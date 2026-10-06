@@ -7816,6 +7816,30 @@ bool VK_Exec_BindTriGeometry( VkCommandBuffer cmd, int slot,
 	return true;
 }
 
+// Temporal AA: drawSurf->previousPositionCache holds one idVec3 per vertex of
+// its tri, as drawn on the previous frame. Bound at vertex binding 1 beside
+// VK_Exec_BindTriGeometry's binding 0 (VK_EXTRA_VERTEX_POSITION_PREVIOUS).
+bool VK_Exec_BindPreviousPositions( VkCommandBuffer cmd, int slot,
+		const drawSurf_t *surf ) {
+	if ( cmd == VK_NULL_HANDLE || surf == NULL || surf->geo == NULL
+			|| surf->previousPositionCache == NULL || surf->geo->numVerts <= 0
+			|| slot < 0 || slot >= VK_FRAMES_IN_FLIGHT ) {
+		return false;
+	}
+	const size_t bytes = static_cast<size_t>( surf->geo->numVerts ) * sizeof( idVec3 );
+	if ( !VK_Exec_CPUCacheValid( surf->previousPositionCache, false, bytes ) ) {
+		return false;
+	}
+	const void *positions = vertexCache.Position( surf->previousPositionCache );
+	const int offset = VK_Ring_Alloc( vkExec.vertexRings[ slot ], positions, bytes, 16 );
+	if ( offset < 0 ) {
+		return false;
+	}
+	const VkDeviceSize bindOffset = static_cast<VkDeviceSize>( offset );
+	vkCmdBindVertexBuffers( cmd, 1, 1, &vkExec.vertexRings[ slot ].buffer, &bindOffset );
+	return true;
+}
+
 // stencil-shadow-volume variant of the memoized upload (Phase G1): streams
 // the shadowCache_t vec4 stream (tri->shadowCache holds CPU pointers via
 // the CPU-backed vertex cache; the shadow tri's numVerts IS the cache
@@ -8083,14 +8107,35 @@ VkPipeline VK_Exec_ExtraPipeline( int kind, VkShaderModule vertModule,
 		return VK_NULL_HANDLE;
 	}
 
-	VkVertexInputBindingDescription binding;
+	VkVertexInputBindingDescription bindings[ 2 ];
+	VkVertexInputBindingDescription &binding = bindings[ 0 ];
 	VkVertexInputAttributeDescription attrs[ 6 ];
 	VkPipelineVertexInputStateCreateInfo vertexInput;
-	memset( &binding, 0, sizeof( binding ) );
+	memset( bindings, 0, sizeof( bindings ) );
 	memset( attrs, 0, sizeof( attrs ) );
 	memset( &vertexInput, 0, sizeof( vertexInput ) );
 	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	switch ( vertexLayout ) {
+		case VK_EXTRA_VERTEX_POSITION_PREVIOUS:
+			bindings[ 0 ].binding = 0;
+			bindings[ 0 ].stride = sizeof( idDrawVert );
+			bindings[ 0 ].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+			bindings[ 1 ].binding = 1;
+			bindings[ 1 ].stride = sizeof( idVec3 );
+			bindings[ 1 ].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+			attrs[ 0 ].location = 0;
+			attrs[ 0 ].binding = 0;
+			attrs[ 0 ].format = VK_FORMAT_R32G32B32_SFLOAT;
+			attrs[ 0 ].offset = (uint32_t)offsetof( idDrawVert, xyz );
+			attrs[ 1 ].location = 1;
+			attrs[ 1 ].binding = 1;
+			attrs[ 1 ].format = VK_FORMAT_R32G32B32_SFLOAT;
+			attrs[ 1 ].offset = 0;
+			vertexInput.vertexBindingDescriptionCount = 2;
+			vertexInput.pVertexBindingDescriptions = bindings;
+			vertexInput.vertexAttributeDescriptionCount = 2;
+			vertexInput.pVertexAttributeDescriptions = attrs;
+			break;
 		case VK_EXTRA_VERTEX_POSITION:
 			binding.stride = sizeof( idDrawVert );
 			binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
@@ -8469,7 +8514,7 @@ static void VK_TemporalPresentation_FillResolveBlock(
 		int sceneWidth, int sceneHeight, bool useHistory, bool depthValid,
 		bool captureRecenter, int debugMode,
 		vkTemporalResolveBlock_t &block, unsigned int exactMotionDomains = 0u,
-		bool velocityValid = false ) {
+		bool velocityValid = false, bool perPixelOwnership = false ) {
 	memset( &block, 0, sizeof( block ) );
 	const viewDef_t *viewDef = command.viewDef;
 	const int outputWidth = Max( 1, (int)vkCtx.swapchainExtent.width );
@@ -8503,7 +8548,7 @@ static void VK_TemporalPresentation_FillResolveBlock(
 		temporalViewMotionPolicy_t motionPolicy;
 		const bool motionPolicyAvailable = viewDef != NULL
 			&& R_ScenePackets_BuildTemporalViewMotionPolicy(
-				viewDef, exactMotionDomains, motionPolicy );
+				viewDef, exactMotionDomains, motionPolicy, perPixelOwnership );
 		if ( motionPolicyAvailable ) {
 			for ( int component = 0; component < 4; ++component ) {
 				block.reactiveRect0[component] = -1.0f;
@@ -8616,7 +8661,10 @@ static bool VK_TemporalPresentation_DrawResolve(
 	// Keep the temporal algorithm in top-down texture coordinates.
 	// Individual scene/history images can have a different stored origin.
 	vkTemporalResolveBlock_t imageBlock = block;
-	int flags = block.motionParams[3] > 0.5f ? 1 : 0;
+	// the caller requests recentering (1) and present sharpening (16); the
+	// image-origin bits are derived here
+	const int requestedFlags = (int)( block.motionParams[3] + 0.5f );
+	int flags = requestedFlags & ( 1 | 16 );
 	if ( !sceneEntry->materialSampleFlipY ) { flags |= 2; }
 	if ( depthEntry != NULL && !depthEntry->materialSampleFlipY ) { flags |= 4; }
 	if ( historyEntry != NULL && !historyEntry->materialSampleFlipY ) { flags |= 8; }
@@ -8822,6 +8870,14 @@ static bool VK_TemporalPresentation_DrawResolvedColorToSwap(
 	vkTemporalResolveBlock_t block;
 	VK_TemporalPresentation_FillResolveBlock( presentCommand,
 		outputWidth, outputHeight, false, false, false, 0, block );
+	// Sharpen only the presented image; the history keeps its unsharpened
+	// samples. A history-less block reads no reactive regions, so slot 1
+	// carries the amount (temporal_resolve.frag flag 16).
+	const float sharpness = R_TemporalPresentation_PresentSharpness();
+	if ( sharpness > 0.0f ) {
+		block.motionParams[3] = (float)( (int)( block.motionParams[3] + 0.5f ) | 16 );
+		block.reactiveRect1[0] = sharpness;
+	}
 	return VK_TemporalPresentation_DrawResolve( NULL,
 		resolvedImage, resolvedEntry, NULL, NULL, NULL, NULL, block );
 }
@@ -9009,12 +9065,20 @@ static bool VK_TemporalPresentation_ResolveTargets(
 	idImage *velocityImage = VK_PostProcess_TemporalMotionVectors( command.viewDef,
 		depthImage, sceneWidth, sceneHeight, command.historyGeneration,
 		historyValid, velocityComplete );
-	const unsigned int exactMotionDomains = velocityComplete
-		? TemporalHistoryCore_MotionDomainBit( TEMPORAL_MOTION_DOMAIN_RIGID ) : 0u;
+	// A complete pass owned every moving surface per pixel (exact vectors for
+	// rigid, posed and weapon surfaces, reactive coverage for the rest); only
+	// an incomplete one falls back to conservative screen regions.
+	const bool perPixelOwnership = velocityComplete && velocityImage != NULL;
+	const unsigned int exactMotionDomains = perPixelOwnership
+		? ( TemporalHistoryCore_MotionDomainBit( TEMPORAL_MOTION_DOMAIN_RIGID )
+			| TemporalHistoryCore_MotionDomainBit( TEMPORAL_MOTION_DOMAIN_SKINNED )
+			| TemporalHistoryCore_MotionDomainBit( TEMPORAL_MOTION_DOMAIN_DEFORM )
+			| TemporalHistoryCore_MotionDomainBit( TEMPORAL_MOTION_DOMAIN_VIEW_MODEL ) )
+		: 0u;
 	vkTemporalResolveBlock_t normalBlock;
 	VK_TemporalPresentation_FillResolveBlock( command, sceneWidth,
 		sceneHeight, historyValid, depthReady, false, 0, normalBlock,
-		exactMotionDomains, velocityImage != NULL );
+		exactMotionDomains, velocityImage != NULL, perPixelOwnership );
 	if ( !VK_TemporalPresentation_DrawResolve(
 			command.historyWriteTarget, sceneImage, sceneEntry,
 			depthReady ? depthImage : NULL, depthReady ? depthEntry : NULL,
@@ -9041,7 +9105,8 @@ static bool VK_TemporalPresentation_ResolveTargets(
 		vkTemporalResolveBlock_t debugBlock;
 		VK_TemporalPresentation_FillResolveBlock( command, sceneWidth,
 			sceneHeight, historyValid, depthReady, false,
-			debugMode, debugBlock, exactMotionDomains, velocityImage != NULL );
+			debugMode, debugBlock, exactMotionDomains, velocityImage != NULL,
+			perPixelOwnership );
 		const bool presented = VK_TemporalPresentation_DrawResolve(
 			NULL, sceneImage,
 			sceneEntry, depthReady ? depthImage : NULL,
@@ -15556,18 +15621,31 @@ static bool VK_Exec_TestTemporalMotionCase( int width, int height, int fixture, 
 		view.temporalCaptureFrame = false;
 		view.temporalPreviousProjectionValid = true;
 	}
-	// Failed geometry admission and a newly visible entity cannot claim that
-	// the rigid domain was completely drawn. Existing texture contents never
-	// make that claim valid.
+	// Failed geometry admission cannot claim the view was completely owned;
+	// existing texture contents never make that claim valid. A newly visible
+	// entity has no previous transform: the pass still owns it completely, but
+	// only as full reactive coverage, never as an exact vector.
 	for ( int failure = 0; failure < 2 && passed; ++failure ) {
 		VK_PostProcess_CommitTemporalMotion( &view, width, height, generation );
 		++backEnd.frameCount;
 		vertCache_t *savedCache = tri.ambientCache;
 		if ( failure == 0 ) { tri.ambientCache = NULL; }
 		if ( failure == 1 ) { ++entity.index; }
-		passed = VK_GuiExecutor_BeginFrame() && VK_Exec_SetRenderTarget( &scene )
-			&& VK_PostProcess_TemporalMotionVectors( &view, depth, width, height,
-				generation, true, complete ) == NULL && !complete;
+		passed = VK_GuiExecutor_BeginFrame() && VK_Exec_SetRenderTarget( &scene );
+		idImage *ownership = passed ? VK_PostProcess_TemporalMotionVectors( &view, depth, width, height,
+			generation, true, complete ) : NULL;
+		if ( failure == 0 ) {
+			passed = passed && ownership == NULL && !complete;
+		} else {
+			passed = passed && ownership != NULL && complete
+				&& VK_Exec_TestReadFloatImage( ownership, pixels );
+			bool covered = false;
+			for ( int i = 0; i + 3 < pixels.Num() && passed; i += 4 ) {
+				passed = pixels[i + 3] == 0.0f;
+				covered |= pixels[i + 2] >= 0.999f;
+			}
+			passed = passed && covered;
+		}
 		tri.ambientCache = savedCache;
 		entity.index = 4321;
 	}

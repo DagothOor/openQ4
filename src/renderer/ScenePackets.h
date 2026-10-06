@@ -484,7 +484,7 @@ public:
 	bool ValidateSortKeys( void ) const;
 	bool BuildTemporalViewMotionPolicy( const viewDef_t *viewDef,
 		unsigned int backendExactMotionDomainMask,
-		temporalViewMotionPolicy_t &policy ) const;
+		temporalViewMotionPolicy_t &policy, bool perPixelOwnership = false ) const;
 
 private:
 	int FindOrAddMaterialRecord( const drawSurf_t *drawSurf );
@@ -527,10 +527,30 @@ void R_ScenePackets_AddPresent( void );
 void R_ScenePackets_AddCommandOnly( void );
 const idScenePacketFrame &R_ScenePackets_FrontEndFrame( void );
 bool R_ScenePackets_FrontEndFrameAvailable( void );
+// perPixelOwnership: the backend's velocity pass wrote every visible moving
+// surface either as exact velocity or into its per-pixel reactive channel, so
+// the policy keeps only the whole-view overflow rule and adds no regions.
 bool R_ScenePackets_BuildTemporalViewMotionPolicy( const viewDef_t *viewDef,
 	unsigned int backendExactMotionDomainMask,
-	temporalViewMotionPolicy_t &policy );
+	temporalViewMotionPolicy_t &policy, bool perPixelOwnership = false );
 bool R_ScenePackets_TemporalRigidMotionEligible( const drawSurf_t *drawSurf );
+
+// How a backend velocity pass treats one view drawSurf. NONE surfaces are
+// owned by camera/depth reprojection (static world, invisible); RIGID needs
+// the entity's previous model matrix; PREVIOUS_POSITIONS also binds
+// drawSurf->previousPositionCache as the previous model-space position of
+// each vertex; REACTIVE surfaces mark their covered pixels in the velocity
+// target's reactive channel instead of claiming a vector.
+typedef enum {
+	TEMPORAL_SURFACE_MOTION_NONE = 0,
+	TEMPORAL_SURFACE_MOTION_RIGID,
+	TEMPORAL_SURFACE_MOTION_PREVIOUS_POSITIONS,
+	TEMPORAL_SURFACE_MOTION_REACTIVE
+} temporalSurfaceMotion_t;
+
+temporalSurfaceMotion_t R_ScenePackets_TemporalSurfaceMotion( const drawSurf_t *drawSurf );
+// Reactive strength [0,1] written for a REACTIVE surface.
+float R_ScenePackets_TemporalSurfaceReactiveStrength( const drawSurf_t *drawSurf );
 void R_ScenePackets_BuildLegacyCommandStream( const emptyCommand_t *cmds, idScenePacketFrame &packetFrame );
 // True when a view of the command stream draws a PBR-authored material.
 bool R_ScenePackets_CommandStreamHasPBR( const emptyCommand_t *cmds );

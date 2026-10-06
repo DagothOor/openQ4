@@ -30,10 +30,13 @@ layout(std140, set = 6, binding = 0) uniform TemporalResolveBlock {
     vec4 temporalParams;
     // x = use object velocity;
     // y = camera reprojection valid; z = depth valid;
-    // w = flags: recenter jitter (1), flip scene/depth/history Y (2/4/8).
+    // w = flags: recenter jitter (1), flip scene/depth/history Y (2/4/8),
+    //     sharpen the presented history (16).
     vec4 motionParams;
     // Conservative current-frame regions whose packet motion domains lack an
     // exact Vulkan velocity stream. Invalid entries have non-positive extent.
+    // A history present (flag 16) reads no regions: reactiveRect1.x then
+    // carries the sharpening amount.
     vec4 reactiveRect0;
     vec4 reactiveRect1;
 } temporal;
@@ -116,6 +119,77 @@ vec2 CameraPreviousUV(vec2 cameraUV, float depth) {
 
 float MaxComponent(vec3 value) {
     return max(value.x, max(value.y, value.z));
+}
+
+float Luma(vec3 c) {
+    return dot(c, vec3(0.25, 0.5, 0.25));
+}
+
+vec3 RGBToYCoCg(vec3 c) {
+    return vec3(0.25 * c.r + 0.5 * c.g + 0.25 * c.b,
+        0.5 * c.r - 0.5 * c.b,
+        -0.25 * c.r + 0.5 * c.g - 0.25 * c.b);
+}
+
+vec3 YCoCgToRGB(vec3 c) {
+    return vec3(c.x + c.y - c.z, c.x + c.z, c.x - c.y - c.z);
+}
+
+// Catmull-Rom history reconstruction from five bilinear taps, in the history
+// texture's stored orientation (a Y flip maps texel centres onto texel
+// centres). A bilinear-only history softens a little more every reprojection.
+vec3 SampleHistory(vec2 textureUV) {
+    vec2 historySize = temporal.sceneOutputExtent.zw;
+    vec2 position = textureUV * historySize;
+    vec2 center = floor(position - 0.5) + 0.5;
+    vec2 f = position - center;
+    vec2 f2 = f * f;
+    vec2 f3 = f2 * f;
+    vec2 w0 = -0.5 * f3 + f2 - 0.5 * f;
+    vec2 w1 = 1.5 * f3 - 2.5 * f2 + 1.0;
+    vec2 w2 = -1.5 * f3 + 2.0 * f2 + 0.5 * f;
+    vec2 w3 = 0.5 * f3 - 0.5 * f2;
+    vec2 w12 = w1 + w2;
+    vec2 invSize = 1.0 / historySize;
+    vec2 tc12 = (center + w2 / w12) * invSize;
+    vec2 tc0 = (center - 1.0) * invSize;
+    vec2 tc3 = (center + 2.0) * invSize;
+    vec3 sum = texture(historyScene, vec2(tc12.x, tc0.y)).rgb * (w12.x * w0.y)
+        + texture(historyScene, vec2(tc0.x, tc12.y)).rgb * (w0.x * w12.y)
+        + texture(historyScene, tc12).rgb * (w12.x * w12.y)
+        + texture(historyScene, vec2(tc3.x, tc12.y)).rgb * (w3.x * w12.y)
+        + texture(historyScene, vec2(tc12.x, tc3.y)).rgb * (w12.x * w3.y);
+    float weight = w12.x * w0.y + w0.x * w12.y + w12.x * w12.y
+        + w3.x * w12.y + w12.x * w3.y;
+    return max(sum / max(weight, 0.0001), vec3(0.0));
+}
+
+// AMD CAS, cross pattern, for presenting a resolved history: sharpen less where
+// the neighbourhood is already near black or white, so edges do not ring.
+vec3 SharpenPresent(vec2 textureUV, vec3 center, float amount) {
+    vec2 texel = temporal.sceneOutputExtent.xy;
+    vec3 north = texture(currentScene, textureUV + vec2(0.0, texel.y)).rgb;
+    vec3 south = texture(currentScene, textureUV - vec2(0.0, texel.y)).rgb;
+    vec3 east = texture(currentScene, textureUV + vec2(texel.x, 0.0)).rgb;
+    vec3 west = texture(currentScene, textureUV - vec2(texel.x, 0.0)).rgb;
+    vec3 lowest = min(center, min(min(north, south), min(east, west)));
+    vec3 highest = max(center, max(max(north, south), max(east, west)));
+    vec3 strength = sqrt(clamp(min(lowest, 2.0 - highest)
+        / max(highest, vec3(0.0001)), 0.0, 1.0));
+    vec3 weight = strength * (-1.0 / mix(8.0, 5.0, amount));
+    return max((center + (north + south + east + west) * weight)
+        / (1.0 + 4.0 * weight), vec3(0.0));
+}
+
+// Clip toward the box centre rather than clamping each channel, so a rejected
+// history colour keeps its hue instead of turning grey.
+vec3 ClipToBox(vec3 value, vec3 boxMin, vec3 boxMax) {
+    vec3 center = 0.5 * (boxMax + boxMin);
+    vec3 extents = 0.5 * (boxMax - boxMin) + vec3(0.0001);
+    vec3 offset = value - center;
+    vec3 units = abs(offset / extents);
+    float largest = MaxComponent(units);
+    return largest > 1.0 ? center + offset / largest : value;
 }
 
 bool InsideReactiveRect(vec2 cameraUV, vec4 rect) {
@@ -339,34 +413,58 @@ void main() {
         current.rgb = ApplyFroxelVolumetrics(current.rgb, sceneCameraUV,
             centerDepth);
     }
-    vec3 neighborhoodMin = current.rgb;
-    vec3 neighborhoodMax = current.rgb;
+    // 3x3 neighbourhood: YCoCg mean/variance for the history clip box, and the
+    // nearest depth, whose velocity is used so a moving silhouette carries its
+    // own motion onto the background texels around it.
+    vec3 moment1 = vec3(0.0);
+    vec3 moment2 = vec3(0.0);
+    vec3 sampleMin = vec3(1.0e20);
+    vec3 sampleMax = vec3(-1.0e20);
     float depthMin = centerDepth;
     float depthMax = centerDepth;
+    vec2 closestCameraUV = sceneCameraUV;
     for (int y = -1; y <= 1; ++y) {
         for (int x = -1; x <= 1; ++x) {
             vec2 sampleCameraUV = clamp(sceneCameraUV
                 + vec2(float(x), float(y)) * temporal.sceneOutputExtent.xy,
                 vec2(0.0), vec2(1.0));
             vec2 sampleTextureUV = CameraToTextureUV(sampleCameraUV);
-            vec3 sampleColor = texture(currentScene, StoredTextureUV(sampleTextureUV, 2)).rgb;
-            neighborhoodMin = min(neighborhoodMin, sampleColor);
-            neighborhoodMax = max(neighborhoodMax, sampleColor);
+            vec3 sampleColor = (x == 0 && y == 0) ? current.rgb
+                : texture(currentScene, StoredTextureUV(sampleTextureUV, 2)).rgb;
+            vec3 sampleYCoCg = RGBToYCoCg(sampleColor);
+            moment1 += sampleYCoCg;
+            moment2 += sampleYCoCg * sampleYCoCg;
+            sampleMin = min(sampleMin, sampleYCoCg);
+            sampleMax = max(sampleMax, sampleYCoCg);
             float sampleDepth = texture(sceneDepth, StoredTextureUV(sampleTextureUV, 4)).r;
+            if (sampleDepth < depthMin) {
+                closestCameraUV = sampleCameraUV;
+            }
             depthMin = min(depthMin, sampleDepth);
             depthMax = max(depthMax, sampleDepth);
         }
     }
+    vec3 mean = moment1 / 9.0;
+    vec3 sigma = sqrt(max(moment2 / 9.0 - mean * mean, vec3(0.0)));
+    vec3 neighborhoodMin = max(mean - sigma * 1.25, sampleMin);
+    vec3 neighborhoodMax = min(mean + sigma * 1.25, sampleMax);
 
     // Vectors use bottom-up camera coordinates and scene-pixel units. The
-    // scene/history targets use top-down texture coordinates.
-    vec4 objectVelocity = temporal.motionParams.x > 0.5
+    // scene/history targets use top-down texture coordinates. Blue carries the
+    // per-pixel reactive coverage the velocity pass wrote.
+    // Dilate only toward a moving object: a still occluder's edge must not pin
+    // the moving background beside it.
+    vec4 closestVelocity = temporal.motionParams.x > 0.5
+        ? texture(objectMotion, closestCameraUV) : vec4(0.0);
+    vec4 centerVelocity = temporal.motionParams.x > 0.5
         ? texture(objectMotion, sceneCameraUV) : vec4(0.0);
+    vec4 objectVelocity = closestVelocity.a > 0.5 ? closestVelocity : centerVelocity;
+    float reactiveMask = max(closestVelocity.b, centerVelocity.b);
     bool objectValid = objectVelocity.a > 0.5;
     bool cameraValid = temporal.motionParams.y > 0.5
         && temporal.motionParams.z > 0.5;
     vec2 previousCameraUV = cameraValid
-        ? CameraPreviousUV(sceneCameraUV, centerDepth)
+        ? CameraPreviousUV(sceneCameraUV, depthMin)
         : outputCameraUV;
     if (objectValid) {
         previousCameraUV = outputCameraUV
@@ -377,39 +475,48 @@ void main() {
         && previousCameraUV.x <= 1.0
         && previousCameraUV.y <= 1.0;
     bool historyUsable = temporal.temporalParams.z > 0.5
-        && inside && (objectValid || cameraValid) && objectVelocity.b < 0.5;
+        && inside && (objectValid || cameraValid);
     vec3 historyRaw = historyUsable
-        ? texture(historyScene, StoredTextureUV(CameraToTextureUV(previousCameraUV), 8)).rgb
+        ? SampleHistory(StoredTextureUV(CameraToTextureUV(previousCameraUV), 8))
         : current.rgb;
-    vec3 historyClamped = clamp(historyRaw, neighborhoodMin, neighborhoodMax);
-    float colorDelta = MaxComponent(abs(current.rgb - historyRaw));
-    float clampDelta = MaxComponent(abs(historyRaw - historyClamped));
+    vec3 historyClamped = YCoCgToRGB(ClipToBox(RGBToYCoCg(historyRaw),
+        neighborhoodMin, neighborhoodMax));
     vec2 velocityPixels = (outputCameraUV - previousCameraUV)
         * temporal.sceneOutputExtent.zw;
-    float motionReactive = smoothstep(12.0, 96.0,
-        length(velocityPixels)) * 0.35;
+    float speed = length(velocityPixels);
+    // Depth edges only disocclude while something moves; a still edge is
+    // exactly where accumulated history anti-aliases.
     float depthReactive = temporal.motionParams.z > 0.5
-        ? smoothstep(0.001, 0.02, depthMax - depthMin) * 0.20
-        : 0.0;
-    float unsupportedNear = (temporal.motionParams.z > 0.5 && !objectValid)
-        ? (1.0 - smoothstep(0.82, 0.98, centerDepth)) * 0.25
+        ? smoothstep(0.001, 0.02, depthMax - depthMin)
+            * smoothstep(0.5, 4.0, speed) * 0.5
         : 0.0;
     float packetReactive = (InsideReactiveRect(outputCameraUV,
             temporal.reactiveRect0) || InsideReactiveRect(outputCameraUV,
             temporal.reactiveRect1)) ? 1.0 : 0.0;
-    float reactive = clamp(max(
-        max(colorDelta * 2.5, clampDelta * 5.0)
-            * temporal.depthFeedback.w,
-        max(motionReactive, max(depthReactive, unsupportedNear))),
-        0.0, 1.0);
-    reactive = max(reactive, packetReactive);
-    if (!historyUsable) {
+    float reactive = clamp(max(max(reactiveMask * temporal.depthFeedback.w,
+        packetReactive), depthReactive), 0.0, 1.0);
+    // A full mask (no previous clip position, a newly visible surface, a
+    // subview) owns no history at all, whatever the reactive scale.
+    if (!historyUsable || reactiveMask >= 0.999) {
         reactive = 1.0;
     }
+    // Fast motion keeps less history: it cannot be anti-aliased anyway, and
+    // every reprojection resamples it.
+    float feedback = temporal.depthFeedback.z
+        * (1.0 - 0.3 * smoothstep(16.0, 96.0, speed));
     float historyWeight = historyUsable
-        ? temporal.depthFeedback.z * (1.0 - reactive)
+        ? feedback * (1.0 - reactive)
         : 0.0;
-    vec3 resolved = mix(current.rgb, historyClamped, historyWeight);
+    // Luminance-weighted blend: one bright jittered sample cannot flicker.
+    float currentWeight = (1.0 - historyWeight) / (1.0 + Luma(current.rgb));
+    float historyBlend = historyWeight / (1.0 + Luma(historyClamped));
+    vec3 resolved = (current.rgb * currentWeight + historyClamped * historyBlend)
+        / max(currentWeight + historyBlend, 0.0001);
+    if ((int(temporal.motionParams.w + 0.5) & 16) != 0
+            && temporal.reactiveRect1.x > 0.0) {
+        resolved = SharpenPresent(StoredTextureUV(sceneTextureUV, 2),
+            resolved, clamp(temporal.reactiveRect1.x, 0.0, 1.0));
+    }
     if (temporal.temporalParams.w > 0.5
             && temporal.temporalParams.w < 1.5) {
         float magnitude = clamp(length(velocityPixels) / 32.0, 0.0, 1.0);

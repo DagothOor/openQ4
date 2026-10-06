@@ -166,6 +166,9 @@ typedef struct drawSurf_s {
 	classicDeformRecord_t	classicDeform;
 	// Optional per-light PBR receiver geometry. Classic stages always use geo.
 	const srfTriangles_t	*pbrLightGeo;
+	// Temporal AA only: geo's model-space vertex positions as drawn on the
+	// previous frame (idVec3 per vertex, frame-temp). NULL when unavailable.
+	struct vertCache_s		*previousPositionCache;
 	// specular directions for non vertex program cards, skybox texcoords, etc
 } drawSurf_t;
 

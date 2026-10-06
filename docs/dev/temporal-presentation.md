@@ -1,9 +1,15 @@
 # Temporal Presentation
 
-Milestone E adds a default-off temporal presentation path shared by OpenGL and
-Vulkan. It combines delayed GPU-time dynamic resolution with native-resolution
-temporal accumulation, while preserving the existing SMAA/spatial path as the
-immediate rollback.
+Milestone E adds a temporal presentation path shared by OpenGL and Vulkan. It
+combines delayed GPU-time dynamic resolution with native-resolution temporal
+accumulation, while preserving the existing SMAA/spatial path as the immediate
+rollback. Since 2026-10-06 `r_temporalAA` defaults to `2` (automatic): TAAU
+replaces the bilinear stretch whenever the 3D scene renders below native
+resolution (`r_screenFraction < 100` with scale mode `1` or `2`, or dynamic
+resolution), and stays off at native resolution. It is never automatic on the
+OpenGL ES module, which has no temporal resolve, or on an OpenGL context
+without GLSL 1.30. `R_MigrateLegacyTemporalAADefault` moves an archived `0`
+to `2` once (`r_temporalAADefaultMigrated`).
 
 ## Ownership Contract
 
@@ -68,31 +74,80 @@ and capture state.
 
 ## Temporal History And Motion
 
-`r_temporalAA 1` replaces the game SMAA tail only when the renderer accepts a
-validated temporal resolve command. Rejection leaves the established SMAA or
-spatial final pass in place. The resolve uses an eight-sample Halton sequence,
-previous camera projection, depth reprojection, object velocity where available,
-neighbourhood clamping, colour/depth disocclusion rejection, and conservative
-reactive rejection.
+An active temporal request replaces the game SMAA tail only when the renderer
+accepts a validated temporal resolve command. Rejection leaves the established
+SMAA or spatial final pass in place. The resolve uses an eight-sample Halton
+sequence, previous camera projection, depth reprojection and per-pixel object
+velocity.
 
-Every visible motion class has explicit ownership:
+### Per-pixel ownership
+
+The velocity pass (`RB_RenderMotionVectorBuffer`, `VK_Post_RenderMotionVectors`)
+owns every visible moving surface per pixel. `R_ScenePackets_TemporalSurfaceMotion`
+classifies each view drawSurf for both backends:
 
 | Domain | History treatment |
 |---|---|
-| Static world | Camera/depth reprojection and disocclusion testing |
-| Rigid entities | OpenGL and Vulkan write eligible object velocity from the previous model and camera transforms; a missing transform or failed draw retains conservative packet-region rejection |
-| Skinned geometry | Reactive rejection unless a backend supplies an explicitly validated previous palette and velocity stream |
-| Particles/BSE | Reactive rejection |
-| Material/generated deforms | Reactive rejection unless a backend supplies explicitly validated previous vertices |
-| Portal, mirror, and remote subviews | Stable unjittered child render; sampled parent surface is reactive and marked as separate-history ownership |
-| In-world GUI | Rigid/camera motion plus reactive rejection |
-| First-person view model | Depth-hack-aware rigid/camera motion plus reactive rejection |
+| Static world (no entity, or a static world area model) | Not drawn: camera/depth reprojection is exact |
+| Rigid entities (static model, no callback) | Exact vector from the previous model transform |
+| Posed (skinned MD5) surfaces | Exact vector from the previous transform and each vertex's previous model-space position |
+| First-person weapon | As above, with the weapon's own depth-hack projection on both frames and its 0..0.5 depth range |
+| Particles/BSE, in-world GUI, subview and post surfaces | Reactive coverage of the pixels they cover |
+| Translucent entity surfaces, unposed dynamic models, newly visible entities, packed MD5R | Reactive coverage |
 
-The conservative reactive routes are deliberate ownership, not zero-vector
-claims: history is suppressed when a precise prior vertex stream is unavailable.
-The shared packet policy carries at most two conservative normalized regions;
-when a backend cannot establish that policy, it rejects history over the full
-view. Root 2D UI is never part of the temporal history or scene scaling.
+The previous positions come from the front end. `idMD5Mesh::UpdateSurface`
+reuses each entity's triangle surface, so just before a new pose overwrites
+`verts`, `R_TemporalPresentation_CapturePreviousPositions` copies the pose that
+was drawn on the immediately preceding frame (`positionsFrame == frame - 1`;
+animation-LOD frames that redraw the old pose keep the chain continuous). For a
+main-view drawSurf whose geometry is still that surface, `R_AddDrawSurf`
+uploads the capture as a frame-temp `idVec3` stream
+(`drawSurf->previousPositionCache`). OpenGL binds it to texture coordinate 1;
+Vulkan binds it at vertex binding 1 (`VK_EXTRA_VERTEX_POSITION_PREVIOUS`). A
+skinned surface without a capture, a material deform's replacement geometry
+and packed MD5R stay reactive.
+
+The RGBA16F velocity target carries the vector in `rg` (scene pixels), the
+reactive amount in `b` and an exact-vector flag in `a`. Reactive surfaces write
+only `b` (`glColorMask`, or a Vulkan pipeline with R/G/A masked), and only where
+they are not behind the finished opaque depth, so an exact vector underneath
+survives. The amount is `r_temporalAAReactiveEffects` (0.85) for effects and
+translucent geometry, 0.5 for in-world GUIs and 1 for subview and post surfaces.
+A complete pass reports per-pixel ownership, and the shared packet policy then
+adds no screen regions (`R_ScenePackets_BuildTemporalViewMotionPolicy(...,
+perPixelOwnership)`). Only a pass that could not draw a surface falls back to
+the two conservative regions, or to the whole view when the policy is
+unavailable. Root 2D UI is never part of the temporal history or scene scaling.
+
+`rendererTemporalPresentationStatus` prints the last pass's counts:
+`Temporal ownership: rigid= posed= weapon= reactive= missed= complete=`.
+
+### Resolve
+
+Both resolve shaders (`draw_common.cpp` builtin, `temporal_resolve.frag`) share
+one algorithm:
+
+- a 3x3 neighbourhood in YCoCg gives a mean/variance box (1.25 sigma,
+  intersected with the sample range); history is clipped toward the box centre
+  rather than clamped per channel;
+- when the nearest-depth texel of the 3x3 carries an exact object vector, that
+  vector is used, so a moving silhouette carries its motion onto the
+  background texels around it; a still occluder never pins the moving
+  background beside it (each texel then keeps its own velocity);
+- history is reconstructed with a five-tap Catmull-Rom filter, not bilinear;
+- reactivity comes only from the per-pixel reactive channel (times
+  `r_temporalAAReactiveScale`), the fallback regions, and depth disocclusion
+  that only applies while the pixel moves. Colour differences are not reactive:
+  they are what clipping handles, and treating them as reactive switched
+  anti-aliasing off at exactly the high-contrast edges that need it;
+- feedback (`r_temporalAAFeedback`, 0.9) falls by up to 30% for fast motion,
+  and the blend is luminance-weighted so a single bright sample cannot flicker.
+
+The image the player sees gets contrast-adaptive sharpening
+(`r_temporalAASharpness`, 0.5, AMD CAS cross pattern). It is applied only when
+the resolved history is presented (OpenGL: the scene present program; Vulkan:
+flag 16 of the resolve block, with the amount in `reactiveRect1.x`, which a
+history-less present does not read), never written back into the history.
 
 Vulkan keeps TAA transform history separate from motion blur. It commits that
 history only after the matching color history write, and requires the previous
@@ -111,9 +166,10 @@ each scaled/restarted interval. A single frame can correctly reject history
 after a time discontinuity or newly visible entity; cumulative freshness proves
 the real production draws without requiring unsafe reuse on that frame.
 
-`r_temporalAAFeedback`, `r_temporalAAReactiveScale`, and `r_temporalAADebug`
-control maximum history weight, rejection strength, and the velocity/reactive/
-history-weight diagnostic views.
+`r_temporalAAFeedback`, `r_temporalAAReactiveScale`, `r_temporalAAReactiveEffects`,
+`r_temporalAASharpness` and `r_temporalAADebug` control maximum history weight,
+rejection strength, effect coverage strength, present sharpening and the
+velocity/reactive/history-weight diagnostic views.
 
 ## Cuts And Captures
 
@@ -151,3 +207,19 @@ stale view/frame/generation/extent/capture state must reject exact ownership.
 The required `renderer-vk-temporal-motion-selftest` matrix case repeats them
 after full restart with active validation. These tests establish numerical
 behavior, not moving-scene visual parity, performance or platform promotion.
+
+The 2026-10-06 per-pixel ownership was checked in `game/airdefense1` (devmap,
+1280x720 windowed, 60 fps cap), on OpenGL and on Vulkan with
+`r_vkValidation 1`. History was read back with `screenshot image
+_temporalHistoryAlbedo0`; a plain `screenshot` renders a capture frame that
+bypasses history. Every captured frame reported complete ownership with no
+missed surface: 53 rigid, 11 posed (2 of them the weapon) and 73-78 reactive
+surfaces at the spawn view, and 3 rigid, 11 posed and 23 reactive in the
+middle of a `benchmarkViewSweep 90 3000`. Vulkan logged no validation message.
+Against the previous resolve (the same view on a065b928), the weapon outline
+and the long wall-top edge lost their stair-steps. At `r_screenFraction 75`
+the automatic mode engaged (960x540 into 1280x720) and replaced the bilinear
+stretch's blocky edges with smooth ones; at `100` it stayed off. The mid-sweep
+history showed no ghost trails around the weapon or the skyline. The
+sharpened image the player sees cannot be captured by `screenshot`; its CAS
+step was evaluated by applying the identical filter to the read-back history.

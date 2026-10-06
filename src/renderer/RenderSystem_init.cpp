@@ -694,6 +694,8 @@ idCVar r_shadowMapPolygonOffset( "r_shadowMapPolygonOffset", "0.5", CVAR_RENDERE
 static idCVar r_shadowMapContactQualityMigrated( "r_shadowMapContactQualityMigrated", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for legacy broad shadow filtering defaults" );
 static idCVar r_shadowMapFilterDefaultsMigrated( "r_shadowMapFilterDefaultsMigrated", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for the legacy fixed-PCF projected shadow filter defaults" );
 static idCVar r_pbrMaterialsDefaultMigrated( "r_pbrMaterialsDefaultMigrated", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for the PBR material default" );
+static idCVar r_temporalAADefaultMigrated( "r_temporalAADefaultMigrated", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for the automatic temporal AA default" );
+extern idCVar r_temporalAA;
 idCVar r_frontBuffer( "r_frontBuffer", "0", CVAR_RENDERER | CVAR_BOOL, "draw to front buffer for debugging" );
 idCVar r_skipSubviews( "r_skipSubviews", "0", CVAR_RENDERER | CVAR_INTEGER, "1 = don't render any gui elements on surfaces" );
 idCVar r_skipParticles( "r_skipParticles", "0", CVAR_RENDERER | CVAR_INTEGER, "1 = skip all particle systems", 0, 1, idCmdSystem::ArgCompletion_Integer<0,1> );
@@ -6000,6 +6002,28 @@ static void R_MigrateLegacyPBRMaterialsDefault( void ) {
 }
 
 /*
+==================
+R_MigrateLegacyTemporalAADefault
+
+Temporal AA now defaults to automatic (r_temporalAA 2): it upscales only
+when the 3D scene renders below native resolution, where it replaces a
+bilinear stretch, and stays off at native resolution. A profile saved under
+the old default (0) would never see that, so move it once; a later 0 is a
+player's choice and is kept.
+==================
+*/
+static void R_MigrateLegacyTemporalAADefault( void ) {
+	if ( r_temporalAADefaultMigrated.GetBool() ) {
+		return;
+	}
+	if ( r_temporalAA.GetInteger() == 0 ) {
+		common->Printf( "Migrating the legacy temporal AA default: temporal upscaling below native resolution\n" );
+		r_temporalAA.SetInteger( 2 );
+	}
+	r_temporalAADefaultMigrated.SetBool( true );
+}
+
+/*
 =================
 R_InitCommands
 =================
@@ -6437,6 +6461,7 @@ void idRenderSystemLocal::InitOpenGL( void ) {
 	R_MigrateLegacyShadowMapContactQuality();
 	R_MigrateLegacyShadowMapFilterDefaults();
 	R_MigrateLegacyPBRMaterialsDefault();
+	R_MigrateLegacyTemporalAADefault();
 	char error[1024];
 	if ( !R_InitRendererDevice( true, false, error, sizeof( error ) ) ) common->FatalError( "%s", error );
 	r_recoverableRendererRestore = false;

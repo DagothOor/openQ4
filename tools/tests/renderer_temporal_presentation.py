@@ -78,7 +78,17 @@ def main() -> int:
     )
     temporal = read(RENDERER / "TemporalPresentation.cpp")
     for token in (
-        'idCVar r_temporalAA( "r_temporalAA", "0"',
+        # automatic TAA: upscales only below native resolution
+        'idCVar r_temporalAA( "r_temporalAA", "2"',
+        "R_TemporalPresentation_AutomaticTemporalAAWanted(",
+        "defined( OPENQ4_RENDERER_GLES_MODULE )",
+        "glConfig.GLSL130Available",
+        "r_screenFraction.GetInteger() < 100 && ( scaleMode == 1 || scaleMode == 2 )",
+        "R_TemporalPresentation_CapturePreviousPositions(",
+        "tri->positionsFrame == frame - 1",
+        "R_TemporalPresentation_PreviousPositionCache(",
+        "R_TemporalPresentation_RecordOwnership(",
+        'idCVar r_temporalAASharpness( "r_temporalAASharpness", "0.5"',
         'idCVar r_dynamicResolutionCaptureNative( "r_dynamicResolutionCaptureNative", "0"',
         "R_TemporalPresentation_FindSampleScale(",
         "eligibleForFeedback",
@@ -344,6 +354,42 @@ def main() -> int:
         "packetReactive",
     ):
         require(vk_shader, token, "Vulkan disocclusion/reactive resolve")
+
+    # Per-pixel ownership: every moving surface is written as an exact vector
+    # (rigid, posed previous positions, the depth-hacked weapon) or as reactive
+    # coverage; screen regions are only the incomplete-pass fallback.
+    require(scene_packets, "temporalSurfaceMotion_t R_ScenePackets_TemporalSurfaceMotion(",
+        "per-surface temporal classification")
+    require(scene_packets, "IsStaticWorldModel()", "world geometry stays on depth reprojection")
+    require(scene_packets, "if ( perPixelOwnership ) {", "per-pixel policy skips screen regions")
+    for token in (
+        "R_ScenePackets_TemporalSurfaceMotion( surf )",
+        "RB_FindTemporalEntityHistory(",
+        "RB_MotionVectorWeaponProjection(",
+        "glColorMask( GL_FALSE, GL_FALSE, GL_TRUE, GL_FALSE );",
+        "const bool perPixelOwnership = velocityValid && velocityComplete;",
+        "vec3 SampleHistory( vec2 uv )",
+        "vec3 ClipToBox( vec3 value, vec3 boxMin, vec3 boxMax )",
+        "R_TemporalPresentation_PresentSharpness()",
+    ):
+        require(gl_backend, token, "OpenGL per-pixel temporal ownership")
+    glprogs = ROOT / "content" / "baseoq4" / "pak0" / "glprogs"
+    require(read(glprogs / "motionvectors.vs"), "gl_MultiTexCoord1.xyz", "OpenGL posed previous positions")
+    require(read(glprogs / "motionvectors.fs"), "gl_FragCoord.z > sceneDepth + depthTolerance",
+        "OpenGL reactive coverage depth test")
+    for token in (
+        "VK_POST_MOTION_VECTORS_PREVIOUS",
+        "VK_POST_MOTION_VECTORS_REACTIVE",
+        "VK_Exec_BindPreviousPositions( cmd, slot, surf )",
+        "VK_Post_FindTemporalMotionEntityHistory(",
+        "GLS_REDMASK | GLS_GREENMASK | GLS_ALPHAMASK",
+        "viewport.maxDepth = wantWeaponRange ? 0.5f : 1.0f;",
+    ):
+        require(vk_post, token, "Vulkan per-pixel temporal ownership")
+    for token in ("vec3 SampleHistory(vec2 textureUV)", "vec3 ClipToBox(vec3 value, vec3 boxMin, vec3 boxMax)",
+                  "vec3 SharpenPresent(vec2 textureUV, vec3 center, float amount)",
+                  "texture(objectMotion, closestCameraUV)"):
+        require(vk_shader, token, "Vulkan temporal resolve")
 
     game_local_header = read(GAME_ROOT / "src" / "game" / "Game_local.h")
     require(game_local_header, "temporalHistoryRT[2]", "game history ping-pong ownership")

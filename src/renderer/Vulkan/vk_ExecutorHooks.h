@@ -22,7 +22,8 @@ enum vkExtraVertexLayout_t {
 	VK_EXTRA_VERTEX_POSITION,		// idDrawVert xyz only
 	VK_EXTRA_VERTEX_DRAWVERT,		// the interaction layout: xyz 0, colour 1, normal 2, tangents 3-4, st 5
 	VK_EXTRA_VERTEX_DEBUG,			// vkDebugVert_t: xyzw 0, RGBA8 colour 1, st 2 (28-byte stride)
-	VK_EXTRA_VERTEX_GUI				// gui.vert's idDrawVert xyz 0, colour 1 and st 2
+	VK_EXTRA_VERTEX_GUI,			// gui.vert's idDrawVert xyz 0, colour 1 and st 2
+	VK_EXTRA_VERTEX_POSITION_PREVIOUS	// idDrawVert xyz 0 (binding 0) + idVec3 previous position 1 (binding 1)
 };
 
 // VK_Exec_ExtraPipeline flags
@@ -115,6 +116,8 @@ void VK_PostProcess_CommitTemporalMotion( const viewDef_t *viewDef,
 void VK_PostProcess_ResetTemporalMotion( void );
 
 bool				VK_Exec_BindTriGeometry( VkCommandBuffer cmd, int slot, const srfTriangles_t *tri );
+// binds drawSurf->previousPositionCache at vertex binding 1 (temporal AA)
+bool				VK_Exec_BindPreviousPositions( VkCommandBuffer cmd, int slot, const drawSurf_t *surf );
 // streams vertices into the frame's vertex ring and binds them as binding 0
 bool				VK_Exec_BindTransientVertices( VkCommandBuffer cmd, const void *data, int bytes );
 void				VK_BuildSurfMVP( const viewDef_t *viewDef, const drawSurf_t *drawSurf, float outMvp[ 16 ] );

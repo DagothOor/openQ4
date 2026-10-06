@@ -367,6 +367,11 @@ static srfTriangles_t *R_CreateFrameSubmitTri( srfTriangles_t *tri, bool needsLi
 	// dynamic-model snapshot. It must never free the source allocation.
 	submitTri->gpuSkinningJointPaletteAlloc = NULL;
 	submitTri->numGpuSkinningJointPaletteAllocJoints = 0;
+	// sourceVerts may be a re-ordered packed copy: never pair it with the
+	// source surface's captured pose
+	submitTri->previousPositions = NULL;
+	submitTri->numPreviousPositions = 0;
+	submitTri->previousPositionsFrame = -1;
 	submitTri->verts = sourceVerts;
 	submitTri->indexes = sourceIndexes;
 #if defined( _MD5R_SUPPORT ) || defined( Q4SDK_MD5R )
@@ -1152,6 +1157,7 @@ bool R_LinkLightSurf( const drawSurf_t **link, const srfTriangles_t *tri, const 
 
 	drawSurf->geo = tri;
 	drawSurf->pbrLightGeo = pbrLightGeo;
+	drawSurf->previousPositionCache = NULL;
 	drawSurf->space = space;
 	drawSurf->material = shader;
 	drawSurf->scissorRect = scissor;
@@ -2206,6 +2212,7 @@ void R_AddDrawSurf( const srfTriangles_t *tri, const viewEntity_t *space, const 
 	drawSurf = (drawSurf_t *)R_FrameAlloc( sizeof( *drawSurf ) );
 	drawSurf->geo = tri;
 	drawSurf->pbrLightGeo = NULL;
+	drawSurf->previousPositionCache = NULL;
 	drawSurf->space = space;
 	drawSurf->material = shader;
 	drawSurf->scissorRect = scissor;
@@ -2251,6 +2258,12 @@ void R_AddDrawSurf( const srfTriangles_t *tri, const viewEntity_t *space, const 
 	drawSurf->area = tr.viewDef->skipDrawSurfAreaResolve ? R_FallbackDrawSurfArea( space ) : R_ResolveDrawSurfArea( tri, space );
 
 	R_FinalizeDrawSurf( drawSurf );
+
+	// A material deform replaces geo with new frame geometry; only the posed
+	// surface itself matches its captured previous positions.
+	if ( drawSurf->geo == tri ) {
+		drawSurf->previousPositionCache = R_TemporalPresentation_PreviousPositionCache( drawSurf );
+	}
 
 	// check for gui surfaces
 	idUserInterface	*gui = NULL;

@@ -113,7 +113,7 @@ static bool RB_EnsureSceneDepthAwarePresentProgram(){return false;}
 static int rbSceneRenderTargetPreserveDepthFrame=-1,rbSceneRenderTargetPreserveDepthWidth=0,rbSceneRenderTargetPreserveDepthHeight=0;
 static idImage* rbSceneRenderTargetPreserveDepthImage=nullptr;
 static unsigned rbSceneDepthAwarePresentProgram=2;
-static int rbSceneDepthAwarePresentSceneLocation=4,rbSceneDepthAwarePresentDepthLocation=5,rbSceneDepthAwarePresentUVOffsetLocation=6;
+static int rbSceneDepthAwarePresentSceneLocation=4,rbSceneDepthAwarePresentDepthLocation=5,rbSceneDepthAwarePresentUVOffsetLocation=6,rbSceneDepthAwarePresentParamsLocation=7;
 static void RB_CaptureCurrentRenderImage(int w,int h){copyImage.opts.width=w;copyImage.opts.height=h;copyImage.CopyFramebuffer(0,0,w,h);}
 static void RB_CaptureCurrentDepthImage(int,int){}
 constexpr int GL_BACK=0,GL_MODULATE=1,GL_TEXTURE_2D=2,GL_TEXTURE_COMPARE_MODE=3,GL_NONE=4,GL_DEPTH_TEXTURE_MODE=5,GL_LUMINANCE=6,
@@ -144,6 +144,7 @@ static void RB_InitResolutionScaleStage(){}
 static bool R_ValidateGLSLProgram(const Shader*){return validShader;}
 static void glUseProgramObjectARB(unsigned program){if(program==1)++shaderBinds;}
 static void glUniform1iARB(int,int){}
+static void glUniform4fvARB(int,int,const GLfloat*){}
 static void glUniform2fvARB(int location,int,const GLfloat* v){if(location==1)inverseSource={v[0],v[1]};}
 static void glUniform1fARB(int location,GLfloat v){if(location==2)sharpen=v;}
 static void RB_ShowImages(){calls.push_back("debug-images");}

@@ -206,6 +206,7 @@ static const int GL_NO_ERROR=0;
 NOOP(R_MigrateLegacyShadowMapContactQuality)
 NOOP(R_MigrateLegacyShadowMapFilterDefaults)
 NOOP(R_MigrateLegacyPBRMaterialsDefault)
+NOOP(R_MigrateLegacyTemporalAADefault)
 NOOP(Sys_ShutdownInput)
 NOOP(R_RendererMetrics_ShutdownGpuTimers)
 NOOP(R_ClassicGuiDomain_ResetFrame)
@@ -384,9 +385,10 @@ int main() {
     events.clear();
     tr.InitOpenGL();
     assert(deviceStarts==1 && imageReloads==1);
-    assert(events.size()==3 && events[0]=="R_MigrateLegacyShadowMapContactQuality"
+    assert(events.size()==4 && events[0]=="R_MigrateLegacyShadowMapContactQuality"
         && events[1]=="R_MigrateLegacyShadowMapFilterDefaults"
-        && events[2]=="R_MigrateLegacyPBRMaterialsDefault");
+        && events[2]=="R_MigrateLegacyPBRMaterialsDefault"
+        && events[3]=="R_MigrateLegacyTemporalAADefault");
     fontsAlive=true;frameData=&frameObject;
 
     // Repeat from each fullscreen preference, with and without a forced

@@ -542,6 +542,70 @@ bool R_ScenePackets_TemporalRigidMotionEligible(
 		&& entity->dynamicModel == NULL;
 }
 
+temporalSurfaceMotion_t R_ScenePackets_TemporalSurfaceMotion(
+		const drawSurf_t *drawSurf ) {
+	if ( drawSurf == NULL || drawSurf->geo == NULL
+			|| drawSurf->material == NULL || drawSurf->space == NULL ) {
+		return TEMPORAL_SURFACE_MOTION_NONE;
+	}
+	const srfTriangles_t *geometry = drawSurf->geo;
+	const idMaterial *material = drawSurf->material;
+	if ( !material->IsDrawn() || material->IsPortalSky()
+			|| geometry->numIndexes <= 0
+			|| ( drawSurf->dsFlags & DSF_OUTLINE_ONLY ) != 0 ) {
+		return TEMPORAL_SURFACE_MOTION_NONE;
+	}
+	// Effects, GUI output, subview images and authored post surfaces change on
+	// their own whatever their geometry does.
+	if ( ( drawSurf->dsFlags & ( DSF_BSE_EFFECT | DSF_IN_WORLD_GUI ) ) != 0
+			|| material->GetSort() >= SS_POST_PROCESS
+			|| R_ScenePackets_MaterialUsesRemoteRender( material )
+			|| R_ScenePackets_MaterialClassForDrawSurf( drawSurf )
+				== RENDER_MATERIAL_SUBVIEW ) {
+		return TEMPORAL_SURFACE_MOTION_REACTIVE;
+	}
+	const idRenderEntityLocal *entity = drawSurf->space->entityDef;
+	if ( entity == NULL || ( entity->parms.hModel != NULL
+			&& entity->parms.hModel->IsStaticWorldModel() ) ) {
+		// world geometry moves only with the camera, which depth reprojection
+		// already follows exactly
+		return TEMPORAL_SURFACE_MOTION_NONE;
+	}
+	if ( entity->index < 0 || drawSurf->space->modelDepthHack != 0.0f
+			|| material->Coverage() == MC_TRANSLUCENT
+			|| R_TriHasPrimBatchMesh( geometry ) ) {
+		return TEMPORAL_SURFACE_MOTION_REACTIVE;
+	}
+	if ( drawSurf->previousPositionCache != NULL ) {
+		return TEMPORAL_SURFACE_MOTION_PREVIOUS_POSITIONS;
+	}
+	if ( geometry->deformedSurface || entity->parms.callback != NULL
+			|| entity->parms.hModel == NULL
+			|| entity->parms.hModel->IsDynamicModel() != DM_STATIC
+			|| entity->dynamicModel != NULL ) {
+		return TEMPORAL_SURFACE_MOTION_REACTIVE;
+	}
+	return TEMPORAL_SURFACE_MOTION_RIGID;
+}
+
+float R_ScenePackets_TemporalSurfaceReactiveStrength( const drawSurf_t *drawSurf ) {
+	if ( drawSurf == NULL || drawSurf->material == NULL ) {
+		return 1.0f;
+	}
+	// A subview or post surface shows a different image every frame; an
+	// in-world GUI is mostly still text, so it keeps half its history.
+	if ( drawSurf->material->GetSort() >= SS_POST_PROCESS
+			|| R_ScenePackets_MaterialUsesRemoteRender( drawSurf->material )
+			|| R_ScenePackets_MaterialClassForDrawSurf( drawSurf )
+				== RENDER_MATERIAL_SUBVIEW ) {
+		return 1.0f;
+	}
+	if ( ( drawSurf->dsFlags & DSF_IN_WORLD_GUI ) != 0 ) {
+		return 0.5f;
+	}
+	return R_TemporalPresentation_EffectReactiveStrength();
+}
+
 static scenePacketCategory_t R_ScenePackets_CategoryForDrawSurf( const viewDef_t *viewDef, const drawSurf_t *drawSurf, renderPassCategory_t passCategory, const materialResourceRecord_t *materialRecord = NULL ) {
 	if ( passCategory == RENDER_PASS_SPECIAL_EFFECTS ) {
 		return SCENE_PACKET_CATEGORY_SPECIAL_EFFECTS;
@@ -1167,15 +1231,16 @@ bool idScenePacketFrame::AddDrawPacket( const drawSurf_t *drawSurf,
 		&& packet.instanceRecord->hasPreviousModelMatrix;
 	temporalInput.skinned = packet.geometryRecord != NULL
 		&& packet.geometryRecord->skinningMode != GEOMETRY_SKINNING_NONE;
-	// Previous joint palettes and previous material-deformed vertices are not
-	// silently approximated as rigid motion. Until a backend consumes those
-	// explicit streams, the shared policy marks the surfaces reactive.
+	// Posed surfaces are never approximated as rigid motion: they own exact
+	// motion only through the previous model-space positions the front end
+	// captured before this frame's pose (drawSurf->previousPositionCache).
 	temporalInput.hasPreviousSkinningPalette = false;
 	temporalInput.particle = drawSurf != NULL
 		&& ( drawSurf->dsFlags & DSF_BSE_EFFECT ) != 0;
 	temporalInput.deform = packet.geometryRecord != NULL
 		&& packet.geometryRecord->deformMode != GEOMETRY_DEFORM_NONE;
-	temporalInput.hasPreviousDeformedVertices = false;
+	temporalInput.hasPreviousDeformedVertices = drawSurf != NULL
+		&& drawSurf->previousPositionCache != NULL;
 	temporalInput.subview = cachedMaterialRecord != NULL
 		? ( cachedMaterialRecord->usesRemoteRender
 			|| static_cast<rendererMaterialClass_t>(
@@ -1561,7 +1626,7 @@ static bool R_ScenePackets_TemporalVisiblePass(
 
 bool idScenePacketFrame::BuildTemporalViewMotionPolicy(
 		const viewDef_t *viewDef, unsigned int backendExactMotionDomainMask,
-		temporalViewMotionPolicy_t &policy ) const {
+		temporalViewMotionPolicy_t &policy, bool perPixelOwnership ) const {
 	policy = TemporalHistoryCore_BeginViewMotionPolicy();
 	if ( viewDef == NULL ) {
 		return false;
@@ -1589,6 +1654,13 @@ bool idScenePacketFrame::BuildTemporalViewMotionPolicy(
 			const drawPacket_t &packet = drawPackets[packetIndex];
 			if ( !R_ScenePackets_TemporalVisiblePass( packet.passCategory )
 					|| !packet.hasGeometry ) {
+				continue;
+			}
+			if ( perPixelOwnership ) {
+				// The velocity pass already owned every moving surface per pixel:
+				// record what was present, but no conservative regions.
+				policy.presentDomainMask |= TemporalHistoryCore_MotionDomainBit(
+					packet.temporalMotion.domain );
 				continue;
 			}
 			unsigned int packetExactMotionDomainMask =
@@ -2545,11 +2617,11 @@ bool R_ScenePackets_FrontEndFrameAvailable( void ) {
 
 bool R_ScenePackets_BuildTemporalViewMotionPolicy( const viewDef_t *viewDef,
 		unsigned int backendExactMotionDomainMask,
-		temporalViewMotionPolicy_t &policy ) {
+		temporalViewMotionPolicy_t &policy, bool perPixelOwnership ) {
 	policy = TemporalHistoryCore_BeginViewMotionPolicy();
 	return R_ScenePackets_FrontEndFrameAvailable()
 		&& rg_frontEndScenePacketFrame.BuildTemporalViewMotionPolicy( viewDef,
-			backendExactMotionDomainMask, policy );
+			backendExactMotionDomainMask, policy, perPixelOwnership );
 }
 
 /*

@@ -2,6 +2,24 @@
 
 ## 0.13.2 release candidate
 
+- [x] Make temporal AA production quality and the default upscaler (idTech 6
+  roadmap: complete motion ownership). The velocity pass now owns every moving
+  surface per pixel on OpenGL and Vulkan: exact vectors for rigid entities,
+  for skinned MD5 surfaces (each pose's predecessor is captured before
+  `UpdateSurface` overwrites it and uploaded as a frame-temp `idVec3` stream)
+  and for the weapon through its own depth-hack projection and depth range;
+  reactive coverage in the velocity target's blue channel for BSE, GUIs,
+  subviews, post and translucent moving surfaces, replacing the two scissor
+  rectangles that let one effect reject history over the whole view. The
+  resolve clips a Catmull-Rom history to a YCoCg variance box with
+  nearest-depth velocity, no longer treats colour change as reactive, and
+  presents through CAS (`r_temporalAASharpness` 0.5). `r_temporalAA` is now
+  0/1/2 with default 2 (automatic below native resolution, never on ES or
+  without GLSL 1.30), migrated once from an archived 0. `airdefense1` on GL and
+  validation-clean Vulkan reports complete ownership (53 rigid, 11 posed incl.
+  2 weapon, ~75 reactive, 0 missed). `renderer_temporal_presentation.py`, the
+  Vulkan header pins and the vid_restart harness cover it.
+
 - [x] Cut the search-path cost of a level load (idTech 5 track, Air Defense 1
   register item 1). A null-buffer `ReadFile` for a pk4 member is answered from
   the central-directory index (the uncompressed size is kept per entry) instead

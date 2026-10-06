@@ -727,6 +727,9 @@ void idRenderModelDecal::AddDecalDrawSurf( viewEntity_t *space ) {
 	*newTri = tri;
 	newTri->gpuSkinningJointPaletteAlloc = NULL;
 	newTri->numGpuSkinningJointPaletteAllocJoints = 0;
+	newTri->previousPositions = NULL;
+	newTri->numPreviousPositions = 0;
+	newTri->previousPositionsFrame = -1;
 	R_ClearStaticGpuSkinningJointPalette( newTri );
 
 	// Snapshot the vertices plus any per-stage color blocks into one transient

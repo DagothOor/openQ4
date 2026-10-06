@@ -45,9 +45,9 @@ idCVar r_dynamicResolutionDebug( "r_dynamicResolutionDebug", "0",
 	CVAR_RENDERER | CVAR_INTEGER,
 	"print automatic resolution decisions: 0 = off, 1 = scale/reset, 2 = every frame", 0, 2 );
 
-idCVar r_temporalAA( "r_temporalAA", "0",
-	CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL,
-	"enable experimental temporal anti-aliasing/upscaling with automatic SMAA rollback" );
+idCVar r_temporalAA( "r_temporalAA", "2",
+	CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER,
+	"temporal anti-aliasing and upscaling, with automatic SMAA rollback: 0 = off, 1 = always, 2 = automatic (upscale whenever the 3D scene renders below native resolution with a smooth scale mode, or with dynamic resolution)", 0, 2 );
 idCVar r_temporalAAFeedback( "r_temporalAAFeedback", "0.90",
 	CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT,
 	"maximum accepted temporal-history contribution", 0.0f, 0.98f );
@@ -57,6 +57,14 @@ idCVar r_temporalAAReactiveScale( "r_temporalAAReactiveScale", "1.0",
 idCVar r_temporalAADebug( "r_temporalAADebug", "0",
 	CVAR_RENDERER | CVAR_INTEGER,
 	"temporal presentation diagnostic view: 0 = final, 1 = velocity, 2 = reactive, 3 = history weight", 0, 3 );
+static bool R_TemporalPresentation_TemporalAAWanted( void );
+
+idCVar r_temporalAAReactiveEffects( "r_temporalAAReactiveEffects", "0.85",
+	CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT,
+	"temporal AA history rejection where particles, effects and translucent moving surfaces cover a pixel", 0.0f, 1.0f );
+idCVar r_temporalAASharpness( "r_temporalAASharpness", "0.5",
+	CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT,
+	"contrast-adaptive sharpening applied when temporal AA presents its history (0 = off); the history itself stays unsharpened", 0.0f, 1.0f );
 
 idCVar r_rendererFroxelVolumetrics( "r_rendererFroxelVolumetrics", "0",
 	CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL,
@@ -587,14 +595,14 @@ void R_TemporalPresentation_BeginFrame( int nativeWidth, int nativeHeight,
 		memset( &rg_temporalFrameState, 0, sizeof( rg_temporalFrameState ) );
 		rg_temporalPresentationInitialized = true;
 		rg_dynamicResolutionEnabledLastFrame = r_rendererDynamicResolution.GetBool();
-		rg_temporalAAEnabledLastFrame = r_temporalAA.GetBool();
+		rg_temporalAAEnabledLastFrame = R_TemporalPresentation_TemporalAAWanted();
 		rg_advancedScreenSpaceLast = advancedScreenSpace;
 		rg_videoRestartCount = tr.videoRestartCount;
 	}
 
 	const bool dynamicResolutionRequested = r_rendererDynamicResolution.GetBool()
 		&& !R_TemporalPresentation_VRFrame();
-	const bool temporalAARequested = r_temporalAA.GetBool()
+	const bool temporalAARequested = R_TemporalPresentation_TemporalAAWanted()
 		&& !R_TemporalPresentation_VRFrame();
 	if ( dynamicResolutionRequested != rg_dynamicResolutionEnabledLastFrame ) {
 		R_RendererMetrics_ResetGpuFrameTiming( dynamicResolutionRequested
@@ -743,8 +751,115 @@ bool R_TemporalPresentation_DynamicResolutionRequested( void ) {
 	return r_rendererDynamicResolution.GetBool() && !R_TemporalPresentation_VRFrame();
 }
 
+// r_temporalAA 2 hands sub-native rendering to TAAU, which reconstructs far
+// more detail than a bilinear stretch. It stays off at native resolution
+// (where MSAA/SMAA already serve), for the crop and nearest scale modes a
+// player picks on purpose, and on backends without a temporal resolve.
+static bool R_TemporalPresentation_AutomaticTemporalAAWanted( void ) {
+#if defined( OPENQ4_RENDERER_GLES_MODULE )
+	return false;
+#else
+#if !defined( OPENQ4_RENDERER_VK_MODULE )
+	if ( !glConfig.GLSLProgramAvailable || !glConfig.GLSL130Available ) {
+		return false;
+	}
+#endif
+	if ( r_rendererDynamicResolution.GetBool() ) {
+		return true;
+	}
+	const int scaleMode = r_resolutionScaleMode.GetInteger();
+	return r_screenFraction.GetInteger() < 100 && ( scaleMode == 1 || scaleMode == 2 );
+#endif
+}
+
+static bool R_TemporalPresentation_TemporalAAWanted( void ) {
+	switch ( r_temporalAA.GetInteger() ) {
+		case 1:
+			return true;
+		case 2:
+			return R_TemporalPresentation_AutomaticTemporalAAWanted();
+		default:
+			return false;
+	}
+}
+
 bool R_TemporalPresentation_TemporalAARequested( void ) {
-	return r_temporalAA.GetBool() && !R_TemporalPresentation_VRFrame();
+	return R_TemporalPresentation_TemporalAAWanted() && !R_TemporalPresentation_VRFrame();
+}
+
+float R_TemporalPresentation_EffectReactiveStrength( void ) {
+	return idMath::ClampFloat( 0.0f, 1.0f, r_temporalAAReactiveEffects.GetFloat() );
+}
+
+float R_TemporalPresentation_PresentSharpness( void ) {
+	return idMath::ClampFloat( 0.0f, 1.0f, r_temporalAASharpness.GetFloat() );
+}
+
+static temporalOwnershipStats_t rg_temporalOwnershipStats = { -1, 0, 0, 0, 0, 0, false };
+
+void R_TemporalPresentation_RecordOwnership( const temporalOwnershipStats_t &stats ) {
+	rg_temporalOwnershipStats = stats;
+}
+
+void R_TemporalPresentation_CapturePreviousPositions( srfTriangles_t *tri ) {
+	if ( tri == NULL ) {
+		return;
+	}
+	const int frame = tr.frameCount;
+	if ( tri->positionsFrame == frame ) {
+		// Posed again this frame (collision instantiation, uncached views): the
+		// capture taken by the first pose still describes the previous frame.
+		return;
+	}
+	// verts must hold the pose that was drawn on the immediately preceding
+	// frame, or the "previous" positions would span a gap.
+	const bool continuous = tri->verts != NULL && tri->numVerts > 0
+		&& tri->positionsFrame == frame - 1;
+	if ( !continuous || !R_TemporalPresentation_TemporalAARequested() ) {
+		tri->previousPositionsFrame = -1;
+		return;
+	}
+	if ( tri->previousPositions == NULL || tri->numPreviousPositions != tri->numVerts ) {
+		if ( tri->previousPositions != NULL ) {
+			Mem_Free16( tri->previousPositions );
+		}
+		tri->previousPositions = static_cast<idVec3 *>(
+			Mem_Alloc16( static_cast<size_t>( tri->numVerts ) * sizeof( idVec3 ) ) );
+		tri->numPreviousPositions = tri->previousPositions != NULL ? tri->numVerts : 0;
+		if ( tri->previousPositions == NULL ) {
+			tri->previousPositionsFrame = -1;
+			return;
+		}
+	}
+	for ( int i = 0; i < tri->numVerts; i++ ) {
+		tri->previousPositions[i] = tri->verts[i].xyz;
+	}
+	tri->previousPositionsFrame = frame;
+}
+
+void R_TemporalPresentation_MarkPositionsDrawn( srfTriangles_t *tri ) {
+	if ( tri != NULL ) {
+		tri->positionsFrame = tr.frameCount;
+	}
+}
+
+struct vertCache_s *R_TemporalPresentation_PreviousPositionCache(
+		const drawSurf_t *drawSurf ) {
+	if ( drawSurf == NULL || drawSurf->geo == NULL || drawSurf->space == NULL
+			|| drawSurf->space->entityDef == NULL || drawSurf->material == NULL
+			|| tr.viewDef == NULL || tr.viewDef->isSubview
+			|| !R_TemporalPresentation_TemporalAARequested() ) {
+		return NULL;
+	}
+	const srfTriangles_t *tri = drawSurf->geo;
+	if ( tri->previousPositions == NULL || tri->previousPositionsFrame != tr.frameCount
+			|| tri->numVerts <= 0 || tri->numPreviousPositions != tri->numVerts
+			|| !drawSurf->material->IsDrawn()
+			|| drawSurf->material->Coverage() == MC_TRANSLUCENT ) {
+		return NULL;
+	}
+	return vertexCache.AllocFrameTemp( tri->previousPositions,
+		tri->numVerts * static_cast<int>( sizeof( idVec3 ) ) );
 }
 
 void R_TemporalPresentation_SetVRExtent( int width, int height ) {
@@ -809,6 +924,15 @@ void R_TemporalPresentation_PrintStatus_f( const idCmdArgs &args ) {
 		rg_temporalResolutionState.droppedScaleChanges,
 		rg_temporalResolutionState.raisedScaleChanges,
 		rg_temporalResolutionState.discontinuityResets );
+	common->Printf(
+		"Temporal ownership: frame=%d rigid=%d posed=%d weapon=%d reactive=%d missed=%d complete=%d\n",
+		rg_temporalOwnershipStats.frameNumber,
+		rg_temporalOwnershipStats.rigid,
+		rg_temporalOwnershipStats.posed,
+		rg_temporalOwnershipStats.weapon,
+		rg_temporalOwnershipStats.reactive,
+		rg_temporalOwnershipStats.missed,
+		rg_temporalOwnershipStats.complete ? 1 : 0 );
 #ifdef OPENQ4_RENDERER_VK_MODULE
 	extern void VK_PostProcess_PrintTemporalMotion( void );
 	VK_PostProcess_PrintTemporalMotion();

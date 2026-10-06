@@ -523,6 +523,7 @@ static void R_LinkShadowMapCasterSurf( const drawSurf_t **link, const srfTriangl
 	drawSurf_t *drawSurf = (drawSurf_t *)R_FrameAlloc( sizeof( *drawSurf ) );
 	drawSurf->geo = tri;
 	drawSurf->pbrLightGeo = NULL;
+	drawSurf->previousPositionCache = NULL;
 	drawSurf->space = space;
 	drawSurf->material = shader;
 	drawSurf->sort = 0.0f;

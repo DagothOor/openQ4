@@ -381,8 +381,11 @@ Changes take effect immediately without reconnecting.
 The Display menu exposes curated presets: `10%`, `25%`, `50%`, `75%`, `85%`, `100%`, `125%`, `150%`, and `200%`.
 
 Modes `2` and `3` apply in the campaign and in multiplayer, on OpenGL and Vulkan.
-Temporal anti-aliasing (`r_temporalAA`) and the experimental screen-space effects
-do their own upscale, so with either of them on, every mode looks like mode `1`.
+With modes `1` and `2`, a scene below `100%` is upscaled by temporal anti-aliasing
+by default (`r_temporalAA 2`), which keeps edges smooth and recovers detail a plain
+stretch loses; see [Temporal AA](temporal-presentation.md). Modes `0` and `3` keep
+their own look. The experimental screen-space effects do their own upscale, so with
+them on every mode looks like mode `1`.
 
 ## Fullscreen Policy (Desktop vs Exclusive)
 

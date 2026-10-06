@@ -916,6 +916,7 @@ static int rbSceneDepthAwarePresentGeneration = -1;
 static GLint rbSceneDepthAwarePresentSceneLocation = -1;
 static GLint rbSceneDepthAwarePresentDepthLocation = -1;
 static GLint rbSceneDepthAwarePresentUVOffsetLocation = -1;
+static GLint rbSceneDepthAwarePresentParamsLocation = -1;
 static GLhandleARB rbTemporalResolveProgram = 0;
 static GLhandleARB rbTemporalResolveVertexShader = 0;
 static GLhandleARB rbTemporalResolveFragmentShader = 0;
@@ -3114,6 +3115,7 @@ struct rbMotionBlurViewState_t {
 enum rbMotionVectorUniformIndex_t {
 	RB_MOTION_VECTOR_UNIFORM_PREVIOUS_MODEL_VIEW_PROJECTION = 0,
 	RB_MOTION_VECTOR_UNIFORM_VIEWPORT_SIZE,
+	RB_MOTION_VECTOR_UNIFORM_MODE,
 	RB_MOTION_VECTOR_UNIFORM_COUNT
 };
 
@@ -3201,7 +3203,8 @@ static void RB_InitMotionVectorStage( void ) {
 
 	static const rbBuiltinUniformDef_t uniforms[RB_MOTION_VECTOR_UNIFORM_COUNT] = {
 		{ "previousModelViewProjection", 16 },
-		{ "viewportSize", 2 }
+		{ "viewportSize", 2 },
+		{ "motionMode", 4 }
 	};
 
 	rbMotionVectorStage.numShaderParms = RB_MOTION_VECTOR_UNIFORM_COUNT;
@@ -3352,6 +3355,27 @@ static bool RB_FindMotionBlurEntityHistory( const idList<rbMotionBlurEntityHisto
 	return false;
 }
 
+// The temporal history is sorted by entity index (RB_UpdateTemporalEntityHistory).
+static bool RB_FindTemporalEntityHistory( const idList<rbMotionBlurEntityHistory_t> &history,
+		int entityIndex, float previousModelMatrix[16] ) {
+	int low = 0;
+	int high = history.Num() - 1;
+	while ( low <= high ) {
+		const int middle = ( low + high ) >> 1;
+		const int key = history[middle].entityIndex;
+		if ( key == entityIndex ) {
+			memcpy( previousModelMatrix, history[middle].modelMatrix, sizeof( history[middle].modelMatrix ) );
+			return true;
+		}
+		if ( key < entityIndex ) {
+			low = middle + 1;
+		} else {
+			high = middle - 1;
+		}
+	}
+	return false;
+}
+
 static void RB_StoreMotionBlurEntityHistory( idList<rbMotionBlurEntityHistory_t> &history, int entityIndex, const float modelMatrix[16] ) {
 	for ( int i = 0; i < history.Num(); i++ ) {
 		if ( history[i].entityIndex == entityIndex ) {
@@ -3412,33 +3436,136 @@ static const rbMotionBlurViewState_t *rbMotionVectorPreviousState = NULL;
 static const idList<rbMotionBlurEntityHistory_t> *rbMotionVectorEntityHistory = NULL;
 static bool rbMotionVectorDrewSurface = false;
 static bool rbMotionVectorMissedSurface = false;
+// Temporal AA asks the pass to own every moving surface per pixel: exact
+// vectors for rigid and posed surfaces (the view weapon included), reactive
+// coverage for everything else. Motion blur keeps its rigid-only pass.
+static bool rbMotionVectorPerPixelOwnership = false;
+static int rbMotionVectorWeaponState = -1;
+static temporalOwnershipStats_t rbMotionVectorOwnership;
+
+static void RB_SetMotionVectorMode( float mode, float reactive ) {
+	const int location = rbMotionVectorStage.shaderParmLocations[RB_MOTION_VECTOR_UNIFORM_MODE];
+	if ( location >= 0 ) {
+		const GLfloat value[4] = { mode, reactive, 0.0f, 0.0f };
+		glUniform4fvARB( location, 1, value );
+	}
+}
+
+// The view weapon is drawn with its own projection (optional cl_gunfov, depth
+// squashed by 0.25) into depth range 0..0.5. Its vectors must use the same
+// projection on both frames, or every weapon pixel would carry a bogus offset.
+static void RB_MotionVectorWeaponProjection( bool weaponDepthHack ) {
+	const int state = weaponDepthHack ? 1 : 0;
+	if ( state == rbMotionVectorWeaponState ) {
+		return;
+	}
+	rbMotionVectorWeaponState = state;
+	float matrix[16];
+	R_GetDepthHackProjectionMatrix( backEnd.viewDef, weaponDepthHack, 0.0f, matrix );
+	glMatrixMode( GL_PROJECTION );
+	glLoadMatrixf( matrix );
+	glMatrixMode( GL_MODELVIEW );
+	glDepthRange( 0.0f, weaponDepthHack ? 0.5f : 1.0f );
+}
+
+static void RB_MotionVectorPreviousProjection( const float previousProjection[16],
+		bool weaponDepthHack, float out[16] ) {
+	memcpy( out, previousProjection, sizeof( float ) * 16 );
+	if ( !weaponDepthHack ) {
+		return;
+	}
+	float current[16];
+	R_GetDepthHackProjectionMatrix( backEnd.viewDef, true, 0.0f, current );
+	if ( current[0] != backEnd.viewDef->projectionMatrix[0]
+			|| current[5] != backEnd.viewDef->projectionMatrix[5] ) {
+		// cl_gunfov replaced the field of view; it does not change between frames
+		out[0] = current[0];
+		out[5] = current[5];
+	}
+	out[14] *= 0.25f;
+}
 
 static void RB_T_RenderMotionVectorSurface( const drawSurf_t *surf ) {
-	if ( !RB_MotionVectorSurfaceEligible( surf ) || rbMotionVectorPreviousState == NULL ) {
+	if ( rbMotionVectorPreviousState == NULL ) {
+		return;
+	}
+	temporalSurfaceMotion_t motion = TEMPORAL_SURFACE_MOTION_NONE;
+	if ( rbMotionVectorPerPixelOwnership ) {
+		motion = R_ScenePackets_TemporalSurfaceMotion( surf );
+	} else if ( RB_MotionVectorSurfaceEligible( surf ) ) {
+		motion = TEMPORAL_SURFACE_MOTION_RIGID;
+	}
+	if ( motion == TEMPORAL_SURFACE_MOTION_NONE ) {
 		return;
 	}
 
 	float previousModelMatrix[16];
-	if ( rbMotionVectorEntityHistory == NULL || !RB_FindMotionBlurEntityHistory(
-			*rbMotionVectorEntityHistory, surf->space->entityDef->index, previousModelMatrix ) ) {
-		rbMotionVectorMissedSurface = true;
-		return;
+	// a surface that should move exactly but cannot owns no history at all
+	bool noHistory = false;
+	if ( motion != TEMPORAL_SURFACE_MOTION_REACTIVE
+			&& ( rbMotionVectorEntityHistory == NULL || !( rbMotionVectorPerPixelOwnership
+				? RB_FindTemporalEntityHistory( *rbMotionVectorEntityHistory,
+					surf->space->entityDef->index, previousModelMatrix )
+				: RB_FindMotionBlurEntityHistory( *rbMotionVectorEntityHistory,
+					surf->space->entityDef->index, previousModelMatrix ) ) ) ) {
+		if ( !rbMotionVectorPerPixelOwnership ) {
+			rbMotionVectorMissedSurface = true;
+			return;
+		}
+		// newly visible: no previous transform, so it owns no history yet
+		motion = TEMPORAL_SURFACE_MOTION_REACTIVE;
+		noHistory = true;
 	}
 
 	const srfTriangles_t *tri = surf->geo;
 	if ( !RB_EnsurePackedClassicDrawCaches( surf, false, true ) || tri->ambientCache == NULL ) {
 		rbMotionVectorMissedSurface = true;
+		rbMotionVectorOwnership.missed++;
 		return;
 	}
 
-	float previousModelView[16];
-	float previousModelViewProjection[16];
-	myGlMultMatrix( previousModelMatrix, rbMotionVectorPreviousState->worldModelViewMatrix, previousModelView );
-	myGlMultMatrix( previousModelView, rbMotionVectorPreviousState->projectionMatrix, previousModelViewProjection );
+	const bool weaponDepthHack = surf->space->weaponDepthHack;
+	if ( rbMotionVectorPerPixelOwnership ) {
+		RB_MotionVectorWeaponProjection( weaponDepthHack );
+		if ( motion == TEMPORAL_SURFACE_MOTION_REACTIVE ) {
+			rbMotionVectorOwnership.reactive++;
+		} else {
+			if ( motion == TEMPORAL_SURFACE_MOTION_PREVIOUS_POSITIONS ) {
+				rbMotionVectorOwnership.posed++;
+			} else {
+				rbMotionVectorOwnership.rigid++;
+			}
+			if ( weaponDepthHack ) {
+				rbMotionVectorOwnership.weapon++;
+			}
+		}
+	}
+	const bool previousPositions = motion == TEMPORAL_SURFACE_MOTION_PREVIOUS_POSITIONS;
+	if ( motion == TEMPORAL_SURFACE_MOTION_REACTIVE ) {
+		RB_SetMotionVectorMode( 2.0f, noHistory ? 1.0f : R_ScenePackets_TemporalSurfaceReactiveStrength( surf ) );
+		glColorMask( GL_FALSE, GL_FALSE, GL_TRUE, GL_FALSE );
+	} else {
+		float previousProjection[16];
+		float previousModelView[16];
+		float previousModelViewProjection[16];
+		RB_MotionVectorPreviousProjection( rbMotionVectorPreviousState->projectionMatrix,
+			weaponDepthHack && rbMotionVectorPerPixelOwnership, previousProjection );
+		myGlMultMatrix( previousModelMatrix, rbMotionVectorPreviousState->worldModelViewMatrix, previousModelView );
+		myGlMultMatrix( previousModelView, previousProjection, previousModelViewProjection );
 
-	const int previousMatrixLocation = rbMotionVectorStage.shaderParmLocations[RB_MOTION_VECTOR_UNIFORM_PREVIOUS_MODEL_VIEW_PROJECTION];
-	if ( previousMatrixLocation >= 0 ) {
-		glUniformMatrix4fvARB( previousMatrixLocation, 1, GL_FALSE, previousModelViewProjection );
+		const int previousMatrixLocation = rbMotionVectorStage.shaderParmLocations[RB_MOTION_VECTOR_UNIFORM_PREVIOUS_MODEL_VIEW_PROJECTION];
+		if ( previousMatrixLocation >= 0 ) {
+			glUniformMatrix4fvARB( previousMatrixLocation, 1, GL_FALSE, previousModelViewProjection );
+		}
+		RB_SetMotionVectorMode( previousPositions ? 1.0f : 0.0f, 0.0f );
+		glColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
+		if ( previousPositions ) {
+			GL_SelectTexture( 1 );
+			glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+			glTexCoordPointer( 3, GL_FLOAT, sizeof( idVec3 ),
+				vertexCache.Position( surf->previousPositionCache ) );
+			GL_SelectTexture( 0 );
+		}
 	}
 
 	GL_Cull( surf->material->GetCullType() );
@@ -3446,6 +3573,11 @@ static void RB_T_RenderMotionVectorSurface( const drawSurf_t *surf ) {
 	idDrawVert *ac = (idDrawVert *)vertexCache.Position( tri->ambientCache );
 	glVertexPointer( 3, GL_FLOAT, sizeof( idDrawVert ), RB_DrawVertAttributePointer( ac, offsetof( idDrawVert, xyz ) ) );
 	RB_DrawElementsWithCounters( tri );
+	if ( previousPositions ) {
+		GL_SelectTexture( 1 );
+		glDisableClientState( GL_TEXTURE_COORD_ARRAY );
+		GL_SelectTexture( 0 );
+	}
 	rbMotionVectorDrewSurface = true;
 }
 
@@ -3478,6 +3610,10 @@ static bool RB_RenderMotionVectorBuffer( drawSurf_t **drawSurfs, int numDrawSurf
 	rbMotionVectorMissedSurface = false;
 	rbMotionVectorPreviousState = &previousState;
 	rbMotionVectorEntityHistory = &entityHistory;
+	rbMotionVectorPerPixelOwnership = temporalRequested;
+	rbMotionVectorWeaponState = -1;
+	memset( &rbMotionVectorOwnership, 0, sizeof( rbMotionVectorOwnership ) );
+	rbMotionVectorOwnership.frameNumber = backEnd.frameCount;
 
 	RB_BindPostProcessRenderTexture( rbMotionVectorRenderTexture, viewportWidth, viewportHeight );
 	GL_State( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS );
@@ -3513,11 +3649,14 @@ static bool RB_RenderMotionVectorBuffer( drawSurf_t **drawSurfs, int numDrawSurf
 	glDisableClientState( GL_TEXTURE_COORD_ARRAY );
 	glDisableClientState( GL_COLOR_ARRAY );
 
+	RB_SetMotionVectorMode( 0.0f, 0.0f );
 	backEnd.currentSpace = NULL;
 	backEnd.currentScissor.Clear();
 	for ( int i = 0; i < numDrawSurfs; i++ ) {
 		const drawSurf_t *surf = drawSurfs[i];
-		if ( !RB_MotionVectorSurfaceEligible( surf ) ) {
+		if ( rbMotionVectorPerPixelOwnership
+				? R_ScenePackets_TemporalSurfaceMotion( surf ) == TEMPORAL_SURFACE_MOTION_NONE
+				: !RB_MotionVectorSurfaceEligible( surf ) ) {
 			continue;
 		}
 		if ( surf->space != backEnd.currentSpace ) {
@@ -3549,15 +3688,26 @@ static bool RB_RenderMotionVectorBuffer( drawSurf_t **drawSurfs, int numDrawSurf
 	GL_SelectTexture( 0 );
 	globalImages->BindNull();
 	glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+	glColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
+	glDepthRange( 0.0f, 1.0f );
 	rbMotionVectorPreviousState = NULL;
 	rbMotionVectorEntityHistory = NULL;
+	const bool perPixelOwnership = rbMotionVectorPerPixelOwnership;
+	rbMotionVectorPerPixelOwnership = false;
+	rbMotionVectorWeaponState = -1;
 
 	RB_RestorePostProcessTarget( previousRenderTexture, viewportWidth, viewportHeight );
 	glMatrixMode( GL_PROJECTION );
 	glLoadMatrixf( backEnd.viewDef->projectionMatrix );
 	glMatrixMode( GL_MODELVIEW );
 
-	rbMotionVectorImageValid = rbMotionVectorDrewSurface;
+	// A per-pixel ownership target is meaningful even when nothing moved: its
+	// cleared texels say "camera reprojection, no reactive coverage".
+	rbMotionVectorImageValid = rbMotionVectorDrewSurface || perPixelOwnership;
+	if ( perPixelOwnership ) {
+		rbMotionVectorOwnership.complete = !rbMotionVectorMissedSurface;
+		R_TemporalPresentation_RecordOwnership( rbMotionVectorOwnership );
+	}
 	if ( allEligibleSurfacesDrawn != NULL ) {
 		*allEligibleSurfacesDrawn = !rbMotionVectorMissedSurface;
 	}
@@ -4602,6 +4752,46 @@ static bool RB_EnsureTemporalResolveProgram( void ) {
 		"\t\tdot( delta, PreviousViewAxis2.xyz ), -dot( delta, PreviousViewAxis0.xyz ) ) );\n"
 		"}\n"
 		"float MaxComponent( vec3 value ) { return max( value.x, max( value.y, value.z ) ); }\n"
+		"float Luma( vec3 c ) { return dot( c, vec3( 0.25, 0.5, 0.25 ) ); }\n"
+		"vec3 RGBToYCoCg( vec3 c ) {\n"
+		"\treturn vec3( 0.25 * c.r + 0.5 * c.g + 0.25 * c.b, 0.5 * c.r - 0.5 * c.b, -0.25 * c.r + 0.5 * c.g - 0.25 * c.b );\n"
+		"}\n"
+		"vec3 YCoCgToRGB( vec3 c ) { return vec3( c.x + c.y - c.z, c.x + c.z, c.x - c.y - c.z ); }\n"
+		// Catmull-Rom history reconstruction from five bilinear taps: a
+		// bilinear-only history softens a little more on every reprojection.
+		"vec3 SampleHistory( vec2 uv ) {\n"
+		"\tvec2 position = uv * OutputSize;\n"
+		"\tvec2 center = floor( position - 0.5 ) + 0.5;\n"
+		"\tvec2 f = position - center;\n"
+		"\tvec2 f2 = f * f;\n"
+		"\tvec2 f3 = f2 * f;\n"
+		"\tvec2 w0 = -0.5 * f3 + f2 - 0.5 * f;\n"
+		"\tvec2 w1 = 1.5 * f3 - 2.5 * f2 + 1.0;\n"
+		"\tvec2 w2 = -1.5 * f3 + 2.0 * f2 + 0.5 * f;\n"
+		"\tvec2 w3 = 0.5 * f3 - 0.5 * f2;\n"
+		"\tvec2 w12 = w1 + w2;\n"
+		"\tvec2 invSize = 1.0 / OutputSize;\n"
+		"\tvec2 tc12 = ( center + w2 / w12 ) * invSize;\n"
+		"\tvec2 tc0 = ( center - 1.0 ) * invSize;\n"
+		"\tvec2 tc3 = ( center + 2.0 ) * invSize;\n"
+		"\tvec3 sum = texture2D( History, vec2( tc12.x, tc0.y ) ).rgb * ( w12.x * w0.y )\n"
+		"\t\t+ texture2D( History, vec2( tc0.x, tc12.y ) ).rgb * ( w0.x * w12.y )\n"
+		"\t\t+ texture2D( History, tc12 ).rgb * ( w12.x * w12.y )\n"
+		"\t\t+ texture2D( History, vec2( tc3.x, tc12.y ) ).rgb * ( w3.x * w12.y )\n"
+		"\t\t+ texture2D( History, vec2( tc12.x, tc3.y ) ).rgb * ( w12.x * w3.y );\n"
+		"\tfloat weight = w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y;\n"
+		"\treturn max( sum / max( weight, 0.0001 ), vec3( 0.0 ) );\n"
+		"}\n"
+		// Clip toward the box centre rather than clamping each channel, so a
+		// rejected history colour keeps its hue instead of turning grey.
+		"vec3 ClipToBox( vec3 value, vec3 boxMin, vec3 boxMax ) {\n"
+		"\tvec3 center = 0.5 * ( boxMax + boxMin );\n"
+		"\tvec3 extents = 0.5 * ( boxMax - boxMin ) + vec3( 0.0001 );\n"
+		"\tvec3 offset = value - center;\n"
+		"\tvec3 units = abs( offset / extents );\n"
+		"\tfloat largest = MaxComponent( units );\n"
+		"\treturn largest > 1.0 ? center + offset / largest : value;\n"
+		"}\n"
 		"bool InsideReactiveRegion( vec2 uv, vec4 region ) {\n"
 		"\treturn region.z > region.x && region.w > region.y\n"
 		"\t\t&& uv.x >= region.x && uv.y >= region.y\n"
@@ -4737,44 +4927,70 @@ static bool RB_EnsureTemporalResolveProgram( void ) {
 		"\t\tcurrent.rgb = ApplyScreenSpaceReflection( current.rgb, sceneUV, centerDepth, centerPosition, centerNormal );\n"
 		"\t\tcurrent.rgb = ApplyFroxelVolumetrics( current.rgb, sceneUV, centerDepth );\n"
 		"\t}\n"
-		"\tvec3 neighborhoodMin = current.rgb;\n"
-		"\tvec3 neighborhoodMax = current.rgb;\n"
+		// 3x3 neighbourhood: YCoCg mean/variance for the history clip box, and
+		// the nearest depth, whose velocity is used so a moving silhouette
+		// carries its own motion onto the background texels around it.
+		"\tvec3 moment1 = vec3( 0.0 );\n"
+		"\tvec3 moment2 = vec3( 0.0 );\n"
+		"\tvec3 sampleMin = vec3( 1.0e20 );\n"
+		"\tvec3 sampleMax = vec3( -1.0e20 );\n"
 		"\tfloat depthMin = centerDepth;\n"
 		"\tfloat depthMax = centerDepth;\n"
+		"\tvec2 closestUV = sceneUV;\n"
 		"\tfor ( int y = -1; y <= 1; ++y ) {\n"
 		"\t\tfor ( int x = -1; x <= 1; ++x ) {\n"
 		"\t\t\tvec2 sampleUV = clamp( sceneUV + vec2( float( x ), float( y ) ) * InvSceneSize, vec2( 0.0 ), vec2( 1.0 ) );\n"
-		"\t\t\tvec3 sampleColor = texture2D( Scene, sampleUV ).rgb;\n"
-		"\t\t\tneighborhoodMin = min( neighborhoodMin, sampleColor );\n"
-		"\t\t\tneighborhoodMax = max( neighborhoodMax, sampleColor );\n"
+		"\t\t\tvec3 sampleColor = ( x == 0 && y == 0 ) ? current.rgb : texture2D( Scene, sampleUV ).rgb;\n"
+		"\t\t\tvec3 sampleYCoCg = RGBToYCoCg( sampleColor );\n"
+		"\t\t\tmoment1 += sampleYCoCg;\n"
+		"\t\t\tmoment2 += sampleYCoCg * sampleYCoCg;\n"
+		"\t\t\tsampleMin = min( sampleMin, sampleYCoCg );\n"
+		"\t\t\tsampleMax = max( sampleMax, sampleYCoCg );\n"
 		"\t\t\tfloat sampleDepth = texture2D( DepthBuffer, sampleUV ).r;\n"
+		"\t\t\tif ( sampleDepth < depthMin ) closestUV = sampleUV;\n"
 		"\t\t\tdepthMin = min( depthMin, sampleDepth );\n"
 		"\t\t\tdepthMax = max( depthMax, sampleDepth );\n"
 		"\t\t}\n"
 		"\t}\n"
-		"\tvec4 objectVelocity = texture2D( VelocityBuffer, sceneUV );\n"
-		"\tbool objectValid = MotionParams.x > 0.5 && objectVelocity.a > 0.5;\n"
+		"\tvec3 mean = moment1 / 9.0;\n"
+		"\tvec3 sigma = sqrt( max( moment2 / 9.0 - mean * mean, vec3( 0.0 ) ) );\n"
+		"\tvec3 neighborhoodMin = max( mean - sigma * 1.25, sampleMin );\n"
+		"\tvec3 neighborhoodMax = min( mean + sigma * 1.25, sampleMax );\n"
+		// Dilate only toward a moving object: a still occluder's edge must not
+		// pin the moving background beside it.
+		"\tvec4 closestVelocity = MotionParams.x > 0.5 ? texture2D( VelocityBuffer, closestUV ) : vec4( 0.0 );\n"
+		"\tvec4 centerVelocity = MotionParams.x > 0.5 ? texture2D( VelocityBuffer, sceneUV ) : vec4( 0.0 );\n"
+		"\tvec4 objectVelocity = closestVelocity.a > 0.5 ? closestVelocity : centerVelocity;\n"
+		"\tfloat reactiveMask = max( closestVelocity.b, centerVelocity.b );\n"
+		"\tbool objectValid = objectVelocity.a > 0.5;\n"
 		"\tbool cameraValid = MotionParams.y > 0.5 && MotionParams.z > 0.5;\n"
-		"\tvec2 previousUV = cameraValid ? CameraPreviousUV( sceneUV, centerDepth ) : outputUV;\n"
+		"\tvec2 previousUV = cameraValid ? CameraPreviousUV( sceneUV, depthMin ) : outputUV;\n"
 		"\tif ( objectValid ) previousUV = outputUV - objectVelocity.xy * InvSceneSize;\n"
 		"\tbool inside = previousUV.x >= 0.0 && previousUV.y >= 0.0 && previousUV.x <= 1.0 && previousUV.y <= 1.0;\n"
 		"\tbool historyUsable = TemporalParams.z > 0.5 && inside && ( objectValid || cameraValid );\n"
-		"\tvec3 historyRaw = historyUsable ? texture2D( History, previousUV ).rgb : current.rgb;\n"
-		"\tvec3 historyClamped = clamp( historyRaw, neighborhoodMin, neighborhoodMax );\n"
-		"\tfloat colorDelta = MaxComponent( abs( current.rgb - historyRaw ) );\n"
-		"\tfloat clampDelta = MaxComponent( abs( historyRaw - historyClamped ) );\n"
+		"\tvec3 historyRaw = historyUsable ? SampleHistory( previousUV ) : current.rgb;\n"
+		"\tvec3 historyClamped = YCoCgToRGB( ClipToBox( RGBToYCoCg( historyRaw ), neighborhoodMin, neighborhoodMax ) );\n"
 		"\tvec2 velocityPixels = ( outputUV - previousUV ) * OutputSize;\n"
-		"\tfloat motionReactive = smoothstep( 12.0, 96.0, length( velocityPixels ) ) * 0.35;\n"
-		"\tfloat depthReactive = MotionParams.z > 0.5 ? smoothstep( 0.001, 0.02, depthMax - depthMin ) * 0.20 : 0.0;\n"
-		"\tfloat unsupportedNear = ( MotionParams.z > 0.5 && !objectValid )\n"
-		"\t\t? ( 1.0 - smoothstep( 0.82, 0.98, centerDepth ) ) * 0.25 : 0.0;\n"
+		"\tfloat speed = length( velocityPixels );\n"
+		// Depth edges only disocclude while something moves; a still edge is
+		// exactly where accumulated history anti-aliases.
+		"\tfloat depthReactive = MotionParams.z > 0.5\n"
+		"\t\t? smoothstep( 0.001, 0.02, depthMax - depthMin ) * smoothstep( 0.5, 4.0, speed ) * 0.5 : 0.0;\n"
 		"\tfloat packetReactive = ( InsideReactiveRegion( outputUV, ReactiveRegion0 )\n"
 		"\t\t|| InsideReactiveRegion( outputUV, ReactiveRegion1 ) ) ? 1.0 : 0.0;\n"
-		"\tfloat reactive = clamp( max( max( colorDelta * 2.5, clampDelta * 5.0 ) * TemporalParams.y,\n"
-		"\t\tmax( packetReactive, max( motionReactive, max( depthReactive, unsupportedNear ) ) ) ), 0.0, 1.0 );\n"
-		"\tif ( !historyUsable ) reactive = 1.0;\n"
-		"\tfloat historyWeight = historyUsable ? TemporalParams.x * ( 1.0 - reactive ) : 0.0;\n"
-		"\tvec3 resolved = mix( current.rgb, historyClamped, historyWeight );\n"
+		"\tfloat reactive = clamp( max( max( reactiveMask * TemporalParams.y, packetReactive ), depthReactive ), 0.0, 1.0 );\n"
+		// A full mask (no previous clip position, a newly visible surface, a
+		// subview) owns no history at all, whatever the reactive scale.
+		"\tif ( !historyUsable || reactiveMask >= 0.999 ) reactive = 1.0;\n"
+		// Fast motion keeps less history: it cannot be anti-aliased anyway,
+		// and every reprojection resamples it.
+		"\tfloat feedback = TemporalParams.x * ( 1.0 - 0.3 * smoothstep( 16.0, 96.0, speed ) );\n"
+		"\tfloat historyWeight = historyUsable ? feedback * ( 1.0 - reactive ) : 0.0;\n"
+		// Luminance-weighted blend: one bright jittered sample cannot flicker.
+		"\tfloat currentWeight = ( 1.0 - historyWeight ) / ( 1.0 + Luma( current.rgb ) );\n"
+		"\tfloat historyBlend = historyWeight / ( 1.0 + Luma( historyClamped ) );\n"
+		"\tvec3 resolved = ( current.rgb * currentWeight + historyClamped * historyBlend )\n"
+		"\t\t/ max( currentWeight + historyBlend, 0.0001 );\n"
 		"\tif ( TemporalParams.w > 0.5 && TemporalParams.w < 1.5 ) {\n"
 		"\t\tfloat magnitude = clamp( length( velocityPixels ) / 32.0, 0.0, 1.0 );\n"
 		"\t\tvec2 direction = clamp( velocityPixels / 32.0, vec2( -1.0 ), vec2( 1.0 ) );\n"
@@ -4893,6 +5109,7 @@ static void RB_FreeSceneDepthAwarePresentProgram( void ) {
 	rbSceneDepthAwarePresentSceneLocation = -1;
 	rbSceneDepthAwarePresentDepthLocation = -1;
 	rbSceneDepthAwarePresentUVOffsetLocation = -1;
+	rbSceneDepthAwarePresentParamsLocation = -1;
 }
 
 static bool RB_EnsureSceneDepthAwarePresentProgram( void ) {
@@ -4910,16 +5127,33 @@ static bool RB_EnsureSceneDepthAwarePresentProgram( void ) {
 		"	gl_Position = ftransform();\n"
 		"	gl_TexCoord[0] = gl_MultiTexCoord0;\n"
 		"}\n";
+	// PresentParams: x = contrast-adaptive sharpening (0 = off), y = keep the
+	// far-depth (portal sky) pixels already in the target, zw = 1 / extent.
 	static const char *fragmentSource =
 		"uniform sampler2D Scene;\n"
 		"uniform sampler2D DepthBuffer;\n"
 		"uniform vec2 UVOffset;\n"
+		"uniform vec4 PresentParams;\n"
 		"void main() {\n"
 		"	vec2 uv = clamp( gl_TexCoord[0].st - UVOffset, vec2( 0.0 ), vec2( 1.0 ) );\n"
-		"	if ( texture2D( DepthBuffer, uv ).r >= 0.99999 ) {\n"
+		"	if ( PresentParams.y > 0.5 && texture2D( DepthBuffer, uv ).r >= 0.99999 ) {\n"
 		"		discard;\n"
 		"	}\n"
-		"	gl_FragColor = texture2D( Scene, uv );\n"
+		"	vec4 center = texture2D( Scene, uv );\n"
+		"	if ( PresentParams.x > 0.0 ) {\n"
+		// AMD CAS, cross pattern: sharpen less where the neighbourhood is
+		// already near black or white, so edges do not ring.
+		"		vec3 north = texture2D( Scene, uv + vec2( 0.0, PresentParams.w ) ).rgb;\n"
+		"		vec3 south = texture2D( Scene, uv - vec2( 0.0, PresentParams.w ) ).rgb;\n"
+		"		vec3 east = texture2D( Scene, uv + vec2( PresentParams.z, 0.0 ) ).rgb;\n"
+		"		vec3 west = texture2D( Scene, uv - vec2( PresentParams.z, 0.0 ) ).rgb;\n"
+		"		vec3 lowest = min( center.rgb, min( min( north, south ), min( east, west ) ) );\n"
+		"		vec3 highest = max( center.rgb, max( max( north, south ), max( east, west ) ) );\n"
+		"		vec3 amount = sqrt( clamp( min( lowest, 2.0 - highest ) / max( highest, vec3( 0.0001 ) ), 0.0, 1.0 ) );\n"
+		"		vec3 weight = amount * ( -1.0 / mix( 8.0, 5.0, PresentParams.x ) );\n"
+		"		center.rgb = max( ( center.rgb + ( north + south + east + west ) * weight ) / ( 1.0 + 4.0 * weight ), vec3( 0.0 ) );\n"
+		"	}\n"
+		"	gl_FragColor = center;\n"
 		"}\n";
 
 	GLhandleARB vertexShader = glCreateShaderObjectARB( GL_VERTEX_SHADER_ARB );
@@ -4985,9 +5219,10 @@ static bool RB_EnsureSceneDepthAwarePresentProgram( void ) {
 	rbSceneDepthAwarePresentSceneLocation = glGetUniformLocationARB( programObject, "Scene" );
 	rbSceneDepthAwarePresentDepthLocation = glGetUniformLocationARB( programObject, "DepthBuffer" );
 	rbSceneDepthAwarePresentUVOffsetLocation = glGetUniformLocationARB( programObject, "UVOffset" );
+	rbSceneDepthAwarePresentParamsLocation = glGetUniformLocationARB( programObject, "PresentParams" );
 
 	if ( rbSceneDepthAwarePresentSceneLocation < 0 || rbSceneDepthAwarePresentDepthLocation < 0
-			|| rbSceneDepthAwarePresentUVOffsetLocation < 0 ) {
+			|| rbSceneDepthAwarePresentUVOffsetLocation < 0 || rbSceneDepthAwarePresentParamsLocation < 0 ) {
 		common->Warning( "scene depth-aware present shader is missing required sampler uniforms" );
 		RB_FreeSceneDepthAwarePresentProgram();
 		return false;
@@ -5145,6 +5380,8 @@ static void RB_PresentSceneRenderTargetToBackBuffer( const rbSceneScaleState_t &
 		glUseProgramObjectARB( rbSceneDepthAwarePresentProgram );
 		glUniform1iARB( rbSceneDepthAwarePresentSceneLocation, 0 );
 		glUniform1iARB( rbSceneDepthAwarePresentDepthLocation, 1 );
+		const GLfloat presentParams[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
+		glUniform4fvARB( rbSceneDepthAwarePresentParamsLocation, 1, presentParams );
 		const GLfloat uvOffset[2] = {
 			R_TemporalPresentation_TemporalAARequested()
 				? backEnd.viewDef->temporalJitterPixels.x / static_cast<GLfloat>( Max( 1, targetViewportWidth ) ) : 0.0f,
@@ -5338,23 +5575,28 @@ static bool RB_BindTemporalDestination( idRenderTexture *target, int width, int 
 
 static bool RB_PresentTemporalSpatialFallback( idImage *sceneImage,
 		int outputWidth, int outputHeight, const idVec2 &jitterPixels,
-		idImage *depthImage = NULL, bool preserveFarDepth = false ) {
+		idImage *depthImage = NULL, bool preserveFarDepth = false,
+		float sharpness = 0.0f ) {
 	if ( sceneImage == NULL || !RB_BindTemporalDestination( NULL, outputWidth, outputHeight ) ) {
 		return false;
 	}
 
-	const bool depthAware = preserveFarDepth && depthImage != NULL
+	const bool discardFar = preserveFarDepth && depthImage != NULL;
+	const bool programPresent = ( discardFar || sharpness > 0.0f )
 		&& RB_EnsureSceneDepthAwarePresentProgram();
+	const bool depthAware = discardFar && programPresent;
 	RB_BeginFullscreenPostProcessPass( 0, 0, outputWidth, outputHeight );
 	GL_SelectTexture( 0 );
 	sceneImage->Bind();
 	GL_TexEnv( GL_MODULATE );
-	if ( depthAware ) {
-		GL_SelectTexture( 1 );
-		depthImage->Bind();
-		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE );
-		glTexParameteri( GL_TEXTURE_2D, GL_DEPTH_TEXTURE_MODE, GL_LUMINANCE );
-		GL_SelectTexture( 0 );
+	if ( programPresent ) {
+		if ( depthAware ) {
+			GL_SelectTexture( 1 );
+			depthImage->Bind();
+			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE );
+			glTexParameteri( GL_TEXTURE_2D, GL_DEPTH_TEXTURE_MODE, GL_LUMINANCE );
+			GL_SelectTexture( 0 );
+		}
 		glUseProgramObjectARB( rbSceneDepthAwarePresentProgram );
 		glUniform1iARB( rbSceneDepthAwarePresentSceneLocation, 0 );
 		glUniform1iARB( rbSceneDepthAwarePresentDepthLocation, 1 );
@@ -5363,9 +5605,16 @@ static bool RB_PresentTemporalSpatialFallback( idImage *sceneImage,
 			jitterPixels.y / static_cast<GLfloat>( Max( 1, outputHeight ) )
 		};
 		glUniform2fvARB( rbSceneDepthAwarePresentUVOffsetLocation, 1, uvOffset );
+		const GLfloat presentParams[4] = {
+			idMath::ClampFloat( 0.0f, 1.0f, sharpness ),
+			depthAware ? 1.0f : 0.0f,
+			1.0f / static_cast<GLfloat>( Max( 1, sceneImage->GetUploadWidth() ) ),
+			1.0f / static_cast<GLfloat>( Max( 1, sceneImage->GetUploadHeight() ) )
+		};
+		glUniform4fvARB( rbSceneDepthAwarePresentParamsLocation, 1, presentParams );
 	}
 	RB_SetFramebufferSRGBEnabled( true );
-	if ( depthAware ) {
+	if ( programPresent ) {
 		RB_DrawFullscreenPostProcessQuadUnitUV();
 	} else {
 		RB_DrawFullscreenPostProcessQuadOffsetUV(
@@ -5373,7 +5622,7 @@ static bool RB_PresentTemporalSpatialFallback( idImage *sceneImage,
 			jitterPixels.y / static_cast<float>( Max( 1, outputHeight ) ) );
 	}
 	RB_SetFramebufferSRGBEnabled( false );
-	if ( depthAware ) {
+	if ( programPresent ) {
 		glUseProgramObjectARB( 0 );
 		GL_SelectTexture( 1 );
 		globalImages->BindNull();
@@ -5534,17 +5783,40 @@ static void RB_RejectTemporalHistoryWrite(
 	rbTemporalResolveRejectedGeneration = command.historyGeneration;
 }
 
+static int RB_CompareTemporalEntityHistory( const void *a, const void *b ) {
+	return static_cast<const rbMotionBlurEntityHistory_t *>( a )->entityIndex
+		- static_cast<const rbMotionBlurEntityHistory_t *>( b )->entityIndex;
+}
+
 static void RB_UpdateTemporalEntityHistory( const viewDef_t *viewDef,
 		unsigned int generation ) {
 	rbTemporalNextEntityHistory.Clear();
 	if ( viewDef != NULL ) {
+		// Every moving entity the next frame may draw exactly (rigid or posed,
+		// the view weapon included). Kept sorted for the per-surface lookups.
 		for ( int i = 0; i < viewDef->numDrawSurfs; i++ ) {
 			const drawSurf_t *surf = viewDef->drawSurfs[i];
-			if ( !RB_MotionVectorSurfaceEligible( surf ) ) {
+			if ( surf == NULL || surf->space == NULL || surf->space->entityDef == NULL
+					|| surf->space->entityDef->index < 0
+					|| ( surf->space->entityDef->parms.hModel != NULL
+						&& surf->space->entityDef->parms.hModel->IsStaticWorldModel() ) ) {
 				continue;
 			}
-			RB_StoreMotionBlurEntityHistory( rbTemporalNextEntityHistory,
-				surf->space->entityDef->index, surf->space->modelMatrix );
+			rbMotionBlurEntityHistory_t &entry = rbTemporalNextEntityHistory.Alloc();
+			entry.entityIndex = surf->space->entityDef->index;
+			memcpy( entry.modelMatrix, surf->space->modelMatrix, sizeof( entry.modelMatrix ) );
+		}
+		if ( rbTemporalNextEntityHistory.Num() > 1 ) {
+			qsort( rbTemporalNextEntityHistory.Ptr(), rbTemporalNextEntityHistory.Num(),
+				sizeof( rbMotionBlurEntityHistory_t ), RB_CompareTemporalEntityHistory );
+			int unique = 1;
+			for ( int i = 1; i < rbTemporalNextEntityHistory.Num(); i++ ) {
+				if ( rbTemporalNextEntityHistory[i].entityIndex
+						!= rbTemporalNextEntityHistory[unique - 1].entityIndex ) {
+					rbTemporalNextEntityHistory[unique++] = rbTemporalNextEntityHistory[i];
+				}
+			}
+			rbTemporalNextEntityHistory.SetNum( unique, false );
 		}
 	}
 	rbTemporalEntityHistory.Swap( rbTemporalNextEntityHistory );
@@ -5820,11 +6092,18 @@ bool RB_ResolveTemporalPresentation( const resolveTemporalPresentationCommand_t 
 	RB_UpdateTemporalEntityHistory( command.viewDef, command.historyGeneration );
 	temporalViewMotionPolicy_t motionPolicy =
 		TemporalHistoryCore_BeginViewMotionPolicy();
-	const unsigned int exactMotionDomains = velocityComplete
-		? TemporalHistoryCore_MotionDomainBit( TEMPORAL_MOTION_DOMAIN_RIGID )
+	// A complete pass owned every moving surface per pixel: exact vectors for
+	// rigid, posed and weapon surfaces, reactive coverage for the rest. Only an
+	// incomplete pass falls back to conservative screen regions.
+	const bool perPixelOwnership = velocityValid && velocityComplete;
+	const unsigned int exactMotionDomains = perPixelOwnership
+		? ( TemporalHistoryCore_MotionDomainBit( TEMPORAL_MOTION_DOMAIN_RIGID )
+			| TemporalHistoryCore_MotionDomainBit( TEMPORAL_MOTION_DOMAIN_SKINNED )
+			| TemporalHistoryCore_MotionDomainBit( TEMPORAL_MOTION_DOMAIN_DEFORM )
+			| TemporalHistoryCore_MotionDomainBit( TEMPORAL_MOTION_DOMAIN_VIEW_MODEL ) )
 		: 0u;
 	if ( !R_ScenePackets_BuildTemporalViewMotionPolicy( command.viewDef,
-			exactMotionDomains, motionPolicy ) && useHistory ) {
+			exactMotionDomains, motionPolicy, perPixelOwnership ) && useHistory ) {
 		// Packet capture is mandatory while temporal AA is active. If that
 		// contract is unavailable, reject history conservatively over the view.
 		TemporalHistoryCore_AddReactiveRegion( motionPolicy, ~0u,
@@ -5854,7 +6133,7 @@ bool RB_ResolveTemporalPresentation( const resolveTemporalPresentationCommand_t 
 	}
 	return RB_PresentTemporalSpatialFallback( historyWriteImage,
 		outputWidth, outputHeight, idVec2( 0.0f, 0.0f ),
-		depthImage, preserveFarDepth );
+		depthImage, preserveFarDepth, R_TemporalPresentation_PresentSharpness() );
 }
 
 static void RB_ResetBackendTemporalHistory( bool destroyResources ) {

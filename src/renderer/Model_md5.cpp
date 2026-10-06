@@ -1230,6 +1230,10 @@ void idMD5Mesh::UpdateSurface( const struct renderEntity_s *ent, const idJointMa
 	tri->dominantTris = deformInfo->dominantTris;
 	tri->numVerts = deformInfo->numOutputVerts;
 
+	// a reused surface still holds the pose drawn last frame: keep it for
+	// temporal reprojection before this pose overwrites it
+	R_TemporalPresentation_CapturePreviousPositions( tri );
+
 	if ( tri->verts == NULL ) {
 		R_AllocStaticTriSurfVerts( tri, tri->numVerts );
 		for ( i = 0; i < deformInfo->numSourceVerts; i++ ) {
@@ -1327,6 +1331,7 @@ void idMD5Mesh::UpdateSurface( const struct renderEntity_s *ent, const idJointMa
 		? cpuSkinEnd - cpuSkinStart : 0;
 	R_GpuSkinning_RecordCpuSkinning( elapsedMicroseconds, tri->numVerts,
 		gpuSkinningContractAttached );
+	R_TemporalPresentation_MarkPositionsDrawn( tri );
 }
 
 /*
@@ -1880,6 +1885,11 @@ idRenderModel *idRenderModelMD5::InstantiateDynamicModel( const struct renderEnt
 			// the mesh in front of its coplanar GUI (for example weapon displays).
 			mesh->UpdateSurface( ent, entJoints, surf, !collisionOnly,
 				!collisionOnly && gpuJointPaletteReady && !shader->HasGui() );
+		} else if ( surf->geometry != NULL ) {
+			// animation LOD redraws the previous pose unchanged; it is still the
+			// pose this frame shows, so the next capture stays continuous
+			R_TemporalPresentation_CapturePreviousPositions( surf->geometry );
+			R_TemporalPresentation_MarkPositionsDrawn( surf->geometry );
 		}
 		srfTriangles_t *frontTri = surf->geometry;
 
