@@ -160,7 +160,7 @@ idCVar r_skipGlowOverlay( "r_skipGlowOverlay", "0", CVAR_ARCHIVE | CVAR_RENDERER
 static idCVar r_borderlessDefaultMigrated( "r_borderlessDefaultMigrated", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for legacy bordered window defaults" );
 static idCVar net_rateDefaultMigrated( "net_rateDefaultMigrated", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for the legacy 25600 B/s network rate caps" );
 static idCVar vr_weaponOffsetDefaultMigrated( "vr_weaponOffsetDefaultMigrated", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for the VR weapon offsets that held weapons replaced" );
-static idCVar s_audioDefaultsMigrated( "s_audioDefaultsMigrated", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_BOOL, "one-time migration flag for the corrected speaker layout, radio chatter and distance falloff defaults" );
+static idCVar s_audioDefaultsMigrated( "s_audioDefaultsMigrated", "0", CVAR_SYSTEM | CVAR_ARCHIVE | CVAR_INTEGER, "number of one-time audio default migrations already applied" );
 
 static void Common_MigrateLegacyConsoleAllowCVar( void ) {
 	idCVar *legacyAllowConsole = cvarSystem->Find( "com_allowConsole" );
@@ -292,9 +292,11 @@ static void Common_MigrateLegacyVRWeaponOffsets( void ) {
 ==================
 Common_MigrateLegacyAudioDefaults
 
-Three archived audio defaults were wrong, and changing a default reaches new
-installs only:
+Archived audio defaults that turned out wrong; changing a default reaches new
+installs only. s_audioDefaultsMigrated counts the steps already applied, and
+each step rewrites only the exact legacy value, once.
 
+Step 1:
 - s_numberOfSpeakers 6 asked OpenAL for 5.1 on every device, so Windows downmixed
   it on headphones and OpenAL Soft's automatic HRTF never engaged. The device
   layout (0) gives a 5.1 system the same 5.1, so 6 is moved to it. 2 is left
@@ -303,26 +305,44 @@ installs only:
 - s_quadraticFalloff 1 was Doom 3's value; Quake 4 1.4.2 ships 0 (linear) and
   does not archive it.
 
-Only the exact legacy values are rewritten, once.
+Step 2:
+- The minimum, lowpower and performance presets switched room reverb off. Every
+  preset keeps it now, so a profile still on one of those presets with reverb
+  off gets it back.
 ==================
 */
+static const int OPENQ4_AUDIO_DEFAULTS_MIGRATION_STEPS = 2;
+
 static void Common_MigrateLegacyAudioDefaults( void ) {
-	if ( s_audioDefaultsMigrated.GetBool() ) {
+	const int applied = s_audioDefaultsMigrated.GetInteger();
+	if ( applied >= OPENQ4_AUDIO_DEFAULTS_MIGRATION_STEPS ) {
 		return;
 	}
-	if ( cvarSystem->GetCVarInteger( "s_numberOfSpeakers" ) == 6 ) {
-		common->Printf( "Migrating legacy audio config: s_numberOfSpeakers 6 -> 0 (the output device's own layout)\n" );
-		cvarSystem->SetCVarInteger( "s_numberOfSpeakers", 0, CVAR_ARCHIVE );
+	if ( applied < 1 ) {
+		if ( cvarSystem->GetCVarInteger( "s_numberOfSpeakers" ) == 6 ) {
+			common->Printf( "Migrating legacy audio config: s_numberOfSpeakers 6 -> 0 (the output device's own layout)\n" );
+			cvarSystem->SetCVarInteger( "s_numberOfSpeakers", 0, CVAR_ARCHIVE );
+		}
+		if ( cvarSystem->GetCVarFloat( "s_radioChatterFraction" ) == 0.5f ) {
+			common->Printf( "Migrating legacy audio config: s_radioChatterFraction 0.5 -> 0.9\n" );
+			cvarSystem->SetCVarFloat( "s_radioChatterFraction", 0.9f, CVAR_ARCHIVE );
+		}
+		if ( cvarSystem->GetCVarBool( "s_quadraticFalloff" ) ) {
+			common->Printf( "Migrating legacy audio config: s_quadraticFalloff 1 -> 0 (linear, as retail)\n" );
+			cvarSystem->SetCVarBool( "s_quadraticFalloff", false );
+		}
 	}
-	if ( cvarSystem->GetCVarFloat( "s_radioChatterFraction" ) == 0.5f ) {
-		common->Printf( "Migrating legacy audio config: s_radioChatterFraction 0.5 -> 0.9\n" );
-		cvarSystem->SetCVarFloat( "s_radioChatterFraction", 0.9f, CVAR_ARCHIVE );
+	if ( applied < 2 && !cvarSystem->GetCVarBool( "s_useEAXReverb" ) ) {
+		static const char * const reverblessPresets[] = { "minimum", "lowpower", "performance" };
+		for ( int i = 0; i < 3; i++ ) {
+			if ( idStr::Icmp( com_performancePreset.GetString(), reverblessPresets[i] ) == 0 ) {
+				common->Printf( "Migrating legacy audio config: the %s preset keeps room reverb now, s_useEAXReverb 0 -> 1\n", reverblessPresets[i] );
+				cvarSystem->SetCVarBool( "s_useEAXReverb", true, CVAR_ARCHIVE );
+				break;
+			}
+		}
 	}
-	if ( cvarSystem->GetCVarBool( "s_quadraticFalloff" ) ) {
-		common->Printf( "Migrating legacy audio config: s_quadraticFalloff 1 -> 0 (linear, as retail)\n" );
-		cvarSystem->SetCVarBool( "s_quadraticFalloff", false );
-	}
-	s_audioDefaultsMigrated.SetBool( true );
+	s_audioDefaultsMigrated.SetInteger( OPENQ4_AUDIO_DEFAULTS_MIGRATION_STEPS );
 }
 
 static int commonLastPresentationCap = -1;
@@ -3379,6 +3399,7 @@ static bool Common_PerformancePresetCheckRestoredAudio( const openQ4PerformanceP
 	bool passed = true;
 	// The speaker layout is the output device's, not a performance tier's.
 	passed &= Common_PerformancePresetCheckExpectedInt( preset, "s_numberOfSpeakers", preset.numberOfSpeakers, 0 );
+	// Room reverb is part of the authored mix; every tier keeps it.
 	passed &= Common_PerformancePresetCheckExpectedInt( preset, "s_useEAXReverb", preset.useEAXReverb, 1 );
 	passed &= Common_PerformancePresetCheckExpectedInt( preset, "s_maxEmitterChannels", preset.maxEmitterChannels, OPENQ4_PERFORMANCE_PRESET_MAX_EMITTER_CHANNELS );
 	passed &= Common_PerformancePresetCheckExpectedInt( preset, "s_maxSoundsPerShader", preset.maxSoundsPerShader, 0 );
@@ -3408,7 +3429,7 @@ static bool Common_ValidatePerformancePresetIntent( const openQ4PerformancePrese
 		passed &= Common_PerformancePresetCheckExpectedInt( preset, "image_ignoreHighQuality", preset.ignoreHighQuality, 1 );
 		passed &= Common_PerformancePresetCheckIntAtLeast( preset, "s_maxSoundsPerShader", preset.maxSoundsPerShader, 1 );
 		passed &= Common_PerformancePresetCheckExpectedInt( preset, "s_numberOfSpeakers", preset.numberOfSpeakers, 0 );
-		passed &= Common_PerformancePresetCheckExpectedInt( preset, "s_useEAXReverb", preset.useEAXReverb, 0 );
+		passed &= Common_PerformancePresetCheckExpectedInt( preset, "s_useEAXReverb", preset.useEAXReverb, 1 );
 		passed &= Common_PerformancePresetCheckIntAtMost( preset, "s_maxEmitterChannels", preset.maxEmitterChannels, 32 );
 		passed &= Common_PerformancePresetCheckIntAtMost( preset, "r_rendererUploadMegs", preset.uploadMegs, 8 );
 		passed &= Common_PerformancePresetCheckExpectedInt( preset, "r_rendererUploadFrameBuffers", preset.uploadFrameBuffers, OPENQ4_PERFORMANCE_PRESET_MIN_UPLOAD_FRAME_BUFFERS );
@@ -3421,7 +3442,7 @@ static bool Common_ValidatePerformancePresetIntent( const openQ4PerformancePrese
 		passed &= Common_PerformancePresetCheckExpectedInt( preset, "image_downSize", preset.downSize, 0 );
 		passed &= Common_PerformancePresetCheckExpectedInt( preset, "image_ignoreHighQuality", preset.ignoreHighQuality, 0 );
 		passed &= Common_PerformancePresetCheckExpectedInt( preset, "s_numberOfSpeakers", preset.numberOfSpeakers, 0 );
-		passed &= Common_PerformancePresetCheckExpectedInt( preset, "s_useEAXReverb", preset.useEAXReverb, 0 );
+		passed &= Common_PerformancePresetCheckExpectedInt( preset, "s_useEAXReverb", preset.useEAXReverb, 1 );
 		passed &= Common_PerformancePresetCheckIntAtMost( preset, "s_maxEmitterChannels", preset.maxEmitterChannels, 40 );
 		passed &= Common_PerformancePresetCheckIntAtLeast( preset, "r_rendererUploadMegs", preset.uploadMegs, 16 );
 	} else if ( Common_PerformancePresetIsNamed( preset, "balanced" ) ) {
@@ -3545,7 +3566,7 @@ static bool Common_ValidatePerformancePresetDefinition( const openQ4PerformanceP
 		 ( preset.useLightGrid != 0 && preset.useLightGrid != 1 ) ||
 		 preset.uploadMegs < 1 || preset.uploadMegs > 128 ||
 		 preset.uploadFrameBuffers < OPENQ4_PERFORMANCE_PRESET_MIN_UPLOAD_FRAME_BUFFERS || preset.uploadFrameBuffers > OPENQ4_PERFORMANCE_PRESET_MAX_UPLOAD_FRAME_BUFFERS ||
-		 ( preset.numberOfSpeakers != 2 && preset.numberOfSpeakers != 6 ) ||
+		 ( preset.numberOfSpeakers != 0 && preset.numberOfSpeakers != 2 && preset.numberOfSpeakers != 6 ) ||
 		 ( preset.useEAXReverb != 0 && preset.useEAXReverb != 1 ) ||
 		 preset.maxEmitterChannels <= 0 || preset.maxEmitterChannels > OPENQ4_PERFORMANCE_PRESET_MAX_EMITTER_CHANNELS ) {
 		common->Printf( "PerformancePreset self-test failed: %s has out-of-range values\n", preset.name );

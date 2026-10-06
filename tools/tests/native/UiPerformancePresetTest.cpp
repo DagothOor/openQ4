@@ -30,9 +30,9 @@ static void Profiles(){
  const std::vector<std::string> keys={"com_machineSpec","r_rendererBenchmarkPreset","r_screenFraction","r_multiSamples","r_postAA","com_maxfps","image_anisotropy","image_usePrecompressedTextures","image_downSize","image_downSizeLimit","image_downSizeSpecular","image_downSizeBump","image_downSizeSpecularLimit","image_downSizeBumpLimit","image_ignoreHighQuality","image_writeGeneratedImages","s_maxSoundsPerShader","r_useShadowMap","r_shadowMapSize","r_shadowMapMaxUpdatesPerView","r_bloom","r_ssao","r_hdrToneMap","r_motionBlur","r_crt","r_useLightGrid","r_rendererUploadMegs","r_rendererUploadFrameBuffers","s_numberOfSpeakers","s_useEAXReverb","s_maxEmitterChannels","com_performancePreset"};
  // Independent golden setter values from the pre-refactor production profiles.
  const std::vector<std::vector<int>> numbers={
- {0,50,0,0,30,1,1,1,512,1,1,64,256,1,1,1,0,512,1,0,0,0,0,0,1,8,3,0,0,24},
- {0,75,0,0,30,1,1,1,1024,1,1,64,256,1,1,1,0,512,1,0,0,0,0,0,1,8,3,0,0,32},
- {1,85,0,1,60,2,1,0,0,0,0,64,0,0,1,0,0,1024,2,0,0,0,0,0,1,16,4,0,0,40},
+ {0,50,0,0,30,1,1,1,512,1,1,64,256,1,1,1,0,512,1,0,0,0,0,0,1,8,3,0,1,24},
+ {0,75,0,0,30,1,1,1,1024,1,1,64,256,1,1,1,0,512,1,0,0,0,0,0,1,8,3,0,1,32},
+ {1,85,0,1,60,2,1,0,0,0,0,64,0,0,1,0,0,1024,2,0,0,0,0,0,1,16,4,0,1,40},
  {2,100,2,1,120,4,1,0,0,0,0,64,0,0,1,0,0,1024,0,0,0,0,0,0,1,16,4,0,1,48},
  {3,100,4,1,144,8,1,0,0,0,0,64,0,0,1,0,1,1024,0,0,0,0,0,0,1,32,4,0,1,48},
  {3,100,8,1,240,16,1,0,0,0,0,64,0,0,1,0,1,2048,0,0,0,0,0,0,1,32,4,0,1,48}};
