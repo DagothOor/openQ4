@@ -7,6 +7,15 @@
 
 This guide covers a simple way to host an openQ4 dedicated server.
 
+## Hosting from the Game
+
+The multiplayer menu's **Create Server** page hosts a listen server: you play
+on it while it serves the other players. **Server Type** decides who can join.
+**Internet** advertises the server to the master servers and accepts players
+from anywhere; **LAN** keeps it off the master servers and accepts only players
+on your local network. **Dedicated** cannot be started from the game yet and
+still starts a listen server, so use the dedicated server executable below.
+
 ## What You Need
 
 - A working openQ4 install

@@ -815,6 +815,36 @@ def validate_ingame_menu_activation_contract(
         require(session_cpp, token, "runtime in-game menu activation assertion")
 
 
+def validate_create_server_choices(mainmenu: str, session_menu: str) -> None:
+    """Create Server's Server Type and Dedicated rows reach startMultiplayer.
+
+    The rows bind CVars, and retail Quake4.exe 1.4.2's startMultiplayer reads
+    them (as net_menuLANServer and net_serverMenuDedicated; CVar names are
+    case-insensitive). Quake 4's menu never sets Doom 3's "server_type" and
+    "dedicated" GUI keys, so reading those made every menu server an Internet
+    listen server whatever the player picked.
+    """
+    require(gui_block(mainmenu, "mp_create_val2"), "cvar\tnet_menulanserver", "Create Server type row")
+    require(gui_block(mainmenu, "mp_create_val3"), "cvar\tnet_serverMenuDedicated", "Create Server dedicated row")
+    reject(session_menu, 'State().GetBool( "server_type" )', "Create Server type")
+    reject(session_menu, 'State().GetInt( "dedicated" )', "Create Server dedicated")
+
+    handler = session_menu[session_menu.index('!idStr::Icmp( cmd, "startMultiplayer" )') :]
+    handler = handler[: handler.index('"SpawnServer\\n"')]
+    require(
+        handler,
+        'cvarSystem->SetCVarBool( "net_LANServer", cvarSystem->GetCVarBool( "net_menulanserver" ) );',
+        "startMultiplayer Server Type",
+    )
+    # Dedicated keeps hosting a listen server, with a warning, until a client
+    # can become a dedicated server in process: from game_sp or q4xbase the
+    # reload before the spawn brings up no renderer or session worlds while
+    # net_serverDedicated is 1, and the sound shutdown leaves shaders pointing
+    # at freed samples. Honouring the row needs those fixed and probed first.
+    require(handler, "int dedicated = 0;", "startMultiplayer listen-server fallback")
+    require(handler, 'cvarSystem->GetCVarBool( "net_serverMenuDedicated" )', "startMultiplayer Dedicated warning")
+
+
 def main() -> None:
     validate_settings_registry()
 
@@ -839,6 +869,7 @@ def main() -> None:
     validate_scripted_pseudo_setting_adapters(game_gui, session_menu)
     validate_performance_preset_wiring(common_cpp, system_gui, session_menu, registry_text, display_docs, locales)
     validate_ingame_menu_activation_contract(mainmenu, session_menu, session_cpp)
+    validate_create_server_choices(mainmenu, session_menu)
 
     require(mainmenu, '#include "guis/menu/settings/system.gui"', "System settings include")
     reject(mainmenu, "windowDef p_settings_sys", "mainmenu System pane extraction")

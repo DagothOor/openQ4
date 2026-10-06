@@ -455,6 +455,11 @@
 
 - [x] Suppress startup splash windows for hidden-window, renderer-disabled and dedicated launches across Windows, Linux and macOS.
 
+- [x] Create Server's Server Type now takes effect: LAN keeps a hosted game off
+  the Internet master servers and admits only players on your local network, as
+  in retail Quake 4. Dedicated still starts a listen server; host a dedicated
+  server with `openQ4-ded`.
+
 - [x] Consolidate SDK game sources and Awakening SP into the engine checkout;
   qualify campaign discovery, content/save isolation, stock/expansion save
   compatibility, multiplayer and Arena before archiving the historical repositories.
