@@ -140,9 +140,16 @@ def main() -> None:
     require(evidence, "linux_dedicated_stock_map_smoke.py", "Linux ARM64 signoff evidence instructions")
     require(evidence, "--physical-hardware", "physical dedicated-server evidence instructions")
     require(evidence, "known VM/emulator", "physical-host inspection scope")
+    # openQ4-ded is always a dedicated server; the client is one with
+    # net_serverDedicated 1 and no device, and skips the same presentation.
     require(
         session,
-        "void idSessionLocal::ShowLoadingGui() {\n#ifdef ID_DEDICATED\n\t// Dedicated servers have no loading GUI",
+        "bool idSessionLocal::IsDedicatedServer() const {\n#ifdef ID_DEDICATED\n\treturn true;\n#else",
+        "dedicated session predicate",
+    )
+    require(
+        session,
+        "void idSessionLocal::ShowLoadingGui() {\n\tif ( IsDedicatedServer() ) {\n\t\t// Dedicated servers have no loading GUI",
         "dedicated map-load presentation exclusion",
     )
     require(
@@ -157,27 +164,27 @@ def main() -> None:
     )
     require(
         session,
-        "void idSessionLocal::LoadLoadingGui( const char *mapName ) {\n#ifdef ID_DEDICATED\n\tguiLoading = NULL;\n\treturn;",
+        "void idSessionLocal::LoadLoadingGui( const char *mapName ) {\n\tif ( IsDedicatedServer() ) {\n\t\tguiLoading = NULL;\n\t\treturn;",
         "dedicated loading GUI exclusion",
     )
     require(
         session,
-        "void idSessionLocal::UpdateScreen( bool outOfSequence ) {\n\n#ifdef ID_DEDICATED\n\treturn;",
+        "void idSessionLocal::UpdateScreen( bool outOfSequence ) {\n\n\tif ( IsDedicatedServer() ) {\n\t\treturn;",
         "dedicated screen-update exclusion",
     )
     require(
         session,
-        "void idSessionLocal::StartWipe( const char *_wipeMaterial, bool hold ) {\n#ifdef ID_DEDICATED\n\t// Dedicated servers never own a presentation surface",
+        "void idSessionLocal::StartWipe( const char *_wipeMaterial, bool hold ) {\n\tif ( IsDedicatedServer() ) {\n\t\t// Dedicated servers never own a presentation surface",
         "dedicated wipe-capture exclusion",
     )
     require(
         session,
-        "void idSessionLocal::CompleteWipe() {\n#ifdef ID_DEDICATED\n\treturn;",
+        "void idSessionLocal::CompleteWipe() {\n\tif ( IsDedicatedServer() ) {\n\t\treturn;",
         "dedicated wipe-completion exclusion",
     )
     require(
         session,
-        'mapSpawned = true;\n#ifdef ID_DEDICATED\n\tcommon->Printf( "Dedicated map ready: %s\\n", mapString.c_str() );',
+        'mapSpawned = true;\n\tif ( IsDedicatedServer() ) {\n\t\tcommon->Printf( "Dedicated map ready: %s\\n", mapString.c_str() );',
         "dedicated post-load readiness marker",
     )
     reject(linux_main, "Sys_ShowSplash();", "Linux splash deferred until launch settings")

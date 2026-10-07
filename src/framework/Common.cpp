@@ -4326,7 +4326,16 @@ void Com_ReloadEngine_f( const idCmdArgs &args ) {
 	common->Printf( "============= ReloadEngine start =============\n" );
 	fileSystem->SetIsFileLoadingAllowed( true );
 	if ( !menu ) {
-		Sys_ShowConsole( 1, false );
+		if ( idAsyncNetwork::serverDedicated.GetInteger() != 1 ) {
+			Sys_ShowConsole( 1, false );
+		} else if ( renderSystem != NULL && renderSystem->IsOpenGLRunning() ) {
+			// This client comes back from the reload as a dedicated server with
+			// no window: the console becomes its only one and quits on close, as
+			// SpawnServer_f makes it when a client converts.
+			Sys_ShowConsole( cvarSystem->GetCVarBool( "r_hiddenWindow" ) ? 0 : 1, true );
+		}
+		// A dedicated server's console already is its only window and quits on
+		// close: the reload leaves it as it is.
 	}
 	commonLocal.ShutdownGame( true );
 	commonLocal.InitGame();

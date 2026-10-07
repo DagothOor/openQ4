@@ -873,9 +873,12 @@ def validate_dedicated_conversion() -> None:
 
     SpawnServer_f closes the window, makes the system console the server's only
     interface and releases the audio device. A spawn from game_sp or q4xbase
-    first reloads, which brings the renderer, the session's worlds and the menus
-    back only for a client, so net_serverDedicated 1 is held back across it and
-    resumed by the replayed spawnServer. The teardown must leave nothing that a
+    first reloads, and the client must come back from it with its window to be
+    converted, so net_serverDedicated 1 is held back across it and resumed by the
+    replayed spawnServer. An engine that starts with net_serverDedicated 1 and no
+    device (a launch with it, or any later engine reload) is a dedicated server
+    already: like openQ4-ded's, its session gets worlds and no menus, so a map
+    change's reload holds nothing back. The teardown must leave nothing that a
     later frame or the final shutdown touches without its device.
     """
     network = read(ROOT / "src/framework/async/AsyncNetwork.cpp")
@@ -896,7 +899,6 @@ def validate_dedicated_conversion() -> None:
             "Sys_ShowConsole( cvarSystem->GetCVarBool( \"r_hiddenWindow\" ) ? 0 : 1, true );",
             "renderSystem->ShutdownOpenGL();",
             "Sys_ReleaseInstanceLock();",
-            "dedicatedFromClient = true;",
             "soundSystem->ShutdownHW();",
             "server.Spawn();",
         ],
@@ -904,25 +906,20 @@ def validate_dedicated_conversion() -> None:
     )
     # Shutdown() deletes every sample while sound shaders keep pointers to them.
     reject(spawn, "soundSystem->Shutdown();", "SpawnServer_f dedicated conversion")
-    hold_reload = function_body(network, "void idAsyncNetwork::HoldDedicatedAcrossReload( void ) {", "AsyncNetwork.cpp")
-    require_order(
-        hold_reload,
-        ["if ( dedicatedFromClient && serverDedicated.GetInteger() == 1 ) {", "dedicatedSpawnDeferred = true;",
-         "serverDedicated.SetInteger( 0 );"],
-        "dedicated hold across a map change's engine reload",
-    )
     # A map change that reloads the engine (an addon map, net_serverReloadEngine)
-    # queues spawnServer after it; the converted server holds its request across.
+    # queues spawnServer after it. The server comes back without a device, still
+    # a dedicated server, so nothing is held back across that reload.
+    reject(network, "HoldDedicatedAcrossReload", "AsyncNetwork.cpp")
     server = read(ROOT / "src/framework/async/AsyncServer.cpp")
     require_order(
         server,
         [
-            "idAsyncNetwork::HoldDedicatedAcrossReload();",
             'cmdSystem->BufferCommandText( CMD_EXEC_NOW, "reloadEngine" );',
             'cmdSystem->BufferCommandText( CMD_EXEC_APPEND, "spawnServer\\n" );',
         ],
         "server map change engine reload",
     )
+    reject(server, "HoldDedicatedAcrossReload", "server map change engine reload")
 
     common = read(ROOT / "src/framework/Common.cpp")
     swap = function_body(common, "void Com_ReloadGameModule_f( const idCmdArgs &args ) {", "Common.cpp")
@@ -930,6 +927,89 @@ def validate_dedicated_conversion() -> None:
         swap,
         ["ReloadGameModule failed", "idAsyncNetwork::AbandonDeferredDedicatedSpawn();", "session->StartMenu();"],
         "failed game-module swap",
+    )
+    # A non-menu engine reload leaves a dedicated server's console as it is (its
+    # only window, quitting on close); only a client shows it for the reload.
+    reload = function_body(common, "void Com_ReloadEngine_f( const idCmdArgs &args ) {", "Common.cpp")
+    require_order(
+        reload,
+        [
+            "if ( idAsyncNetwork::serverDedicated.GetInteger() != 1 ) {",
+            "Sys_ShowConsole( 1, false );",
+            "} else if ( renderSystem != NULL && renderSystem->IsOpenGLRunning() ) {",
+            'Sys_ShowConsole( cvarSystem->GetCVarBool( "r_hiddenWindow" ) ? 0 : 1, true );',
+            "commonLocal.ShutdownGame( true );",
+        ],
+        "dedicated console across an engine reload",
+    )
+    # A launch with net_serverDedicated 1 shows its console quitting on close, and
+    # hidden with the game window. r_hiddenWindow is NOCHEAT, so a spawn's reset of
+    # cheat CVars cannot show the window or the console afterwards.
+    win_main = read(ROOT / "src/sys/win32/win_main.cpp")
+    require(win_main, 'cvarSystem->GetCVarBool("r_hiddenWindow");\n\t\tSys_ShowConsole(hidden ? 0 : 1, true);',
+            "hidden dedicated launch console")
+    renderer_init = read(ROOT / "src/renderer/RenderSystem_init.cpp")
+    _, hidden_flags = cvar_signature(renderer_init, "r_hiddenWindow", "RenderSystem_init.cpp")
+    require(" ".join(sorted(hidden_flags)), "CVAR_NOCHEAT", "r_hiddenWindow flags")
+
+    # A dedicated server's session, the client's without a device included, gets
+    # its worlds and none of the menus, as openQ4-ded's does.
+    session = read(ROOT / "src/framework/Session.cpp")
+    predicate = function_body(session, "bool idSessionLocal::IsDedicatedServer() const {", "Session.cpp")
+    require_order(
+        predicate,
+        ["#ifdef ID_DEDICATED", "return true;", "idAsyncNetwork::serverDedicated.GetInteger() == 1 &&",
+         "!renderSystem->IsOpenGLRunning()"],
+        "dedicated session predicate",
+    )
+    init = function_body(session, "void idSessionLocal::Init() {", "Session.cpp")
+    require_order(
+        init,
+        [
+            'AddCommand( "rescanSI"',
+            "const bool dedicatedServer = IsDedicatedServer();",
+            "if ( !dedicatedServer ) {",
+            "IsOpenGLRunning() ) return;",
+            "rw = renderSystem->AllocRenderWorld();",
+            "menuSoundWorld = soundSystem->AllocSoundWorld( rw );",
+            "if ( dedicatedServer ) {",
+            '"Dedicated server: skipping client GUI preload.\\n"',
+            "} else {",
+            'guiMainMenu = uiManager->FindGui( "guis/mainmenu.gui", true, false, true );',
+            "arenaCampaign.Init();",
+        ],
+        "dedicated session init",
+    )
+    # uiManager frees the menus at every engine reload: none may dangle into a
+    # session that gets none.
+    require(
+        function_body(session, "void idSessionLocal::Clear() {", "Session.cpp"),
+        "guiMainMenu = guiRestartMenu = guiGameOver = guiMsg = guiTakeNotes = guiIntro = NULL;",
+        "menus released with the session",
+    )
+    for header, refusal in (
+        ("void idSessionLocal::StartNewGame(", "Dedicated servers cannot start singleplayer games."),
+        ("bool idSessionLocal::LoadGame(", "Dedicated servers cannot load games."),
+        ("void idSessionLocal::StartPlayingRenderDemo(", "Dedicated servers cannot play demos."),
+        ("void idSessionLocal::StartPlayingCmdDemo(", "Dedicated servers cannot play demos."),
+    ):
+        require_order(function_body(session, header, "Session.cpp"), ["if ( IsDedicatedServer() ) {", refusal], header)
+    # Every path to the main menu survives a session without one.
+    menu = read(ROOT / "src/framework/Session_menu.cpp")
+    require_order(
+        function_body(menu, "void idSessionLocal::StartMenu( bool playIntro ) {", "Session_menu.cpp"),
+        ["if ( guiMainMenu == NULL ) {", "SetGUI( NULL, NULL );", "return;", "guiMainMenu->HandleNamedEvent("],
+        "StartMenu without menus",
+    )
+    require_order(
+        function_body(menu, "void idSessionLocal::DispatchCommand(", "Session_menu.cpp"),
+        ["if ( gui == NULL && guiMainMenu == NULL ) {", "return;", "if ( gui == guiMainMenu ) {"],
+        "DispatchCommand without menus",
+    )
+    require(
+        function_body(menu, "void idSessionLocal::HandleGameMenuReturn(", "Session_menu.cpp"),
+        "if ( mainMenuEvent.Length() > 0 && guiMainMenu != NULL ) {",
+        "game menu return without menus",
     )
 
     sound = read(ROOT / "src/sound/snd_system.cpp")

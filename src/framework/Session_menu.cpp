@@ -1775,6 +1775,12 @@ static int menuProfileSaveVarsMsec = 0;
 static int menuProfileMainVarsMsec = 0;
 
 void idSessionLocal::StartMenu( bool playIntro ) {
+	if ( guiMainMenu == NULL ) {
+		// A dedicated server's session has no menus, and its console is the only
+		// interface: a request for the menu closes whatever GUI is open instead.
+		SetGUI( NULL, NULL );
+		return;
+	}
 	const bool shouldPlayIntro = playIntro && !com_skipLogoVideos.GetBool();
 	if ( guiSystem != NULL && ( guiActive == guiSystem || guiMsgRestore == guiSystem ) ) {
 		ReturnSystemSettings();
@@ -3923,6 +3929,11 @@ void idSessionLocal::DispatchCommand( idUserInterface *gui, const char *menuComm
 	if ( !gui ) {
 		gui = guiActive;
 	}
+	if ( gui == NULL && guiMainMenu == NULL ) {
+		// No GUI is open, and this session has no menus (a dedicated server's):
+		// nothing takes the command, and below it would match the NULL menus.
+		return;
+	}
     if ( gui && gui == guiActive && !idStr::Icmp( gui->Name(), "guis/campaign_menu.gui" ) ) {
         if ( !idStr::Icmp( menuCommand, "campaignQuake4" ) ) SelectCampaign( "quake4" );
         else if ( !idStr::Icmp( menuCommand, "campaignAwakening" ) ) SelectCampaign( "awakening" );
@@ -4777,7 +4788,8 @@ idSessionLocal::StopBox
 =================
 */
 void idSessionLocal::StopBox() {
-	if ( guiActive == guiMsg ) {
+	// A session without menus has no box: guiMsg and guiActive are both NULL.
+	if ( guiMsg != NULL && guiActive == guiMsg ) {
 		HandleMsgCommands( "stop" );
 	}
 }
@@ -5942,7 +5954,7 @@ void idSessionLocal::HandleGameMenuReturn( const char *cmd ) {
 		StartMenu();
 		idStr mainMenuEvent = cmd + 5;
 		mainMenuEvent.StripLeading( ' ' );
-		if ( mainMenuEvent.Length() > 0 ) {
+		if ( mainMenuEvent.Length() > 0 && guiMainMenu != NULL ) {
 			guiMainMenu->HandleNamedEvent( mainMenuEvent.c_str() );
 		}
 	} else if ( strstr( cmd, "sound " ) == cmd ) {

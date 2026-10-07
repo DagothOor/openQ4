@@ -2488,13 +2488,17 @@ bool idRenderWorldLocal::LoadLightGridPackFile( const char *name ) {
 	}
 	fileSystem->CloseFile( file );
 
+	// Only a renderer with a device knows which formats it can sample. One that
+	// never had one (a dedicated server) makes nothing resident anyway, and
+	// PreloadLightGridImages reports it stopped.
+	const bool checkFormats = tr.IsOpenGLRunning();
 	int assignedChunks = 0;
 	for ( int i = 0; i < chunks.Num(); i++ ) {
-		if ( ( chunks[i].format == FMT_DXT1 || chunks[i].format == FMT_DXT5 ) && !glConfig.textureCompressionAvailable ) {
+		if ( checkFormats && ( chunks[i].format == FMT_DXT1 || chunks[i].format == FMT_DXT5 ) && !glConfig.textureCompressionAvailable ) {
 			common->Warning( "%s contains compressed light-grid chunks but this renderer does not support texture compression", name );
 			return false;
 		}
-		if ( chunks[i].format == FMT_BC7 && !glConfig.bptcTextureCompressionAvailable ) {
+		if ( checkFormats && chunks[i].format == FMT_BC7 && !glConfig.bptcTextureCompressionAvailable ) {
 			common->Warning( "%s contains BC7 light-grid chunks but this renderer does not support BPTC texture compression", name );
 			return false;
 		}

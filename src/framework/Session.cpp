@@ -3795,6 +3795,10 @@ void idSessionLocal::Clear() {
 	mapSpawned = false;
 	openq4::NativeInputBeforeSessionChange();
 	guiActive = NULL;
+	// uiManager owns and frees these, and an engine reload frees them with it.
+	// Init finds them again; a dedicated server's session leaves them NULL.
+	guiMainMenu = guiRestartMenu = guiGameOver = guiMsg = guiTakeNotes = guiIntro = NULL;
+	guiInGame = guiLoading = guiTest = NULL;
 	guiSystem = guiSystemParent = NULL;
 	guiSystemParentHandle = NULL;
 	systemGuiTransition = systemGuiBackEvent = false;
@@ -4050,6 +4054,25 @@ bool	idSessionLocal::IsMultiplayer() {
 	return idAsyncNetwork::IsActive();
 }
 
+/*
+===============
+idSessionLocal::IsDedicatedServer
+
+The client's renderer starts only with net_serverDedicated 0, and SpawnServer_f
+shuts it down when the client turns into a dedicated server, so 1 without a
+device is a dedicated server. While a client converts, its device is still
+running.
+===============
+*/
+bool idSessionLocal::IsDedicatedServer() const {
+#ifdef ID_DEDICATED
+	return true;
+#else
+	return idAsyncNetwork::serverDedicated.GetInteger() == 1 &&
+		( renderSystem == NULL || !renderSystem->IsOpenGLRunning() );
+#endif
+}
+
 bool idSessionLocal::IsIAmTheDukeActive( void ) const {
 	return iamTheDukeActive && mapSpawned && !idAsyncNetwork::IsActive();
 }
@@ -4165,10 +4188,10 @@ Draws and captures the current state, then starts a wipe with that image
 ================
 */
 void idSessionLocal::StartWipe( const char *_wipeMaterial, bool hold ) {
-#ifdef ID_DEDICATED
-	// Dedicated servers never own a presentation surface to capture for wipes.
-	return;
-#endif
+	if ( IsDedicatedServer() ) {
+		// Dedicated servers never own a presentation surface to capture for wipes.
+		return;
+	}
 	console->Close();
 
 	{
@@ -4198,9 +4221,9 @@ idSessionLocal::CompleteWipe
 ================
 */
 void idSessionLocal::CompleteWipe() {
-#ifdef ID_DEDICATED
-	return;
-#endif
+	if ( IsDedicatedServer() ) {
+		return;
+	}
 	if ( com_ticNumber == 0 ) {
 		// if the async thread hasn't started, we would hang here
 		wipeStopTic = 0;
@@ -4222,11 +4245,11 @@ idSessionLocal::ShowLoadingGui
 ================
 */
 void idSessionLocal::ShowLoadingGui() {
-#ifdef ID_DEDICATED
-	// Dedicated servers have no loading GUI or initialized renderer. Map loads
-	// must continue directly instead of entering the client presentation loop.
-	return;
-#endif
+	if ( IsDedicatedServer() ) {
+		// Dedicated servers have no loading GUI or initialized renderer. Map loads
+		// must continue directly instead of entering the client presentation loop.
+		return;
+	}
 	if ( com_ticNumber == 0 ) {
 		return;
 	}
@@ -4900,6 +4923,11 @@ idSessionLocal::StartPlayingRenderDemo
 ================
 */
 void idSessionLocal::StartPlayingRenderDemo( idStr demoName ) {
+	if ( IsDedicatedServer() ) {
+		// Nothing would show it, and the playback stops the server.
+		common->Printf( "Dedicated servers cannot play demos.\n" );
+		return;
+	}
 	if ( !demoName[0] ) {
 		common->Printf( "idSessionLocal::StartPlayingRenderDemo: no name specified\n" );
 		return;
@@ -5205,6 +5233,10 @@ void idSessionLocal::StartNewGame( const char *mapName, bool devmap, const char 
 	common->Printf( "Dedicated servers cannot start singleplayer games.\n" );
 	return;
 #else
+	if ( IsDedicatedServer() ) {
+		common->Printf( "Dedicated servers cannot start singleplayer games.\n" );
+		return;
+	}
 	idStr normalizedMapName;
 	idStr normalizedEntityFilter;
 	Session_NormalizeMapPathAndEntityFilter( mapName, entityFilter, normalizedMapName, normalizedEntityFilter );
@@ -5635,6 +5667,11 @@ idSessionLocal::StartPlayingCmdDemo
 ===============
 */
 void idSessionLocal::StartPlayingCmdDemo(const char *demoName) {
+	if ( IsDedicatedServer() ) {
+		// A command demo replays a single-player game.
+		common->Printf( "Dedicated servers cannot play demos.\n" );
+		return;
+	}
 	// exit any current game
 	Stop();
 
@@ -6168,10 +6205,10 @@ idSessionLocal::LoadLoadingGui
 ===============
 */
 void idSessionLocal::LoadLoadingGui( const char *mapName ) {
-#ifdef ID_DEDICATED
-	guiLoading = NULL;
-	return;
-#endif
+	if ( IsDedicatedServer() ) {
+		guiLoading = NULL;
+		return;
+	}
 	// load / program a gui to stay up on the screen while loading
 	idStr stripped = mapName;
 	stripped.StripFileExtension();
@@ -7010,9 +7047,9 @@ void idSessionLocal::ExecuteMapChange( bool noFadeWipe ) {
 
 	// we are valid for game draws now
 	mapSpawned = true;
-#ifdef ID_DEDICATED
-	common->Printf( "Dedicated map ready: %s\n", mapString.c_str() );
-#endif
+	if ( IsDedicatedServer() ) {
+		common->Printf( "Dedicated map ready: %s\n", mapString.c_str() );
+	}
 	ResetFramePacingStats();
 	Sys_ClearEvents();
 }
@@ -7542,6 +7579,10 @@ bool idSessionLocal::LoadGame( const char *saveName ) {
 	common->Printf( "Dedicated servers cannot load games.\n" );
 	return false;
 #else
+	if ( IsDedicatedServer() ) {
+		common->Printf( "Dedicated servers cannot load games.\n" );
+		return false;
+	}
 	int i;
 	int loadedSavegameVersion = 0;
 	idStr in, loadFile, saveMap, gamename, entityFilter, requestedSaveName, normalizedSaveMap, normalizedEntityFilter;
@@ -8478,9 +8519,9 @@ idSessionLocal::UpdateScreen
 */
 void idSessionLocal::UpdateScreen( bool outOfSequence ) {
 
-#ifdef ID_DEDICATED
-	return;
-#endif
+	if ( IsDedicatedServer() ) {
+		return;
+	}
 
 #ifdef _WIN32
 
@@ -9051,7 +9092,13 @@ void idSessionLocal::Init() {
 	// The commands above draw nothing, so they register regardless; a
 	// dedicated server never has a device, and spawning a map needs its
 	// worlds below and rescanSI, which copies its settings into the map.
-	if ( !renderSystem || !renderSystem->IsOpenGLRunning() ) return;
+	// This client is a dedicated server too when its engine starts with
+	// net_serverDedicated 1 (launched with it, or reloaded after turning into
+	// one): like openQ4-ded, it gets the worlds and none of the menus.
+	const bool dedicatedServer = IsDedicatedServer();
+	if ( !dedicatedServer ) {
+		if ( !renderSystem || !renderSystem->IsOpenGLRunning() ) return;
+	}
 #endif
 
 	// the same idRenderWorld will be used for all games
@@ -9066,27 +9113,33 @@ void idSessionLocal::Init() {
 #ifdef ID_DEDICATED
 	common->Printf( "Dedicated server: skipping client GUI preload.\n" );
 #else
-	Session_DeclareMultiplayerMenuGameCVars();
+	if ( dedicatedServer ) {
+		// The menus stay NULL, as Clear() left them; StartMenu and the other
+		// menu paths check for that.
+		common->Printf( "Dedicated server: skipping client GUI preload.\n" );
+	} else {
+		Session_DeclareMultiplayerMenuGameCVars();
 #ifndef ID_DEMO_BUILD
-	guiMainMenu = uiManager->FindGui( "guis/mainmenu.gui", true, false, true );
+		guiMainMenu = uiManager->FindGui( "guis/mainmenu.gui", true, false, true );
 #else
-	guiMainMenu = uiManager->FindGui( "guis/demo_mainmenu.gui", true, false, true );
+		guiMainMenu = uiManager->FindGui( "guis/demo_mainmenu.gui", true, false, true );
 #endif
-	// Resolve and retain menu media while the session is initialized. Doing
-	// this synchronously from StartMenu made the first ESC press wait on image,
-	// material, and sound lookup before the GUI could be activated.
-	PrimeMainMenuGuiResources();
-	PreloadRetainedScreens();
-	guiMainMenu_MapList = uiManager->AllocListGUI();
-	guiMainMenu_MapList->Config( guiMainMenu, "mapList" );
-	idAsyncNetwork::client.serverList.GUIConfig( guiMainMenu, "serverList" );
-	guiRestartMenu = uiManager->FindGui( "guis/restart.gui", true, false, true );
-	guiGameOver = uiManager->FindGui( "guis/gameover.gui", true, false, true );
-	guiMsg = uiManager->FindGui( "guis/msg.gui", true, false, true );
-	guiTakeNotes = uiManager->FindGui( "guis/takeNotes.gui", true, false, true );
-	guiIntro = uiManager->FindGui( "guis/intro.gui", true, false, true );
-	InitDemoSystem();
-	arenaCampaign.Init();
+		// Resolve and retain menu media while the session is initialized. Doing
+		// this synchronously from StartMenu made the first ESC press wait on image,
+		// material, and sound lookup before the GUI could be activated.
+		PrimeMainMenuGuiResources();
+		PreloadRetainedScreens();
+		guiMainMenu_MapList = uiManager->AllocListGUI();
+		guiMainMenu_MapList->Config( guiMainMenu, "mapList" );
+		idAsyncNetwork::client.serverList.GUIConfig( guiMainMenu, "serverList" );
+		guiRestartMenu = uiManager->FindGui( "guis/restart.gui", true, false, true );
+		guiGameOver = uiManager->FindGui( "guis/gameover.gui", true, false, true );
+		guiMsg = uiManager->FindGui( "guis/msg.gui", true, false, true );
+		guiTakeNotes = uiManager->FindGui( "guis/takeNotes.gui", true, false, true );
+		guiIntro = uiManager->FindGui( "guis/intro.gui", true, false, true );
+		InitDemoSystem();
+		arenaCampaign.Init();
+	}
 #endif
 
 	whiteMaterial = declManager->FindMaterial( "_white" );

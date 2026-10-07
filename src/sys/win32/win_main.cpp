@@ -2226,7 +2226,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 	// hide or show the early console as necessary
 	if (win32.win_viewlog.GetInteger() || com_skipRenderer.GetBool() || idAsyncNetwork::serverDedicated.GetInteger()) {
-		Sys_ShowConsole(1, true);
+		// A dedicated server launched with a hidden game window keeps its
+		// console hidden too, as a client that turns into one does.
+		const bool hidden = !win32.win_viewlog.GetInteger() && idAsyncNetwork::serverDedicated.GetInteger() == 1 &&
+			cvarSystem->GetCVarBool("r_hiddenWindow");
+		Sys_ShowConsole(hidden ? 0 : 1, true);
 	}
 	else {
 		Sys_ShowConsole(0, false);

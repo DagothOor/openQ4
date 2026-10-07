@@ -199,6 +199,11 @@ public:
 	virtual bool		IsLoadingSaveGame() const { return loadingSaveGame; }
 	virtual bool		IsGUIActive() const;
 	bool				IsMapSpawned() const { return mapSpawned; }
+	// A dedicated server presents nothing: openQ4-ded, and this client while it
+	// runs as one without a renderer device (launched with net_serverDedicated
+	// 1, or after turning into one). Its session has no menus and skips the
+	// wipes, loading screens and screen updates.
+	bool				IsDedicatedServer() const;
 	virtual idUserInterface *GetActiveGUI() const { return ( guiTest != NULL ) ? guiTest : guiActive; }
 	bool QueryNativeInputPublication(openq4::NativeSessionPublication&) const noexcept;
 	virtual bool		IsMainMenuIntroPlaying() const;

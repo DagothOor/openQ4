@@ -511,6 +511,12 @@
   keep sound off for every map they load instead of decoding each map's sounds,
   and keep the sound data that effects still read.
 
+- [x] openQ4 starts as a dedicated server with `+set net_serverDedicated 1`, as
+  retail Quake 4 did: no game window opens and the console window runs the
+  server. Either way it became one, a dedicated server keeps serving through an
+  engine reload (`reloadEngine`, an add-on map, `net_serverReloadEngine`)
+  without opening its game window again, and closing its console still stops it.
+
 - [x] A server you host keeps the network address and port set with `net_ip`,
   `net_ip6` and `net_port`, as in retail Quake 4. Starting a match without
   cheats reset them, so the next server you hosted, or a server reloading for

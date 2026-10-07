@@ -1438,13 +1438,17 @@ void Posix_ConsoleLateInit( void ) {
 		return;
 	}
 
+	const bool viewlog = sys_viewlog.GetInteger() != 0 || sys_winViewlogAlias.GetInteger() != 0;
 	const bool shouldShow =
-		sys_viewlog.GetInteger() != 0 ||
-		sys_winViewlogAlias.GetInteger() != 0 ||
+		viewlog ||
 		com_skipRenderer.GetBool() ||
 		idAsyncNetwork::serverDedicated.GetInteger() != 0;
+	// A dedicated server launched with a hidden game window keeps its console
+	// hidden too, as a client that turns into one does.
+	const bool hidden = !viewlog && idAsyncNetwork::serverDedicated.GetInteger() == 1 &&
+		cvarSystem->GetCVarBool( "r_hiddenWindow" );
 
-	Sys_ShowConsole( shouldShow ? 1 : 0, shouldShow );
+	Sys_ShowConsole( shouldShow && !hidden ? 1 : 0, shouldShow );
 #endif
 }
 

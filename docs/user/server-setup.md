@@ -20,8 +20,17 @@ When you start the server, the game window closes and the openQ4 console window
 takes its place. The server runs there and accepts console commands such as
 `spawnServer mp/q4dm2`, `kick` and `quit`; close the console window to stop
 the server. To play on it from the same computer, start openQ4 again and join
-it from the multiplayer server browser. To run a server without starting the
-game first, use the dedicated server executable below.
+it from the multiplayer server browser.
+
+To run a server without starting the game first, start openQ4 with
+`+set net_serverDedicated 1`, as you could the original game. No game window
+opens, and the console window runs the server as above:
+
+```text
+openQ4-client_x64 +set net_serverDedicated 1 +set si_map mp/q4dm1 +set si_gameType DM +spawnServer
+```
+
+On a machine without a display, use the dedicated server executable below.
 
 ## What You Need
 

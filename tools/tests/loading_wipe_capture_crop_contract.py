@@ -97,6 +97,8 @@ struct idSessionLocal {
     int drawsInsideCrop=0;
     void PublishRetainedLoadingCount(){}
     void PublishRetainedLoadingTip(bool){}
+    // A client with a screen: a dedicated server skips the capture and the redraws.
+    bool IsDedicatedServer() const {return false;}
     void Draw();
     void StartWipe(const char *_wipeMaterial,bool hold=false);
     void PacifierUpdate();

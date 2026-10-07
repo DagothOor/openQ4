@@ -306,6 +306,7 @@ struct FrameVRSystem {
 struct idSessionLocal {
     bool insideUpdateScreen=false,insideExecuteMapChange=false;
     int time_frontend=0,time_backend=0;
+    bool IsDedicatedServer() const{return false;}
     void Draw(){if(drawHook)drawHook();}
     void UpdateScreen(bool outOfSequence=false);
 };
