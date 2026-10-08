@@ -3101,6 +3101,7 @@ void idRenderWorldLocal::WriteLightGridsToFile( const char *name ) const {
 }
 
 float tr_lightGridCaptureExposure = 1.0f;
+bool tr_lightGridBakeActive = false;
 
 static bool R_BakeCurrentLightGridsInternal( const lightGridBakeOptions_t &options, const char *jobName );
 
@@ -3114,7 +3115,12 @@ bool R_BakeCurrentLightGrids( const lightGridBakeOptions_t &options, const char 
 	if ( tr_lightGridCaptureExposure != 1.0f ) {
 		common->Printf( "bakeLightGrids: capture exposure divisor %.3f\n", tr_lightGridCaptureExposure );
 	}
+	if ( r_lightGridBakeSkyScale.GetFloat() != 1.0f ) {
+		common->Printf( "bakeLightGrids: sky brightness x%.3f\n", r_lightGridBakeSkyScale.GetFloat() );
+	}
+	tr_lightGridBakeActive = true;
 	const bool result = R_BakeCurrentLightGridsInternal( options, jobName );
+	tr_lightGridBakeActive = false;
 	tr_lightGridCaptureExposure = 1.0f;
 	return result;
 }
