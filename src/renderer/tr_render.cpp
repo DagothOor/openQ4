@@ -694,9 +694,33 @@ r_sunLightScale lifts parallel lights and large shadow-casting point lights
 (the outdoor suns); every other light keeps its authored brightness.
 =================
 */
+static bool R_LightGridCaptureIsSkyView( void ) {
+	return backEnd.viewDef != NULL && ( backEnd.viewDef->renderFlags & RF_PORTAL_SKY ) != 0;
+}
+
+/*
+=================
+R_LightGridCaptureStageScale
+
+During a light-grid bake every capture is divided by r_lightGridBakeExposure
+(headroom), and the sky - the whole portal-sky scene and sky materials - is
+multiplied by r_lightGridBakeSkyScale so it lights the scene as brightly as a
+hazy sky does. Outside a bake this is 1.
+=================
+*/
+float R_LightGridCaptureStageScale( const idMaterial *material ) {
+	if ( !tr_lightGridBakeActive ) {
+		return 1.0f;
+	}
+	const bool sky = R_LightGridCaptureIsSkyView() || ( material != NULL && material->TestMaterialFlag( MF_SKY ) );
+	const float skyScale = sky ? Max( 0.0f, r_lightGridBakeSkyScale.GetFloat() ) : 1.0f;
+	return skyScale / tr_lightGridCaptureExposure;
+}
+
 float R_LightIntensityScale( const viewLight_t *vLight ) {
-	// bakeLightGrids headroom: everything a capture renders is divided alike
-	const float captureScale = 1.0f / tr_lightGridCaptureExposure;
+	// bakeLightGrids: headroom divisor for everything, sky brightness for lights
+	// inside the portal-sky scene
+	const float captureScale = R_LightGridCaptureStageScale( NULL );
 	const float scale = r_sunLightScale.GetFloat();
 	if ( vLight == NULL || vLight->lightDef == NULL || scale == 1.0f ) {
 		return captureScale;

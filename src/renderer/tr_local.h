@@ -1391,6 +1391,10 @@ extern idCVar r_shadowMapPointHighPrecision;	// 1 = store point shadow depth as 
 extern idCVar r_lightGridBakeExposure;	// light-grid bake headroom divisor, stored with the baked map
 // Exposure divisor applied while bakeLightGrids renders its captures; 1 outside a bake.
 extern float tr_lightGridCaptureExposure;
+extern bool tr_lightGridBakeActive;	// true while bakeLightGrids renders its captures
+extern idCVar r_lightGridBakeSkyScale;
+// colour multiplier for an unlit material stage during a light-grid bake capture (1 outside a bake)
+float R_LightGridCaptureStageScale( const idMaterial *material );
 extern idCVar r_sunLightScale;		// brightness multiplier for sun lights
 extern idCVar r_sunLightMinRadius;	// point lights larger than this count as suns
 // r_sunLightScale for sun lights, 1 for every other light

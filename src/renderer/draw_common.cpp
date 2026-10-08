@@ -11527,12 +11527,12 @@ void RB_STD_T_RenderShaderPasses( const drawSurf_t *surf ) {
 
 		// bakeLightGrids headroom: emitted colour is divided like the lights;
 		// multiplicative (filter) stages only darken and stay unchanged
-		if ( tr_lightGridCaptureExposure != 1.0f ) {
+		if ( tr_lightGridBakeActive ) {
 			const int srcBlend = pStage->drawStateBits & GLS_SRCBLEND_BITS;
 			const int dstBlend = pStage->drawStateBits & GLS_DSTBLEND_BITS;
 			if ( srcBlend != GLS_SRCBLEND_DST_COLOR && srcBlend != GLS_SRCBLEND_ONE_MINUS_DST_COLOR
 				&& dstBlend != GLS_DSTBLEND_SRC_COLOR && dstBlend != GLS_DSTBLEND_ONE_MINUS_SRC_COLOR ) {
-				const float captureScale = 1.0f / tr_lightGridCaptureExposure;
+				const float captureScale = R_LightGridCaptureStageScale( shader );
 				color[0] *= captureScale;
 				color[1] *= captureScale;
 				color[2] *= captureScale;
