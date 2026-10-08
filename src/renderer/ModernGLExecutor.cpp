@@ -4938,7 +4938,10 @@ void RB_LightGridBakedParams( const LightGrid &grid, const float origin[3], floa
 	}
 	params[0][3] = 1.0f;
 	params[1][3] = idMath::ClampFloat( 0.25f, 4.0f, r_lightGridIrradianceGamma.GetFloat() );
-	params[2][3] = idMath::ClampFloat( 0.0f, 16.0f, r_lightGridIntensity.GetFloat() );
+	// stored values are radiance / bakeExposure (see r_lightGridBakeExposure);
+	// while a bake renders its captures the in-progress grid is in capture units
+	params[2][3] = idMath::ClampFloat( 0.0f, 16.0f, r_lightGridIntensity.GetFloat() )
+		* ( tr_lightGridCaptureExposure != 1.0f ? 1.0f : grid.bakeExposure );
 	params[3][0] = 1.0f / grid.irradianceImage->GetOpts().width;
 	params[3][1] = 1.0f / grid.irradianceImage->GetOpts().height;
 	params[3][2] = static_cast<float>( grid.imageSingleProbeSize );

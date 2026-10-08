@@ -28,7 +28,10 @@ GNU General Public License for more details.
 
 static const char *LGRID_FILE_ID = "LGRID";
 static const int LIGHTGRID_PACK_MAGIC = ( 'L' << 0 ) | ( 'G' << 8 ) | ( 'P' << 16 ) | ( 'K' << 24 );
-static const int LIGHTGRID_PACK_VERSION = 1;
+// Version 2 adds the bake exposure divisor (r_lightGridBakeExposure) after the
+// header. Version 1 packs are still read, as baked at exposure 1.
+static const int LIGHTGRID_PACK_VERSION = 2;
+static const int LIGHTGRID_PACK_VERSION_NO_EXPOSURE = 1;
 static const int LIGHTGRID_SUPPORTED_VERSION_A = 3;
 static const int LIGHTGRID_SUPPORTED_VERSION_B = 4;
 static const int LIGHTGRID_SUPPORTED_VERSION_C = 5;
@@ -1798,7 +1801,8 @@ static bool LightGrid_WritePackFileInternal( idFile *file, const idRenderWorldLo
 		 !LightGrid_WritePackInt( file, LIGHTGRID_BAKE_HEADER_VERSION ) ||
 		 !LightGrid_WritePackUnsignedInt( file, static_cast<unsigned int>( stats.settingsHash ) ) ||
 		 !LightGrid_WritePackInt( file, world.numPortalAreas ) ||
-		 !LightGrid_WritePackInt( file, chunks.Num() ) ) {
+		 !LightGrid_WritePackInt( file, chunks.Num() ) ||
+		 !LightGrid_WritePackFloat( file, tr_lightGridCaptureExposure ) ) {
 		return false;
 	}
 
@@ -1899,6 +1903,7 @@ static void LightGrid_WriteBakeStatsBlock( idFile *file, const lightGridBakeOpti
 	file->WriteFloatString( "\theaderVersion %i\n", LIGHTGRID_BAKE_HEADER_VERSION );
 	file->WriteFloatString( "\tsettingsHash 0x%s\n", settingsHashString );
 	file->WriteFloatString( "\tmap \"%s\"\n", ( world != NULL ) ? world->mapName.c_str() : "" );
+	file->WriteFloatString( "\tbakeExposure %f\n", tr_lightGridCaptureExposure );
 	file->WriteFloatString(
 		"\toptions maxProbes %i bounces %i captureSize %i blends %i samples %i gridSize ( %f %f %f )\n",
 		options.maxProbes,
@@ -2143,8 +2148,11 @@ bool R_LightGridFileMatchesBakeOptions( const char *name, const lightGridBakeOpt
 	return true;
 }
 
-static bool LightGrid_ReadPackHeader( idFile *file, int &packVersion, int &lightGridVersion, int &bakeHeaderVersion, unsigned int &settingsHash, int &numPortalAreas, int &chunkCount ) {
+static bool LightGrid_ReadPackHeader( idFile *file, int &packVersion, int &lightGridVersion, int &bakeHeaderVersion, unsigned int &settingsHash, int &numPortalAreas, int &chunkCount, float *bakeExposure = NULL ) {
 	int magic = 0;
+	if ( bakeExposure != NULL ) {
+		*bakeExposure = 1.0f;
+	}
 	if ( !LightGrid_ReadPackInt( file, magic ) ||
 		 !LightGrid_ReadPackInt( file, packVersion ) ||
 		 !LightGrid_ReadPackInt( file, lightGridVersion ) ||
@@ -2155,10 +2163,20 @@ static bool LightGrid_ReadPackHeader( idFile *file, int &packVersion, int &light
 		return false;
 	}
 
-	if ( magic != LIGHTGRID_PACK_MAGIC || packVersion != LIGHTGRID_PACK_VERSION ||
+	if ( magic != LIGHTGRID_PACK_MAGIC
+		 || ( packVersion != LIGHTGRID_PACK_VERSION && packVersion != LIGHTGRID_PACK_VERSION_NO_EXPOSURE ) ||
 		 lightGridVersion != LIGHTGRID_CURRENT_VERSION || bakeHeaderVersion != LIGHTGRID_BAKE_HEADER_VERSION ||
 		 numPortalAreas < 0 || chunkCount < 0 ) {
 		return false;
+	}
+	if ( packVersion == LIGHTGRID_PACK_VERSION ) {
+		float exposure = 1.0f;
+		if ( !LightGrid_ReadPackFloat( file, exposure ) ) {
+			return false;
+		}
+		if ( bakeExposure != NULL ) {
+			*bakeExposure = ( exposure >= 1.0f && exposure <= 64.0f ) ? exposure : 1.0f;
+		}
 	}
 	if ( chunkCount > numPortalAreas * 3 ) {
 		return false;
@@ -2461,7 +2479,8 @@ bool idRenderWorldLocal::LoadLightGridPackFile( const char *name ) {
 	unsigned int settingsHash = 0;
 	int packPortalAreas = 0;
 	int chunkCount = 0;
-	if ( !LightGrid_ReadPackHeader( file, packVersion, lightGridVersion, bakeHeaderVersion, settingsHash, packPortalAreas, chunkCount ) ) {
+	float packBakeExposure = 1.0f;
+	if ( !LightGrid_ReadPackHeader( file, packVersion, lightGridVersion, bakeHeaderVersion, settingsHash, packPortalAreas, chunkCount, &packBakeExposure ) ) {
 		fileSystem->CloseFile( file );
 		common->Warning( "%s is not a valid light-grid pack", name );
 		return false;
@@ -2478,6 +2497,9 @@ bool idRenderWorldLocal::LoadLightGridPackFile( const char *name ) {
 			common->Warning( "%s has invalid light-grid metadata", name );
 			return false;
 		}
+	}
+	for ( int i = 0; i < numPortalAreas; i++ ) {
+		portalAreas[i].lightGrid.bakeExposure = packBakeExposure;
 	}
 	if ( !LightGrid_BakedForThisMap( this ) ) {
 		fileSystem->CloseFile( file );
@@ -2843,6 +2865,7 @@ void LightGrid::Clear() {
 	imageBorderSize = LIGHTGRID_DEFAULT_BORDER_SIZE;
 	visibilityMaxDistance = LIGHTGRID_VISIBILITY_MAX_DISTANCE;
 	relocationMaxDistance = LIGHTGRID_RELOCATION_MAX_DISTANCE;
+	bakeExposure = 1.0f;
 }
 
 bool LightGrid::HasImage() const {
@@ -3238,6 +3261,31 @@ void idRenderWorldLocal::PreloadLightGridImages( renderLightGridLoadReceipt_t &r
 		( Sys_Milliseconds() - loadStart ) * 0.001f );
 }
 
+/*
+Reads a lightGridBakeStats block and returns its bakeExposure. Everything else
+in the block describes the bake and is not needed at load time. Files written
+before bakeExposure existed were baked at exposure 1.
+*/
+static float LightGrid_ParseBakeStatsExposure( idLexer *src ) {
+	float bakeExposure = 1.0f;
+	if ( !src->ExpectTokenString( "{" ) ) {
+		return bakeExposure;
+	}
+	idToken token;
+	int depth = 1;
+	while ( depth > 0 && src->ReadToken( &token ) ) {
+		if ( token == "{" ) {
+			depth++;
+		} else if ( token == "}" ) {
+			depth--;
+		} else if ( depth == 1 && token == "bakeExposure" ) {
+			const float exposure = src->ParseFloat();
+			bakeExposure = ( exposure >= 1.0f && exposure <= 64.0f ) ? exposure : 1.0f;
+		}
+	}
+	return bakeExposure;
+}
+
 bool idRenderWorldLocal::LoadLightGridFile( const char *name, bool osPath ) {
 	// Errors are not fatal: a grid that cannot be read, or that was baked for another build
 	// of this map, is ignored and the map loads without it.
@@ -3268,9 +3316,10 @@ bool idRenderWorldLocal::LoadLightGridFile( const char *name, bool osPath ) {
 	}
 
 	bool fitsThisMap = true;
+	lightGridLoadExposure = 1.0f;
 	while ( fitsThisMap && !src->HadError() && src->ReadToken( &token ) ) {
 		if ( token == "lightGridBakeStats" ) {
-			src->SkipBracedSection();
+			lightGridLoadExposure = LightGrid_ParseBakeStatsExposure( src );
 			continue;
 		}
 
@@ -3341,6 +3390,7 @@ bool idRenderWorldLocal::ParseLightGridPoints( idLexer *src ) {
 	lightGrid.imageBorderSize = imageBorderSize;
 	lightGrid.visibilityMaxDistance = LIGHTGRID_VISIBILITY_MAX_DISTANCE;
 	lightGrid.relocationMaxDistance = LIGHTGRID_RELOCATION_MAX_DISTANCE;
+	lightGrid.bakeExposure = lightGridLoadExposure;
 	lightGrid.totalGridPointCount = numLightGridPoints;
 
 	src->Parse1DMatrix( 3, lightGrid.lightGridOrigin.ToFloatPtr() );
@@ -3552,7 +3602,26 @@ static bool LightGrid_BakeLoadsNextTime( const char *relativePath ) {
 	return same;
 }
 
+float tr_lightGridCaptureExposure = 1.0f;
+
+static bool R_BakeCurrentLightGridsInternal( const lightGridBakeOptions_t &options, const char *jobName );
+
+/*
+Bake with headroom: every capture is rendered r_lightGridBakeExposure times
+darker so bright light does not clip in the 8-bit captures. The divisor is
+written into the grid file and multiplied back when the grid is drawn.
+*/
 bool R_BakeCurrentLightGrids( const lightGridBakeOptions_t &options, const char *jobName ) {
+	tr_lightGridCaptureExposure = idMath::ClampFloat( 1.0f, 64.0f, r_lightGridBakeExposure.GetFloat() );
+	if ( tr_lightGridCaptureExposure != 1.0f ) {
+		common->Printf( "bakeLightGrids: capture exposure divisor %.3f\n", tr_lightGridCaptureExposure );
+	}
+	const bool result = R_BakeCurrentLightGridsInternal( options, jobName );
+	tr_lightGridCaptureExposure = 1.0f;
+	return result;
+}
+
+static bool R_BakeCurrentLightGridsInternal( const lightGridBakeOptions_t &options, const char *jobName ) {
 	if ( !tr.primaryWorld || !tr.primaryView ) {
 		common->Printf( "bakeLightGrids: no primary world/view loaded.\n" );
 		return false;

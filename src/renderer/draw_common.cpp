@@ -11525,6 +11525,20 @@ void RB_STD_T_RenderShaderPasses( const drawSurf_t *surf ) {
 		color[2] = regs[ pStage->color.registers[2] ];
 		color[3] = regs[ pStage->color.registers[3] ];
 
+		// bakeLightGrids headroom: emitted colour is divided like the lights;
+		// multiplicative (filter) stages only darken and stay unchanged
+		if ( tr_lightGridCaptureExposure != 1.0f ) {
+			const int srcBlend = pStage->drawStateBits & GLS_SRCBLEND_BITS;
+			const int dstBlend = pStage->drawStateBits & GLS_DSTBLEND_BITS;
+			if ( srcBlend != GLS_SRCBLEND_DST_COLOR && srcBlend != GLS_SRCBLEND_ONE_MINUS_DST_COLOR
+				&& dstBlend != GLS_DSTBLEND_SRC_COLOR && dstBlend != GLS_DSTBLEND_ONE_MINUS_SRC_COLOR ) {
+				const float captureScale = 1.0f / tr_lightGridCaptureExposure;
+				color[0] *= captureScale;
+				color[1] *= captureScale;
+				color[2] *= captureScale;
+			}
+		}
+
 		// skip the entire stage if an add would be black
 		if ( ( pStage->drawStateBits & (GLS_SRCBLEND_BITS|GLS_DSTBLEND_BITS) ) == ( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE ) 
 			&& color[0] <= 0 && color[1] <= 0 && color[2] <= 0 ) {
@@ -12430,6 +12444,10 @@ static void RB_FogPass( const drawSurf_t *drawSurfs,  const drawSurf_t *drawSurf
 	backEnd.lightColor[1] = regs[ stage->color.registers[1] ];
 	backEnd.lightColor[2] = regs[ stage->color.registers[2] ];
 	backEnd.lightColor[3] = regs[ stage->color.registers[3] ];
+	// bakeLightGrids headroom: fog colour is divided like the lights
+	backEnd.lightColor[0] /= tr_lightGridCaptureExposure;
+	backEnd.lightColor[1] /= tr_lightGridCaptureExposure;
+	backEnd.lightColor[2] /= tr_lightGridCaptureExposure;
 
 	glColor3fv( backEnd.lightColor );
 
@@ -14568,7 +14586,10 @@ static bool RB_STD_DrawLightGridSurface( const drawSurf_t *surf, const LightGrid
 		0.0f
 	};
 	const bool usePortalBlend = portalBlend != NULL && portalBlend->blendDistance > 0.0f && !portalBlend->portalBounds.IsCleared();
-	const float lightGridIntensity = idMath::ClampFloat( 0.0f, 16.0f, r_lightGridIntensity.GetFloat() );
+	// Stored values are radiance / bakeExposure. At runtime multiply back. While a
+	// bake renders its captures the in-progress grid is already in capture units.
+	const float bakeExposureScale = ( tr_lightGridCaptureExposure != 1.0f ) ? 1.0f : lightGrid.bakeExposure;
+	const float lightGridIntensity = idMath::ClampFloat( 0.0f, 16.0f, r_lightGridIntensity.GetFloat() ) * bakeExposureScale;
 	const float blendInfo[4] = {
 		lightGridIntensity,
 		usePortalBlend ? ( invertPortalBlend ? -1.0f : 1.0f ) : 0.0f,

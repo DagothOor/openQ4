@@ -144,6 +144,7 @@ idRenderWorldLocal::idRenderWorldLocal() {
 	mapName.Clear();
 	mapTimeStamp = FILE_NOT_FOUND_TIMESTAMP;
 	mapFileCRC = 0u;
+	lightGridLoadExposure = 1.0f;
 
 	generateAllInteractionsCalled = false;
 
