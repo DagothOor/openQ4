@@ -100,6 +100,7 @@ public:
 	int						imageBorderSize;
 	float					visibilityMaxDistance;
 	float					relocationMaxDistance;
+	float					bakeExposure;			// r_lightGridBakeExposure the grid was baked with (stored values are radiance / bakeExposure)
 
 	void					Clear();
 	bool					HasImage() const;
@@ -308,6 +309,7 @@ public:
 	bool					LoadLightGridPackFile( const char *name );
 	void					ParseLightGridPoints( idLexer *src );
 	void					ParseLightGridVisibility( idLexer *src );
+	float					lightGridLoadExposure;	// bakeExposure of the light-grid file being parsed
 	void					WriteLightGridsToFile( const char *name ) const;
 
 	//--------------------------

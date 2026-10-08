@@ -694,19 +694,21 @@ r_sunLightScale lifts parallel lights and large shadow-casting point lights
 =================
 */
 float R_LightIntensityScale( const viewLight_t *vLight ) {
+	// bakeLightGrids headroom: everything a capture renders is divided alike
+	const float captureScale = 1.0f / tr_lightGridCaptureExposure;
 	const float scale = r_sunLightScale.GetFloat();
 	if ( vLight == NULL || vLight->lightDef == NULL || scale == 1.0f ) {
-		return 1.0f;
+		return captureScale;
 	}
 	const renderLight_t &parms = vLight->lightDef->parms;
 	if ( parms.parallel ) {
-		return scale;
+		return scale * captureScale;
 	}
 	if ( !parms.pointLight || parms.noShadows ) {
-		return 1.0f;
+		return captureScale;
 	}
 	const float extent = Max( Max( idMath::Fabs( parms.lightRadius.x ), idMath::Fabs( parms.lightRadius.y ) ), idMath::Fabs( parms.lightRadius.z ) );
-	return extent > r_sunLightMinRadius.GetFloat() ? scale : 1.0f;
+	return ( extent > r_sunLightMinRadius.GetFloat() ? scale : 1.0f ) * captureScale;
 }
 
 /*
