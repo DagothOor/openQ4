@@ -7,10 +7,11 @@
 >
 > Changes in this fork (engine and `content/baseoq4/pak0`):
 > - eye adaptation (auto exposure) on the classic renderer: `r_hdrAutoExposureClassic`, metered every `r_hdrAutoExposureInterval` frames;
-> - light-grid bake: fixed unbounded memory growth, portal sky now captured on the async path;
+> - light-grid bake: portal sky captured on the async path; headroom `r_lightGridBakeExposure` (stored with the map) and sky brightness `r_lightGridBakeSkyScale`;
 > - baked bounce light: no flat grey on surfaces without a texture stage, diffuse map preferred as surface colour, minimum level `r_lightGridShadowFloor`, physical AO mode `r_lightGridAO`;
-> - GTAO as the default SSAO with automatic fallback to the stock shader (`r_ssaoGTAO`);
+> - GTAO as the default SSAO with automatic fallback to the stock shader (`r_ssaoGTAO`), including the native-PBR indirect-only modes;
 > - sun-sized point lights keep stencil shadows when shadow maps are on (`r_shadowMapPointMaxRadius`);
+> - sun brightness multiplier `r_sunLightScale` (parallel lights and large shadow-casting point lights);
 > - `listRenderLightDefs` prints each light's radius, centre, origin and type;
 > - light presets `light_physical.cfg`, `light_classic.cfg`, `light_stock.cfg`; Windows x64 build workflow; bake scripts in `extras/openq4_light`.
 >
