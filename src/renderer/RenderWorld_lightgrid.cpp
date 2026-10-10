@@ -3605,29 +3605,33 @@ static bool LightGrid_BakeLoadsNextTime( const char *relativePath ) {
 float tr_lightGridCaptureExposure = 1.0f;
 bool tr_lightGridBakeActive = false;
 
-static bool R_BakeCurrentLightGridsInternal( const lightGridBakeOptions_t &options, const char *jobName );
-
 /*
-Bake with headroom: every capture is rendered r_lightGridBakeExposure times
-darker so bright light does not clip in the 8-bit captures. The divisor is
-written into the grid file and multiplied back when the grid is drawn.
+Bake with headroom: while bakeLightGrids renders its captures every capture is
+r_lightGridBakeExposure times darker, so bright light does not clip in the
+8-bit captures (the divisor is written into the grid file and multiplied back
+when the grid is drawn), and the sky is r_lightGridBakeSkyScale times brighter.
+The scope object switches both on for the whole bake and off again on every
+way out of it.
 */
-bool R_BakeCurrentLightGrids( const lightGridBakeOptions_t &options, const char *jobName ) {
-	tr_lightGridCaptureExposure = idMath::ClampFloat( 1.0f, 64.0f, r_lightGridBakeExposure.GetFloat() );
-	if ( tr_lightGridCaptureExposure != 1.0f ) {
-		common->Printf( "bakeLightGrids: capture exposure divisor %.3f\n", tr_lightGridCaptureExposure );
+struct lightGridBakeCaptureScope_t {
+	lightGridBakeCaptureScope_t() {
+		tr_lightGridCaptureExposure = idMath::ClampFloat( 1.0f, 64.0f, r_lightGridBakeExposure.GetFloat() );
+		if ( tr_lightGridCaptureExposure != 1.0f ) {
+			common->Printf( "bakeLightGrids: capture exposure divisor %.3f\n", tr_lightGridCaptureExposure );
+		}
+		if ( r_lightGridBakeSkyScale.GetFloat() != 1.0f ) {
+			common->Printf( "bakeLightGrids: sky brightness x%.3f\n", r_lightGridBakeSkyScale.GetFloat() );
+		}
+		tr_lightGridBakeActive = true;
 	}
-	if ( r_lightGridBakeSkyScale.GetFloat() != 1.0f ) {
-		common->Printf( "bakeLightGrids: sky brightness x%.3f\n", r_lightGridBakeSkyScale.GetFloat() );
+	~lightGridBakeCaptureScope_t() {
+		tr_lightGridBakeActive = false;
+		tr_lightGridCaptureExposure = 1.0f;
 	}
-	tr_lightGridBakeActive = true;
-	const bool result = R_BakeCurrentLightGridsInternal( options, jobName );
-	tr_lightGridBakeActive = false;
-	tr_lightGridCaptureExposure = 1.0f;
-	return result;
-}
+};
 
-static bool R_BakeCurrentLightGridsInternal( const lightGridBakeOptions_t &options, const char *jobName ) {
+bool R_BakeCurrentLightGrids( const lightGridBakeOptions_t &options, const char *jobName ) {
+	const lightGridBakeCaptureScope_t captureScope;
 	if ( !tr.primaryWorld || !tr.primaryView ) {
 		common->Printf( "bakeLightGrids: no primary world/view loaded.\n" );
 		return false;
